@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v86-editor";
+const APP_VERSION = "v81";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -2798,15 +2798,11 @@ function requestCard(req) {
   const actions = card.querySelector(".request-actions");
   const canAct = canActAsRole(current.requestRole);
 
-  if (!canAct && !isEditorOverrideMode()) {
+  if (!canAct) {
     actions.innerHTML = `<div class="readonly-note">Только просмотр. Выдачу подтверждает складовщик.</div>`;
   }
 
-  if (isEditorOverrideMode()) {
-    actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">Режим редактора: доступны действия всех ролей по этой заявке.</div>`);
-  }
-
-  if (canActForRequestRole("shop")) {
+  if (current.requestRole === "shop" && canAct) {
     const isFinalApproval = req.mechanicInstalled && !req.shopInstallApproved && !req.done;
     actions.append(actionButton(isFinalApproval ? "Подтвердить установку" : "Подтвердить начальником", () => {
       if (isFinalApproval) {
@@ -2822,7 +2818,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("engineer")) {
+  if (current.requestRole === "engineer" && canAct) {
     const isInstallApproval = req.mechanicInstalled && !req.shopInstallApproved && !req.done;
     actions.append(actionButton(isInstallApproval ? "Подтвердить установку" : "Подтвердить инженером", () => {
       if (isInstallApproval) {
@@ -2838,7 +2834,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("supply")) {
+  if (current.requestRole === "supply" && canAct) {
     const price = document.createElement("input");
     price.placeholder = "Цена";
     price.value = req.price || "";
@@ -2901,7 +2897,7 @@ function requestCard(req) {
       }));
     }
   }
-  if (canActForRequestRole("finance")) {
+  if (current.requestRole === "finance" && canAct) {
     actions.append(actionButton("Подписать экономистом", () => {
       req.financeApproved = true;
       req.status = "cash";
@@ -2910,7 +2906,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("cash")) {
+  if (current.requestRole === "cash" && canAct) {
     actions.append(actionButton("Оплатить", () => {
       req.cashApproved = true;
       req.status = "cashApproved";
@@ -2919,7 +2915,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("warehouse")) {
+  if (current.requestRole === "warehouse" && canAct) {
     const stockArea = document.createElement("select");
     const requestWarehouseArea = req.stockArea || req.area || current.selectedStockArea || COMMON_WAREHOUSE;
     stockArea.innerHTML = warehouseOptions(requestWarehouseArea);
@@ -3031,7 +3027,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("accounting")) {
+  if (current.requestRole === "accounting" && canAct) {
     actions.append(actionButton("Списать деталь", () => {
       req.accountingWrittenOff = true;
       req.done = true;
@@ -3041,7 +3037,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (canActForRequestRole("mechanic")) {
+  if (current.requestRole === "mechanic" && canAct) {
     actions.append(actionButton("Установлено, передать начальнику", () => {
       req.mechanicInstalled = true;
       req.done = false;
