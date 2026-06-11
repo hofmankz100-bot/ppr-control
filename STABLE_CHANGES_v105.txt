@@ -1,0 +1,16 @@
+v105-postgresql
+
+Добавлена поддержка PostgreSQL без изменения основной логики проекта.
+
+Что изменено:
+1. Если на Render указан DATABASE_URL, сервер хранит данные в PostgreSQL.
+2. Если DATABASE_URL нет, проект работает как раньше через db.json.
+3. При первом запуске PostgreSQL создаются таблицы ppr_state и ppr_backups.
+4. Старый db.json автоматически переносится в PostgreSQL, если таблица пустая.
+5. Экспорт JSON/CSV работает как раньше.
+6. Ручной backup теперь сохраняется в PostgreSQL при включенной базе.
+7. /api/health показывает storage: postgresql или db.json.
+8. Кэш обновлен на v105-postgresql.
+
+GitHub: можно загрузить весь ZIP полностью.
+Render: после загрузки надо добавить PostgreSQL и переменную DATABASE_URL.
