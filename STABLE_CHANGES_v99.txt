@@ -1,0 +1,9 @@
+v99 stable improvements
+
+1. Added WebSocket heartbeat on server to close dead phone connections.
+2. Added client fallback polling every 30 seconds when realtime socket is stale.
+3. Added safer button unlock with try/finally for node downtime, comments, and node requests.
+4. Added backup retention: keeps last 14 daily backups to avoid endless growth.
+5. Updated cache/version tags to v99-stable.
+
+Business route logic was preserved.
