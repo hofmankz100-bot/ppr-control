@@ -896,7 +896,9 @@ function blankKind() {
 }
 
 function isNodeChecked(rec) {
-  return Boolean(rec?.to?.walkDone || rec?.to?.tasks?.[0]);
+  // Счетчик галочек по узлам должен считать только явную галочку обхода.
+  // tasks[0] оставлен для старого чек-листа и не должен случайно закрывать весь узел.
+  return Boolean(rec?.to?.walkDone);
 }
 
 function currentRoleId() {
@@ -2590,7 +2592,8 @@ function renderNodeWalkthrough(eq) {
     `;
     row.querySelector("input").addEventListener("change", event => {
       if (!canEditChecklist()) return;
-      item.tasks[0] = event.target.checked;
+      // Галочка обхода узла хранится отдельно от пунктов старого чек-листа,
+      // иначе счет в календарных ячейках может считаться неправильно.
       item.walkDone = event.target.checked;
       saveState();
       const nextDone = eq.nodes.filter((_, nodeIndex) => isNodeChecked(record(eq.id, nodeIndex, current.date))).length;
@@ -2693,8 +2696,6 @@ function renderNodeWalkthrough(eq) {
       if (profile?.role === "shop" || profile?.role === "engineer" || profile?.role === "editor") {
         markCommentResolved(item);
         item.mechanicFixed = false;
-        item.shopInstallApproved = true;
-        item.accountingWrittenOff = false;
         if (relatedReq) {
           relatedReq.mechanicInstalled = true;
           relatedReq.shopInstallApproved = true;
@@ -2702,10 +2703,12 @@ function renderNodeWalkthrough(eq) {
           relatedReq.stock = false;
           relatedReq.status = "accounting";
           syncRequestToRecord(relatedReq);
+          row.querySelector(".node-walk-status").textContent = "Заявка установлена. Ждет бухгалтерию";
         } else {
+          // Простое замечание не является заявкой и не должно уходить в бухгалтерию.
           saveState();
+          row.querySelector(".node-walk-status").textContent = "Замечание закрыто";
         }
-        row.querySelector(".node-walk-status").textContent = relatedReq ? "Устранено. Ждет бухгалтерию" : "Замечание закрыто";
         renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
@@ -2721,12 +2724,13 @@ function renderNodeWalkthrough(eq) {
         relatedReq.accountingWrittenOff = false;
         relatedReq.status = "waitingShopDone";
         syncRequestToRecord(relatedReq);
+        row.querySelector(".node-walk-status").textContent = "Установлено. Ждет подтверждения начальника/инженера";
       } else {
         markCommentResolved(item);
         item.mechanicFixed = false;
         saveState();
+        row.querySelector(".node-walk-status").textContent = "Замечание закрыто";
       }
-      row.querySelector(".node-walk-status").textContent = relatedReq ? "Устранено. Ждет подтверждения начальника/инженера" : "Замечание закрыто";
       renderNodeWalkthrough(equipmentById(eq.id));
     }, "Публикуется..."));
     row.querySelector("[data-node-comment-photo]").addEventListener("change", async event => {
