@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Очистка кэша</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f4f7fb;
+      color: #172033;
+    }
+    main {
+      width: min(520px, calc(100vw - 32px));
+      background: #fff;
+      border: 1px solid #d9e2ef;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 12px 32px rgba(23, 32, 51, .12);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+    p {
+      line-height: 1.5;
+    }
+    a {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: 6px;
+      background: #1f6feb;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Кэш очищается...</h1>
+    <p id="status">Удаляю старую версию приложения.</p>
+    <a href="./?fresh=115-cache-clear" id="openApp" hidden>Открыть приложение</a>
+  </main>
+  <script>
+    (async () => {
+      const status = document.getElementById("status");
+      try {
+        if ("serviceWorker" in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(registration => registration.unregister()));
+        }
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(key => caches.delete(key)));
+        }
+        status.textContent = "Готово. Кэш очищен, можно открыть приложение заново.";
+      } catch (error) {
+        status.textContent = "Кэш частично очищен. Откройте приложение заново.";
+      }
+      document.getElementById("openApp").hidden = false;
+    })();
+  </script>
+</body>
+</html>
