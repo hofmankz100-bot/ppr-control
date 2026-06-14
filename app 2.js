@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v115-cache-clear";
+const APP_VERSION = "v116-empty-clean";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -237,6 +237,7 @@ function loadState() {
     const raw = localStorage.getItem(STORE_KEY);
     const parsed = raw ? JSON.parse(raw) : { checks: {}, requests: {} };
     parsed.checks ||= {};
+    parsed.checks = compactCheckRecords(parsed.checks);
     parsed.requests ||= {};
     parsed.inventory ||= {};
     parsed.catalog ||= { equipment: {} };
@@ -250,6 +251,7 @@ function loadState() {
 }
 
 function saveState() {
+  state.checks = compactCheckRecords(state.checks);
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   queueRemoteStateSave();
@@ -381,7 +383,7 @@ function mergeObjectByFreshnessLocal(current = {}, incoming = {}) {
 }
 
 function mergeRemoteState(remote = {}) {
-  state.checks = mergeObjectByFreshnessLocal(state.checks, remote.checks);
+  state.checks = compactCheckRecords(mergeObjectByFreshnessLocal(state.checks, remote.checks));
   state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
   Object.assign(state.inventory, remote.inventory || {});
   state.catalog ||= { equipment: {} };
@@ -913,6 +915,10 @@ function key(equipmentId, nodeIndex, date) {
   return `${equipmentId}:${nodeIndex}:${date}`;
 }
 
+function getRecord(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date) {
+  return state.checks[key(equipmentId, nodeIndex, date)] || null;
+}
+
 function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date) {
   const k = key(equipmentId, nodeIndex, date);
   if (!state.checks[k]) {
@@ -928,6 +934,24 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 
 function blankKind(now = new Date().toISOString()) {
   return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
+}
+
+function hasMeaningfulCheckKind(item) {
+  if (!item || typeof item !== "object") return false;
+  if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
+  if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
+  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
+  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.accountingWrittenOff) return true;
+  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
+}
+
+function compactCheckRecords(checks = {}) {
+  const next = {};
+  for (const [id, rec] of Object.entries(checks || {})) {
+    if (hasMeaningfulCheckKind(rec?.to)) next[id] = rec;
+  }
+  return next;
 }
 
 function isNodeChecked(rec) {
@@ -2304,7 +2328,7 @@ function renderEquipment() {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date);
         const stoppedNodeIndex = eq.nodes.findIndex((_, nodeIndex) => activeDowntime(eq.id, nodeIndex));
-        const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(record(eq.id, nodeIndex, date)));
+        const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
         const downtimeOpen = stoppedNodeIndex >= 0;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
@@ -2340,7 +2364,7 @@ function renderEquipment() {
 }
 
 function equipmentDaySummary(eq, date) {
-  const rows = eq.nodes.map((_, index) => record(eq.id, index, date));
+  const rows = eq.nodes.map((_, index) => getRecord(eq.id, index, date));
   const done = rows.filter(rec => isNodeChecked(rec)).length;
   const open = rows.some(rec => hasOpenCommentRecord(rec));
   const requestOpen = rows.some((rec, index) => hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(eq.id, index, date));
@@ -2416,7 +2440,7 @@ function renderSchedule() {
     tr.append(nodeCell);
     for (let day = 1; day <= days; day++) {
       const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const rec = record(current.equipmentId, nodeIndex, date);
+      const rec = getRecord(current.equipmentId, nodeIndex, date);
       const factStatus = statusForRecord(rec);
       const plan = plannedStatus(day);
       const status = factStatus || plan;
@@ -2825,7 +2849,7 @@ function nodeWalkStatusText(item) {
   if (item.mechanicFixed && !item.resolved) return "Устранено. Ждет подтверждения начальника/инженера";
   if (item.resolved) return "Замечание закрыто";
   if (item.request?.trim()) return `Заявка: ${statusText(item.requestStatus || "shop")}`;
-  if (item.comment?.trim()) return "Есть замечание";
+  if (hasAnyComment(item)) return "Есть замечание";
   return "Заявка не создана";
 }
 

@@ -1,9 +1,9 @@
-const CACHE_NAME = "ppr-pwa-v115-cache-clear";
+const CACHE_NAME = "ppr-pwa-v116-empty-clean";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=115-cache-clear",
-  "./app.js?v=115-cache-clear",
+  "./styles.css?v=116-empty-clean",
+  "./app.js?v=116-empty-clean",
   "./manifest.json",
   "./icon.svg"
 ];

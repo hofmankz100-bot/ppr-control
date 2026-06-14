@@ -377,6 +377,24 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
+function hasMeaningfulCheckKind(item) {
+  if (!item || typeof item !== "object") return false;
+  if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
+  if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
+  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
+  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.accountingWrittenOff) return true;
+  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
+}
+
+function compactCheckRecords(checks = {}) {
+  const next = {};
+  for (const [id, rec] of Object.entries(checks || {})) {
+    if (hasMeaningfulCheckKind(rec?.to)) next[id] = rec;
+  }
+  return next;
+}
+
 function mergeArrayById(current = [], incoming = []) {
   const map = new Map();
   for (const item of Array.isArray(current) ? current : []) {
@@ -517,7 +535,7 @@ async function handleApi(req, res, pathname, url) {
         db.directorMessages = [];
         db.downtimes = [];
       }
-      db.checks = mergeObjectRecordsByFreshness(db.checks, body.checks);
+      db.checks = compactCheckRecords(mergeObjectRecordsByFreshness(db.checks, body.checks));
       db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
       db.inventory = mergeObjectRecords(db.inventory, body.inventory);
       db.catalog = db.catalog || { equipment: {} };
