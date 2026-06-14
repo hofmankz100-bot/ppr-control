@@ -349,8 +349,19 @@ function mergeArrayByIdLocal(current = [], incoming = []) {
 }
 
 function isIncomingNewerRecord(current, incoming) {
-  const currentTime = Date.parse(current?.updatedAt || current?.createdAt || "");
-  const incomingTime = Date.parse(incoming?.updatedAt || incoming?.createdAt || "");
+  const recordTime = record => {
+    const direct = Date.parse(record?.updatedAt || record?.createdAt || record?.commentUpdatedAt || record?.resolvedAt || "");
+    if (Number.isFinite(direct)) return direct;
+    if (!record || typeof record !== "object") return NaN;
+    return Math.max(
+      ...Object.values(record)
+        .map(value => Date.parse(value?.updatedAt || value?.createdAt || value?.commentUpdatedAt || value?.resolvedAt || ""))
+        .filter(Number.isFinite),
+      NaN
+    );
+  };
+  const currentTime = recordTime(current);
+  const incomingTime = recordTime(incoming);
   if (Number.isFinite(currentTime) || Number.isFinite(incomingTime)) {
     return (Number.isFinite(incomingTime) ? incomingTime : 0) >= (Number.isFinite(currentTime) ? currentTime : 0);
   }
@@ -366,7 +377,7 @@ function mergeObjectByFreshnessLocal(current = {}, incoming = {}) {
 }
 
 function mergeRemoteState(remote = {}) {
-  Object.assign(state.checks, remote.checks || {});
+  state.checks = mergeObjectByFreshnessLocal(state.checks, remote.checks);
   state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
   Object.assign(state.inventory, remote.inventory || {});
   state.catalog ||= { equipment: {} };
