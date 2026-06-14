@@ -345,17 +345,21 @@ function mergeObjectRecords(current = {}, incoming = {}) {
   return { ...(current || {}), ...(incoming || {}) };
 }
 
-function checkRecordTime(value) {
-  return Date.parse(value?.updatedAt || value?.to?.updatedAt || "") || 0;
+function isIncomingNewerRecord(current, incoming) {
+  const currentTime = Date.parse(current?.updatedAt || current?.createdAt || "");
+  const incomingTime = Date.parse(incoming?.updatedAt || incoming?.createdAt || "");
+  if (Number.isFinite(currentTime) || Number.isFinite(incomingTime)) {
+    return (Number.isFinite(incomingTime) ? incomingTime : 0) >= (Number.isFinite(currentTime) ? currentTime : 0);
+  }
+  return true;
 }
 
-function mergeCheckRecords(current = {}, incoming = {}) {
-  const out = { ...(current || {}) };
-  for (const [key, value] of Object.entries(incoming || {})) {
-    const old = out[key];
-    out[key] = checkRecordTime(value) >= checkRecordTime(old) ? value : old;
+function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
+  const next = { ...(current || {}) };
+  for (const [id, value] of Object.entries(incoming || {})) {
+    if (isIncomingNewerRecord(next[id], value)) next[id] = value;
   }
-  return out;
+  return next;
 }
 
 function mergeArrayById(current = [], incoming = []) {
@@ -498,8 +502,8 @@ async function handleApi(req, res, pathname, url) {
         db.directorMessages = [];
         db.downtimes = [];
       }
-      db.checks = mergeCheckRecords(db.checks, body.checks);
-      db.requests = mergeObjectRecords(db.requests, body.requests);
+      db.checks = mergeObjectRecords(db.checks, body.checks);
+      db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
       db.inventory = mergeObjectRecords(db.inventory, body.inventory);
       db.catalog = db.catalog || { equipment: {} };
       db.catalog.equipment = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
