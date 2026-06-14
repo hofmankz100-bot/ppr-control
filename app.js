@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v106-flow";
+const APP_VERSION = "v107-flow";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -884,7 +884,11 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 }
 
 function blankKind() {
-  return { tasks: Array(15).fill(false), comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false };
+  return { tasks: Array(15).fill(false), done: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false };
+}
+
+function isNodeChecked(rec) {
+  return Boolean(rec?.to?.done || rec?.to?.tasks?.[0]);
 }
 
 function currentRoleId() {
@@ -1998,7 +2002,7 @@ function equipmentById(id) {
 }
 
 function statusForRecord(rec) {
-  if (rec.to.tasks[0]) return "ТО";
+  if (isNodeChecked(rec)) return "ТО";
   return "";
 }
 
@@ -2007,7 +2011,7 @@ function plannedStatus(day) {
 }
 
 function isPlannedDone(rec, planned) {
-  if (planned === "ТО") return Boolean(rec.to.tasks[0]);
+  if (planned === "ТО") return isNodeChecked(rec);
   return true;
 }
 
@@ -2219,7 +2223,7 @@ function renderEquipment() {
         const downtimeOpen = stoppedNodeIndex >= 0;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        td.className = `to ${summary.overdue ? "planned-overdue" : ""} ${summary.open || downtimeOpen || summary.overdue ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+        td.className = `to ${summary.overdue ? "planned-overdue overdue-line-blink" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
         td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
@@ -2251,7 +2255,7 @@ function renderEquipment() {
 
 function equipmentDaySummary(eq, date) {
   const rows = eq.nodes.map((_, index) => record(eq.id, index, date));
-  const done = rows.filter(rec => rec.to.tasks[0]).length;
+  const done = rows.filter(rec => isNodeChecked(rec)).length;
   const open = rows.some(rec => hasOpenCommentRecord(rec));
   const requestOpen = rows.some((rec, index) => hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(eq.id, index, date));
   return {
@@ -2335,7 +2339,7 @@ function renderSchedule() {
       const overdue = plan && isDueOrPast(date) && !isPlannedDone(rec, plan);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
-      td.className = `${statusClass(status)} ${overdue ? "planned-overdue" : ""} ${open || downtimeOpen || overdue ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+      td.className = `${statusClass(status)} ${overdue ? "planned-overdue overdue-line-blink" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
       td.textContent = status;
       td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
@@ -2450,7 +2454,7 @@ function renderNodeWalkthrough(eq) {
   ui.commentPanel.hidden = true;
   ui.taskList.innerHTML = "";
 
-  const doneCount = eq.nodes.filter((_, index) => record(eq.id, index, current.date).to.tasks[0]).length;
+  const doneCount = eq.nodes.filter((_, index) => isNodeChecked(record(eq.id, index, current.date))).length;
   ui.dayStatus.textContent = `${doneCount}/${eq.nodes.length}`;
   ui.dayStatus.style.background = doneCount === eq.nodes.length ? "var(--to)" : "var(--nav-soft)";
 
@@ -2494,7 +2498,7 @@ function renderNodeWalkthrough(eq) {
     row.dataset.nodeWalkIndex = String(index);
     row.innerHTML = `
       <label class="node-walk-check">
-        <input type="checkbox" ${item.tasks[0] ? "checked" : ""} ${canEditChecklist() ? "" : "disabled"}>
+        <input type="checkbox" ${isNodeChecked(record(eq.id, index, current.date)) ? "checked" : ""} ${canEditChecklist() ? "" : "disabled"}>
         ${canEditCatalog() ? `<input class="node-name-editor" data-node-name="${index}" type="text" value="${escapeHtml(nodeName)}">` : `<span>${nodeName}</span>`}
         <button type="button" class="node-stop-button ${activeStop ? "active" : ""}" data-node-stop="${index}" ${canEditChecklist() ? "" : "disabled"}>${activeStop ? "Пуск" : "Стоп"}</button>
         ${downtimeActiveBlock}
@@ -2511,20 +2515,21 @@ function renderNodeWalkthrough(eq) {
         </details>
       </label>
       <div class="node-walk-field">
-        <span>Комментарий</span>
+        <span>Комментарий / заявка</span>
         ${commentHistory}
         <small class="comment-owner">${escapeHtml(sameCommentAuthor(item) && ownerText ? ownerText : `Новый комментарий: ${currentAuthorText}`)}</small>
-        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Комментарий по узлу" : "Новый комментарий по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(commentInputValue(item))}</textarea>
+        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Напишите замечание или заявку по узлу" : "Новое замечание или заявка по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(commentInputValue(item))}</textarea>
         <input data-node-comment-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditThisComment ? "" : "disabled"}>
         <div class="photo-preview node-photo-preview" data-node-comment-preview="${index}">
           ${item.commentPhoto && sameCommentAuthor(item) ? `<img src="${item.commentPhoto}" alt="Фото комментария">${canEditThisComment ? `<button type="button" data-clear-node-photo="comment" data-node-index="${index}">Удалить фото</button>` : ""}` : ""}
         </div>
+        <div class="node-walk-status">${nodeWalkStatusText(item)}</div>
         <div class="node-walk-actions node-comment-actions">
-          <button type="button" data-node-submit-comment="${index}" ${canEditThisComment ? "" : "disabled"}>Отправить комментарий</button>
+          <button type="button" data-node-submit-comment="${index}" ${canEditThisComment ? "" : "disabled"}>Отправить</button>
           <button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>
         </div>
       </div>
-      <div class="node-walk-field">
+      <div class="node-walk-field hidden-request-field" hidden>
         <span>Заявка</span>
         <textarea data-node-request="${index}" rows="2" placeholder="Заявка по узлу" ${canEditChecklist() ? "" : "disabled"}>${item.request || ""}</textarea>
         <input data-node-request-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditChecklist() ? "" : "disabled"}>
@@ -2541,8 +2546,9 @@ function renderNodeWalkthrough(eq) {
     row.querySelector("input").addEventListener("change", event => {
       if (!canEditChecklist()) return;
       item.tasks[0] = event.target.checked;
+      item.done = event.target.checked;
       saveState();
-      const nextDone = eq.nodes.filter((_, nodeIndex) => record(eq.id, nodeIndex, current.date).to.tasks[0]).length;
+      const nextDone = eq.nodes.filter((_, nodeIndex) => isNodeChecked(record(eq.id, nodeIndex, current.date))).length;
       ui.dayStatus.textContent = `${nextDone}/${eq.nodes.length}`;
       ui.dayStatus.style.background = nextDone === eq.nodes.length ? "var(--to)" : "var(--nav-soft)";
     });
@@ -2571,24 +2577,47 @@ function renderNodeWalkthrough(eq) {
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
       row.querySelector(".node-walk-status").textContent = event.target.value.trim()
-        ? "Комментарий готов к отправке"
+        ? "Текст готов к отправке"
         : nodeWalkStatusText(item);
     });
     row.querySelector("[data-node-submit-comment]").addEventListener("click", async event => {
       if (!canEditComment(item)) return;
       const text = row.querySelector("[data-node-comment]").value;
       if (!text.trim()) {
-        row.querySelector(".node-walk-status").textContent = "Сначала заполните комментарий";
+        row.querySelector(".node-walk-status").textContent = "Сначала заполните поле";
+        return;
+      }
+      const sendKind = window.prompt("Что отправить? Напишите 1 для замечания или 2 для заявки.", "1");
+      if (sendKind === null) {
+        row.querySelector(".node-walk-status").textContent = "Отправка отменена. Можно редактировать.";
+        return;
+      }
+      const cleanKind = String(sendKind).trim().toLowerCase();
+      const isRequestSend = cleanKind === "2" || cleanKind.includes("заяв");
+      const isCommentSend = cleanKind === "1" || cleanKind.includes("зам") || cleanKind.includes("ком");
+      if (!isRequestSend && !isCommentSend) {
+        row.querySelector(".node-walk-status").textContent = "Выберите: 1 - замечание, 2 - заявка.";
+        return;
+      }
+      const confirmText = isRequestSend ? "Точно отправить заявку?" : "Точно отправить замечание?";
+      if (!window.confirm(confirmText)) {
+        row.querySelector(".node-walk-status").textContent = "Отправка отменена. Можно редактировать.";
         return;
       }
       const button = event.currentTarget;
       if (button.disabled) return;
       setButtonBusy(button, true, "Отправка...");
       try {
-        appendCommentEntry(item, text, item.commentPhoto);
-        item.resolved = false;
+        if (isRequestSend) {
+          const req = createNodeWalkRequestSubmission(eq.id, index, current.date, item, text, item.commentPhoto);
+          item.commentPhoto = "";
+          row.querySelector(".node-walk-status").textContent = `Заявка подана: ${statusText(req.status || "shop")}`;
+        } else {
+          appendCommentEntry(item, text, item.commentPhoto);
+          item.resolved = false;
+          row.querySelector(".node-walk-status").textContent = "Замечание отправлено";
+        }
         saveState();
-        row.querySelector(".node-walk-status").textContent = "Комментарий отправлен";
         row.querySelector("[data-node-comment]").value = "";
         row.querySelector("[data-node-comment-preview]").innerHTML = "";
         await publishStateNow();

@@ -735,6 +735,18 @@ textarea {
   animation: alertBlink 1s steps(2, start) infinite;
 }
 
+.schedule-table td.overdue-line-blink,
+.equipment-schedule-table td.overdue-line-blink {
+  box-shadow: inset 0 0 0 2px #b91c1c;
+  animation: overdueLineBlink 1s steps(2, start) infinite;
+}
+
+@keyframes overdueLineBlink {
+  50% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
 .schedule-table td.comment-cell,
 .schedule-table td.comment-cell.planned-overdue,
 .schedule-table td.comment-cell.to,
