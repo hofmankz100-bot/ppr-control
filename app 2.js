@@ -1377,20 +1377,6 @@ function askCommentOrRequest() {
       overlay.remove();
       resolve(value);
     };
-    const showConfirm = kind => {
-      const label = kind === "request" ? "заявку" : "замечание";
-      overlay.innerHTML = `
-        <div class="send-kind-dialog" role="dialog" aria-modal="true">
-          <strong>Точно отправить ${label}?</strong>
-          <div class="send-kind-actions">
-            <button type="button" data-send-confirm>Отправить</button>
-            <button type="button" data-send-cancel>Отмена</button>
-          </div>
-        </div>
-      `;
-      overlay.querySelector("[data-send-confirm]").addEventListener("click", () => close(kind));
-      overlay.querySelector("[data-send-cancel]").addEventListener("click", () => close(null));
-    };
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
         <strong>Что отправить?</strong>
@@ -1401,8 +1387,8 @@ function askCommentOrRequest() {
         </div>
       </div>
     `;
-    overlay.querySelector("[data-send-comment]").addEventListener("click", () => showConfirm("comment"));
-    overlay.querySelector("[data-send-request]").addEventListener("click", () => showConfirm("request"));
+    overlay.querySelector("[data-send-comment]").addEventListener("click", () => close("comment"));
+    overlay.querySelector("[data-send-request]").addEventListener("click", () => close("request"));
     overlay.querySelector("[data-send-cancel]").addEventListener("click", () => close(null));
     overlay.addEventListener("click", event => {
       if (event.target === overlay) close(null);
@@ -2698,6 +2684,9 @@ function renderNodeWalkthrough(eq) {
         row.querySelector("[data-node-comment-preview]").innerHTML = "";
         await publishStateNow();
         renderNodeWalkthrough(equipmentById(eq.id));
+      } catch (error) {
+        row.querySelector(".node-walk-status").textContent = "Сохранено на этом устройстве. Сервер недоступен, отправится автоматически.";
+        scheduleRemoteRetry();
       } finally {
         if (button.isConnected) setButtonBusy(button, false);
       }
