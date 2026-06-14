@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v104-stable";
+const APP_VERSION = "v105-fix";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -1346,7 +1346,7 @@ function readPhotoFile(file) {
     reader.onerror = reject;
     reader.onload = () => {
       const img = new Image();
-      img.onerror = reject;
+      img.onerror = () => resolve(String(reader.result || ""));
       img.onload = () => {
         const maxSide = 1200;
         const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -1885,6 +1885,30 @@ function setRequestStatus(reqKind) {
   else if (reqKind.engineerApproved) reqKind.requestStatus = "supply";
   else if (reqKind.shopApproved) reqKind.requestStatus = "engineer";
   else reqKind.requestStatus = "shop";
+}
+
+function requestWaitingForShopInitial(req) {
+  return !req.issued && !req.shopApproved && !req.done && !req.stock;
+}
+
+function requestWaitingForInstallApproval(req) {
+  return req.mechanicInstalled && !req.shopInstallApproved && !req.done && !req.stock;
+}
+
+function requestWaitingForEngineerInitial(req) {
+  return req.shopApproved && !req.engineerApproved && !req.done && !req.stock;
+}
+
+function requestWaitingForSupplyPrepare(req) {
+  return req.engineerApproved && !req.supplyPrepared && !req.done && !req.stock;
+}
+
+function requestWaitingForSupplyWarehouse(req) {
+  return req.cashApproved && !req.transferredToWarehouse && !req.done && !req.stock;
+}
+
+function requestWaitingForWarehouse(req) {
+  return req.transferredToWarehouse && !req.issued && !req.stock && !req.done;
 }
 
 function statusText(status) {
@@ -3202,8 +3226,8 @@ function requestCard(req) {
     actions.innerHTML = `<div class="readonly-note">Только просмотр. Выдачу подтверждает складовщик.</div>`;
   }
 
-  if (current.requestRole === "shop" && canAct) {
-    const isFinalApproval = req.mechanicInstalled && !req.shopInstallApproved && !req.done;
+  if (current.requestRole === "shop" && canAct && (requestWaitingForShopInitial(req) || requestWaitingForInstallApproval(req))) {
+    const isFinalApproval = requestWaitingForInstallApproval(req);
     actions.append(actionButton(isFinalApproval ? "Подтвердить установку" : "Подтвердить начальником", () => {
       if (isFinalApproval) {
         req.shopInstallApproved = true;
@@ -3218,8 +3242,8 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "engineer" && canAct) {
-    const isInstallApproval = req.mechanicInstalled && !req.shopInstallApproved && !req.done;
+  if (current.requestRole === "engineer" && canAct && (requestWaitingForEngineerInitial(req) || requestWaitingForInstallApproval(req))) {
+    const isInstallApproval = requestWaitingForInstallApproval(req);
     actions.append(actionButton(isInstallApproval ? "Подтвердить установку" : "Подтвердить инженером", () => {
       if (isInstallApproval) {
         req.shopInstallApproved = true;
@@ -3234,7 +3258,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "supply" && canAct) {
+  if (current.requestRole === "supply" && canAct && (requestWaitingForSupplyPrepare(req) || requestWaitingForSupplyWarehouse(req))) {
     const price = document.createElement("input");
     price.placeholder = "Цена";
     price.value = req.price || "";
@@ -3288,7 +3312,7 @@ function requestCard(req) {
         ? "Склад подтвердил приход без накладной."
         : "Перед складом прикрепите фото накладной. Без накладной нужно подтверждение складовщика.";
     actions.append(invoiceNote);
-    if (!req.supplyPrepared) {
+    if (requestWaitingForSupplyPrepare(req)) {
       const statusNote = document.createElement("div");
       statusNote.className = "readonly-note";
       statusNote.textContent = "Заполните цену, поставщика/примечание и количество, потом отправьте экономисту.";
@@ -3308,7 +3332,7 @@ function requestCard(req) {
         renderRequests();
       }));
     }
-    if (req.cashApproved) {
+    if (requestWaitingForSupplyWarehouse(req)) {
       actions.append(actionButton("Передать на склад", () => {
         if (!req.invoicePhoto && !req.noInvoiceApproved) {
           invoiceNote.textContent = "Нельзя передать на склад: прикрепите фото накладной или дождитесь подтверждения складовщика, что приход без накладной.";
@@ -3325,7 +3349,7 @@ function requestCard(req) {
       }));
     }
   }
-  if (current.requestRole === "finance" && canAct) {
+  if (current.requestRole === "finance" && canAct && req.supplyPrepared && !req.financeApproved && !req.done && !req.stock) {
     actions.append(actionButton("Подписать экономистом", () => {
       req.financeApproved = true;
       req.status = "cash";
@@ -3334,7 +3358,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "cash" && canAct) {
+  if (current.requestRole === "cash" && canAct && req.financeApproved && !req.cashApproved && !req.done && !req.stock) {
     actions.append(actionButton("Оплатить", () => {
       req.cashApproved = true;
       req.status = "cashApproved";
@@ -3343,7 +3367,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "warehouse" && canAct) {
+  if (current.requestRole === "warehouse" && canAct && (requestWaitingForWarehouse(req) || (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved))) {
     if (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved) {
       actions.append(actionButton("Подтвердить приход без накладной", () => {
         req.noInvoiceApproved = true;
@@ -3451,7 +3475,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "accounting" && canAct) {
+  if (current.requestRole === "accounting" && canAct && req.shopInstallApproved && !req.accountingWrittenOff && !req.stock && !req.done) {
     actions.append(actionButton("Списать деталь", () => {
       req.accountingWrittenOff = true;
       req.done = true;
@@ -3461,7 +3485,7 @@ function requestCard(req) {
       renderRequests();
     }));
   }
-  if (current.requestRole === "mechanic" && canAct) {
+  if (current.requestRole === "mechanic" && canAct && req.issued && !req.mechanicInstalled && !req.done && !req.stock) {
     actions.append(actionButton("Установлено, передать начальнику", () => {
       req.mechanicInstalled = true;
       req.done = false;
@@ -3591,7 +3615,6 @@ ui.requestPhotoInput.addEventListener("change", async () => {
   item.requestPhoto = await readPhotoFile(ui.requestPhotoInput.files?.[0]);
   ui.requestPhotoInput.value = "";
   saveState();
-  if (item.request?.trim()) createDirectRequestFromCurrent();
   renderChecklist();
 });
 
@@ -3608,7 +3631,6 @@ ui.requestPhotoPreview.addEventListener("click", event => {
   if (!canEditChecklist() || !event.target.matches("[data-clear-photo]")) return;
   const rec = record();
   rec[current.kind].requestPhoto = "";
-  if (rec[current.kind].request?.trim()) createDirectRequestFromCurrent();
   saveState();
   renderChecklist();
 });
@@ -3625,7 +3647,6 @@ function saveCurrentRequest() {
     item.requestStatus = "";
   }
   saveState();
-  if (item.request.trim()) createDirectRequestFromCurrent();
   ui.requestInlineStatus.textContent = item.request.trim() ? `Заявка: ${statusText(item.requestStatus || "shop")}` : "Заявка не создана";
 }
 
@@ -3645,7 +3666,6 @@ ui.createRequestButton.addEventListener("click", event => runButtonOperation(eve
 }));
 
 ui.openRequestsButton.addEventListener("click", () => {
-  if (canEditChecklist() && current.view === "checklist" && ui.requestInput.value.trim()) createDirectRequestFromCurrent();
   current.requestRole = defaultRequestRole();
   show("requests");
 });
@@ -3669,7 +3689,6 @@ document.querySelectorAll(".request-tabs .tab").forEach(tab => {
 document.querySelectorAll("[data-open-role]").forEach(button => {
   button.addEventListener("click", () => {
     if (!canOpenRequestRole(button.dataset.openRole)) return;
-    if (canEditChecklist() && current.view === "checklist" && ui.requestInput.value.trim()) createDirectRequestFromCurrent();
     current.requestRole = button.dataset.openRole;
     show("requests");
   });
