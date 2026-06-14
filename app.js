@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v105-fix";
+const APP_VERSION = "v106-flow";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -443,7 +443,17 @@ async function loadRemoteState() {
 async function loadRemoteUsers() {
   try {
     const users = await apiJson("/api/users");
-    if (Array.isArray(users)) localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    if (Array.isArray(users)) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      if (isProfileWaitingApproval()) {
+        const fresh = users.find(user => user.phone && user.phone === profile.phone);
+        if (fresh?.approved === true && fresh?.pendingApproval !== true) {
+          localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false }));
+          location.reload();
+          return;
+        }
+      }
+    }
     if (current.view === "director") renderDirector();
   } catch {
     // Static/offline mode keeps using local registered users.
@@ -521,12 +531,14 @@ function saveRegisteredUser(nextProfile) {
   const users = loadUsers();
   const sameUser = user => user.phone && user.phone === nextProfile.phone;
   const nextUsers = users.filter(user => !sameUser(user));
-  nextUsers.push({ ...nextProfile, registeredAt: new Date().toISOString() });
+  const approved = nextProfile.role === "editor" || nextProfile.role === "director";
+  const savedProfile = { ...nextProfile, approved, pendingApproval: !approved };
+  nextUsers.push({ ...savedProfile, registeredAt: new Date().toISOString() });
   localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(nextProfile));
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(savedProfile));
   apiJson("/api/users", {
     method: "POST",
-    body: JSON.stringify({ ...nextProfile, actionId: nextActionId(), clientId: CLIENT_ID })
+    body: JSON.stringify({ ...savedProfile, actionId: nextActionId(), clientId: CLIENT_ID })
   }).catch(() => {});
 }
 
@@ -540,7 +552,12 @@ function roleAccess() {
 }
 
 function isProfileReady() {
-  return Boolean(profile?.name && profile?.role);
+  if (!profile?.name || !profile?.role) return false;
+  return profile.approved !== false && profile.pendingApproval !== true;
+}
+
+function isProfileWaitingApproval() {
+  return Boolean(profile?.name && profile?.role && (profile.approved === false || profile.pendingApproval === true));
 }
 
 function needsArea(role = profile?.role) {
@@ -749,7 +766,7 @@ function renderProfile() {
   const phone = profile.phone ? ` · ${profile.phone}` : "";
   ui.profileBar.innerHTML = `
     <div><strong>${profile.name}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${phone}</span></div>
-    ${profile.role === "editor" || profile.role === "director" ? `<button type="button" id="monthlyExportButton">Экспорт JSON</button><button type="button" id="monthlyCsvExportButton">Скачать Excel</button>` : ""}
+    ${profile.role === "editor" ? `<button type="button" id="monthlyExportButton">Экспорт JSON</button><button type="button" id="monthlyCsvExportButton">Скачать Excel</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">Очистить записи</button>` : ""}
     <button type="button" id="changeUserButton">Сменить</button>
   `;
@@ -836,6 +853,13 @@ function setupLogin() {
     location.reload();
   });
   syncArea();
+  if (isProfileWaitingApproval()) {
+    ui.loginOverlay.hidden = false;
+    ui.loginForm.hidden = true;
+    ui.loginError.textContent = "Регистрация отправлена редактору. Дождитесь подтверждения.";
+    window.setInterval(loadRemoteUsers, 5000);
+    return;
+  }
   ui.loginOverlay.hidden = isProfileReady();
   if (isProfileReady()) renderProfile();
 }
@@ -900,6 +924,25 @@ function currentCommentEntry(item) {
   };
 }
 
+function appendCommentEntry(item, text, photo = "") {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) return null;
+  const entry = {
+    text: cleanText,
+    photo: photo || item.commentPhoto || "",
+    role: currentRoleId(),
+    name: profile?.name || "",
+    at: new Date().toISOString()
+  };
+  item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), entry];
+  item.comment = "";
+  item.commentPhoto = "";
+  item.commentOwnerRole = "";
+  item.commentOwnerName = "";
+  item.commentUpdatedAt = "";
+  return entry;
+}
+
 function firstCommentTime(item) {
   const entries = visibleCommentEntries(item);
   const times = entries
@@ -949,6 +992,8 @@ function saveCommentDraft(item, nextText) {
 function markCommentResolved(item) {
   item.resolved = true;
   item.resolvedAt = new Date().toISOString();
+  item.resolvedByName = profile?.name || "";
+  item.resolvedByRole = profile?.role || "";
 }
 
 function commentsSummary(item) {
@@ -1254,6 +1299,23 @@ function allRequests() {
   return Object.values(map)
     .filter(req => req && req.text && req.id)
     .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
+}
+
+function relatedIssuedRequestForNode(equipmentId, nodeIndex, date, item) {
+  const candidates = Object.values(state.requests || {}).filter(req =>
+    Number(req.equipmentId) === Number(equipmentId)
+    && Number(req.nodeIndex) === Number(nodeIndex)
+    && req.date === date
+    && req.issued
+    && !req.stock
+    && !req.done
+    && !req.accountingWrittenOff
+  );
+  if (item?.lastRequestId) {
+    const exact = candidates.find(req => req.id === item.lastRequestId);
+    if (exact) return exact;
+  }
+  return candidates.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0] || null;
 }
 
 function requestMatchesRole(req, role) {
@@ -2157,7 +2219,7 @@ function renderEquipment() {
         const downtimeOpen = stoppedNodeIndex >= 0;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        td.className = `to ${summary.overdue ? "planned-overdue" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+        td.className = `to ${summary.overdue ? "planned-overdue" : ""} ${summary.open || downtimeOpen || summary.overdue ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
         td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
@@ -2273,7 +2335,7 @@ function renderSchedule() {
       const overdue = plan && isDueOrPast(date) && !isPlannedDone(rec, plan);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
-      td.className = `${statusClass(status)} ${overdue ? "planned-overdue" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+      td.className = `${statusClass(status)} ${overdue ? "planned-overdue" : ""} ${open || downtimeOpen || overdue ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
       td.textContent = status;
       td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
@@ -2523,10 +2585,12 @@ function renderNodeWalkthrough(eq) {
       if (button.disabled) return;
       setButtonBusy(button, true, "Отправка...");
       try {
-        saveCommentDraft(item, text);
+        appendCommentEntry(item, text, item.commentPhoto);
         item.resolved = false;
         saveState();
         row.querySelector(".node-walk-status").textContent = "Комментарий отправлен";
+        row.querySelector("[data-node-comment]").value = "";
+        row.querySelector("[data-node-comment-preview]").innerHTML = "";
         await publishStateNow();
         renderNodeWalkthrough(equipmentById(eq.id));
       } finally {
@@ -2584,40 +2648,31 @@ function renderNodeWalkthrough(eq) {
     });
     row.querySelector("[data-node-fixed]").addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditChecklist()) return;
-      if (canEditComment(item)) {
-        saveCommentDraft(item, row.querySelector("[data-node-comment]").value);
+      const fixText = row.querySelector("[data-node-comment]").value.trim();
+      if (!fixText) {
+        row.querySelector(".node-walk-status").textContent = "Напишите комментарий устранения";
+        return;
       }
+      if (canEditComment(item)) appendCommentEntry(item, fixText, item.commentPhoto);
       if (!hasAnyComment(item)) {
         row.querySelector(".node-walk-status").textContent = "Сначала заполните комментарий";
         renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
-      item.request = row.querySelector("[data-node-request]").value;
-      if (!item.request.trim()) {
-        markCommentResolved(item);
-        item.mechanicFixed = false;
-        item.shopInstallApproved = false;
-        item.accountingWrittenOff = false;
-        item.requestStatus = "";
-        saveState();
-        row.querySelector(".node-walk-status").textContent = "Замечание закрыто";
-        renderNodeWalkthrough(equipmentById(eq.id));
-        return;
-      }
+      const relatedReq = relatedIssuedRequestForNode(eq.id, index, current.date, item);
       if (item.mechanicFixed && !item.resolved && canConfirmInstallation()) {
         markCommentResolved(item);
         item.mechanicFixed = false;
-        if (item.request.trim()) {
-          const req = upsertNodeWalkRequest(eq.id, index, current.date, item);
-          req.shopInstallApproved = true;
-          req.done = false;
-          req.status = "accounting";
-          syncRequestToRecord(req);
+        if (relatedReq) {
+          relatedReq.shopInstallApproved = true;
+          relatedReq.done = false;
+          relatedReq.status = "accounting";
+          syncRequestToRecord(relatedReq);
         } else {
           item.shopInstallApproved = true;
           saveState();
         }
-        row.querySelector(".node-walk-status").textContent = "Установка подтверждена. Ждет бухгалтерию";
+        row.querySelector(".node-walk-status").textContent = relatedReq ? "Установка подтверждена. Ждет бухгалтерию" : "Замечание закрыто";
         renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
@@ -2626,18 +2681,17 @@ function renderNodeWalkthrough(eq) {
         item.mechanicFixed = false;
         item.shopInstallApproved = true;
         item.accountingWrittenOff = false;
-        if (item.request.trim()) {
-          const req = upsertNodeWalkRequest(eq.id, index, current.date, item);
-          req.mechanicInstalled = true;
-          req.shopInstallApproved = true;
-          req.done = false;
-          req.stock = false;
-          req.status = "accounting";
-          syncRequestToRecord(req);
+        if (relatedReq) {
+          relatedReq.mechanicInstalled = true;
+          relatedReq.shopInstallApproved = true;
+          relatedReq.done = false;
+          relatedReq.stock = false;
+          relatedReq.status = "accounting";
+          syncRequestToRecord(relatedReq);
         } else {
           saveState();
         }
-        row.querySelector(".node-walk-status").textContent = item.request.trim() ? "Устранено. Ждет бухгалтерию" : "Замечание закрыто";
+        row.querySelector(".node-walk-status").textContent = relatedReq ? "Устранено. Ждет бухгалтерию" : "Замечание закрыто";
         renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
@@ -2645,19 +2699,20 @@ function renderNodeWalkthrough(eq) {
       item.resolved = false;
       item.shopInstallApproved = false;
       item.accountingWrittenOff = false;
-      if (item.request.trim()) {
-        const req = upsertNodeWalkRequest(eq.id, index, current.date, item);
-        req.mechanicInstalled = true;
-        req.done = false;
-        req.stock = false;
-        req.shopInstallApproved = false;
-        req.accountingWrittenOff = false;
-        req.status = "waitingShopDone";
-        syncRequestToRecord(req);
+      if (relatedReq) {
+        relatedReq.mechanicInstalled = true;
+        relatedReq.done = false;
+        relatedReq.stock = false;
+        relatedReq.shopInstallApproved = false;
+        relatedReq.accountingWrittenOff = false;
+        relatedReq.status = "waitingShopDone";
+        syncRequestToRecord(relatedReq);
       } else {
+        markCommentResolved(item);
+        item.mechanicFixed = false;
         saveState();
       }
-      row.querySelector(".node-walk-status").textContent = "Устранено. Ждет подтверждения начальника/инженера";
+      row.querySelector(".node-walk-status").textContent = relatedReq ? "Устранено. Ждет подтверждения начальника/инженера" : "Замечание закрыто";
       renderNodeWalkthrough(equipmentById(eq.id));
     }, "Публикуется..."));
     row.querySelector("[data-node-comment-photo]").addEventListener("change", async event => {
@@ -2670,7 +2725,6 @@ function renderNodeWalkthrough(eq) {
       item.commentUpdatedAt = new Date().toISOString();
       event.target.value = "";
       saveState();
-      if (item.request?.trim()) upsertNodeWalkRequest(eq.id, index, current.date, item);
       renderNodeWalkthrough(eq);
     });
     row.querySelector("[data-node-request-photo]").addEventListener("change", async event => {
@@ -2875,6 +2929,30 @@ function renderDirector() {
     });
   }
 
+  ui.directorPanel.querySelectorAll("[data-whatsapp-user]").forEach(link => {
+    link.addEventListener("click", event => {
+      if (!window.confirm("Открыть WhatsApp этому сотруднику?")) event.preventDefault();
+    });
+  });
+  ui.directorPanel.querySelectorAll("[data-approve-user]").forEach(button => {
+    button.addEventListener("click", event => {
+      const userKey = event.currentTarget.dataset.approveUser || "";
+      const users = loadUsers();
+      const user = users.find(item => (item.phone || item.name || "") === userKey);
+      if (!user || !window.confirm(`Подтвердить регистрацию: ${user.name || user.phone || ""}?`)) return;
+      user.approved = true;
+      user.pendingApproval = false;
+      user.approvedAt = new Date().toISOString();
+      user.approvedBy = profile?.name || "";
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      apiJson("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ ...user, actionId: nextActionId(), clientId: CLIENT_ID })
+      }).catch(() => {});
+      renderDirector();
+    });
+  });
+
   const list = ui.directorPanel.querySelector(".director-messages");
   messages.forEach(msg => {
     const card = document.createElement("div");
@@ -3028,15 +3106,22 @@ ____________________
 
 function renderDirectorUsers() {
   const users = loadUsers();
+  const cleanPhone = phone => String(phone || "").replace(/\D/g, "");
+  const whatsappHref = phone => {
+    const digits = cleanPhone(phone);
+    return digits ? `https://wa.me/${digits}` : "";
+  };
   return `
     <div class="director-users">
       <strong>Зарегистрированные сотрудники</strong>
       ${users.length ? users.map(user => `
-        <div class="director-user-row">
+        <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}">
           <span>${escapeHtml(user.name || "")}</span>
           <span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</span>
           <span>${escapeHtml(user.area || "")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
+          ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
+          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.phone || user.name || "")}">Подтвердить</button>` : ""}
         </div>
       `).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
     </div>
