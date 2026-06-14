@@ -349,6 +349,10 @@ function isIncomingNewerRecord(current, incoming) {
   const recordTime = record => {
     const direct = Date.parse(record?.updatedAt || record?.createdAt || record?.commentUpdatedAt || record?.resolvedAt || "");
     if (Number.isFinite(direct)) return direct;
+    const commentTimes = Array.isArray(record?.commentLog)
+      ? record.commentLog.map(entry => Date.parse(entry?.at || "")).filter(Number.isFinite)
+      : [];
+    if (commentTimes.length) return Math.max(...commentTimes);
     if (!record || typeof record !== "object") return NaN;
     return Math.max(
       ...Object.values(record)

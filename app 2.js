@@ -352,6 +352,10 @@ function isIncomingNewerRecord(current, incoming) {
   const recordTime = record => {
     const direct = Date.parse(record?.updatedAt || record?.createdAt || record?.commentUpdatedAt || record?.resolvedAt || "");
     if (Number.isFinite(direct)) return direct;
+    const commentTimes = Array.isArray(record?.commentLog)
+      ? record.commentLog.map(entry => Date.parse(entry?.at || "")).filter(Number.isFinite)
+      : [];
+    if (commentTimes.length) return Math.max(...commentTimes);
     if (!record || typeof record !== "object") return NaN;
     return Math.max(
       ...Object.values(record)
@@ -967,12 +971,13 @@ function currentCommentEntry(item) {
 function appendCommentEntry(item, text, photo = "") {
   const cleanText = String(text || "").trim();
   if (!cleanText) return null;
+  const now = new Date().toISOString();
   const entry = {
     text: cleanText,
     photo: photo || item.commentPhoto || "",
     role: currentRoleId(),
     name: profile?.name || "",
-    at: new Date().toISOString()
+    at: now
   };
   item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), entry];
   item.comment = "";
@@ -980,6 +985,7 @@ function appendCommentEntry(item, text, photo = "") {
   item.commentOwnerRole = "";
   item.commentOwnerName = "";
   item.commentUpdatedAt = "";
+  item.updatedAt = now;
   return entry;
 }
 
@@ -1010,6 +1016,7 @@ function hasAnyComment(item) {
 }
 
 function beginCommentEdit(item, nextText) {
+  const now = new Date().toISOString();
   if (!sameCommentAuthor(item) && String(item.comment || "").trim()) {
     item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), currentCommentEntry(item)].filter(Boolean);
     item.comment = "";
@@ -1020,7 +1027,8 @@ function beginCommentEdit(item, nextText) {
   }
   item.comment = nextText;
   setCommentOwner(item);
-  item.commentUpdatedAt = new Date().toISOString();
+  item.commentUpdatedAt = now;
+  item.updatedAt = now;
 }
 
 function saveCommentDraft(item, nextText) {
@@ -1030,10 +1038,12 @@ function saveCommentDraft(item, nextText) {
 }
 
 function markCommentResolved(item) {
+  const now = new Date().toISOString();
   item.resolved = true;
-  item.resolvedAt = new Date().toISOString();
+  item.resolvedAt = now;
   item.resolvedByName = profile?.name || "";
   item.resolvedByRole = profile?.role || "";
+  item.updatedAt = now;
 }
 
 function commentsSummary(item) {
@@ -1264,6 +1274,7 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
   item.request = "";
   item.requestPhoto = "";
   item.requestStatus = "shop";
+  item.updatedAt = now;
   saveState();
   return state.requests[id];
 }
@@ -2764,6 +2775,7 @@ function renderNodeWalkthrough(eq) {
       item.commentPhoto = await readPhotoFile(event.target.files?.[0]);
       setCommentOwner(item);
       item.commentUpdatedAt = new Date().toISOString();
+      item.updatedAt = item.commentUpdatedAt;
       event.target.value = "";
       saveState();
       renderNodeWalkthrough(eq);
@@ -3730,6 +3742,7 @@ ui.commentPhotoInput.addEventListener("change", async () => {
   item.commentPhoto = await readPhotoFile(ui.commentPhotoInput.files?.[0]);
   setCommentOwner(item);
   item.commentUpdatedAt = new Date().toISOString();
+  item.updatedAt = item.commentUpdatedAt;
   ui.commentPhotoInput.value = "";
   saveState();
   renderChecklist();
