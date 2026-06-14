@@ -1,9 +1,9 @@
-const CACHE_NAME = "ppr-pwa-v113-countfix";
+const CACHE_NAME = "ppr-pwa-v114-sync-fix";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=113-countfix",
-  "./app.js?v=113-countfix",
+  "./styles.css?v=114-sync-fix",
+  "./app.js?v=114-sync-fix",
   "./manifest.json",
   "./icon.svg"
 ];
