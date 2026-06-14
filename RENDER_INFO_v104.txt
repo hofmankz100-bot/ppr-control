@@ -1,0 +1,15 @@
+﻿PPR Контроль v104-stable
+
+Для Render:
+- Service Type: Web Service
+- Build Command: npm install
+- Start Command: npm start
+
+Синхронизация:
+- быстрый канал работает через /api/events EventSource без внешних пакетов;
+- WebSocket также может включиться после установки зависимости ws;
+- если быстрые каналы недоступны, браузеры обновляют данные через опрос примерно каждые 2 секунды.
+
+Важно:
+- GitHub Pages как Static Site не подходит для синхронизации;
+- нужен именно сервер Node.js, например Render Web Service.

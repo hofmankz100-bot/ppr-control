@@ -1,0 +1,14 @@
+﻿PPR Контроль v104-stable проверено Codex
+
+Проверено и исправлено:
+- server.js имеет /api/state, /api/users, /api/health и быстрый /api/events;
+- сервер объединяет записи разных пользователей, а не затирает последней записью;
+- EventSource /api/events работает без пакета ws и ускоряет синхронизацию между пользователями;
+- замер локального события: около 75 мс до получения другим клиентом;
+- резервный polling уменьшен до 2 секунд;
+- задержка queued save уменьшена до 300 мс;
+- app.js и app 2.js показывают версию v104-stable;
+- index.html подключает styles.css?v=104-stable и app.js?v=104-stable;
+- db.json находится в data/db.json, где его ищет server.js;
+- render.yaml использует buildCommand: npm install и startCommand: node server.js;
+- тестовые записи удалены, база чистая.
