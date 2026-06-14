@@ -916,15 +916,18 @@ function key(equipmentId, nodeIndex, date) {
 function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date) {
   const k = key(equipmentId, nodeIndex, date);
   if (!state.checks[k]) {
+    const now = new Date().toISOString();
     state.checks[k] = {
-      to: blankKind()
+      createdAt: now,
+      updatedAt: now,
+      to: blankKind(now)
     };
   }
   return state.checks[k];
 }
 
-function blankKind() {
-  return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false };
+function blankKind(now = new Date().toISOString()) {
+  return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
 }
 
 function isNodeChecked(rec) {
@@ -2494,7 +2497,10 @@ function renderChecklist() {
     input.disabled = !canEditChecklist();
     input.addEventListener("change", event => {
       if (!canEditChecklist()) return;
+      const now = new Date().toISOString();
       kind.tasks[index] = event.target.checked;
+      kind.updatedAt = now;
+      record().updatedAt = now;
       saveState();
       renderChecklist();
     });
@@ -2618,8 +2624,12 @@ function renderNodeWalkthrough(eq) {
     `;
     row.querySelector("input").addEventListener("change", event => {
       if (!canEditChecklist()) return;
+      const rec = record(eq.id, index, current.date);
+      const now = new Date().toISOString();
       item.tasks[0] = event.target.checked;
       item.walkDone = event.target.checked;
+      item.updatedAt = now;
+      rec.updatedAt = now;
       saveState();
       const nextDone = eq.nodes.filter((_, nodeIndex) => isNodeChecked(record(eq.id, nodeIndex, current.date))).length;
       ui.dayStatus.textContent = `${nextDone}/${eq.nodes.length}`;
