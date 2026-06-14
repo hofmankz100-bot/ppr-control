@@ -3,7 +3,7 @@ services:
     name: ppr-control
     env: node
     plan: starter
-    buildCommand: "npm install"
+    buildCommand: ""
     startCommand: "node server.js"
     envVars:
       - key: NODE_ENV

@@ -43,7 +43,14 @@ function normalizeDb(db) {
 
 function ensureDb() {
   fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify(emptyDb(), null, 2));
+  if (!fs.existsSync(dbFile)) {
+    const rootDbFile = path.join(root, "db.json");
+    if (fs.existsSync(rootDbFile)) {
+      fs.copyFileSync(rootDbFile, dbFile);
+    } else {
+      fs.writeFileSync(dbFile, JSON.stringify(emptyDb(), null, 2));
+    }
+  }
 }
 
 function latestBackupFile() {
@@ -185,20 +192,98 @@ function sendCsvDownload(res, filename, rows) {
   res.end("\ufeff" + data);
 }
 
+function htmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function sendExcelDownload(res, filename, rows) {
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11pt; }
+    th { background: #14324a; color: #fff; font-weight: 700; }
+    th, td { border: 1px solid #8aa0b2; padding: 6px 8px; vertical-align: top; mso-number-format:"\\@"; }
+    .section { font-weight: 700; background: #eef4f8; }
+  </style>
+</head>
+<body>
+  <table>
+    ${rows.map((row, index) => `<tr>${row.map((cell, cellIndex) => {
+      const tag = index === 0 ? "th" : "td";
+      const cls = cellIndex === 0 && index > 0 ? ` class="section"` : "";
+      return `<${tag}${cls}>${htmlEscape(cell)}</${tag}>`;
+    }).join("")}</tr>`).join("\n")}
+  </table>
+</body>
+</html>`;
+  res.writeHead(200, {
+    "Content-Type": "application/vnd.ms-excel; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${safeFileName(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Cache-Control": "no-store"
+  });
+  res.end("\ufeff" + html);
+}
+
 function monthlyCsvRows(db, month) {
   const exported = monthlyExport(db, month);
-  const rows = [["Раздел", "Дата", "Оборудование/номер", "Статус", "Описание"]];
+  const rows = [["Раздел", "Дата", "Цех", "Оборудование", "Узел", "Статус", "Количество", "Кто записал", "Комментарий / описание"]];
   for (const [key, value] of Object.entries(exported.checks || {})) {
-    rows.push(["Чек-лист", value?.date || key, value?.equipment || value?.node || key, value?.status || "", JSON.stringify(value || {})]);
+    rows.push([
+      "Обход / замечание",
+      value?.date || key,
+      value?.area || "",
+      value?.equipment || "",
+      value?.node || key,
+      value?.resolved ? "Устранено" : value?.comment ? "Открыто" : value?.status || "",
+      "",
+      value?.commentAuthorName || value?.authorName || "",
+      value?.comment || value?.request || JSON.stringify(value || {})
+    ]);
   }
   for (const [key, value] of Object.entries(exported.requests || {})) {
-    rows.push(["Заявка", value?.createdAt || value?.date || key, value?.title || value?.equipment || key, value?.status || value?.routeStatus || "", value?.comment || value?.description || JSON.stringify(value || {})]);
+    rows.push([
+      "Заявка",
+      value?.createdAt || value?.date || key,
+      value?.area || value?.stockArea || "",
+      value?.equipment || value?.title || key,
+      value?.node || "",
+      value?.status || value?.routeStatus || "",
+      value?.qtyReceived || value?.qtyIssued || value?.qty || "",
+      value?.authorName || value?.requestAuthorName || "",
+      value?.text || value?.comment || value?.description || JSON.stringify(value || {})
+    ]);
   }
   for (const item of exported.downtimes || []) {
-    rows.push(["Простой", item?.startedAt || item?.date || "", item?.equipment || item?.area || "", item?.status || "", item?.reason || item?.comment || JSON.stringify(item || {})]);
+    rows.push([
+      "Простой",
+      item?.startedAt || item?.date || "",
+      item?.area || "",
+      item?.equipment || "",
+      item?.node || "",
+      item?.type || item?.status || "",
+      item?.durationText || item?.durationMs || "",
+      item?.authorName || "",
+      item?.reason || item?.comment || JSON.stringify(item || {})
+    ]);
   }
   for (const item of exported.directorMessages || []) {
-    rows.push(["Директорская", item?.createdAt || item?.date || "", item?.from || item?.name || "", item?.status || "", item?.text || item?.message || JSON.stringify(item || {})]);
+    rows.push([
+      "Директорская",
+      item?.createdAt || item?.date || "",
+      item?.department || item?.area || "",
+      "",
+      "",
+      item?.status || "",
+      "",
+      item?.from || item?.name || "",
+      item?.subject ? `${item.subject}. ${item.text || item.message || ""}` : item?.text || item?.message || JSON.stringify(item || {})
+    ]);
   }
   return rows;
 }
@@ -356,6 +441,14 @@ async function handleApi(req, res, pathname, url) {
     await stateWriteQueue.catch(() => {});
     createManualBackup(`export_csv_${month}`);
     sendCsvDownload(res, `ppr_export_${month}.csv`, monthlyCsvRows(readDb(), month));
+    return true;
+  }
+
+  if (pathname === "/api/export/month.xls" && req.method === "GET") {
+    const month = monthKeyFromUrl(url);
+    await stateWriteQueue.catch(() => {});
+    createManualBackup(`export_excel_${month}`);
+    sendExcelDownload(res, `PPR_otchet_${month}.xls`, monthlyCsvRows(readDb(), month));
     return true;
   }
 

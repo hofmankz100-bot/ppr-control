@@ -9,7 +9,7 @@
 
 Для Render:
 - тип сервиса: Web Service;
-- Build Command: npm install;
+- Build Command: оставить пустым;
 - Start Command: npm start.
 
 Важно: GitHub Pages как Static Site не подходит для общей синхронизации. Нужен Node.js сервер, например Render Web Service.

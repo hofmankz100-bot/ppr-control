@@ -749,7 +749,7 @@ function renderProfile() {
   const phone = profile.phone ? ` · ${profile.phone}` : "";
   ui.profileBar.innerHTML = `
     <div><strong>${profile.name}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${phone}</span></div>
-    ${profile.role === "editor" || profile.role === "director" ? `<button type="button" id="monthlyExportButton">Экспорт JSON</button><button type="button" id="monthlyCsvExportButton">Экспорт Excel</button>` : ""}
+    ${profile.role === "editor" || profile.role === "director" ? `<button type="button" id="monthlyExportButton">Экспорт JSON</button><button type="button" id="monthlyCsvExportButton">Скачать Excel</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">Очистить записи</button>` : ""}
     <button type="button" id="changeUserButton">Сменить</button>
   `;
@@ -796,7 +796,7 @@ async function createManualBackupAndExport(button, format = "json") {
       method: "POST",
       body: JSON.stringify({ label: currentMonthKey(), clientId: CLIENT_ID })
     });
-    downloadServerFile(format === "csv" ? `/api/export/month.csv?month=${currentMonthKey()}` : `/api/export/month?month=${currentMonthKey()}`);
+    downloadServerFile(format === "csv" ? `/api/export/month.xls?month=${currentMonthKey()}` : `/api/export/month?month=${currentMonthKey()}`);
   } catch (error) {
     alert("Не удалось сделать экспорт. Проверь интернет и сервер, затем попробуй ещё раз.");
   } finally {
