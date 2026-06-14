@@ -708,6 +708,12 @@ textarea {
   color: #1f5a32;
 }
 
+.schedule-table td.completed-day,
+.equipment-schedule-table td.completed-day {
+  background: #fff;
+  color: var(--ink);
+}
+
 .schedule-table td.today-cell {
   outline: 2px solid var(--nav);
   outline-offset: -2px;
@@ -1129,6 +1135,51 @@ textarea {
 }
 
 .downtime-type-dialog button:last-child {
+  background: #e8eef4;
+  color: var(--ink);
+}
+
+.send-kind-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(13, 31, 45, .42);
+  padding: 16px;
+}
+
+.send-kind-dialog {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 14px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 20px 48px rgba(13, 31, 45, .28);
+  padding: 18px;
+}
+
+.send-kind-dialog strong {
+  font-size: 18px;
+}
+
+.send-kind-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.send-kind-actions button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--nav);
+  color: #fff;
+  padding: 10px 12px;
+  font-weight: 900;
+}
+
+.send-kind-actions button[data-send-cancel] {
   background: #e8eef4;
   color: var(--ink);
 }
@@ -1694,9 +1745,17 @@ textarea {
   gap: 8px;
 }
 
+.director-users-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .director-user-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 1fr auto auto;
+  grid-template-columns: 1.2fr .9fr .9fr .9fr auto auto auto;
   gap: 8px;
   border-top: 1px solid var(--line);
   padding-top: 8px;
@@ -1718,6 +1777,12 @@ textarea {
   font-size: 12px;
   font-weight: 800;
   text-decoration: none;
+}
+
+.user-approval-status {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
 }
 
 .director-card {
@@ -1755,6 +1820,19 @@ textarea {
 .director-reply-form {
   display: grid;
   gap: 8px;
+}
+
+.director-reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.director-reply-actions button {
+  width: 112px;
+  min-width: 112px;
+  text-align: center;
 }
 
 .warehouse-search input {

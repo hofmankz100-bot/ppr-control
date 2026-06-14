@@ -71,7 +71,7 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v107-flow";
+const APP_VERSION = "v113-flow";
 const EDITOR_CODE = "kazak18117011";
 const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -527,7 +527,7 @@ function loadUsers() {
   }
 }
 
-function saveRegisteredUser(nextProfile) {
+async function saveRegisteredUser(nextProfile) {
   const users = loadUsers();
   const sameUser = user => user.phone && user.phone === nextProfile.phone;
   const nextUsers = users.filter(user => !sameUser(user));
@@ -536,10 +536,11 @@ function saveRegisteredUser(nextProfile) {
   nextUsers.push({ ...savedProfile, registeredAt: new Date().toISOString() });
   localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
   localStorage.setItem(PROFILE_KEY, JSON.stringify(savedProfile));
-  apiJson("/api/users", {
+  await apiJson("/api/users", {
     method: "POST",
     body: JSON.stringify({ ...savedProfile, actionId: nextActionId(), clientId: CLIENT_ID })
-  }).catch(() => {});
+  });
+  return savedProfile;
 }
 
 function defaultRequestRole(role = profile?.role) {
@@ -832,8 +833,9 @@ function setupLogin() {
     ui.loginError.textContent = "";
   };
   ui.loginRole.addEventListener("change", syncArea);
-  ui.loginForm.addEventListener("submit", event => {
+  ui.loginForm.addEventListener("submit", async event => {
     event.preventDefault();
+    const submitButton = ui.loginForm.querySelector("button[type='submit']");
     const role = ui.loginRole.value;
     if (role === "editor" && ui.loginEditorCode.value.trim() !== EDITOR_CODE) {
       ui.loginError.textContent = "Неверный код редактора";
@@ -849,8 +851,14 @@ function setupLogin() {
       role,
       area: needsArea(role) ? ui.loginArea.value : ""
     };
-    saveRegisteredUser(nextProfile);
-    location.reload();
+    setButtonBusy(submitButton, true, "Сохраняем...");
+    try {
+      await saveRegisteredUser(nextProfile);
+      location.reload();
+    } catch {
+      ui.loginError.textContent = "Не удалось отправить регистрацию на сервер. Проверьте связь и попробуйте еще раз.";
+      setButtonBusy(submitButton, false);
+    }
   });
   syncArea();
   if (isProfileWaitingApproval()) {
@@ -884,11 +892,11 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 }
 
 function blankKind() {
-  return { tasks: Array(15).fill(false), done: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false };
+  return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false };
 }
 
 function isNodeChecked(rec) {
-  return Boolean(rec?.to?.done || rec?.to?.tasks?.[0]);
+  return Boolean(rec?.to?.walkDone || rec?.to?.tasks?.[0]);
 }
 
 function currentRoleId() {
@@ -1227,7 +1235,7 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
   item.lastRequestId = id;
   item.request = "";
   item.requestPhoto = "";
-  item.requestStatus = "";
+  item.requestStatus = "shop";
   saveState();
   return state.requests[id];
 }
@@ -1320,6 +1328,48 @@ function relatedIssuedRequestForNode(equipmentId, nodeIndex, date, item) {
     if (exact) return exact;
   }
   return candidates.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0] || null;
+}
+
+function askCommentOrRequest() {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "send-kind-overlay";
+    const close = value => {
+      overlay.remove();
+      resolve(value);
+    };
+    const showConfirm = kind => {
+      const label = kind === "request" ? "заявку" : "замечание";
+      overlay.innerHTML = `
+        <div class="send-kind-dialog" role="dialog" aria-modal="true">
+          <strong>Точно отправить ${label}?</strong>
+          <div class="send-kind-actions">
+            <button type="button" data-send-confirm>Отправить</button>
+            <button type="button" data-send-cancel>Отмена</button>
+          </div>
+        </div>
+      `;
+      overlay.querySelector("[data-send-confirm]").addEventListener("click", () => close(kind));
+      overlay.querySelector("[data-send-cancel]").addEventListener("click", () => close(null));
+    };
+    overlay.innerHTML = `
+      <div class="send-kind-dialog" role="dialog" aria-modal="true">
+        <strong>Что отправить?</strong>
+        <div class="send-kind-actions">
+          <button type="button" data-send-comment>Замечание</button>
+          <button type="button" data-send-request>Заявка</button>
+          <button type="button" data-send-cancel>Отмена</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector("[data-send-comment]").addEventListener("click", () => showConfirm("comment"));
+    overlay.querySelector("[data-send-request]").addEventListener("click", () => showConfirm("request"));
+    overlay.querySelector("[data-send-cancel]").addEventListener("click", () => close(null));
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) close(null);
+    });
+    document.body.append(overlay);
+  });
 }
 
 function requestMatchesRole(req, role) {
@@ -2019,6 +2069,10 @@ function isDueOrPast(date) {
   return date <= todayISO();
 }
 
+function isTodayDate(date) {
+  return date === todayISO();
+}
+
 function hasOpenCommentRecord(rec) {
   return ["to"].some(kind => hasAnyComment(rec?.[kind]) && !rec[kind].resolved);
 }
@@ -2082,7 +2136,7 @@ function firstOpenCommentTarget() {
       const [equipmentId, nodeIndex, date] = k.split(":");
       if (!visibleIds.has(String(equipmentId))) return [];
       return ["to"]
-        .filter(kind => String(rec?.[kind]?.comment || "").trim() && !rec[kind].resolved)
+        .filter(kind => hasOpenCommentRecord({ [kind]: rec?.[kind] }))
         .map(kind => ({
           equipmentId: Number(equipmentId),
           nodeIndex: Number(nodeIndex),
@@ -2223,7 +2277,8 @@ function renderEquipment() {
         const downtimeOpen = stoppedNodeIndex >= 0;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        td.className = `to ${summary.overdue ? "planned-overdue overdue-line-blink" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+        const baseClass = summary.done === summary.total ? "completed-day" : "to";
+        td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
         td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
@@ -2263,7 +2318,8 @@ function equipmentDaySummary(eq, date) {
     total: eq.nodes.length,
     open,
     requestOpen,
-    overdue: isDueOrPast(date) && done < eq.nodes.length
+    overdue: isDueOrPast(date) && done < eq.nodes.length,
+    blinkToday: isTodayDate(date) && done < eq.nodes.length
   };
 }
 
@@ -2337,9 +2393,11 @@ function renderSchedule() {
       const requestOpen = hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(current.equipmentId, nodeIndex, date);
       const downtimeOpen = Boolean(activeDowntime(current.equipmentId, nodeIndex));
       const overdue = plan && isDueOrPast(date) && !isPlannedDone(rec, plan);
+      const blinkToday = plan && isTodayDate(date) && !isPlannedDone(rec, plan);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
-      td.className = `${statusClass(status)} ${overdue ? "planned-overdue overdue-line-blink" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${date === todayISO() ? "today-cell" : ""}`;
+      const baseClass = isPlannedDone(rec, plan) ? "completed-day" : statusClass(status);
+      td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
       td.textContent = status;
       td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
@@ -2529,24 +2587,11 @@ function renderNodeWalkthrough(eq) {
           <button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>
         </div>
       </div>
-      <div class="node-walk-field hidden-request-field" hidden>
-        <span>Заявка</span>
-        <textarea data-node-request="${index}" rows="2" placeholder="Заявка по узлу" ${canEditChecklist() ? "" : "disabled"}>${item.request || ""}</textarea>
-        <input data-node-request-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditChecklist() ? "" : "disabled"}>
-        <div class="photo-preview node-photo-preview" data-node-request-preview="${index}">
-          ${item.requestPhoto ? `<img src="${item.requestPhoto}" alt="Фото заявки"><button type="button" data-clear-node-photo="request" data-node-index="${index}">Удалить фото</button>` : ""}
-        </div>
-        <div class="node-walk-status">${nodeWalkStatusText(item)}</div>
-        <div class="node-walk-actions">
-          <button type="button" data-node-submit-request="${index}" ${canEditChecklist() ? "" : "disabled"}>Подать заявку</button>
-          <button type="button" data-node-open-request="${index}" ${item.request?.trim() ? "" : "disabled"}>К заявке</button>
-        </div>
-      </div>
     `;
     row.querySelector("input").addEventListener("change", event => {
       if (!canEditChecklist()) return;
       item.tasks[0] = event.target.checked;
-      item.done = event.target.checked;
+      item.walkDone = event.target.checked;
       saveState();
       const nextDone = eq.nodes.filter((_, nodeIndex) => isNodeChecked(record(eq.id, nodeIndex, current.date))).length;
       ui.dayStatus.textContent = `${nextDone}/${eq.nodes.length}`;
@@ -2587,23 +2632,12 @@ function renderNodeWalkthrough(eq) {
         row.querySelector(".node-walk-status").textContent = "Сначала заполните поле";
         return;
       }
-      const sendKind = window.prompt("Что отправить? Напишите 1 для замечания или 2 для заявки.", "1");
-      if (sendKind === null) {
+      const sendKind = await askCommentOrRequest();
+      if (!sendKind) {
         row.querySelector(".node-walk-status").textContent = "Отправка отменена. Можно редактировать.";
         return;
       }
-      const cleanKind = String(sendKind).trim().toLowerCase();
-      const isRequestSend = cleanKind === "2" || cleanKind.includes("заяв");
-      const isCommentSend = cleanKind === "1" || cleanKind.includes("зам") || cleanKind.includes("ком");
-      if (!isRequestSend && !isCommentSend) {
-        row.querySelector(".node-walk-status").textContent = "Выберите: 1 - замечание, 2 - заявка.";
-        return;
-      }
-      const confirmText = isRequestSend ? "Точно отправить заявку?" : "Точно отправить замечание?";
-      if (!window.confirm(confirmText)) {
-        row.querySelector(".node-walk-status").textContent = "Отправка отменена. Можно редактировать.";
-        return;
-      }
+      const isRequestSend = sendKind === "request";
       const button = event.currentTarget;
       if (button.disabled) return;
       setButtonBusy(button, true, "Отправка...");
@@ -2625,55 +2659,6 @@ function renderNodeWalkthrough(eq) {
       } finally {
         if (button.isConnected) setButtonBusy(button, false);
       }
-    });
-    row.querySelector("[data-node-request]").addEventListener("change", event => {
-      if (!canEditChecklist()) return;
-      item.request = event.target.value;
-      item.requestStatus = "";
-      saveState();
-      row.querySelector(".node-walk-status").textContent = nodeWalkStatusText(item);
-      row.querySelector("[data-node-open-request]").disabled = !item.request.trim();
-    });
-    row.querySelector("[data-node-submit-request]").addEventListener("click", async event => {
-      if (!canEditChecklist()) return;
-      const button = event.currentTarget;
-      item.request = row.querySelector("[data-node-request]").value;
-      if (!item.request.trim()) {
-        row.querySelector(".node-walk-status").textContent = "Сначала заполните поле заявки";
-        return;
-      }
-      const confirmed = window.confirm("Точно отправить заявку?");
-      if (!confirmed) {
-        row.querySelector(".node-walk-status").textContent = "Заявка не отправлена. Можно редактировать.";
-        return;
-      }
-      if (button.disabled) return;
-      setButtonBusy(button, true, "Отправка...");
-      try {
-        if (canEditComment(item)) {
-          saveCommentDraft(item, row.querySelector("[data-node-comment]").value);
-        }
-        const req = createNodeWalkRequestSubmission(eq.id, index, current.date, item, item.request, item.requestPhoto);
-        row.querySelector(".node-walk-status").textContent = `Заявка подана: ${statusText(req.status || "shop")}`;
-        row.querySelector("[data-node-request]").value = "";
-        row.querySelector("[data-node-request-preview]").innerHTML = "";
-        row.querySelector("[data-node-open-request]").disabled = false;
-        await publishStateNow();
-        renderNodeWalkthrough(equipmentById(eq.id));
-      } finally {
-        if (button.isConnected) setButtonBusy(button, false);
-      }
-    });
-    row.querySelector("[data-node-open-request]").addEventListener("click", () => {
-      if (canEditChecklist() && row.querySelector("[data-node-request]").value.trim()) {
-        if (canEditComment(item)) {
-          saveCommentDraft(item, row.querySelector("[data-node-comment]").value);
-        }
-        item.request = row.querySelector("[data-node-request]").value;
-        upsertNodeWalkRequest(eq.id, index, current.date, item);
-      }
-      current.requestRole = canOpenRequestRole("all") ? "all" : defaultRequestRole();
-      show("requests");
     });
     row.querySelector("[data-node-fixed]").addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditChecklist()) return;
@@ -2754,15 +2739,6 @@ function renderNodeWalkthrough(eq) {
       item.commentUpdatedAt = new Date().toISOString();
       event.target.value = "";
       saveState();
-      renderNodeWalkthrough(eq);
-    });
-    row.querySelector("[data-node-request-photo]").addEventListener("change", async event => {
-      if (!canEditChecklist()) return;
-      item.requestPhoto = await readPhotoFile(event.target.files?.[0]);
-      event.target.value = "";
-      saveState();
-      // Фото заявки больше НЕ создает/обновляет заявку автоматически.
-      // Иначе при нажатии "Подать заявку" появлялся второй экземпляр по всему маршруту.
       renderNodeWalkthrough(eq);
     });
     row.querySelectorAll("[data-clear-node-photo]").forEach(button => {
@@ -2963,6 +2939,10 @@ function renderDirector() {
       if (!window.confirm("Открыть WhatsApp этому сотруднику?")) event.preventDefault();
     });
   });
+  ui.directorPanel.querySelector("[data-refresh-users]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    await loadRemoteUsers();
+    renderDirector();
+  }, "Обновляем..."));
   ui.directorPanel.querySelectorAll("[data-approve-user]").forEach(button => {
     button.addEventListener("click", event => {
       const userKey = event.currentTarget.dataset.approveUser || "";
@@ -2996,10 +2976,12 @@ function renderDirector() {
       ${isDirector ? `
         <div class="director-reply-form">
           <textarea data-director-reply="${msg.id}" rows="3" placeholder="Ответ сотруднику">${escapeHtml(msg.reply || "")}</textarea>
-          <button type="button" data-save-director-reply="${msg.id}">Ответить</button>
-          <button type="button" data-print-director-memo="${msg.id}">Печать служебки</button>
+          <div class="director-reply-actions">
+            <button type="button" data-save-director-reply="${msg.id}">Ответить</button>
+            <button type="button" data-print-director-memo="${msg.id}">Печать</button>
+          </div>
         </div>
-      ` : `<div class="director-reply-form"><button type="button" data-print-director-memo="${msg.id}">Печать служебки</button></div>`}
+      ` : `<div class="director-reply-form"><div class="director-reply-actions"><button type="button" data-print-director-memo="${msg.id}">Печать</button></div></div>`}
     `;
     card.querySelector("[data-save-director-reply]")?.addEventListener("click", async event => {
       const text = card.querySelector(`[data-director-reply="${msg.id}"]`)?.value.trim() || "";
@@ -3134,7 +3116,7 @@ ____________________
 }
 
 function renderDirectorUsers() {
-  const users = loadUsers();
+  const users = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
   const cleanPhone = phone => String(phone || "").replace(/\D/g, "");
   const whatsappHref = phone => {
     const digits = cleanPhone(phone);
@@ -3142,13 +3124,17 @@ function renderDirectorUsers() {
   };
   return `
     <div class="director-users">
-      <strong>Зарегистрированные сотрудники</strong>
+      <div class="director-users-head">
+        <strong>Зарегистрированные сотрудники</strong>
+        <button type="button" class="mini-action" data-refresh-users>Обновить список</button>
+      </div>
       ${users.length ? users.map(user => `
         <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}">
           <span>${escapeHtml(user.name || "")}</span>
           <span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</span>
           <span>${escapeHtml(user.area || "")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
+          <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждет подтверждения" : "Подтвержден"}</span>
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
           ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.phone || user.name || "")}">Подтвердить</button>` : ""}
         </div>
