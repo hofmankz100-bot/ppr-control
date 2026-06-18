@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14324a">
+  <title>ППР Контроль</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css?v=167-mobile-pdf">
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay">
+    <form id="loginForm" class="login-card">
+      <h1>Регистрация сотрудника</h1>
+      <label>
+        <span>ФИО</span>
+        <input id="loginName" type="text" autocomplete="name" required placeholder="Введите имя">
+      </label>
+      <label>
+        <span>Телефон или табельный номер</span>
+        <input id="loginPhone" type="text" inputmode="tel" autocomplete="tel" required placeholder="+7... или номер">
+      </label>
+      <label>
+        <span>Роль</span>
+        <select id="loginRole" required>
+          <option value="mechanic">Механик</option>
+          <option value="shop">Начальник цеха</option>
+          <option value="engineer">Инженер</option>
+          <option value="finance">Экономист</option>
+          <option value="cash">Касса</option>
+          <option value="accounting">Бухгалтерия</option>
+          <option value="supply">Снабженец</option>
+          <option value="warehouse">Складовщик</option>
+          <option value="productionDirector">Директор производства</option>
+          <option value="director">Директор</option>
+          <option value="editor">Редактор</option>
+        </select>
+      </label>
+      <label id="loginAreaRow">
+        <span>Участок</span>
+        <select id="loginArea"></select>
+      </label>
+      <label id="loginEditorCodeRow">
+        <span>Код редактора</span>
+        <input id="loginEditorCode" type="password" placeholder="Введите код">
+      </label>
+      <div class="form-error" id="loginError"></div>
+      <button type="submit">Зарегистрироваться и войти</button>
+      <p>Участок выбирает только начальник цеха. Остальным ролям система назначает доступ автоматически.</p>
+    </form>
+  </div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-button" id="backButton" aria-label="Назад" title="Назад">
+        <span aria-hidden="true">‹</span>
+      </button>
+      <div class="title-block">
+        <div class="app-title">ППР Контроль</div>
+        <div class="app-subtitle" id="screenSubtitle">Оборудование</div>
+      </div>
+      <button class="icon-button" id="todayButton" aria-label="Заявки" title="Заявки">
+        <span aria-hidden="true">З</span>
+      </button>
+    </header>
+
+    <main class="screen">
+      <div class="profile-bar" id="profileBar"></div>
+
+      <section id="equipmentScreen" class="view active">
+        <div class="toolbar">
+          <label class="search">
+            <span>Поиск</span>
+            <input id="equipmentSearch" type="search" placeholder="Оборудование или цех">
+          </label>
+          <div class="counter" id="alertCounter">0 замечаний</div>
+        </div>
+        <div class="quick-nav">
+          <button type="button" data-open-role="shop">Начальник</button>
+          <button type="button" data-open-role="engineer">Инженер</button>
+          <button type="button" data-open-role="supply">Снабжение</button>
+          <button type="button" data-open-role="finance">Экономист</button>
+          <button type="button" data-open-role="cash">Касса</button>
+          <button type="button" data-open-role="accounting">Бухгалтерия</button>
+          <button type="button" data-open-role="productionDirector">Директор производства</button>
+          <button type="button" data-open-role="warehouse">Склад</button>
+          <button type="button" data-open-role="mechanic">Механик</button>
+          <button type="button" id="directorOpenButton">Директорская <strong id="directorBadge">0</strong></button>
+        </div>
+        <div id="equipmentList" class="equipment-list"></div>
+      </section>
+
+      <section id="nodeScreen" class="view">
+        <div class="panel-head">
+          <div>
+            <h1 id="equipmentTitle"></h1>
+            <p id="equipmentMeta"></p>
+          </div>
+          <div class="badge" id="equipmentAlertBadge">Норма</div>
+        </div>
+        <div id="nodeList" class="node-list"></div>
+      </section>
+
+      <section id="scheduleScreen" class="view">
+        <div class="panel-head compact">
+          <div>
+            <h1 id="nodeTitle"></h1>
+            <p id="nodeMeta"></p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Месяц">
+            <button id="prevMonth" type="button">‹</button>
+            <strong id="monthLabel"></strong>
+            <button id="nextMonth" type="button">›</button>
+          </div>
+        </div>
+        <div id="scheduleGrid" class="schedule-grid"></div>
+      </section>
+
+      <section id="checklistScreen" class="view">
+        <div class="checklist-head">
+          <div>
+            <h1 id="checklistTitle"></h1>
+            <p id="checklistMeta"></p>
+          </div>
+          <div class="status-pill" id="dayStatus">Пусто</div>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Вид ТО">
+          <button class="tab active" data-kind="to" type="button">ТО</button>
+        </div>
+        <div id="taskList" class="task-list"></div>
+        <div class="comment-panel">
+          <label>
+            <span id="commentLabel">Комментарий ТО</span>
+            <textarea id="commentInput" rows="4" placeholder="Замечание"></textarea>
+          </label>
+          <label>
+            <span>Фото замечания</span>
+            <input id="commentPhotoInput" type="file" accept="image/*" capture="environment">
+          </label>
+          <div class="photo-preview" id="commentPhotoPreview"></div>
+          <label>
+            <span>Заявка</span>
+            <textarea id="requestInput" rows="3" placeholder="Какая запчасть или материал нужен"></textarea>
+          </label>
+          <label>
+            <span>Фото к заявке</span>
+            <input id="requestPhotoInput" type="file" accept="image/*" capture="environment">
+          </label>
+          <div class="photo-preview" id="requestPhotoPreview"></div>
+          <div class="request-inline">
+            <span id="requestInlineStatus">Заявка не создана</span>
+            <button id="createRequestButton" type="button">Создать заявку</button>
+            <button id="openRequestsButton" type="button">Открыть заявки</button>
+          </div>
+          <label class="resolved-row">
+            <input id="resolvedInput" type="checkbox">
+            <span>Устранено</span>
+          </label>
+        </div>
+      </section>
+
+      <section id="requestsScreen" class="view">
+        <div class="panel-head compact">
+          <div>
+            <h1>Заявки</h1>
+            <p id="requestsMeta">Согласование, снабжение, экономист, касса, склад, бухгалтерия и закрытие</p>
+          </div>
+        </div>
+        <div class="tabs request-tabs" role="tablist" aria-label="Роль">
+          <button class="tab active" data-role="shop" type="button">Начальник</button>
+          <button class="tab" data-role="engineer" type="button">Инженер</button>
+          <button class="tab" data-role="supply" type="button">Снабжение</button>
+          <button class="tab" data-role="finance" type="button">Экономист</button>
+          <button class="tab" data-role="cash" type="button">Касса</button>
+          <button class="tab" data-role="accounting" type="button">Бухгалтерия</button>
+          <button class="tab" data-role="productionDirector" type="button">Директор производства</button>
+          <button class="tab" data-role="warehouse" type="button">Склад</button>
+          <button class="tab" data-role="mechanic" type="button">Механик</button>
+        </div>
+        <div id="warehousePanel" class="warehouse-panel"></div>
+        <div id="requestList" class="request-list"></div>
+      </section>
+
+      <section id="directorScreen" class="view">
+        <div class="panel-head compact">
+          <div>
+            <h1>Директорская</h1>
+            <p id="directorMeta">Личные обращения директору</p>
+          </div>
+        </div>
+        <div id="directorPanel" class="director-panel"></div>
+      </section>
+    </main>
+
+    <nav class="mobile-nav" aria-label="Основная навигация">
+      <button type="button" data-mobile-view="equipment" class="active">
+        <span aria-hidden="true">▦</span>
+        <small>Оборудование</small>
+      </button>
+      <button type="button" data-mobile-view="requests">
+        <span aria-hidden="true">З</span>
+        <small>Заявки</small>
+      </button>
+      <button type="button" data-mobile-view="downtime">
+        <span aria-hidden="true">◷</span>
+        <small>Простои</small>
+      </button>
+      <button type="button" data-mobile-view="profile">
+        <span aria-hidden="true">●</span>
+        <small>Профиль</small>
+      </button>
+    </nav>
+  </div>
+
+  <script src="app.js?v=167-mobile-pdf"></script>
+</body>
+</html>
