@@ -10,6 +10,8 @@ services:
         value: production
       - key: DATA_DIR
         value: /var/data
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
     disk:
       name: ppr-control-data
       mountPath: /var/data

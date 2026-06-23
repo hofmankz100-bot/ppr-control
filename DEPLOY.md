@@ -35,7 +35,7 @@ https://ppr-control.onrender.com
 Код редактора:
 
 ```text
-kazak18117011
+Задайте секретную переменную окружения `ADMIN_BOOTSTRAP_PASSWORD` на сервере. Пароль нельзя хранить в GitHub.
 ```
 
 ## Важно

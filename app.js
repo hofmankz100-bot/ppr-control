@@ -73,7 +73,9 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v2";
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
-const APP_VERSION = "v167-mobile-pdf";
+const APP_VERSION = "v244-mobile-layout";
+const PPR_RECOMMENDED_START_DATE = "2026-06-22";
+const ASSET_CACHE_VERSION_KEY = "ppr-asset-cache-version";
 const AGGREGATE_JOURNAL_ROWS_PER_SHEET = 18;
 const DOWNTIME_COLORS = [
   "#8e3ee8", "#2563eb", "#06b6d4", "#f59e0b", "#10b981", "#ef4444",
@@ -81,16 +83,16 @@ const DOWNTIME_COLORS = [
   "#7c3aed", "#0284c7", "#ca8a04", "#16a34a", "#dc2626", "#be185d",
   "#0891b2", "#4f46e5", "#65a30d", "#ea580c", "#0d9488", "#9333ea"
 ];
-const EDITOR_CODE = "kazak18117011";
-const DIRECTOR_CODE = "kazak18117011";
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
 const COMMON_WAREHOUSE = "Склад общего пользования";
 const WAREHOUSE_AREAS = [COMMON_WAREHOUSE, ...AREAS];
 const DOWNTIME_MONTH_LIMIT_MS = 125 * 60 * 60 * 1000;
 const ROLE_ACCESS = {
   mechanic: { label: "Механик", requestRoles: ["warehouse", "cash", "mechanic"], equipment: "all", checklist: true },
+  electrician: { label: "Электрик", requestRoles: ["warehouse", "cash", "electrician"], equipment: "all", checklist: true },
+  operator: { label: "Оператор", requestRoles: ["warehouse", "cash", "operator"], equipment: "area", checklist: true },
   shop: { label: "Начальник цеха", requestRoles: ["warehouse", "cash", "shop"], equipment: "area", checklist: true },
-  engineer: { label: "Инженер", requestRoles: ["all", "shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "productionDirector", "accounting"], equipment: "all", checklist: true },
+  engineer: { label: "Инженер", requestRoles: ["all", "shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "electrician", "operator", "productionDirector", "accounting"], equipment: "all", checklist: true },
   finance: { label: "Экономист", requestRoles: ["warehouse", "cash", "finance"], equipment: "none", checklist: false },
   cash: { label: "Касса", requestRoles: ["warehouse", "cash"], equipment: "none", checklist: false },
   accounting: { label: "Бухгалтерия", requestRoles: ["warehouse", "cash", "accounting"], equipment: "none", checklist: false },
@@ -98,7 +100,7 @@ const ROLE_ACCESS = {
   warehouse: { label: "Складовщик", requestRoles: ["warehouse", "cash"], equipment: "none", checklist: false },
   productionDirector: { label: "Директор производства", requestRoles: ["warehouse", "cash", "productionDirector"], equipment: "none", checklist: false },
   director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
-  editor: { label: "Редактор", requestRoles: ["all", "shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "productionDirector", "accounting"], equipment: "all", checklist: true }
+  editor: { label: "Редактор", requestRoles: ["all", "shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "electrician", "operator", "productionDirector", "accounting"], equipment: "all", checklist: true }
 };
 const state = loadState();
 const profile = loadProfile();
@@ -114,6 +116,8 @@ let realtimeEventSource = null;
 let realtimeReconnectTimer = null;
 let realtimePollTimer = null;
 let lastRealtimeMessageAt = 0;
+let requestSearchTimer = null;
+const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
 const CLIENT_ID = localStorage.getItem(CLIENT_ID_KEY) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 localStorage.setItem(CLIENT_ID_KEY, CLIENT_ID);
@@ -121,18 +125,25 @@ const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
   back: document.querySelector("#backButton"),
   today: document.querySelector("#todayButton"),
+  globalReminderButton: document.querySelector("#globalReminderButton"),
+  globalReminderBadge: document.querySelector("#globalReminderBadge"),
+  globalReminderOverlay: document.querySelector("#globalReminderOverlay"),
+  globalReminderContent: document.querySelector("#globalReminderContent"),
+  globalReminderClose: document.querySelector("#globalReminderClose"),
   loginOverlay: document.querySelector("#loginOverlay"),
   loginForm: document.querySelector("#loginForm"),
+  authTitle: document.querySelector("#authTitle"),
+  authSubmitButton: document.querySelector("#authSubmitButton"),
+  authHint: document.querySelector("#authHint"),
   loginName: document.querySelector("#loginName"),
+  loginNameRow: document.querySelector("#loginNameRow"),
+  loginEmployeeId: document.querySelector("#loginEmployeeId"),
   loginPhone: document.querySelector("#loginPhone"),
-  loginRole: document.querySelector("#loginRole"),
-  loginArea: document.querySelector("#loginArea"),
-  loginAreaRow: document.querySelector("#loginAreaRow"),
-  loginEditorCode: document.querySelector("#loginEditorCode"),
-  loginEditorCodeRow: document.querySelector("#loginEditorCodeRow"),
+  loginPhoneRow: document.querySelector("#loginPhoneRow"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginIdentifierLabel: document.querySelector("#loginIdentifierLabel"),
   loginError: document.querySelector("#loginError"),
   profileBar: document.querySelector("#profileBar"),
-  equipmentSearch: document.querySelector("#equipmentSearch"),
   equipmentList: document.querySelector("#equipmentList"),
   alertCounter: document.querySelector("#alertCounter"),
   equipmentTitle: document.querySelector("#equipmentTitle"),
@@ -161,7 +172,9 @@ const ui = {
   createRequestButton: document.querySelector("#createRequestButton"),
   openRequestsButton: document.querySelector("#openRequestsButton"),
   directorOpenButton: document.querySelector("#directorOpenButton"),
+  directorOpenLabel: document.querySelector("#directorOpenLabel"),
   directorBadge: document.querySelector("#directorBadge"),
+  directorTitle: document.querySelector("#directorTitle"),
   downtimeOpenButton: document.querySelector("#downtimeOpenButton"),
   downtimeBadge: document.querySelector("#downtimeBadge"),
   downtimeMeta: document.querySelector("#downtimeMeta"),
@@ -175,18 +188,24 @@ const ui = {
   aggregateJournalList: document.querySelector("#aggregateJournalList"),
   directorMeta: document.querySelector("#directorMeta"),
   directorPanel: document.querySelector("#directorPanel"),
+  directorControlPanel: document.querySelector("#directorControlPanel"),
   requestsMeta: document.querySelector("#requestsMeta"),
+  requestSearchInput: document.querySelector("#requestSearchInput"),
   warehousePanel: document.querySelector("#warehousePanel"),
   resolvedInput: document.querySelector("#resolvedInput")
 };
 
 let current = {
-  view: "equipment",
+  view: ["director", "editor"].includes(profile?.role) ? "directorControl" : "equipment",
   equipmentId: null,
   nodeIndex: null,
   date: todayISO(),
   kind: "to",
   requestRole: defaultRequestRole(profile?.role),
+  requestSearch: "",
+  requestPriority: "",
+  requestRoute: "",
+  requestDue: "",
   warehouseSearch: "",
   selectedStockArea: "",
   selectedWarehouseFolder: "",
@@ -197,6 +216,12 @@ let current = {
   downtimeYear: new Date().getFullYear(),
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
+  directorControlEquipmentId: null,
+  directorProgressOpen: false,
+  directorKpiOpen: "",
+  directorAuditOpen: false,
+  pprCalendarMonth: new Date().getMonth(),
+  pprCalendarYear: new Date().getFullYear(),
   compressorSheetIndex: 0,
   month: new Date().getMonth(),
   year: new Date().getFullYear()
@@ -286,10 +311,28 @@ function loadState() {
     parsed.downtimes ||= [];
     parsed.compressorJournal ||= {};
     parsed.gasJournal ||= {};
+    parsed.journalDueSince ||= {};
+    parsed.auditHistory ||= [];
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {} };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [] };
   }
+}
+
+async function refreshStaleAssetCache() {
+  const previousVersion = localStorage.getItem(ASSET_CACHE_VERSION_KEY);
+  if (previousVersion === APP_VERSION) return;
+  localStorage.setItem(ASSET_CACHE_VERSION_KEY, APP_VERSION);
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => !key.includes(APP_VERSION)).map(key => caches.delete(key)));
+    }
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.update()));
+    }
+  } catch {}
 }
 
 function saveState() {
@@ -297,14 +340,19 @@ function saveState() {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   queueRemoteStateSave();
+  window.queueMicrotask(updateGlobalReminderBadge);
 }
 
 async function publishStateNow() {
   clearTimeout(remoteSaveTimer);
-  await saveRemoteState();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await saveRemoteState();
+    if (localStorage.getItem(`${STORE_KEY}-pending`) !== "1") break;
+    clearTimeout(remoteSaveTimer);
+  }
 }
 
-function setButtonBusy(button, busy, text = "Публикуется...") {
+function setButtonBusy(button, busy, text = "В ожидании...") {
   if (!button) return;
   if (busy) {
     button.dataset.oldText = button.textContent;
@@ -317,22 +365,50 @@ function setButtonBusy(button, busy, text = "Публикуется...") {
   }
 }
 
-async function runButtonOperation(button, handler, text = "Публикуется...") {
+async function runButtonOperation(button, handler, text = "В ожидании...") {
   if (!button || button.disabled) return;
+  const requestId = button.dataset.requestId || "";
+  if (requestId) pendingRequestIds.add(requestId);
   setButtonBusy(button, true, text);
   try {
     await Promise.resolve(handler());
     await publishStateNow();
+    if (requestId) pendingRequestIds.delete(requestId);
+    if (current.view === "requests") renderRequests();
+  } catch (error) {
+    if (requestId) pendingRequestIds.delete(requestId);
+    console.error("Request action failed", error);
+    window.alert("Действие не сохранилось. Попробуйте ещё раз.");
+    if (current.view === "requests") renderRequests();
   } finally {
+    if (requestId && localStorage.getItem(`${STORE_KEY}-pending`) !== "1") {
+      pendingRequestIds.delete(requestId);
+    }
     if (button.isConnected) setButtonBusy(button, false);
   }
 }
 
 async function clearRecordedDataEverywhere() {
+  const clearedAt = new Date().toISOString();
+  const downtimeTombstones = (state.downtimes || [])
+    .filter(item => item?.id)
+    .map(item => ({
+      id: item.id,
+      deleted: true,
+      deletedAt: clearedAt,
+      updatedAt: clearedAt
+    }));
+  downtimeTombstones.push({
+    id: "__downtime-clear__",
+    deleted: true,
+    clearAll: true,
+    deletedAt: clearedAt,
+    updatedAt: clearedAt
+  });
   state.checks = {};
   state.requests = {};
   state.inventory = {};
-  state.downtimes = [];
+  state.downtimes = downtimeTombstones;
   state.compressorJournal = {};
   state.gasJournal = {};
   state.directorMessages = [];
@@ -374,8 +450,9 @@ async function apiJson(url, options = {}) {
       ...options,
       signal: options.signal || controller.signal
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
   } finally {
     window.clearTimeout(timer);
   }
@@ -449,6 +526,8 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.gasJournal = preferRemote
     ? { ...(remote.gasJournal || {}) }
     : mergeObjectByFreshnessLocal(state.gasJournal || {}, remote.gasJournal || {});
+  state.journalDueSince = { ...(state.journalDueSince || {}), ...(remote.journalDueSince || {}) };
+  state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
 }
 
@@ -492,22 +571,6 @@ function connectRealtimeEvents() {
 
 function connectRealtime() {
   connectRealtimeEvents();
-  if (!("WebSocket" in window)) return;
-  if (realtimeSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(realtimeSocket.readyState)) return;
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  realtimeSocket = new WebSocket(`${protocol}://${window.location.host}/ws`);
-  realtimeSocket.onmessage = event => handleRealtimeMessage(event.data);
-  realtimeSocket.onopen = () => {
-    lastRealtimeMessageAt = Date.now();
-    if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
-  };
-  realtimeSocket.onclose = () => {
-    clearTimeout(realtimeReconnectTimer);
-    realtimeReconnectTimer = window.setTimeout(connectRealtime, 1500);
-  };
-  realtimeSocket.onerror = () => {
-    try { realtimeSocket.close(); } catch {}
-  };
 }
 
 function startRealtimePoll() {
@@ -516,7 +579,8 @@ function startRealtimePoll() {
     if (document.visibilityState === "hidden") return;
     const socketAlive = realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN;
     const eventsAlive = realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN;
-    if (socketAlive || eventsAlive) {
+    if (eventsAlive) return;
+    if (socketAlive) {
       try { realtimeSocket.send(JSON.stringify({ type: "ping" })); } catch {}
       if (lastRealtimeMessageAt && Date.now() - lastRealtimeMessageAt < 45000) return;
     }
@@ -541,13 +605,19 @@ async function loadRemoteUsers() {
     if (Array.isArray(users)) {
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
       if (isProfileWaitingApproval()) {
-        const fresh = users.find(user => user.phone && user.phone === profile.phone);
+        const fresh = users.find(user =>
+          (profile.id && user.id === profile.id) ||
+          (profile.employeeId && user.employeeId === profile.employeeId) ||
+          (profile.phone && user.phone === profile.phone)
+        );
         if (fresh?.approved === true && fresh?.pendingApproval !== true) {
           localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false }));
           location.reload();
           return;
         }
-      }
+    }
+    updateDirectorBadge();
+    if (current.view === "directorControl") renderDirectorControl();
     }
     if (current.view === "director") renderDirector();
   } catch {
@@ -589,13 +659,19 @@ async function saveRemoteState() {
         directorMessages: state.directorMessages,
         downtimes: state.downtimes || [],
         compressorJournal: state.compressorJournal || {},
-        gasJournal: state.gasJournal || {}
+        gasJournal: state.gasJournal || {},
+        journalDueSince: state.journalDueSince || {},
+        auditHistory: state.auditHistory || []
       })
     });
     const hasNewLocalChanges = remoteSavePending;
     if (!hasNewLocalChanges) localStorage.removeItem(`${STORE_KEY}-pending`);
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
+    if (!hasNewLocalChanges && pendingRequestIds.size) {
+      pendingRequestIds.clear();
+      if (current.view === "requests") renderRequests();
+    }
   } catch {
     // If the backend is unavailable, local work remains saved and will be resent.
     scheduleRemoteRetry();
@@ -625,25 +701,30 @@ function loadUsers() {
   }
 }
 
-async function saveRegisteredUser(nextProfile) {
-  const users = loadUsers();
-  const sameUser = user => user.phone && user.phone === nextProfile.phone;
-  const nextUsers = users.filter(user => !sameUser(user));
-  const approved = nextProfile.role === "editor" || nextProfile.role === "director";
-  const savedProfile = { ...nextProfile, approved, pendingApproval: !approved };
-  nextUsers.push({ ...savedProfile, registeredAt: new Date().toISOString() });
-  localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(savedProfile));
-  await apiJson("/api/users", {
+async function registerEmployee(data) {
+  const result = await apiJson("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ ...savedProfile, actionId: nextActionId(), clientId: CLIENT_ID })
+    body: JSON.stringify(data)
   });
-  return savedProfile;
+  const pendingProfile = { ...result.user, registrationPending: true, approved: false, pendingApproval: true };
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(pendingProfile));
+  return pendingProfile;
+}
+
+async function loginEmployee(identifier, password) {
+  const result = await apiJson("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ identifier, password })
+  });
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
+  return result.user;
 }
 
 function defaultRequestRole(role = profile?.role) {
   const access = ROLE_ACCESS[role] || ROLE_ACCESS.mechanic;
-  return access.requestRoles.find(item => item !== "all") || "mechanic";
+  if (access.requestRoles.includes(role)) return role;
+  if (access.requestRoles.includes("all")) return "all";
+  return access.requestRoles[0] || "all";
 }
 
 function roleAccess() {
@@ -656,11 +737,11 @@ function isProfileReady() {
 }
 
 function isProfileWaitingApproval() {
-  return Boolean(profile?.name && profile?.role && (profile.approved === false || profile.pendingApproval === true));
+  return Boolean(profile?.name && (profile.registrationPending || profile.approved === false || profile.pendingApproval === true));
 }
 
 function needsArea(role = profile?.role) {
-  return role === "shop";
+  return role === "shop" || role === "operator";
 }
 
 function canOpenRequestRole(role) {
@@ -741,7 +822,9 @@ function saveNodeReminder(equipmentId, nodeIndex, text) {
 }
 
 function areaAllowed(area) {
-  return !needsArea() || !profile?.area || area === profile.area;
+  if (!needsArea()) return true;
+  if (profile?.role === "operator" && !profile?.area) return false;
+  return !profile?.area || area === profile.area;
 }
 
 function visibleEquipment() {
@@ -754,8 +837,15 @@ function visibleEquipment() {
 
 function requestAllowedByUser(req) {
   if (profile?.role === "editor") return true;
-  if (profile?.role === "shop" || profile?.role === "supply") return areaAllowed(req.area);
+  if (req.rejected && req.returnedTo && req.sourceKey) return req.sourceKey === profileKey();
+  if (profile?.role === "shop" || profile?.role === "operator" || profile?.role === "supply") return areaAllowed(req.area);
   return true;
+}
+
+function isRequestSource(req) {
+  if (profile?.role === "editor") return true;
+  if (req?.sourceKey) return req.sourceKey === profileKey();
+  return req?.sourceRole === profile?.role;
 }
 
 function warehouseIssueTargetRole(req) {
@@ -763,11 +853,34 @@ function warehouseIssueTargetRole(req) {
 }
 
 function canReceiveWarehouseIssue(role) {
-  return Boolean(role && ROLE_ACCESS[role] && !["all", "warehouse", "editor", "director"].includes(role));
+  return ["mechanic", "electrician", "operator", "shop", "engineer"].includes(role);
 }
 
 function canConfirmIssuedInstall(req, role = current.requestRole) {
   return req.issued && !req.mechanicInstalled && !req.done && !req.stock && warehouseIssueTargetRole(req) === role;
+}
+
+function requestIssuedToWorker(req) {
+  return ["mechanic", "electrician", "operator"].includes(warehouseIssueTargetRole(req));
+}
+
+function requestIssuedToSupervisor(req) {
+  return ["shop", "engineer"].includes(warehouseIssueTargetRole(req));
+}
+
+function requestWaitingForProductionDirector(req) {
+  return req.mechanicInstalled
+    && !req.shopInstallApproved
+    && !req.productionDirectorApproved
+    && !req.done
+    && !req.stock;
+}
+
+function requestReadyForAccounting(req) {
+  return !req.stock
+    && !req.done
+    && req.mechanicInstalled
+    && (req.shopInstallApproved || req.productionDirectorApproved);
 }
 
 function warehouseIssueRoleOptions(selectedRole = "mechanic") {
@@ -781,6 +894,33 @@ function profileKey(user = profile) {
   return String(user?.phone || user?.name || "").trim() || "unknown";
 }
 
+function recordAudit(action, target, reason = "", details = "") {
+  state.auditHistory ||= [];
+  state.auditHistory.unshift({
+    id: `audit:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+    at: new Date().toISOString(),
+    action: String(action || "").trim(),
+    target: String(target || "").trim(),
+    reason: String(reason || "").trim(),
+    details: String(details || "").trim(),
+    userName: profile?.name || "Система",
+    userRole: profile?.role || ""
+  });
+  state.auditHistory = state.auditHistory.slice(0, 1000);
+}
+
+function auditHistoryRows() {
+  const rows = (state.auditHistory || []).slice(0, 100);
+  if (!rows.length) return `<div class="director-empty-ok"><strong>История изменений пока пуста</strong></div>`;
+  return rows.map(item => `
+    <div class="audit-history-row">
+      <time>${dateTimeHuman(item.at)}</time>
+      <div><strong>${escapeHtml(item.userName || "Система")}</strong><span>${escapeHtml(item.action)}${item.target ? ` · ${escapeHtml(item.target)}` : ""}</span></div>
+      <p>${item.reason ? `Причина: ${escapeHtml(item.reason)}` : escapeHtml(item.details || "")}</p>
+    </div>
+  `).join("");
+}
+
 function directorMessages() {
   state.directorMessages ||= [];
   return state.directorMessages;
@@ -792,20 +932,21 @@ function pendingUserApprovalCount() {
 }
 
 function directorUnreadCount() {
-  const pendingUsers = pendingUserApprovalCount();
-  if (directorCanAnswer()) return directorMessages().filter(msg => !msg.directorRead).length + pendingUsers;
+  if (profile?.role === "editor") return pendingUserApprovalCount();
+  if (directorCanAnswer()) return directorMessages().filter(msg => !msg.directorRead).length;
   return directorMessages().filter(msg => directorMessageVisibleForProfile(msg) && msg.reply && !msg.userRead).length;
 }
 
 function updateDirectorBadge() {
   if (!ui.directorOpenButton || !ui.directorBadge) return;
+  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = profile?.role === "editor" ? "Редактор" : "Директорская";
   const count = directorUnreadCount();
   ui.directorBadge.textContent = count;
   ui.directorOpenButton.classList.toggle("request-alert", count > 0);
 }
 
 function directorCanAnswer() {
-  return profile?.role === "director" || profile?.role === "editor";
+  return profile?.role === "director";
 }
 
 function directorMessageRoleId(msg) {
@@ -874,7 +1015,7 @@ ${String(data?.body || "").trim()}`;
 
 function requestVisibleForRole(req, role) {
   if (!canOpenRequestRole(role) || !requestAllowedByUser(req)) return false;
-  if (profile?.role === "mechanic" && role === "warehouse") {
+  if (["mechanic", "electrician", "operator"].includes(profile?.role) && role === "warehouse") {
     return req.transferredToWarehouse || req.warehouseReceived || req.stock || req.issued;
   }
   return requestMatchesRole(req, role);
@@ -882,32 +1023,34 @@ function requestVisibleForRole(req, role) {
 
 function renderProfile() {
   if (!ui.profileBar) return;
+  document.body.classList.toggle("editor-profile", profile?.role === "editor");
+  document.body.classList.toggle("director-control-profile", current.view === "directorControl");
   if (!isProfileReady()) {
     ui.profileBar.innerHTML = "";
     return;
   }
   const area = profile.area ? ` · ${profile.area}` : "";
   const phone = profile.phone ? ` · ${profile.phone}` : "";
+  const employeeId = profile.employeeId ? ` · Таб. № ${profile.employeeId}` : "";
   ui.profileBar.innerHTML = `
-    <div><strong>${profile.name}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${phone}</span></div>
-    ${profile.role === "editor" ? `<button type="button" id="monthlyExportButton">Экспорт JSON</button><button type="button" id="monthlyCsvExportButton">Скачать Excel</button>` : ""}
+    <div><strong>${profile.name}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${employeeId}${phone}</span></div>
+    ${["director", "editor"].includes(profile.role) && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">Общий контроль</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">Очистить записи</button>` : ""}
-    ${profile.role === "editor" ? `<button type="button" id="changeUserButton">Сменить</button>` : ""}
+    <button type="button" id="changeUserButton">Выйти</button>
   `;
-  ui.profileBar.querySelector("#monthlyExportButton")?.addEventListener("click", event => {
-    createManualBackupAndExport(event.currentTarget, "json");
-  });
-  ui.profileBar.querySelector("#monthlyCsvExportButton")?.addEventListener("click", event => {
-    createManualBackupAndExport(event.currentTarget, "csv");
-  });
+  ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
     if (!window.confirm("Очистить все записанные данные: комментарии, заявки, складские остатки, простои и директорскую? Памятки и оборудование останутся.")) return;
+    const reason = window.prompt("Укажите причину очистки записей:")?.trim();
+    if (!reason) return;
     runButtonOperation(event.currentTarget, async () => {
+      recordAudit("Очистил рабочие записи", "Все разделы", reason);
       await clearRecordedDataEverywhere();
       render();
     }, "Очищается...");
   });
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", () => {
+    if (!window.confirm("Точно выйти из профиля?")) return;
     localStorage.removeItem(PROFILE_KEY);
     location.reload();
   });
@@ -947,47 +1090,54 @@ async function createManualBackupAndExport(button, format = "json") {
 
 function setupLogin() {
   if (!ui.loginOverlay || !ui.loginForm) return;
-  ui.loginArea.innerHTML = AREAS.map(area => `<option value="${area}">${area}</option>`).join("");
-  const syncArea = () => {
-    const role = ui.loginRole.value;
-    ui.loginAreaRow.hidden = !needsArea(role);
-    ui.loginEditorCodeRow.hidden = role !== "editor" && role !== "director";
-    ui.loginEditorCode.required = role === "editor" || role === "director";
+  let authMode = "login";
+  const setAuthMode = mode => {
+    authMode = mode;
+    const registering = mode === "register";
+    document.querySelectorAll("[data-auth-mode]").forEach(button => button.classList.toggle("active", button.dataset.authMode === mode));
+    ui.authTitle.textContent = registering ? "Регистрация сотрудника" : "Вход сотрудника";
+    ui.loginNameRow.hidden = !registering;
+    ui.loginPhoneRow.hidden = !registering;
+    ui.loginName.required = registering;
+    ui.loginPhone.required = registering;
+    ui.loginIdentifierLabel.textContent = registering ? "Табельный номер" : "Табельный номер или телефон";
+    ui.loginEmployeeId.placeholder = registering ? "Введите табельный номер" : "Табельный номер или телефон";
+    ui.loginPassword.autocomplete = registering ? "new-password" : "current-password";
+    ui.authSubmitButton.textContent = registering ? "Отправить регистрацию" : "Войти";
+    ui.authHint.textContent = registering
+      ? "Роль и участок назначит редактор после проверки."
+      : "Введите табельный номер или телефон и пароль.";
     ui.loginError.textContent = "";
   };
-  ui.loginRole.addEventListener("change", syncArea);
+  document.querySelectorAll("[data-auth-mode]").forEach(button => button.addEventListener("click", () => setAuthMode(button.dataset.authMode)));
   ui.loginForm.addEventListener("submit", async event => {
     event.preventDefault();
     const submitButton = ui.loginForm.querySelector("button[type='submit']");
-    const role = ui.loginRole.value;
-    if (role === "editor" && ui.loginEditorCode.value.trim() !== EDITOR_CODE) {
-      ui.loginError.textContent = "Неверный код редактора";
-      return;
-    }
-    if (role === "director" && ui.loginEditorCode.value.trim() !== DIRECTOR_CODE) {
-      ui.loginError.textContent = "Неверный код директора";
-      return;
-    }
-    const nextProfile = {
-      name: ui.loginName.value.trim(),
-      phone: ui.loginPhone.value.trim(),
-      role,
-      area: needsArea(role) ? ui.loginArea.value : ""
-    };
     setButtonBusy(submitButton, true, "Сохраняем...");
     try {
-      await saveRegisteredUser(nextProfile);
+      if (authMode === "register") {
+        await registerEmployee({
+          name: ui.loginName.value.trim(),
+          employeeId: ui.loginEmployeeId.value.trim(),
+          phone: ui.loginPhone.value.trim(),
+          password: ui.loginPassword.value
+        });
+      } else {
+        await loginEmployee(ui.loginEmployeeId.value.trim(), ui.loginPassword.value);
+      }
       location.reload();
-    } catch {
-      ui.loginError.textContent = "Не удалось отправить регистрацию на сервер. Проверьте связь и попробуйте еще раз.";
+    } catch (error) {
+      ui.loginError.textContent = error?.message || (authMode === "register"
+        ? "Не удалось отправить регистрацию."
+        : "Не удалось войти.");
       setButtonBusy(submitButton, false);
     }
   });
-  syncArea();
+  setAuthMode("login");
   if (isProfileWaitingApproval()) {
     ui.loginOverlay.hidden = false;
     ui.loginForm.hidden = true;
-    ui.loginError.textContent = "Регистрация отправлена редактору. Дождитесь подтверждения.";
+    ui.loginError.textContent = "Регистрация отправлена редактору. После подтверждения войдите по табельному номеру или телефону и паролю.";
     window.setInterval(loadRemoteUsers, 5000);
     return;
   }
@@ -1044,7 +1194,7 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 }
 
 function blankKind(now = new Date().toISOString()) {
-  return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
+  return { tasks: Array(15).fill(false), walkDone: false, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], nodeDraftText: "", request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
 }
 
 function hasMeaningfulCheckKind(item) {
@@ -1054,6 +1204,7 @@ function hasMeaningfulCheckKind(item) {
   if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
   if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
   if (String(item.lastRequestId || item.requestStatus || item.status || "").trim()) return true;
+  if (String(item.nodeDraftText || "").trim()) return true;
   if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
   return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
 }
@@ -1120,11 +1271,7 @@ function appendCommentEntry(item, text, photo = "", meta = {}) {
     type: meta.type || "remark"
   };
   item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), entry];
-  item.comment = "";
-  item.commentPhoto = "";
-  item.commentOwnerRole = "";
-  item.commentOwnerName = "";
-  item.commentUpdatedAt = "";
+  window.PPRModules.comments.clearComposer(item);
   item.updatedAt = now;
   return entry;
 }
@@ -1217,6 +1364,7 @@ function saveCommentResolution(item, text = "", photo = "", options = {}) {
     item.commentUpdatedAt = "";
   }
   item.commentPhoto = "";
+  item.nodeDraftText = "";
   item.updatedAt = now;
 }
 
@@ -1259,6 +1407,57 @@ function remarkLinkKey(equipmentId, nodeIndex, date) {
 
 function newRequestId(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date, kind = current.kind) {
   return `${requestId(equipmentId, nodeIndex, date, kind)}:req:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+}
+
+function requestNumberFromId(req) {
+  const year = String(req.createdAt || req.date || todayISO()).slice(0, 4) || String(new Date().getFullYear());
+  let hash = 0;
+  for (const char of String(req.id || "")) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  return `З-${year}-${String(Math.abs(hash) % 100000).padStart(5, "0")}`;
+}
+
+function requestAddHistory(req, action, details = "") {
+  req.history ||= [];
+  req.approvals ||= {};
+  const last = req.history.at(-1);
+  if (last?.action === action && last?.details === details && Date.now() - Date.parse(last.at || 0) < 1500) return;
+  req.history.push({
+    at: new Date().toISOString(),
+    action,
+    details,
+    status: req.status || req.requestStatus || "",
+    role: profile?.role || "",
+    name: profile?.name || ""
+  });
+}
+
+function normalizeRequest(req) {
+  if (!req || typeof req !== "object") return req;
+  req.requestNumber ||= requestNumberFromId(req);
+  req.route ||= req.stock || String(req.id || "").startsWith("stock-issue:") ? "stock" : "purchase";
+  req.priority ||= "normal";
+  req.dueDate ||= "";
+  req.requestedQty = Number(req.requestedQty || req.quantity || req.qtyRequested || 1);
+  req.qtyPurchased = Number(req.qtyPurchased || req.qtyReceived || 0);
+  req.qtyAccepted = Number(req.qtyAccepted || (req.warehouseReceived ? req.qtyReceived : 0) || 0);
+  req.qtyInstalled = Number(req.qtyInstalled || req.aggregateInstalledQty || (req.mechanicInstalled ? req.qtyIssued : 0) || 0);
+  req.createdAt ||= req.updatedAt || new Date().toISOString();
+  req.sourceRole ||= req.createdByRole || "";
+  req.sourceName ||= req.createdByName || "";
+  req.sourceKey ||= req.createdByKey || "";
+  req.additionalPhotos = Array.isArray(req.additionalPhotos) ? req.additionalPhotos : [];
+  req.history ||= [];
+  if (!req.history.length) {
+    req.history.push({
+      at: req.createdAt || req.updatedAt || new Date().toISOString(),
+      action: "Заявка создана",
+      details: req.text || "",
+      status: req.status || "shop",
+      role: "",
+      name: ""
+    });
+  }
+  return req;
 }
 
 function requestFromRecord(id, recKind, equipmentId, nodeIndex, date, kind) {
@@ -1307,7 +1506,26 @@ function requestFromRecord(id, recKind, equipmentId, nodeIndex, date, kind) {
     qtyIssued: Number(recKind.qtyIssued || 0),
     aggregateInstalledQty: Number(recKind.aggregateInstalledQty || 0),
     stockArea: recKind.stockArea || "",
-    inventoryAddedQty: Number(recKind.inventoryAddedQty || 0)
+    inventoryAddedQty: Number(recKind.inventoryAddedQty || 0),
+    requestNumber: recKind.requestNumber || "",
+    route: recKind.route || "",
+    priority: recKind.priority || "normal",
+    dueDate: recKind.dueDate || "",
+    requestedQty: Number(recKind.requestedQty || 1),
+    qtyPurchased: Number(recKind.qtyPurchased || 0),
+    qtyAccepted: Number(recKind.qtyAccepted || 0),
+    qtyInstalled: Number(recKind.qtyInstalled || 0),
+    returnedTo: recKind.returnedTo || "",
+    returnReason: recKind.returnReason || "",
+    rejected: Boolean(recKind.rejected),
+    rejectionReason: recKind.rejectionReason || "",
+    approvals: recKind.approvals && typeof recKind.approvals === "object" ? recKind.approvals : {},
+    history: Array.isArray(recKind.history) ? recKind.history : []
+    ,
+    sourceRole: recKind.sourceRole || "",
+    sourceName: recKind.sourceName || "",
+    sourceKey: recKind.sourceKey || "",
+    additionalPhotos: Array.isArray(recKind.additionalPhotos) ? recKind.additionalPhotos : []
   };
 }
 
@@ -1413,7 +1631,9 @@ function createDirectRequestFromCurrent() {
     status: old.status || item.requestStatus || "shop",
     shopApproved: Boolean(old.shopApproved || item.shopApproved),
     engineerApproved: Boolean(old.engineerApproved || item.engineerApproved),
+    supplyPrepared: Boolean(old.supplyPrepared || item.supplyPrepared),
     financeApproved: Boolean(old.financeApproved || item.financeApproved),
+    cashApproved: Boolean(old.cashApproved || item.cashApproved),
     transferredToWarehouse: Boolean(old.transferredToWarehouse || item.transferredToWarehouse),
     warehouseReceived: Boolean(old.warehouseReceived || item.warehouseReceived),
     issued: Boolean(old.issued || item.issued),
@@ -1433,6 +1653,9 @@ function createDirectRequestFromCurrent() {
     aggregateInstalledQty: Number(old.aggregateInstalledQty || item.aggregateInstalledQty || 0),
     stockArea: old.stockArea || item.stockArea || "",
     inventoryAddedQty: Number(old.inventoryAddedQty || item.inventoryAddedQty || 0),
+    sourceRole: old.sourceRole || profile?.role || "",
+    sourceName: old.sourceName || profile?.name || "",
+    sourceKey: old.sourceKey || profileKey(),
     createdAt: old.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -1458,7 +1681,7 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
     area: eq?.area || "",
     node: eq?.nodes[nodeIndex] || "",
     comment: commentsSummary(item) || item.comment || "",
-    commentPhoto: item.commentPhoto || "",
+    commentPhoto: "",
     text: cleanText,
     requestPhoto: requestPhoto || item.requestPhoto || "",
     invoicePhoto: "",
@@ -1490,6 +1713,9 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
     aggregateInstalledQty: 0,
     stockArea: "",
     inventoryAddedQty: 0,
+    sourceRole: profile?.role || "",
+    sourceName: profile?.name || "",
+    sourceKey: profileKey(),
     createdAt: now,
     updatedAt: now
   };
@@ -1558,6 +1784,9 @@ function upsertNodeWalkRequest(equipmentId, nodeIndex, date, item) {
     aggregateInstalledQty: Number(old.aggregateInstalledQty || item.aggregateInstalledQty || 0),
     stockArea: old.stockArea || item.stockArea || "",
     inventoryAddedQty: Number(old.inventoryAddedQty || item.inventoryAddedQty || 0),
+    sourceRole: old.sourceRole || item.sourceRole || profile?.role || "",
+    sourceName: old.sourceName || item.sourceName || profile?.name || "",
+    sourceKey: old.sourceKey || item.sourceKey || profileKey(),
     createdAt: old.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -1576,9 +1805,10 @@ function allRequests() {
       if (req) map[req.id] = { ...req, ...(map[req.id] || {}) };
     });
   });
+  Object.values(map).forEach(normalizeRequest);
   state.requests = map;
   return Object.values(map)
-    .filter(req => req && req.text && req.id)
+    .filter(req => req && !req.deleted && req.text && req.id)
     .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
 }
 
@@ -1643,27 +1873,34 @@ function askCommentOrRequest() {
 
 function requestMatchesRole(req, role) {
   if (role === "all") return true;
+  if (req.returnedTo) return req.returnedTo === role;
   if (canConfirmIssuedInstall(req, role)) return true;
-  if (role === "shop") return (!req.issued && !req.shopApproved) || (req.mechanicInstalled && !req.shopInstallApproved && !req.done);
-  if (role === "engineer") return (req.mechanicInstalled && !req.shopInstallApproved && !req.done) || (req.shopApproved && !req.engineerApproved);
+  if (role === "shop") return !req.issued && !req.shopApproved;
+  if (role === "engineer" && requestWaitingForInstallApproval(req)) return true;
+  if (role === "productionDirector") return requestWaitingForProductionDirector(req);
+  if (role === "accounting") return requestReadyForAccounting(req) && !req.accountingWrittenOff;
+  if (req.route === "stock") {
+    if (role === "warehouse") return req.shopApproved && !req.issued && !req.stock && !req.done;
+    return false;
+  }
+  if (role === "engineer") return req.shopApproved && !req.engineerApproved;
   if (role === "supply") return (req.engineerApproved && !req.supplyPrepared) || (req.cashApproved && !req.transferredToWarehouse);
   if (role === "finance") return req.supplyPrepared && !req.financeApproved;
   if (role === "cash") return req.financeApproved && !req.cashApproved;
   if (role === "warehouse") return ((req.transferredToWarehouse || req.warehouseAsk) && !req.issued && !req.stock && !req.done)
     || (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved);
-  if (role === "productionDirector") return req.shopInstallApproved && !req.productionDirectorApproved && !req.stock && !req.done;
-  if (role === "accounting") return req.productionDirectorApproved && !req.accountingWrittenOff && !req.stock;
   return false;
 }
 
 function requestNeedsRole(req, role) {
   if (role === "all") return true;
+  if (req.returnedTo) return req.returnedTo === role;
   if (canConfirmIssuedInstall(req, role)) return true;
-  if (role === "shop") return (!req.issued && !req.shopApproved) || (req.mechanicInstalled && !req.shopInstallApproved && !req.done);
+  if (role === "shop") return !req.issued && !req.shopApproved;
   if (role === "warehouse") return ((req.transferredToWarehouse || req.warehouseAsk) && !req.issued && !req.stock && !req.done)
     || (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved);
-  if (role === "productionDirector") return req.shopInstallApproved && !req.productionDirectorApproved && !req.stock && !req.done;
-  if (role === "accounting") return req.productionDirectorApproved && !req.accountingWrittenOff && !req.stock;
+  if (role === "productionDirector") return requestWaitingForProductionDirector(req);
+  if (role === "accounting") return requestReadyForAccounting(req) && !req.accountingWrittenOff;
   return requestMatchesRole(req, role);
 }
 
@@ -1671,7 +1908,7 @@ function requestRoleLabel(role) {
   return {
     all: "Все",
     shop: "Начальник",
-    confirmInstall: "Начальник/Инженер",
+    confirmInstall: "Инженер/Директор производства",
     engineer: "Инженер",
     supply: "Снабжение",
     finance: "Экономист",
@@ -1679,19 +1916,24 @@ function requestRoleLabel(role) {
     productionDirector: "Директор производства",
     accounting: "Бухгалтерия",
     warehouse: "Склад",
-    mechanic: "Механик"
+    mechanic: "Механик",
+    electrician: "Электрик",
+    operator: "Оператор"
   }[role] || role;
 }
 
 function waitingRole(req) {
+  if (req.rejected && req.returnedTo) return req.returnedTo;
+  if (req.rejected) return req.sourceRole || "shop";
   if (req.stock || req.done) return "done";
-  if (req.productionDirectorApproved && !req.accountingWrittenOff) return "accounting";
-  if (req.shopInstallApproved && !req.productionDirectorApproved) return "productionDirector";
-  if (req.mechanicInstalled && !req.shopInstallApproved && !req.done) return "confirmInstall";
+  if (req.returnedTo) return req.returnedTo;
+  if (requestReadyForAccounting(req) && !req.accountingWrittenOff) return "accounting";
+  if (requestWaitingForInstallApproval(req)) return "confirmInstall";
   if (req.issued && !req.mechanicInstalled) return warehouseIssueTargetRole(req);
   if (req.transferredToWarehouse && !req.warehouseReceived) return "warehouse";
   if (req.warehouseReceived && !req.issued) return "warehouse";
   if (!req.shopApproved) return "shop";
+  if (req.route === "stock") return "warehouse";
   if (!req.engineerApproved) return "engineer";
   if (req.engineerApproved && !req.supplyPrepared) return "supply";
   if (req.supplyPrepared && !req.financeApproved) return "finance";
@@ -1754,7 +1996,16 @@ function readPhotoFile(file) {
 
 function downtimes() {
   state.downtimes ||= [];
-  return state.downtimes;
+  const clearMarker = state.downtimes
+    .filter(item => item?.clearAll)
+    .sort((a, b) => String(b.deletedAt || b.updatedAt || "").localeCompare(String(a.deletedAt || a.updatedAt || "")))[0];
+  const clearedAt = Date.parse(clearMarker?.deletedAt || clearMarker?.updatedAt || "");
+  return state.downtimes.filter(item => {
+    if (!item || item.deleted || item.clearAll) return false;
+    if (!Number.isFinite(clearedAt)) return true;
+    const itemTime = Date.parse(item.updatedAt || item.endedAt || item.startedAt || item.createdAt || "");
+    return Number.isFinite(itemTime) && itemTime > clearedAt;
+  });
 }
 
 function downtimeKey(equipmentId, nodeIndex) {
@@ -2108,8 +2359,17 @@ function pendingWarehouseReceipts(area = warehouseFolderArea()) {
   const q = String(current.warehouseSearch || "").trim();
   return allRequests()
     .filter(req => requestVisibleForRole(req, "warehouse"))
-    .filter(req => ((req.transferredToWarehouse && !req.warehouseReceived) || req.warehouseAsk) && !req.issued && !req.stock && !req.done)
+    .filter(req => req.transferredToWarehouse && !req.warehouseReceived && !req.warehouseAsk && !req.issued && !req.stock && !req.done)
     .filter(req => (req.stockArea || req.area || COMMON_WAREHOUSE) === area)
+    .filter(req => requestMatchesWarehouseSearch(req, q))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
+}
+
+function pendingWarehouseAsks() {
+  const q = String(current.warehouseSearch || "").trim();
+  return allRequests()
+    .filter(req => requestVisibleForRole(req, "warehouse"))
+    .filter(req => req.warehouseAsk && !req.issued && !req.stock && !req.done)
     .filter(req => requestMatchesWarehouseSearch(req, q))
     .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
 }
@@ -2340,9 +2600,24 @@ function requestMatchesWarehouseSearch(req, query) {
   return text.includes(q);
 }
 
+function requestMatchesFilters(req) {
+  const query = String(current.requestSearch || "").trim().toLowerCase();
+  if (query) {
+    const searchable = [
+      req.requestNumber, req.text, req.comment, req.area, req.equipment,
+      req.node, req.supplier, req.issueTargetName, statusText(req.status)
+    ].join(" ").toLowerCase();
+    if (!searchable.includes(query)) return false;
+  }
+  if (current.requestPriority && req.priority !== current.requestPriority) return false;
+  if (current.requestRoute && req.route !== current.requestRoute) return false;
+  if (current.requestDue && (!req.dueDate || req.dueDate > current.requestDue)) return false;
+  return true;
+}
+
 function requestRoleCounts() {
   const all = allRequests();
-  const roles = ["shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "productionDirector", "accounting"];
+  const roles = ["shop", "engineer", "supply", "finance", "cash", "warehouse", "mechanic", "electrician", "operator", "productionDirector", "accounting"];
   const counts = { all: all.filter(req => requestVisibleForRole(req, "all")).length };
   roles.forEach(role => {
     counts[role] = all.filter(req => requestVisibleForRole(req, role) && requestNeedsRole(req, role)).length;
@@ -2361,6 +2636,10 @@ function updateRoleBadges() {
     button.classList.toggle("request-alert", waiting > 0 && role !== "all");
     button.classList.toggle("has-count", waiting > 0);
   });
+  const ownRole = defaultRequestRole();
+  const ownWaiting = counts[ownRole] || 0;
+  document.querySelector('[data-mobile-view="requests"]')?.classList.toggle("request-alert", ownWaiting > 0);
+  ui.today?.classList.toggle("request-alert", ownWaiting > 0);
 }
 
 function getRequestKindById(id) {
@@ -2370,11 +2649,19 @@ function getRequestKindById(id) {
 
 function syncRequestToRecord(req) {
   state.requests ||= {};
+  normalizeRequest(req);
+  const previousStatus = req.history?.at(-1)?.status || "";
   setRequestStatus(req);
   req.status = req.requestStatus || req.status || "shop";
+  if (req.status !== previousStatus) requestAddHistory(req, statusText(req.status));
   req.updatedAt = new Date().toISOString();
   state.requests[req.id] = req;
-  if (String(req.id || "").startsWith("stock-issue:") || String(req.id || "").startsWith("manual-warehouse:") || String(req.id || "").includes(":req:")) return;
+  if (
+    String(req.id || "").startsWith("stock-issue:")
+    || String(req.id || "").startsWith("warehouse-ask:")
+    || String(req.id || "").startsWith("manual-warehouse:")
+    || String(req.id || "").includes(":req:")
+  ) return;
   const kind = getRequestKindById(req.id);
   kind.request = req.text;
   kind.comment = req.comment;
@@ -2409,16 +2696,37 @@ function syncRequestToRecord(req) {
   kind.aggregateInstalledQty = Number(req.aggregateInstalledQty || 0);
   kind.stockArea = req.stockArea || "";
   kind.inventoryAddedQty = Number(req.inventoryAddedQty || 0);
+  kind.requestNumber = req.requestNumber || "";
+  kind.route = req.route || "purchase";
+  kind.priority = req.priority || "normal";
+  kind.dueDate = req.dueDate || "";
+  kind.requestedQty = Number(req.requestedQty || 1);
+  kind.qtyPurchased = Number(req.qtyPurchased || 0);
+  kind.qtyAccepted = Number(req.qtyAccepted || 0);
+  kind.qtyInstalled = Number(req.qtyInstalled || 0);
+  kind.returnedTo = req.returnedTo || "";
+  kind.returnReason = req.returnReason || "";
+  kind.rejected = Boolean(req.rejected);
+  kind.rejectionReason = req.rejectionReason || "";
+  kind.sourceRole = req.sourceRole || "";
+  kind.sourceName = req.sourceName || "";
+  kind.sourceKey = req.sourceKey || "";
+  kind.additionalPhotos = Array.isArray(req.additionalPhotos) ? req.additionalPhotos : [];
+  kind.approvals = req.approvals && typeof req.approvals === "object" ? req.approvals : {};
+  kind.history = Array.isArray(req.history) ? req.history : [];
   if (req.done || req.stock) kind.resolved = true;
 }
 
 function setRequestStatus(reqKind) {
-  if (reqKind.stock) reqKind.requestStatus = "stock";
+  if (reqKind.rejected && reqKind.returnedTo) reqKind.requestStatus = reqKind.returnedTo;
+  else if (reqKind.rejected) reqKind.requestStatus = "rejected";
+  else if (reqKind.returnedTo) reqKind.requestStatus = reqKind.returnedTo;
+  else if (reqKind.stock) reqKind.requestStatus = "stock";
   else if (reqKind.done) reqKind.requestStatus = "done";
   else if (reqKind.accountingWrittenOff) reqKind.requestStatus = "done";
-  else if (reqKind.productionDirectorApproved) reqKind.requestStatus = "accounting";
-  else if (reqKind.shopInstallApproved) reqKind.requestStatus = "productionDirector";
-  else if (reqKind.mechanicInstalled) reqKind.requestStatus = "waitingShopDone";
+  else if (requestReadyForAccounting(reqKind)) reqKind.requestStatus = "accounting";
+  else if (requestWaitingForProductionDirector(reqKind)) reqKind.requestStatus = "productionDirector";
+  else if (requestIssuedToWorker(reqKind) && reqKind.mechanicInstalled) reqKind.requestStatus = "waitingShopDone";
   else if (reqKind.issued) reqKind.requestStatus = "issued";
   else if (reqKind.warehouseReceived) reqKind.requestStatus = "warehouse";
   else if (reqKind.transferredToWarehouse) reqKind.requestStatus = "waitingWarehouse";
@@ -2426,6 +2734,7 @@ function setRequestStatus(reqKind) {
   else if (reqKind.financeApproved) reqKind.requestStatus = "cash";
   else if (reqKind.supplyPrepared) reqKind.requestStatus = "finance";
   else if (reqKind.engineerApproved) reqKind.requestStatus = "supply";
+  else if (reqKind.route === "stock" && reqKind.shopApproved) reqKind.requestStatus = "warehouse";
   else if (reqKind.shopApproved) reqKind.requestStatus = "engineer";
   else reqKind.requestStatus = "shop";
 }
@@ -2435,7 +2744,11 @@ function requestWaitingForShopInitial(req) {
 }
 
 function requestWaitingForInstallApproval(req) {
-  return req.mechanicInstalled && !req.shopInstallApproved && !req.done && !req.stock;
+  return req.mechanicInstalled
+    && !req.shopInstallApproved
+    && !req.productionDirectorApproved
+    && !req.done
+    && !req.stock;
 }
 
 function requestWaitingForEngineerInitial(req) {
@@ -2451,7 +2764,7 @@ function requestWaitingForSupplyWarehouse(req) {
 }
 
 function requestWaitingForWarehouse(req) {
-  return req.transferredToWarehouse && !req.issued && !req.stock && !req.done;
+  return (req.transferredToWarehouse || (req.route === "stock" && req.shopApproved)) && !req.issued && !req.stock && !req.done;
 }
 
 function statusText(status) {
@@ -2471,8 +2784,298 @@ function statusText(status) {
     waitingShopDone: "Ждет подтверждения установки",
     productionDirector: "Ждет директора производства",
     accounting: "Ждет списания бухгалтерией",
+    rejected: "Отклонено",
     done: "Выполнено"
   }[status] || status;
+}
+
+function requestRouteLabel(route) {
+  return route === "stock" ? "Со склада" : "Закупка";
+}
+
+function requestPriorityLabel(priority) {
+  return {
+    normal: "Обычная",
+    urgent: "Срочная",
+    emergency: "Аварийная"
+  }[priority] || "Обычная";
+}
+
+function requestIsOverdue(req) {
+  return window.PPRModules.requests.overdue(req, todayISO());
+}
+
+function requestStageItems(req) {
+  const purchase = [
+    ["shop", "Начальник"],
+    ["engineer", "Инженер"],
+    ["supply", "Снабжение"],
+    ["finance", "Экономист"],
+    ["cash", "Касса"],
+    ["warehouse", "Склад"],
+    ["recipient", "Получатель"],
+    ["install", "Установка"],
+    ["productionDirector", "Подтверждение"],
+    ["accounting", "Бухгалтерия"]
+  ];
+  const stock = [
+    ["shop", "Начальник"],
+    ["warehouse", "Склад"],
+    ["recipient", "Получатель"],
+    ["install", "Установка"],
+    ["productionDirector", "Подтверждение"],
+    ["accounting", "Бухгалтерия"]
+  ];
+  const done = {
+    shop: Boolean(req.shopApproved),
+    engineer: Boolean(req.engineerApproved),
+    supply: Boolean(req.supplyPrepared),
+    finance: Boolean(req.financeApproved),
+    cash: Boolean(req.cashApproved),
+    warehouse: Boolean(req.warehouseReceived || req.issued),
+    recipient: Boolean(req.issued),
+    install: Boolean(req.mechanicInstalled),
+    productionDirector: Boolean(req.shopInstallApproved || req.productionDirectorApproved),
+    accounting: Boolean(req.accountingWrittenOff || req.done)
+  };
+  const currentRole = waitingRole(req);
+  const routeStages = req.route === "stock" ? stock : purchase;
+  return routeStages.map(([key, label]) => ({
+    key,
+    label,
+    done: done[key],
+    current: !req.done && !req.stock && (
+      currentRole === key
+      || (currentRole === "confirmInstall" && key === "productionDirector")
+      || (["mechanic", "electrician", "operator", "shop", "engineer"].includes(currentRole) && req.issued && key === "recipient")
+    )
+  }));
+}
+
+function requestStageHtml(req) {
+  return `<div class="request-stage-line" aria-label="Этапы заявки">${requestStageItems(req).map(stage =>
+    `<span class="${[stage.done ? "done" : "", stage.current ? "current" : ""].filter(Boolean).join(" ")}">${stage.done ? "✓ " : ""}${stage.label}</span>`
+  ).join("")}</div>`;
+}
+
+function requestQuantityHtml(req) {
+  const requested = Number(req.requestedQty || 0);
+  const purchased = Number(req.qtyPurchased || req.qtyReceived || 0);
+  const accepted = Number(req.qtyAccepted || (req.warehouseReceived ? req.qtyReceived : 0) || 0);
+  const issued = Number(req.qtyIssued || 0);
+  const installed = Number(req.qtyInstalled || req.aggregateInstalledQty || 0);
+  const balance = Math.max(accepted - issued, 0);
+  return `
+    <div class="request-qty-grid">
+      <span><small>Запрошено</small><strong>${requested}</strong></span>
+      <span><small>Закуплено</small><strong>${purchased}</strong></span>
+      <span><small>Принято</small><strong>${accepted}</strong></span>
+      <span><small>Выдано</small><strong>${issued}</strong></span>
+      <span><small>Установлено</small><strong>${installed}</strong></span>
+      <span><small>Остаток</small><strong>${balance}</strong></span>
+    </div>
+  `;
+}
+
+function requestHistoryHtml(req) {
+  const history = Array.isArray(req.history) ? req.history.slice().reverse() : [];
+  return `
+    <details class="request-history">
+      <summary>История действий (${history.length})</summary>
+      <ol>${history.map(entry => `
+        <li>
+          <strong>${escapeHtml(entry.action || "Изменение")}</strong>
+          ${entry.name || entry.role ? ` — ${escapeHtml(entry.name || requestRoleLabel(entry.role))}` : ""}
+          <time>${dateTimeHuman(entry.at)}</time>
+          ${entry.details ? `<div>${escapeHtml(entry.details)}</div>` : ""}
+        </li>
+      `).join("")}</ol>
+    </details>
+  `;
+}
+
+function requestRecordApproval(req, key, label) {
+  req.approvals ||= {};
+  req.approvals[key] = {
+    label,
+    at: new Date().toISOString(),
+    name: profile?.name || "Сотрудник",
+    role: profile?.role || ""
+  };
+  requestAddHistory(req, label, `Подтвердил: ${profile?.name || requestRoleLabel(profile?.role || "")}`);
+}
+
+function requestApprovalsHtml(req) {
+  const definitions = [
+    ["shop", "Подтверждено начальником", "Ожидает инженера"],
+    ["engineer", "Подтверждено инженером", "В снабжении"],
+    ["supply", "Подготовлено снабжением", "Ожидает экономиста"],
+    ["finance", "Подтверждено экономистом", "Ожидает кассу"],
+    ["cash", "Оплачено кассой", "Оплачено кассой"],
+    ["warehouse", "Выдано складом", "Выдано сотруднику"],
+    ["install", "Установка выполнена", "Ждет подтверждения установки"],
+    ["installApproval", "Установка подтверждена", "Ждет директора производства"],
+    ["productionDirector", "Подтверждено директором производства", "Ждет списания бухгалтерией"],
+    ["accounting", "Списано бухгалтерией", "Выполнено"]
+  ];
+  const approvals = req.approvals && typeof req.approvals === "object" ? req.approvals : {};
+  const history = Array.isArray(req.history) ? req.history : [];
+  const entries = definitions.map(([key, label, legacyAction]) => {
+    if (approvals[key]) return approvals[key];
+    const old = history.slice().reverse().find(entry => entry?.name && entry.action === legacyAction);
+    return old ? { label, at: old.at, name: old.name, role: old.role } : null;
+  }).filter(Boolean);
+  if (!entries.length) return "";
+  return `
+    <div class="request-approvals">
+      <strong>Кто подтвердил</strong>
+      <div>${entries.map(entry => `
+        <span>
+          <b>✓ ${escapeHtml(entry.label || "Подтверждено")}</b>
+          ${escapeHtml(entry.name || requestRoleLabel(entry.role || ""))}
+          <time>${dateTimeHuman(entry.at)}</time>
+        </span>
+      `).join("")}</div>
+    </div>
+  `;
+}
+
+function clearRequestReturn(req) {
+  req.returnedTo = "";
+  req.returnReason = "";
+}
+
+function returnRequestTo(req, targetRole, reason) {
+  if (req.cashApproved) return false;
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) return false;
+  const resetFrom = {
+    shop: ["shopApproved", "engineerApproved", "supplyPrepared", "financeApproved", "cashApproved", "transferredToWarehouse", "warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    engineer: ["engineerApproved", "supplyPrepared", "financeApproved", "cashApproved", "transferredToWarehouse", "warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    supply: ["supplyPrepared", "financeApproved", "cashApproved", "transferredToWarehouse", "warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    finance: ["financeApproved", "cashApproved", "transferredToWarehouse", "warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    cash: ["cashApproved", "transferredToWarehouse", "warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    warehouse: ["warehouseReceived", "issued", "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    mechanic: ["mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    electrician: ["mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    operator: ["mechanicInstalled", "shopInstallApproved", "productionDirectorApproved", "accountingWrittenOff"],
+    productionDirector: ["productionDirectorApproved", "accountingWrittenOff"],
+    accounting: ["accountingWrittenOff"]
+  };
+  (resetFrom[targetRole] || []).forEach(field => { req[field] = false; });
+  req.done = false;
+  req.stock = false;
+  req.returnedTo = targetRole;
+  req.returnReason = cleanReason;
+  req.status = targetRole;
+  requestAddHistory(req, `Возвращено: ${requestRoleLabel(targetRole)}`, cleanReason);
+  syncRequestToRecord(req);
+  saveState();
+  return true;
+}
+
+function appendReturnAction(actions, req, targetRole) {
+  if (!actions || !targetRole || req.done || req.stock || req.cashApproved) return;
+  const button = actionButton(`Вернуть: ${requestRoleLabel(targetRole)}`, () => {
+    const reason = window.prompt("Укажите причину возврата. Без причины заявка не будет возвращена:");
+    if (!String(reason || "").trim()) return;
+    if (returnRequestTo(req, targetRole, reason)) renderRequests();
+  });
+  button.classList.add("secondary-action", "danger-action");
+  actions.append(button);
+}
+
+function appendRejectAction(actions, req) {
+  if (!actions || req.done || req.stock || req.rejected || req.cashApproved) return;
+  const button = actionButton("Отклонить заявку", () => {
+    const reason = window.prompt("Укажите причину отклонения. Без причины заявка не будет отклонена:");
+    const cleanReason = String(reason || "").trim();
+    if (!cleanReason) return;
+    req.sourceRole ||= req.createdByRole || "mechanic";
+    req.sourceName ||= req.createdByName || "";
+    req.sourceKey ||= req.createdByKey || "";
+    req.rejected = true;
+    req.rejectionReason = cleanReason;
+    req.rejectedByRole = profile?.role || "";
+    req.rejectedByName = profile?.name || "";
+    req.returnedTo = req.sourceRole;
+    req.returnReason = cleanReason;
+    req.done = false;
+    req.status = req.sourceRole;
+    requestAddHistory(req, `Отклонено и возвращено автору: ${req.sourceName || requestRoleLabel(req.sourceRole)}`, cleanReason);
+    syncRequestToRecord(req);
+    saveState();
+    renderRequests();
+  });
+  button.classList.add("secondary-action", "danger-action");
+  actions.append(button);
+}
+
+function resubmitRejectedRequest(req, correctionText, correctionPhoto = "") {
+  if (!req?.rejected || !isRequestSource(req)) return false;
+  const cleanText = String(correctionText || "").trim();
+  if (cleanText) {
+    const correction = `Дополнение после отклонения (${profile?.name || "автор"}): ${cleanText}`;
+    req.comment = [String(req.comment || "").trim(), correction].filter(Boolean).join("\n");
+  }
+  if (correctionPhoto) {
+    if (req.requestPhoto) {
+      req.additionalPhotos = [...(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []), correctionPhoto];
+    } else {
+      req.requestPhoto = correctionPhoto;
+    }
+  }
+  [
+    "shopApproved", "engineerApproved", "supplyPrepared", "financeApproved",
+    "cashApproved", "transferredToWarehouse", "warehouseReceived", "issued",
+    "mechanicInstalled", "shopInstallApproved", "productionDirectorApproved",
+    "accountingWrittenOff"
+  ].forEach(field => { req[field] = false; });
+  req.done = false;
+  req.stock = false;
+  req.rejected = false;
+  req.rejectionReason = "";
+  req.rejectedByRole = "";
+  req.rejectedByName = "";
+  req.returnedTo = "";
+  req.returnReason = "";
+  req.status = "shop";
+  req.requestStatus = "shop";
+  req.approvals = {};
+  req.updatedAt = new Date().toISOString();
+  requestAddHistory(req, "Заявка исправлена и отправлена повторно", cleanText || (correctionPhoto ? "Добавлено новое фото" : ""));
+  syncRequestToRecord(req);
+  saveState();
+  return true;
+}
+
+function deleteRejectedRequest(req, reason = "") {
+  if (!req?.rejected || !isRequestSource(req)) return;
+  const recKey = key(req.equipmentId, req.nodeIndex, req.date);
+  const item = state.checks?.[recKey]?.[req.kind || "to"];
+  if (item) {
+    if (item.lastRequestId === req.id) item.lastRequestId = "";
+    const directId = requestId(req.equipmentId, req.nodeIndex, req.date, req.kind || "to");
+    if (req.id === directId) {
+      item.request = "";
+      item.requestPhoto = "";
+    }
+    item.requestStatus = "";
+    item.rejected = false;
+    item.rejectionReason = "";
+    item.done = false;
+    item.updatedAt = new Date().toISOString();
+  }
+  const deletedAt = new Date().toISOString();
+  state.requests ||= {};
+  state.requests[req.id] = {
+    id: req.id,
+    deleted: true,
+    deletedAt,
+    updatedAt: deletedAt
+  };
+  recordAudit("Удалил заявку", req.requestNumber || req.text || req.id, reason, req.equipment || req.area || "");
+  saveState();
 }
 
 function equipmentById(id) {
@@ -2499,6 +3102,10 @@ function isDueOrPast(date) {
 
 function isTodayDate(date) {
   return date === todayISO();
+}
+
+function canOpenEquipmentDate(date) {
+  return ["editor", "director"].includes(profile?.role) || isTodayDate(date);
 }
 
 function hasOpenCommentRecord(rec) {
@@ -2589,11 +3196,14 @@ function openFirstComment() {
 }
 
 function show(view, push = true) {
+  if (view === "directorControl" && !["director", "editor"].includes(profile?.role)) return;
   if (push && current.view !== view) nav.push(current.view);
   current.view = view;
+  document.body.classList.toggle("director-control-profile", view === "directorControl");
   document.querySelectorAll(".view").forEach(el => el.classList.remove("active"));
   document.querySelector(`#${view}Screen`).classList.add("active");
-  ui.back.disabled = view === "equipment";
+  ui.back.disabled = view === "equipment" || view === "directorControl";
+  renderProfile();
   updateMobileNavigation();
   render();
 }
@@ -2613,12 +3223,14 @@ function updateMobileNavigation() {
 function render() {
   updateDirectorBadge();
   updateDowntimeBadge();
+  renderGlobalReminderPanel();
   if (current.view === "equipment") renderEquipment();
   if (current.view === "node") renderNodes();
   if (current.view === "schedule") renderSchedule();
   if (current.view === "checklist") renderChecklist();
   if (current.view === "requests") renderRequests();
   if (current.view === "director") renderDirector();
+  if (current.view === "directorControl") renderDirectorControl();
   if (current.view === "downtime") renderDowntime();
   if (current.view === "aggregateJournal") renderAggregateJournal();
 }
@@ -2819,12 +3431,11 @@ function compressorJournalFilledRows(area = COMPRESSOR_JOURNAL_AREA) {
 }
 
 function compressorJournalRowComplete(row) {
-  return ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding"]
-    .every(field => String(row?.[field] || "").trim());
+  return window.PPRModules.compressor.rowComplete(row);
 }
 
 function compressorJournalSheetComplete(rows) {
-  return rows.length > 0 && rows.every(compressorJournalRowComplete);
+  return window.PPRModules.compressor.rowsComplete(rows);
 }
 
 function compressorJournalDateRows(area = COMPRESSOR_JOURNAL_AREA, date = todayISO()) {
@@ -2845,6 +3456,59 @@ function compressorJournalDateNeedsAttention(area = COMPRESSOR_JOURNAL_AREA, dat
   return !compressorJournalDateComplete(area, date);
 }
 
+function journalEarliestDate(rows, fallback = todayISO()) {
+  const dates = Object.values(rows || {})
+    .map(row => String(row?.date || "").trim())
+    .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= todayISO())
+    .sort();
+  return dates[0] || fallback;
+}
+
+function journalDueStart(key, rows) {
+  state.journalDueSince ||= {};
+  if (!state.journalDueSince[key]) {
+    state.journalDueSince[key] = journalEarliestDate(rows);
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    localStorage.setItem(`${STORE_KEY}-pending`, "1");
+    queueRemoteStateSave();
+  }
+  return state.journalDueSince[key];
+}
+
+function incompleteJournalDays(startDate, completeForDate) {
+  let date = String(startDate || todayISO());
+  const today = todayISO();
+  let count = 0;
+  let guard = 0;
+  while (date <= today && guard < 3660) {
+    if (!completeForDate(date)) count += 1;
+    date = compressorJournalAddDays(date, 1);
+    guard += 1;
+  }
+  return count;
+}
+
+function overdueDaysText(days) {
+  const value = Math.max(0, Number(days || 0));
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const word = mod10 === 1 && mod100 !== 11
+    ? "день"
+    : [2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)
+      ? "дня"
+      : "дней";
+  return `Просрочено ${value} ${word}`;
+}
+
+function compressorJournalIncompleteDays(area = COMPRESSOR_JOURNAL_AREA) {
+  if (area !== COMPRESSOR_JOURNAL_AREA) return 0;
+  const areaRows = Object.fromEntries(
+    Object.entries(state.compressorJournal || {}).filter(([, row]) => row?.area === area)
+  );
+  const start = journalDueStart("compressor", areaRows);
+  return incompleteJournalDays(start, date => compressorJournalDateComplete(area, date));
+}
+
 function compressorJournalTodayNeedsAttention(area = COMPRESSOR_JOURNAL_AREA) {
   return compressorJournalDateNeedsAttention(area, todayISO());
 }
@@ -2861,7 +3525,8 @@ function compressorJournalHasIncompleteDueDays(area = COMPRESSOR_JOURNAL_AREA) {
 }
 
 function compressorJournalButtonStatus(area = COMPRESSOR_JOURNAL_AREA) {
-  return compressorJournalTodayNeedsAttention(area) ? "\u043d\u0435 \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043e" : "\u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e";
+  const overdueDays = compressorJournalIncompleteDays(area);
+  return overdueDays > 0 ? overdueDaysText(overdueDays) : "выполнено";
 }
 
 function localTimeNow() {
@@ -2984,12 +3649,12 @@ function gasJournalRecord(section, date) {
 
 function gasJournalRowCompleteA(date = todayISO()) {
   const row = gasJournalRecord("A", date);
-  return ["inletMpa", "outletMpa", "tempInC", "tempOutC", "pressureDeltaMpa", "equipmentStatus", "pskTrigger", "maintenance", "remarks", "checkedBy"].every(field => String(row?.[field] || "").trim());
+  return window.PPRModules.shgrp.rowAComplete(row);
 }
 
 function gasJournalRowCompleteB(date = todayISO()) {
   const row = gasJournalRecord("B", date);
-  return ["wells", "gasSmell", "protectionZone", "remarks", "actions", "checkedBy"].every(field => String(row?.[field] || "").trim());
+  return window.PPRModules.shgrp.rowBComplete(row);
 }
 
 function gasJournalCompleteA(date = todayISO()) {
@@ -3012,6 +3677,20 @@ function gasJournalSheetHasFilledDay(section) {
 
 function gasJournalTodayNeedsAttention() {
   return !gasJournalRowCompleteA(todayISO()) || !gasJournalRowCompleteB(todayISO());
+}
+
+function gasJournalDateComplete(date = todayISO()) {
+  return gasJournalRowCompleteA(date) && gasJournalRowCompleteB(date);
+}
+
+function gasJournalIncompleteDays() {
+  const start = journalDueStart("gas", state.gasJournal || {});
+  return incompleteJournalDays(start, gasJournalDateComplete);
+}
+
+function gasJournalButtonStatus() {
+  const overdueDays = gasJournalIncompleteDays();
+  return overdueDays > 0 ? overdueDaysText(overdueDays) : "выполнено";
 }
 
 function gasJournalFilledCount() {
@@ -3041,9 +3720,11 @@ function updateGasJournalRow(section, date, field, value) {
   return next;
 }
 
-function clearGasJournalSheet(section) {
+function clearGasJournalSheet(section, reason = "") {
+  const sheetNo = gasJournalSheetIndex(section) + 1;
   state.gasJournal ||= {};
   gasJournalSheetDates(section).forEach(date => delete state.gasJournal[gasJournalKey(section, date)]);
+  recordAudit("Удалил лист журнала", `ШГРП раздел ${section}, лист ${sheetNo}`, reason);
   saveState();
   renderGasJournal();
   renderEquipment();
@@ -3160,7 +3841,10 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-clear]").forEach(btn => btn.addEventListener("click", () => {
     const section = btn.dataset.gasClear;
     const sheetNo = gasJournalSheetIndex(section) + 1;
-    if (confirm(`Удалить лист раздела ${section} №${sheetNo}?`)) clearGasJournalSheet(section);
+    if (!confirm(`Удалить лист раздела ${section} №${sheetNo}?`)) return;
+    const reason = prompt("Укажите причину удаления листа:")?.trim();
+    if (!reason) return;
+    clearGasJournalSheet(section, reason);
   }));
 }
 
@@ -3285,11 +3969,16 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 
 function renderEquipment() {
   ui.subtitle.textContent = "Оборудование";
-  const q = ui.equipmentSearch.value.trim().toLowerCase();
+  const editorSchedule = profile?.role === "editor";
+  const today = new Date();
+  if (!editorSchedule) {
+    current.month = today.getMonth();
+    current.year = today.getFullYear();
+  }
   const count = openCommentCount();
   updateRoleBadges();
-  ui.alertCounter.textContent = `${count} замечаний`;
-  ui.alertCounter.classList.toggle("alert", count > 0);
+  ui.alertCounter.innerHTML = `<span>Замечания</span><strong>${count}</strong>`;
+  ui.alertCounter.classList.toggle("request-alert", count > 0);
   ui.alertCounter.classList.toggle("clickable", count > 0);
   ui.alertCounter.title = count > 0 ? "Открыть первое замечание" : "Открытых замечаний нет";
   ui.equipmentList.innerHTML = "";
@@ -3303,15 +3992,15 @@ function renderEquipment() {
   monthBar.innerHTML = `
     <div>
       <strong>График оборудования</strong>
-      <span>Нажмите день напротив оборудования</span>
+      <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
-      <button type="button" data-equipment-month="prev">‹</button>
+      ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
-      <button type="button" data-equipment-month="next">›</button>
+      ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
-  monthBar.querySelector("[data-equipment-month='prev']").addEventListener("click", () => {
+  monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
     current.month -= 1;
     if (current.month < 0) {
       current.month = 11;
@@ -3319,7 +4008,7 @@ function renderEquipment() {
     }
     renderEquipment();
   });
-  monthBar.querySelector("[data-equipment-month='next']").addEventListener("click", () => {
+  monthBar.querySelector("[data-equipment-month='next']")?.addEventListener("click", () => {
     current.month += 1;
     if (current.month > 11) {
       current.month = 0;
@@ -3329,7 +4018,9 @@ function renderEquipment() {
   });
   ui.equipmentList.append(monthBar);
 
-  const days = 31;
+  const days = editorSchedule
+    ? Array.from({ length: 31 }, (_, index) => index + 1)
+    : [today.getDate()];
   const wrap = document.createElement("div");
   wrap.className = "schedule-wrap equipment-schedule-wrap";
   const table = document.createElement("table");
@@ -3339,24 +4030,24 @@ function renderEquipment() {
       <tr>
         <th class="node-head equipment-head">Оборудование</th>
         <th>Агрегатный журнал</th>
-        ${Array.from({ length: days }, (_, i) => `<th>${i + 1}</th>`).join("")}
+        ${days.map(day => `<th>${day}</th>`).join("")}
         <th>Статус</th>
       </tr>
     </thead>
     <tbody></tbody>
   `;
   const tbody = table.querySelector("tbody");
-  equipment
-    .filter(eq => `${eq.name} ${eq.area}`.toLowerCase().includes(q))
-    .forEach(eq => {
+  equipment.forEach(eq => {
       const tr = document.createElement("tr");
       const alert = hasOpenCommentEquipment(eq.id);
       const stoppedNodeIndex = eq.nodes.findIndex((_, nodeIndex) => activeDowntime(eq.id, nodeIndex));
       const equipmentDowntimeOpen = stoppedNodeIndex >= 0;
       const downtimeColor = equipmentRowColor(eq);
       const downtimeStyle = downtimeColor ? ` style="--downtime-area-color:${downtimeColor}"` : "";
-      const compressorJournalMissingToday = compressorJournalTodayNeedsAttention(eq.area);
-      const gasJournalMissingToday = eq.area === GAS_JOURNAL_AREA && gasJournalTodayNeedsAttention();
+      const compressorJournalOverdueDays = compressorJournalIncompleteDays(eq.area);
+      const gasJournalOverdueDays = eq.area === GAS_JOURNAL_AREA ? gasJournalIncompleteDays() : 0;
+      const compressorJournalMissingToday = compressorJournalOverdueDays > 0;
+      const gasJournalMissingToday = gasJournalOverdueDays > 0;
       tr.innerHTML = `
         <th class="node-name equipment-name area-color-cell"${downtimeStyle}>
           <strong>${eq.name}</strong>
@@ -3380,7 +4071,7 @@ function renderEquipment() {
           <button type="button" data-aggregate-area="${escapeHtml(eq.area)}" class="${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
             <span>Агрегатный журнал</span>
             <strong>${escapeHtml(eq.area)}</strong>
-            <small>${eq.area === GAS_JOURNAL_AREA ? (gasJournalMissingToday ? "сегодня не заполнено" : "сегодня заполнено") : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area)} записей`}</small>
+            <small>${eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area)} записей`}</small>
           </button>
         </td>
       `;
@@ -3388,7 +4079,7 @@ function renderEquipment() {
         current.selectedAggregateArea = eq.area || "";
         show("aggregateJournal");
       });
-      for (let day = 1; day <= days; day++) {
+      for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date);
         const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
@@ -3397,9 +4088,11 @@ function renderEquipment() {
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
         const baseClass = summary.done === summary.total ? "completed-day" : "to";
         td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
+        if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
         td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
+          if (!canOpenEquipmentDate(date)) return;
           current.equipmentId = eq.id;
           current.nodeIndex = downtimeOpen ? stoppedNodeIndex : firstOpenCommentIndex >= 0 ? firstOpenCommentIndex : 0;
           current.date = date;
@@ -3516,9 +4209,11 @@ function renderSchedule() {
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
       const baseClass = isPlannedDone(rec, plan) ? "completed-day" : statusClass(status);
       td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
+      if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
       td.textContent = status;
       td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
+        if (!canOpenEquipmentDate(date)) return;
         current.nodeIndex = nodeIndex;
         current.date = date;
         current.kind = "to";
@@ -3724,7 +4419,7 @@ function renderNodeWalkthrough(eq) {
         ${downtimeCommentHistory}
         ${resolutionBlock}
         <small class="comment-owner">${escapeHtml(sameCommentAuthor(item) && ownerText ? ownerText : `Новый комментарий: ${currentAuthorText}`)}</small>
-        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Напишите замечание или заявку по узлу" : "Новое замечание или заявка по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(commentInputValue(item))}</textarea>
+        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Напишите замечание или заявку по узлу" : "Новое замечание или заявка по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(item.nodeDraftText || commentInputValue(item))}</textarea>
         <input data-node-comment-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditThisComment ? "" : "disabled"}>
         <div class="photo-preview node-photo-preview" data-node-comment-preview="${index}">
           ${item.commentPhoto && sameCommentAuthor(item) ? `<img src="${item.commentPhoto}" alt="Фото комментария">${canEditThisComment ? `<button type="button" data-clear-node-photo="comment" data-node-index="${index}">Удалить фото</button>` : ""}` : ""}
@@ -3778,6 +4473,10 @@ function renderNodeWalkthrough(eq) {
     }));
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
+      const liveItem = record(eq.id, index, current.date).to;
+      liveItem.nodeDraftText = event.target.value;
+      liveItem.updatedAt = new Date().toISOString();
+      saveState();
       if (event.target.value.trim()) event.target.classList.remove("comment-required-blink");
       row.querySelector(".node-walk-status").textContent = event.target.value.trim()
         ? "Текст готов к отправке"
@@ -3802,9 +4501,11 @@ function renderNodeWalkthrough(eq) {
         if (isRequestSend) {
           const req = createNodeWalkRequestSubmission(eq.id, index, current.date, liveItem, text, liveItem.commentPhoto);
           liveItem.commentPhoto = "";
+          liveItem.nodeDraftText = "";
           row.querySelector(".node-walk-status").textContent = `Заявка подана: ${statusText(req.status || "shop")}`;
         } else {
           appendCommentEntry(liveItem, text, liveItem.commentPhoto);
+          liveItem.nodeDraftText = "";
           liveItem.resolved = false;
           row.querySelector(".node-walk-status").textContent = "Замечание отправлено";
         }
@@ -3911,6 +4612,7 @@ function renderNodeWalkthrough(eq) {
     row.querySelector("[data-node-comment-photo]").addEventListener("change", async event => {
       const liveItem = record(eq.id, index, current.date).to;
       if (!canEditComment(liveItem)) return;
+      liveItem.nodeDraftText = row.querySelector("[data-node-comment]")?.value || liveItem.nodeDraftText || "";
       if (!sameCommentAuthor(liveItem) && String(liveItem.comment || "").trim()) {
         beginCommentEdit(liveItem, "");
       }
@@ -3969,6 +4671,9 @@ function nodeWalkStatusText(item) {
   if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "Установка подтверждена. Ждет директора производства";
   if (item.mechanicFixed && !item.resolved) return "Устранено. Ждет подтверждения начальника/инженера";
   if (item.resolved) return commentResolutionText(item) || "Замечание закрыто";
+  const submittedRequest = item.lastRequestId ? state.requests?.[item.lastRequestId] : null;
+  if (submittedRequest) return `Заявка подана: ${statusText(submittedRequest.status || "shop")}`;
+  if (String(item.nodeDraftText || "").trim() || item.commentPhoto) return "Черновик сохранён. Нажмите «Отправить»";
   if (item.request?.trim()) return `Заявка: ${statusText(item.requestStatus || "shop")}`;
   if (hasAnyComment(item)) return "Есть замечание";
   return "Заявка не создана";
@@ -4029,9 +4734,12 @@ function renderRequests() {
   const list = document.querySelector("#requestList");
   const all = allRequests();
   const visible = all.filter(req => requestAllowedByUser(req));
-  ui.requestsMeta.textContent = `Доступно заявок: ${visible.length}. Версия ${APP_VERSION}. Роль: ${ROLE_ACCESS[profile?.role]?.label || "не выбрана"}`;
+  const waitingHere = visible.filter(req => requestNeedsRole(req, current.requestRole)).length;
+  ui.requestsMeta.textContent = `Всего доступно: ${visible.length} · Требуют вашего действия: ${waitingHere}`;
+  if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
   renderWarehousePanel();
   let rows = all.filter(req => requestVisibleForRole(req, current.requestRole));
+  rows = rows.filter(requestMatchesFilters);
   if (current.requestRole === "warehouse") {
     const folderArea = warehouseFolderArea();
     rows = rows.filter(req => needsWarehouseNoInvoiceConfirmation(req) || (req.stockArea || req.area || "") === folderArea);
@@ -4052,7 +4760,10 @@ function renderRequests() {
   list.innerHTML = "";
   if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">${current.requestRole === "warehouse" ? `В складе "${escapeHtml(warehouseFolderArea())}" нет заявок` : "Нет заявок для этого раздела"}</div>`);
   rows.forEach(req => list.append(requestCard(req)));
-  if (current.requestRole === "accounting") list.insertAdjacentHTML("beforeend", renderAccountingWrittenOffList());
+  if (current.requestRole === "accounting") {
+    list.insertAdjacentHTML("beforeend", renderAccountingWrittenOffList());
+    list.querySelector("[data-print-accounting]")?.addEventListener("click", printAccountingWrittenOffReport);
+  }
   if (current.requestRole === "warehouse" && current.warehouseSearch.trim()) {
     window.setTimeout(() => {
       const stockHit = ui.warehousePanel.querySelector(".warehouse-stock-row.search-hit");
@@ -4065,8 +4776,776 @@ function renderRequests() {
   }
 }
 
+function directorTodayWalk(eq) {
+  const rows = eq.nodes.map((_, index) => state.checks?.[key(eq.id, index, todayISO())] || null);
+  const done = rows.filter(isNodeChecked).length;
+  return { done, total: rows.length };
+}
+
+function directorTraffic(done, total, overdue = false) {
+  if (overdue || done === 0) return "red";
+  if (done < total) return "yellow";
+  return "green";
+}
+
+function directorOpenRemarks() {
+  const result = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
+    const eq = equipmentById(Number(equipmentIdRaw));
+    const item = rec?.to;
+    if (!eq || !item || item.resolved || !hasAnyComment(item)) return;
+    result.push({
+      equipmentId: eq.id,
+      equipment: eq.name,
+      node: eq.nodes[Number(nodeIndexRaw)] || "",
+      date,
+      startedAt: firstCommentTime(item) || `${date}T00:00:00`,
+      item
+    });
+  });
+  return result;
+}
+
+function directorRecommendedMaintenance(eq, date = todayISO()) {
+  const intervalDays = [COMPRESSOR_JOURNAL_AREA, GAS_JOURNAL_AREA].includes(eq.area) ? 7 : 14;
+  const dayNumber = Math.floor(new Date(`${date}T00:00:00`).getTime() / 86400000);
+  const offset = (dayNumber + Number(eq.id || 0) * 3) % intervalDays;
+  const daysUntil = offset === 0 ? 0 : intervalDays - offset;
+  const dueDate = addDaysISO(date, daysUntil);
+  const nodeIndex = eq.nodes.length ? (dayNumber + Number(eq.id || 0)) % eq.nodes.length : 0;
+  return {
+    dueDate,
+    daysUntil,
+    node: eq.nodes[nodeIndex] || eq.name,
+    intervalDays
+  };
+}
+
+function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
+  const rows = [];
+  for (let dayOffset = 0; dayOffset < days; dayOffset += 1) {
+    const date = addDaysISO(todayISO(), dayOffset);
+    activeEquipment.forEach(eq => {
+      const plan = directorRecommendedMaintenance(eq, date);
+      if (plan.daysUntil !== 0) return;
+      rows.push({
+        date,
+        equipment: eq.name,
+        area: eq.area,
+        node: plan.node,
+        intervalDays: plan.intervalDays
+      });
+    });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.equipment.localeCompare(b.equipment, "ru"));
+}
+
+function recommendedMaintenanceForDate(eq, date) {
+  const plan = directorRecommendedMaintenance(eq, date);
+  return plan.daysUntil === 0 ? plan : null;
+}
+
+function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const itemsByDate = {};
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const items = activeEquipment.flatMap(eq => {
+      const plan = recommendedMaintenanceForDate(eq, date);
+      return plan ? [{
+        equipmentId: eq.id,
+        equipment: eq.name,
+        area: eq.area,
+        node: plan.node,
+        intervalDays: plan.intervalDays
+      }] : [];
+    });
+    if (items.length) itemsByDate[date] = items;
+  }
+  return { year, month, daysInMonth, itemsByDate };
+}
+
+function pprCalendarShortName(name) {
+  return String(name || "")
+    .replace(/оборудование/gi, "обор.")
+    .replace(/инструментальный/gi, "инструм.")
+    .replace(/электроподстанции/gi, "подстанции")
+    .replace(/уличное освещение/gi, "освещение")
+    .replace(/помещение/gi, "пом.")
+    .trim();
+}
+
+function pprJournalCompletion(eq, date, node = "") {
+  if (date < PPR_RECOMMENDED_START_DATE) {
+    return { complete: false, partial: false, ignored: true, author: "", updatedAt: "" };
+  }
+  if (eq.area === COMPRESSOR_JOURNAL_AREA) {
+    const rows = compressorJournalDateRows(eq.area, date);
+    const complete = compressorJournalDateComplete(eq.area, date);
+    const author = rows.map(row => row.checkedBy).filter(Boolean).join(", ");
+    const updatedAt = rows.map(row => row.updatedAt).filter(Boolean).sort().pop() || "";
+    return { complete, partial: rows.some(row => compressorJournalRowComplete(row)), author, updatedAt };
+  }
+  if (eq.area === GAS_JOURNAL_AREA) {
+    const rows = [gasJournalRecord("A", date), gasJournalRecord("B", date)];
+    const complete = gasJournalDateComplete(date);
+    const author = rows.map(row => row.checkedBy).filter(Boolean).join(", ");
+    const updatedAt = rows.map(row => row.updatedAt).filter(Boolean).sort().pop() || "";
+    return { complete, partial: gasJournalRowCompleteA(date) || gasJournalRowCompleteB(date), author, updatedAt };
+  }
+  const nodeIndex = Math.max(0, eq.nodes.indexOf(node));
+  const rec = getRecord(eq.id, nodeIndex, date);
+  const item = rec?.to || {};
+  const complete = isNodeChecked(rec) || Boolean(
+    item.resolved ||
+    item.mechanicFixed ||
+    item.shopInstallApproved ||
+    item.productionDirectorApproved ||
+    item.accountingWrittenOff
+  );
+  const partial = !complete && hasMeaningfulCheckKind(item);
+  const author = item.updatedByName || item.checkedBy || item.commentOwnerName || item.resolvedByName || "";
+  const updatedAt = item.updatedAt || item.commentUpdatedAt || item.resolvedAt || "";
+  return {
+    complete,
+    partial,
+    author,
+    updatedAt
+  };
+}
+
+function openPprLinkedJournal(date, equipmentId, node = "") {
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq) return;
+  closeGlobalReminderPanel();
+  if ([COMPRESSOR_JOURNAL_AREA, GAS_JOURNAL_AREA].includes(eq.area)) {
+    if (eq.area === COMPRESSOR_JOURNAL_AREA) {
+      current.compressorBaseDate = date;
+      current.compressorSheetIndex = 0;
+    } else {
+      current.gasBaseDateA = date;
+      current.gasBaseDateB = date;
+      current.gasSheetIndexA = 0;
+      current.gasSheetIndexB = 0;
+    }
+    current.selectedAggregateArea = eq.area;
+    show("aggregateJournal");
+    return;
+  }
+  current.equipmentId = eq.id;
+  const scheduledNodeIndex = eq.nodes.indexOf(node);
+  current.nodeIndex = scheduledNodeIndex >= 0 ? scheduledNodeIndex : 0;
+  current.date = date;
+  current.kind = "to";
+  current.scrollToCommentNode = current.nodeIndex;
+  current.scrollToDowntimeNode = null;
+  current.month = Number(date.slice(5, 7)) - 1;
+  current.year = Number(date.slice(0, 4));
+  if (canOpenEquipmentDate(date)) show("checklist");
+  else show("schedule");
+}
+
+function renderPprMonthCalendar(equipment = allEquipment()) {
+  const data = pprCalendarMonthData(equipment);
+  const monthDate = new Date(data.year, data.month, 1);
+  const monthLabel = monthDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  const leadingDays = (monthDate.getDay() + 6) % 7;
+  const cells = [];
+  for (let index = 0; index < leadingDays; index += 1) {
+    cells.push(`<div class="ppr-calendar-day empty" aria-hidden="true"></div>`);
+  }
+  for (let day = 1; day <= data.daysInMonth; day += 1) {
+    const date = `${data.year}-${String(data.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const items = data.itemsByDate[date] || [];
+    const itemStatuses = items.map(item => pprJournalCompletion(equipmentById(item.equipmentId), date, item.node));
+    const dayDone = items.length && itemStatuses.every(item => item.complete);
+    const dayPartial = itemStatuses.some(item => item.partial && !item.complete);
+    const dayOverdue = date >= PPR_RECOMMENDED_START_DATE && date < todayISO() && itemStatuses.some(item => !item.complete);
+    const taskRows = items.map(item => `
+      ${(() => {
+        const journal = pprJournalCompletion(equipmentById(item.equipmentId), date, item.node);
+        const overdue = !journal.ignored && date < todayISO();
+        const statusClass = journal.complete ? "done" : overdue ? "overdue" : journal.partial ? "partial" : journal.ignored ? "history" : "planned";
+        const statusIcon = journal.complete ? "✅" : overdue ? "❌" : journal.partial ? "🟡" : journal.ignored ? "·" : "⏰";
+        const statusText = journal.ignored
+          ? "До запуска расчётного графика"
+          : journal.complete
+          ? `Журнал заполнен${journal.author ? ` · ${journal.author}` : ""}${journal.updatedAt ? ` · ${dateTimeHuman(journal.updatedAt)}` : ""}`
+          : journal.partial
+            ? "Журнал заполнен частично"
+            : date < todayISO()
+              ? "Журнал за этот день не заполнен"
+              : "Ожидает заполнения журнала";
+        return `<button type="button" class="ppr-calendar-task ${statusClass} ${profile?.role === "director" ? "informational" : ""}" data-ppr-task-date="${date}" data-ppr-task-equipment="${item.equipmentId}" data-ppr-task-node="${escapeHtml(item.node)}" ${profile?.role === "director" ? `aria-disabled="true"` : ""} title="${escapeHtml(`${item.equipment}: ${item.node}. ${statusText}`)}">
+        <span>${statusIcon}</span>
+        <strong>${escapeHtml(pprCalendarShortName(item.equipment))}</strong>
+        <small>${escapeHtml(statusText)}</small>
+      </button>`;
+      })()}
+    `).join("");
+    cells.push(`
+      <div class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${items.length ? "has-work" : ""} ${dayDone ? "completed" : ""} ${dayPartial ? "partial" : ""} ${dayOverdue ? "overdue" : ""}">
+        <time datetime="${date}">${day}</time>
+        <div class="ppr-calendar-tasks">${taskRows}</div>
+      </div>
+    `);
+  }
+  return `
+    <div class="ppr-calendar-toolbar">
+      <button type="button" data-ppr-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button>
+      <strong>${escapeHtml(monthLabel)}</strong>
+      <button type="button" data-ppr-calendar-shift="1" aria-label="Следующий месяц">›</button>
+    </div>
+    <div class="ppr-calendar-weekdays">
+      ${["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="ppr-calendar-grid">${cells.join("")}</div>
+  `;
+}
+
+function shiftPprCalendar(monthDelta) {
+  current.pprCalendarMonth += Number(monthDelta || 0);
+  if (current.pprCalendarMonth < 0) {
+    current.pprCalendarMonth = 11;
+    current.pprCalendarYear -= 1;
+  }
+  if (current.pprCalendarMonth > 11) {
+    current.pprCalendarMonth = 0;
+    current.pprCalendarYear += 1;
+  }
+}
+
+function bindPprCalendarControls(container, rerender) {
+  container?.querySelectorAll("[data-ppr-calendar-shift]").forEach(button => {
+    button.addEventListener("click", () => {
+      shiftPprCalendar(button.dataset.pprCalendarShift);
+      rerender();
+    });
+  });
+  container?.querySelectorAll("[data-ppr-task-date]").forEach(button => {
+    if (profile?.role === "director") return;
+    button.addEventListener("click", () => openPprLinkedJournal(
+      button.dataset.pprTaskDate,
+      Number(button.dataset.pprTaskEquipment),
+      button.dataset.pprTaskNode || ""
+    ));
+  });
+}
+
+function directorCalendarItems(equipment = allEquipment()) {
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
+  const maintenance = activeEquipment
+    .map(eq => ({ eq, plan: directorRecommendedMaintenance(eq) }))
+    .filter(item => item.plan.daysUntil === 0)
+    .map(({ eq, plan }) => ({
+      type: "maintenance",
+      icon: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "✅" : "⏰",
+      color: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "green" : "yellow",
+      title: `ТО: ${plan.node}`,
+      text: pprJournalCompletion(eq, todayISO(), plan.node).complete ? `${eq.name} · выполнено по журналу` : `${eq.name} · ожидает заполнения журнала`
+    }));
+  return maintenance;
+}
+
+function directorReminderItems(equipment = allEquipment()) {
+  const items = [];
+  const overdueRequests = allRequests().filter(req =>
+    !req.done && !req.stock && !req.rejected && !req.deleted && requestIsOverdue(req)
+  );
+  overdueRequests.forEach(req => items.push({
+    level: "red",
+    icon: "📋",
+    title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
+    text: req.equipment || req.area || req.text || "Требуется обработка"
+  }));
+  equipment.filter(eq => eq.area !== "Резерв").forEach(eq => {
+    const plan = directorRecommendedMaintenance(eq);
+    const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
+    if (plan.daysUntil <= 2 && !journalComplete) {
+      items.push({
+        level: plan.daysUntil === 0 ? "red" : "yellow",
+        icon: "⏰",
+        title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
+        text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
+      });
+    }
+  });
+  return items;
+}
+
+function globalControlEquipment() {
+  return visibleEquipment().filter(eq => eq.area !== "Резерв");
+}
+
+function globalReminderItems(equipment = globalControlEquipment()) {
+  const equipmentIds = new Set(equipment.map(eq => Number(eq.id)));
+  const areas = new Set(equipment.map(eq => eq.area));
+  const items = [];
+  allRequests()
+    .filter(req =>
+      !req.done && !req.stock && !req.rejected && !req.deleted &&
+      requestIsOverdue(req) && requestAllowedByUser(req) &&
+      (!equipment.length || !req.equipmentId || equipmentIds.has(Number(req.equipmentId)) || areas.has(req.area))
+    )
+    .forEach(req => items.push({
+      level: "red",
+      icon: "📋",
+      title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
+      text: req.equipment || req.area || req.text || "Требуется обработка"
+    }));
+  equipment.forEach(eq => {
+    const plan = directorRecommendedMaintenance(eq);
+    const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
+    if (plan.daysUntil <= 2 && !journalComplete) {
+      items.push({
+        level: plan.daysUntil === 0 ? "red" : "yellow",
+        icon: "⏰",
+        title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
+        text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
+      });
+    }
+  });
+  return items;
+}
+
+function renderGlobalReminderPanel() {
+  if (!ui.globalReminderButton || !ui.globalReminderContent) return;
+  if (!profile) {
+    ui.globalReminderButton.hidden = true;
+    return;
+  }
+  ui.globalReminderButton.hidden = false;
+  const equipment = globalControlEquipment();
+  const reminders = globalReminderItems(equipment);
+  const calendar = directorCalendarItems(equipment);
+  const monthCalendar = renderPprMonthCalendar(allEquipment());
+  updateGlobalReminderBadge(reminders);
+  const calendarRows = calendar.map(item => `
+    <div class="director-calendar-row ${item.color}">
+      <span class="director-calendar-icon">${item.icon}</span>
+      <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
+    </div>
+  `).join("");
+  const reminderRows = reminders.map(item => `
+    <div class="director-reminder-row ${item.level}">
+      <span>${item.icon}</span>
+      <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
+    </div>
+  `).join("");
+  ui.globalReminderContent.innerHTML = `
+    <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
+    <div class="global-control-grid">
+      <section>
+        <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
+        <div class="director-reminder-list">${reminderRows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Всё выполнено, срочных напоминаний нет</strong></div>`}</div>
+      </section>
+      <section>
+        <div class="director-section-head"><div><span>📅</span><h2>Календарь ППР</h2></div><small>Сегодня</small></div>
+        <div class="director-calendar-list">${calendarRows || `<div class="director-empty-ok"><strong>На сегодня работ нет</strong></div>`}</div>
+        <p class="director-safe-note">✅ Заполнение соответствующего агрегатного журнала автоматически подтверждает выполнение ТО.</p>
+      </section>
+    </div>
+    <section class="global-ppr-month-card">
+      <div class="director-section-head"><div><span>🗓️</span><h2>Общий график ППР завода</h2></div><small>Доступен всем</small></div>
+      ${monthCalendar}
+    </section>
+  `;
+  bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
+}
+
+function updateGlobalReminderBadge(knownReminders = null) {
+  if (!ui.globalReminderButton || !ui.globalReminderBadge || !profile) return;
+  const reminders = Array.isArray(knownReminders) ? knownReminders : globalReminderItems(globalControlEquipment());
+  ui.globalReminderBadge.textContent = reminders.length;
+  ui.globalReminderButton.classList.toggle("has-alerts", reminders.length > 0);
+  ui.globalReminderButton.classList.toggle("all-clear", reminders.length === 0);
+}
+
+function directorEquipmentHealth(eq) {
+  const walk = directorTodayWalk(eq);
+  const missingRatio = walk.total ? Math.max(walk.total - walk.done, 0) / walk.total : 0;
+  const remarks = directorOpenRemarks().filter(item => item.equipmentId === eq.id).length;
+  const journal = directorJournalState(eq);
+  const overdueDays = eq.area === COMPRESSOR_JOURNAL_AREA
+    ? compressorJournalIncompleteDays(eq.area)
+    : eq.area === GAS_JOURNAL_AREA
+      ? gasJournalIncompleteDays()
+      : 0;
+  const emergencyRequests = allRequests().filter(req =>
+    !req.done && !req.stock && !req.rejected && !req.deleted &&
+    req.priority === "emergency" &&
+    (Number(req.equipmentId) === eq.id || (!req.equipmentId && req.area === eq.area))
+  ).length;
+  const since = Date.now() - 30 * 86400000;
+  const repairs = downtimes().filter(item =>
+    item.type !== "production" &&
+    (Number(item.equipmentId) === eq.id || (!item.equipmentId && item.area === eq.area)) &&
+    Date.parse(item.startedAt || "") >= since
+  ).length;
+  const score = Math.max(0, Math.min(100, Math.round(
+    100
+    - Math.min(remarks * 5, 20)
+    - Math.round(missingRatio * 25)
+    - Math.min(overdueDays * 3, 15)
+    - Math.min(emergencyRequests * 15, 30)
+    - Math.min(repairs * 4, 20)
+    - (journal.color === "red" && !overdueDays ? 5 : 0)
+  )));
+  const color = window.PPRModules.director.healthBand(score);
+  return { score, color, remarks, overdueDays, emergencyRequests, repairs };
+}
+
+function directorRemarkOverdue(item) {
+  const started = Date.parse(item?.startedAt || "");
+  return Number.isFinite(started) && Date.now() - started >= 3 * 86400000;
+}
+
+function directorJournalState(eq) {
+  if (eq.area === COMPRESSOR_JOURNAL_AREA) {
+    const overdue = compressorJournalIncompleteDays(eq.area);
+    return {
+      color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
+      text: overdue ? overdueDaysText(overdue) : "Выполнено"
+    };
+  }
+  if (eq.area === GAS_JOURNAL_AREA) {
+    const overdue = gasJournalIncompleteDays();
+    return {
+      color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
+      text: overdue ? overdueDaysText(overdue) : "Выполнено"
+    };
+  }
+  const walk = directorTodayWalk(eq);
+  return {
+    color: directorTraffic(walk.done, walk.total),
+    text: walk.done === walk.total ? "Выполнено" : walk.done ? `${walk.done}/${walk.total} узлов` : "Не заполнено"
+  };
+}
+
+function directorRequestStats() {
+  const requests = allRequests().filter(req => !req.done && !req.stock && !req.rejected && !req.deleted);
+  return {
+    open: requests.length,
+    approval: requests.filter(req => ["shop", "engineer", "finance", "cash", "productionDirector", "accounting"].includes(waitingRole(req))).length,
+    purchase: requests.filter(req => req.route !== "stock").length,
+    warehouse: requests.filter(req => ["warehouse", "waitingWarehouse"].includes(req.status) || waitingRole(req) === "warehouse").length,
+    overdue: requests.filter(requestIsOverdue).length
+  };
+}
+
+function directorActiveRequests() {
+  return allRequests().filter(req => !req.done && !req.stock && !req.rejected && !req.deleted);
+}
+
+function directorRequestDetailRows() {
+  const requests = directorActiveRequests();
+  if (!requests.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Активных заявок нет</strong></div>`;
+  return requests.map(req => {
+    const role = waitingRole(req);
+    const holder = requestRoleLabel(role);
+    const overdue = requestIsOverdue(req);
+    return `
+      <div class="director-info-row ${overdue ? "red" : ""}">
+        <span class="traffic-dot"></span>
+        <div>
+          <strong>${escapeHtml(req.requestNumber || "Заявка")}${req.equipment ? ` · ${escapeHtml(req.equipment)}` : ""}</strong>
+          <p>${escapeHtml(req.text || "Описание отсутствует")}</p>
+          <small>${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}${req.dueDate ? ` · Срок ${dateHuman(req.dueDate)}` : ""}</small>
+        </div>
+        <div class="director-info-owner">
+          <b>${overdue ? "Просрочено" : statusText(req.status || req.requestStatus || "")}</b>
+          <span>Сейчас у: ${escapeHtml(holder)}</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
+  if (!remarks.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Открытых замечаний нет</strong></div>`;
+  return remarks.map(remark => {
+    const entry = firstRemarkEntry(remark.item);
+    const overdue = directorRemarkOverdue(remark);
+    const author = entry?.name || remark.item?.commentOwnerName || "";
+    return `
+      <div class="director-info-row ${overdue ? "red" : "yellow"}">
+        <span class="traffic-dot"></span>
+        <div>
+          <strong>${escapeHtml(remark.equipment)}${remark.node ? ` · ${escapeHtml(remark.node)}` : ""}</strong>
+          <p>${escapeHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
+          <small>${dateHuman(remark.date)}${author ? ` · Записал: ${escapeHtml(author)}` : ""}</small>
+        </div>
+        <div class="director-info-owner">
+          <b>${overdue ? "Просрочено" : "Открыто"}</b>
+          <span>${overdue ? "Требует внимания" : "Ожидает устранения"}</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function directorUserStats() {
+  const users = loadUsers().filter(user => user.approved !== false && user.pendingApproval !== true);
+  const today = todayISO();
+  const worked = users.filter(user => String(user.lastLoginAt || "").slice(0, 10) === today).length;
+  return { total: users.length, worked, absent: Math.max(users.length - worked, 0) };
+}
+
+function directorTodayDowntimeStats() {
+  const start = new Date(`${todayISO()}T00:00:00`).getTime();
+  const end = start + 86400000;
+  const now = Date.now();
+  const items = downtimes()
+    .map(item => {
+      const itemStart = Date.parse(item.startedAt || "");
+      const itemEnd = item.endedAt ? Date.parse(item.endedAt) : now;
+      const overlapMs = Math.max(Math.min(itemEnd, end) - Math.max(itemStart, start), 0);
+      return { ...item, todayMs: overlapMs };
+    })
+    .filter(item => item.todayMs > 0)
+    .sort((a, b) => Number(!b.endedAt) - Number(!a.endedAt) || String(b.startedAt).localeCompare(String(a.startedAt)));
+  const active = items.filter(item => !item.endedAt);
+  return {
+    items,
+    active,
+    totalMs: items.reduce((sum, item) => sum + item.todayMs, 0),
+    production: items.filter(item => item.type === "production").length,
+    breakdown: items.filter(item => item.type !== "production").length
+  };
+}
+
+function directorDowntimeDetail(stats) {
+  const rows = stats.items.map(item => `
+    <div class="director-downtime-row ${item.endedAt ? "closed" : "active"}">
+      <span class="director-downtime-signal"></span>
+      <div>
+        <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
+        <small>${escapeHtml(item.node || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</small>
+        <p>${escapeHtml(item.comment || "Причина не указана")}</p>
+      </div>
+      <div class="director-downtime-time">
+        <b>${item.endedAt ? "Завершён" : "Идёт сейчас"}</b>
+        <span>${durationText(item.endedAt ? downtimeDurationMs(item) : downtimeDurationMs(item, Date.now()))}</span>
+        <small>${dateTimeHuman(item.startedAt)}${item.endedAt ? ` → ${dateTimeHuman(item.endedAt)}` : ""}</small>
+      </div>
+    </div>
+  `).join("");
+  return `<div class="director-downtime-detail">
+    <div class="director-downtime-detail-head">
+      <div><h2>Простои за сегодня</h2><p>Причина, оборудование, время начала и длительность</p></div>
+    </div>
+    ${rows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Простоев сегодня нет</strong></div>`}
+  </div>`;
+}
+
+function directorControlTotals() {
+  const equipment = allEquipment();
+  const walks = equipment.map(eq => directorTodayWalk(eq));
+  const done = walks.reduce((sum, walk) => sum + walk.done, 0);
+  const total = walks.reduce((sum, walk) => sum + walk.total, 0);
+  const remarks = directorOpenRemarks();
+  const resolvedToday = Object.values(state.checks || {}).filter(rec =>
+    String(rec?.to?.resolvedAt || "").slice(0, 10) === todayISO()
+  ).length;
+  return {
+    equipment,
+    done,
+    total,
+    percent: total ? Math.round(done / total * 100) : 0,
+    remarks,
+    overdueRemarks: remarks.filter(directorRemarkOverdue).length,
+    resolvedToday,
+    requests: directorRequestStats(),
+    users: directorUserStats(),
+    downtime: directorTodayDowntimeStats(),
+    calendar: directorCalendarItems(equipment),
+    reminders: directorReminderItems(equipment),
+    health: equipment.filter(eq => eq.area !== "Резерв").map(eq => ({ eq, ...directorEquipmentHealth(eq) })),
+    recommendedSchedule: directorRecommendedSchedule(equipment)
+  };
+}
+
+function directorEquipmentDetail(eq) {
+  const walk = directorTodayWalk(eq);
+  const nodeRows = eq.nodes.map((node, index) => {
+    const rec = getRecord(eq.id, index, todayISO());
+    const done = isNodeChecked(rec);
+    const item = rec?.to || {};
+    const checker = item.updatedByName || item.commentOwnerName || item.checkedBy || "";
+    const time = item.updatedAt || item.commentUpdatedAt || "";
+    return `<li class="${done ? "done" : "missing"}"><span>${done ? "✓" : "×"}</span><div><strong>${escapeHtml(node)}</strong><small>${checker ? `${escapeHtml(checker)}${time ? ` · ${dateTimeHuman(time)}` : ""}` : "Не проверено"}</small></div></li>`;
+  }).join("");
+  let special = "";
+  if (eq.area === COMPRESSOR_JOURNAL_AREA) {
+    special = `<div class="director-special-list">${compressorJournalDateRows(eq.area, todayISO()).map(row => `
+      <div class="${compressorJournalRowComplete(row) ? "green" : "red"}">
+        <span class="traffic-dot"></span><strong>${escapeHtml(row.compressor)}</strong><small>${compressorJournalRowComplete(row) ? "Заполнено" : "Не заполнено"}</small>
+      </div>`).join("")}</div>`;
+  }
+  if (eq.area === GAS_JOURNAL_AREA) {
+    special = `<div class="director-special-list">
+      <div class="${gasJournalRowCompleteA(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>ШГРП / ГРП / ГРУ</strong><small>${gasJournalRowCompleteA(todayISO()) ? "Заполнено" : "Не заполнено"}</small></div>
+      <div class="${gasJournalRowCompleteB(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>Подземный газопровод</strong><small>${gasJournalRowCompleteB(todayISO()) ? "Заполнено" : "Не заполнено"}</small></div>
+    </div>`;
+  }
+  return `
+    <div class="director-detail">
+      <button type="button" class="director-detail-close" data-director-detail-close>×</button>
+      <h2>${escapeHtml(eq.name)}</h2>
+      <p>${escapeHtml(eq.area)} · Сегодня проверено ${walk.done}/${walk.total}</p>
+      ${special}
+      <h3>Обход по узлам</h3>
+      <ul class="director-node-list">${nodeRows}</ul>
+    </div>`;
+}
+
+function renderDirectorControl() {
+  if (!ui.directorControlPanel || !["director", "editor"].includes(profile?.role)) return;
+  ui.subtitle.textContent = "Общий контроль";
+  const totals = directorControlTotals();
+  const detailEq = current.directorControlEquipmentId ? equipmentById(current.directorControlEquipmentId) : null;
+  const controlRows = totals.equipment.filter(eq => eq.area !== "Резерв").map(eq => {
+    const stateInfo = directorJournalState(eq);
+    const walk = directorTodayWalk(eq);
+    const color = stateInfo.color === "red" || walk.done === 0
+      ? "red"
+      : stateInfo.color === "yellow" || walk.done < walk.total
+        ? "yellow"
+        : "green";
+    return `<button type="button" class="director-status-row ${color}" data-director-equipment="${eq.id}">
+      <span class="traffic-dot"></span>
+      <strong>${escapeHtml(eq.name)}</strong>
+      <small>Журнал: ${escapeHtml(stateInfo.text)} · Обход: ${walk.done}/${walk.total}</small>
+    </button>`;
+  }).join("");
+  const healthRows = totals.health
+    .sort((a, b) => a.score - b.score || a.eq.name.localeCompare(b.eq.name, "ru"))
+    .map(item => `
+      <button type="button" class="director-health-row ${item.color}" data-director-equipment="${item.eq.id}">
+        <span class="traffic-dot"></span>
+        <div><strong>${escapeHtml(item.eq.name)}</strong><small>Замечания ${item.remarks} · Просрочки ${item.overdueDays} · Аварийные ${item.emergencyRequests} · Ремонты за 30 дней ${item.repairs}</small></div>
+        <b>${item.score}%</b>
+      </button>
+    `).join("");
+  const monthCalendar = renderPprMonthCalendar(totals.equipment);
+  const todayMaintenance = totals.equipment
+    .filter(eq => eq.area !== "Резерв")
+    .map(eq => ({ eq, plan: directorRecommendedMaintenance(eq) }))
+    .filter(item => item.plan.daysUntil === 0);
+  const pendingTodayMaintenance = todayMaintenance.filter(item =>
+    !pprJournalCompletion(item.eq, todayISO(), item.plan.node).complete
+  ).length;
+  const kpiDetails = current.directorKpiOpen === "requests"
+    ? `<section class="director-kpi-details">
+        <div class="director-section-head"><div><span>📋</span><h2>Активные заявки</h2></div><small>Этап и ответственный</small></div>
+        <div class="director-info-list">${directorRequestDetailRows()}</div>
+      </section>`
+    : current.directorKpiOpen === "remarks"
+      ? `<section class="director-kpi-details">
+          <div class="director-section-head"><div><span>⚠</span><h2>Открытые замечания</h2></div><small>Оборудование и описание</small></div>
+          <div class="director-info-list">${directorRemarkDetailRows(totals.remarks)}</div>
+        </section>`
+      : current.directorKpiOpen === "downtime"
+        ? directorDowntimeDetail(totals.downtime)
+        : current.directorKpiOpen === "calendar"
+          ? `<section class="director-kpi-details director-calendar-details">
+              <div class="director-section-head"><div><span>🗓️</span><h2>Календарь ППР</h2></div><small>Расчётный план</small></div>
+              ${monthCalendar}
+              <p class="director-safe-note">Компрессорная и газовое хозяйство — каждые 7 дней, остальное оборудование — каждые 14 дней. Выполнение подтверждается автоматически после заполнения журнала за назначенную дату.</p>
+            </section>`
+        : "";
+  ui.directorControlPanel.innerHTML = `
+    <div class="director-control-head">
+      <div><span>КОНТРОЛЬ ПРЕДПРИЯТИЯ</span><h1>Общее состояние завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
+      <div class="director-control-actions">
+        ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>← Обычный экран</button>` : ""}
+        <button type="button" class="director-reminder-button ${totals.reminders.length ? "has-alerts" : ""}" data-open-global-reminders>🔔 Напоминания <strong>${totals.reminders.length}</strong></button>
+        <button type="button" data-refresh-director-control>Общее состояние завода</button>
+        <button type="button" data-open-director-messages>Директорская</button>
+        <button type="button" data-toggle-audit-history>История изменений</button>
+      </div>
+    </div>
+    <button type="button" class="director-progress-card director-progress-toggle ${current.directorProgressOpen ? "open" : ""}" data-toggle-director-progress aria-expanded="${current.directorProgressOpen}">
+      <div><strong>${totals.percent}%</strong><span>Обходы по узлам</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
+      <div class="director-progress"><i style="width:${totals.percent}%"></i></div>
+      <small>${totals.done} из ${totals.total} узлов</small>
+    </button>
+    <section class="director-progress-details ${current.directorProgressOpen ? "open" : ""}" ${current.directorProgressOpen ? "" : "hidden"}>
+      <div class="director-section-head"><div><span>🏭</span><h2>Обходы по узлам — сегодня</h2></div><small>Журнал и проверенные узлы</small></div>
+      <div class="director-status-list director-progress-status-list">${controlRows}</div>
+    </section>
+    <div class="director-kpi-grid">
+      <button type="button" class="director-kpi-button ${totals.requests.open ? "has-alerts" : ""} ${current.directorKpiOpen === "requests" ? "selected" : ""}" data-toggle-director-kpi="requests" aria-expanded="${current.directorKpiOpen === "requests"}"><span>📋 Заявки</span><strong>${totals.requests.open}</strong><small>На согласовании ${totals.requests.approval} · Закупка ${totals.requests.purchase} · Склад ${totals.requests.warehouse} · Просрочено ${totals.requests.overdue} · ${current.directorKpiOpen === "requests" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
+      <button type="button" class="director-kpi-button ${totals.remarks.length ? "has-alerts" : ""} ${totals.overdueRemarks ? "danger" : ""} ${current.directorKpiOpen === "remarks" ? "selected" : ""}" data-toggle-director-kpi="remarks" aria-expanded="${current.directorKpiOpen === "remarks"}"><span>⚠ Замечания</span><strong>${totals.remarks.length}</strong><small>Просрочено ${totals.overdueRemarks} · Устранено сегодня ${totals.resolvedToday} · ${current.directorKpiOpen === "remarks" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
+      <button type="button" class="director-kpi-button director-downtime-kpi ${totals.downtime.active.length ? "has-alerts danger" : totals.downtime.items.length ? "warning" : "ok"} ${current.directorKpiOpen === "downtime" ? "selected" : ""}" data-toggle-director-kpi="downtime" aria-expanded="${current.directorKpiOpen === "downtime"}">
+        <span>⏱ Простои</span><strong>${totals.downtime.active.length}</strong>
+        <small>Сейчас · За сегодня ${totals.downtime.items.length} · Всего ${durationText(totals.downtime.totalMs)} · ${current.directorKpiOpen === "downtime" ? "Скрыть ▲" : "Подробнее ▼"}</small>
+      </button>
+      <button type="button" class="director-kpi-button ${pendingTodayMaintenance ? "has-alerts" : ""} ${current.directorKpiOpen === "calendar" ? "selected" : ""}" data-toggle-director-kpi="calendar" aria-expanded="${current.directorKpiOpen === "calendar"}"><span>📅 Календарь ППР</span><strong>${pendingTodayMaintenance}</strong><small>Невыполненных работ сегодня · ${current.directorKpiOpen === "calendar" ? "Скрыть календарь ▲" : "Открыть календарь ▼"}</small></button>
+    </div>
+    ${kpiDetails}
+    <section class="audit-history-panel" ${current.directorAuditOpen ? "" : "hidden"}>
+      <div class="director-section-head"><div><span>🕘</span><h2>История изменений</h2></div><small>Последние 100 действий</small></div>
+      <div class="audit-history-list">${auditHistoryRows()}</div>
+    </section>
+    <section class="director-health-card">
+      <div class="director-section-head"><div><span>📊</span><h2>Индекс состояния оборудования</h2></div><small>Автоматический расчёт</small></div>
+      <div class="director-health-legend"><span class="green">90–100 отлично</span><span class="yellow">70–89 замечания</span><span class="orange">50–69 внимание</span><span class="red">менее 50 высокий риск</span></div>
+      <div class="director-health-list">${healthRows}</div>
+    </section>
+    ${detailEq ? directorEquipmentDetail(detailEq) : ""}
+  `;
+  ui.directorControlPanel.querySelector("[data-refresh-director-control]")?.addEventListener("click", async event => {
+    await runButtonOperation(event.currentTarget, async () => {
+      await loadRemoteState();
+      await loadRemoteUsers();
+    }, "Обновляем...");
+  });
+  ui.directorControlPanel.querySelector("[data-open-director-messages]")?.addEventListener("click", () => show("director"));
+  ui.directorControlPanel.querySelector("[data-toggle-audit-history]")?.addEventListener("click", () => {
+    current.directorAuditOpen = !current.directorAuditOpen;
+    renderDirectorControl();
+  });
+  ui.directorControlPanel.querySelectorAll("[data-toggle-director-kpi]").forEach(button => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.toggleDirectorKpi;
+      current.directorKpiOpen = current.directorKpiOpen === target ? "" : target;
+      renderDirectorControl();
+    });
+  });
+  bindPprCalendarControls(ui.directorControlPanel, renderDirectorControl);
+  ui.directorControlPanel.querySelector("[data-toggle-director-progress]")?.addEventListener("click", () => {
+    current.directorProgressOpen = !current.directorProgressOpen;
+    renderDirectorControl();
+  });
+  ui.directorControlPanel.querySelector("[data-open-normal-screen]")?.addEventListener("click", () => {
+    nav.length = 0;
+    show("equipment", false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  ui.directorControlPanel.querySelector("[data-open-global-reminders]")?.addEventListener("click", () => {
+    renderGlobalReminderPanel();
+    ui.globalReminderOverlay.hidden = false;
+    document.body.classList.add("global-reminder-open");
+  });
+  ui.directorControlPanel.querySelectorAll("[data-director-equipment]").forEach(button => {
+    button.addEventListener("click", () => {
+      current.directorControlEquipmentId = Number(button.dataset.directorEquipment);
+      renderDirectorControl();
+      ui.directorControlPanel.querySelector(".director-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  ui.directorControlPanel.querySelector("[data-director-detail-close]")?.addEventListener("click", () => {
+    current.directorControlEquipmentId = null;
+    renderDirectorControl();
+  });
+}
+
 function renderDirector() {
-  ui.subtitle.textContent = "Директорская";
+  const isEditor = profile?.role === "editor";
+  ui.subtitle.textContent = isEditor ? "Редактор · Регистрации" : "Директорская";
+  if (ui.directorTitle) ui.directorTitle.textContent = isEditor ? "Подтверждение сотрудников" : "Директорская";
   if (!ui.directorPanel) return;
   state.directorMessages ||= [];
   const isDirector = directorCanAnswer();
@@ -4090,15 +5569,17 @@ function renderDirector() {
   if (readChanged) saveState();
   updateDirectorBadge();
 
-  ui.directorMeta.textContent = isDirector
-    ? `Обращений: ${messages.length}. Зарегистрировано сотрудников: ${loadUsers().length}`
-    : "Ваши сообщения видите только вы и директор";
+  ui.directorMeta.textContent = isEditor
+    ? `Ожидают подтверждения: ${pendingUserApprovalCount()}. Всего сотрудников: ${loadUsers().length}`
+    : isDirector
+      ? `Обращений: ${messages.length}`
+      : "Ваши сообщения видите только вы и директор";
 
   ui.directorPanel.innerHTML = `
-    ${isDirector ? renderDirectorUsers() : renderDirectorSendForm()}
-    <div class="director-messages">
+    ${isEditor ? renderDirectorUsers() : isDirector ? "" : renderDirectorSendForm()}
+    ${isEditor ? "" : `<div class="director-messages">
       ${messages.length ? "" : `<div class="empty-state">${isDirector ? "Новых обращений нет" : "Вы еще не писали директору"}</div>`}
-    </div>
+    </div>`}
   `;
 
   const sendForm = ui.directorPanel.querySelector("#directorSendForm");
@@ -4132,10 +5613,25 @@ function renderDirector() {
     button.addEventListener("click", event => {
       const userKey = event.currentTarget.dataset.approveUser || "";
       const users = loadUsers();
-      const user = users.find(item => (item.phone || item.name || "") === userKey);
+      const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
       if (!user || !window.confirm(`Подтвердить регистрацию: ${user.name || user.phone || ""}?`)) return;
+      const row = event.currentTarget.closest(".director-user-row");
+      const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
+      const area = row?.querySelector("[data-user-area]")?.value || "";
+      if (!role) {
+        window.alert("Сначала назначьте должность сотрудника.");
+        return;
+      }
       user.approved = true;
       user.pendingApproval = false;
+      user.registrationPending = false;
+      user.status = "approved";
+      user.role = role;
+      if (needsArea(role) && !area) {
+        window.alert("Для этой должности сначала выберите участок.");
+        return;
+      }
+      user.area = needsArea(role) ? area : "";
       user.approvedAt = new Date().toISOString();
       user.approvedBy = profile?.name || "";
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -4146,24 +5642,50 @@ function renderDirector() {
       renderDirector();
     });
   });
+  ui.directorPanel.querySelectorAll("[data-reset-user-password]").forEach(button => {
+    button.addEventListener("click", async event => {
+      const userKey = event.currentTarget.dataset.resetUserPassword || "";
+      const users = loadUsers();
+      const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
+      if (!user) return;
+      const newPassword = window.prompt(`Новый временный пароль для ${user.name || user.phone}:`);
+      if (!newPassword) return;
+      if (newPassword.length < 6) {
+        window.alert("Пароль должен содержать минимум 6 символов.");
+        return;
+      }
+      await runButtonOperation(event.currentTarget, async () => {
+        await apiJson("/api/users", {
+          method: "POST",
+          body: JSON.stringify({ ...user, newPassword, actionId: nextActionId(), clientId: CLIENT_ID })
+        });
+        await loadRemoteUsers();
+        renderDirector();
+      }, "Сохраняем...");
+    });
+  });
   ui.directorPanel.querySelectorAll("[data-delete-user]").forEach(button => {
     button.addEventListener("click", event => {
       const userKey = event.currentTarget.dataset.deleteUser || "";
       const users = loadUsers();
-      const user = users.find(item => (item.phone || item.name || "") === userKey);
+      const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
       if (!user || !window.confirm(`Удалить сотрудника: ${user.name || user.phone || ""}?`)) return;
-      const nextUsers = users.filter(item => (item.phone || item.name || "") !== userKey);
+      const reason = window.prompt("Укажите причину удаления сотрудника:")?.trim();
+      if (!reason) return;
+      recordAudit("Удалил сотрудника", user.name || user.phone || userKey, reason);
+      saveState();
+      const nextUsers = users.filter(item => (item.id || item.employeeId || item.phone || item.name || "") !== userKey);
       localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
       apiJson("/api/users", {
         method: "POST",
-        body: JSON.stringify({ action: "delete", phone: user.phone || "", name: user.name || "", actionId: nextActionId(), clientId: CLIENT_ID })
+        body: JSON.stringify({ action: "delete", id: user.id || "", employeeId: user.employeeId || "", phone: user.phone || "", name: user.name || "", actionId: nextActionId(), clientId: CLIENT_ID })
       }).then(loadRemoteUsers).catch(() => {});
       renderDirector();
     });
   });
 
   const list = ui.directorPanel.querySelector(".director-messages");
-  messages.forEach(msg => {
+  if (!isEditor) messages.forEach(msg => {
     const card = document.createElement("div");
     card.className = `director-card ${msg.reply && !msg.userRead && !isDirector ? "request-alert" : ""}`;
     card.innerHTML = `
@@ -4404,6 +5926,12 @@ function renderDirectorUsers() {
     const digits = cleanPhone(phone);
     return digits ? `https://wa.me/${digits}` : "";
   };
+  const roleOptions = selected => `<option value="">Выберите должность</option>${Object.entries(ROLE_ACCESS)
+    .map(([role, access]) => `<option value="${role}" ${selected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
+    .join("")}`;
+  const areaOptions = selected => `<option value="">Без участка</option>${AREAS
+    .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
+    .join("")}`;
   return `
     <div class="director-users">
       <div class="director-users-head">
@@ -4414,13 +5942,17 @@ function renderDirectorUsers() {
       ${users.length ? users.map(user => `
         <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}">
           <span>${escapeHtml(user.name || "")}</span>
-          <span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</span>
-          <span>${escapeHtml(user.area || "")}</span>
+          <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
+          ${user.approved === false || user.pendingApproval ? `
+            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(user.role || "")}</select></label>
+            <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(user.area || "")}</select></label>
+          ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
           <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждет подтверждения" : "Подтвержден"}</span>
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
-          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.phone || user.name || "")}">Подтвердить</button>` : ""}
-          ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.phone || user.name || "")}">Удалить</button>` : ""}
+          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить</button>` : ""}
+          ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
+          ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
       `).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
     </div>
@@ -4440,6 +5972,7 @@ function renderWarehousePanel() {
   const foundRequests = warehouseRequests.filter(req => requestMatchesWarehouseSearch(req, query));
   const folderArea = warehouseFolderArea();
   const pendingConfirmations = pendingWarehouseConfirmations();
+  const pendingAsks = pendingWarehouseAsks();
   const pendingReceipts = pendingWarehouseReceipts(folderArea);
   current.selectedStockArea = folderArea;
   ui.warehousePanel.hidden = false;
@@ -4468,6 +6001,13 @@ function renderWarehousePanel() {
         <button type="submit">Создать приход</button>
       </form>
     ` : `<div class="readonly-note">Остатки доступны только для просмотра. Добавляет и распределяет складовщик.</div>`}
+    <div class="warehouse-pending warehouse-asks">
+      <div class="warehouse-stock-head">
+        <strong>Запросы сотрудников на выдачу</strong>
+        <span>${pendingAsks.length ? `${pendingAsks.length} ждёт выдачи` : "Новых запросов нет"}</span>
+      </div>
+      <div class="warehouse-pending-list" id="warehouseAskList"></div>
+    </div>
     <div class="warehouse-pending warehouse-confirm">
       <div class="warehouse-stock-head">
         <strong>Подтверждение без накладной</strong>
@@ -4487,6 +6027,11 @@ function renderWarehousePanel() {
   `;
   const form = ui.warehousePanel.querySelector("#manualInventoryForm");
   const searchForm = ui.warehousePanel.querySelector("#warehouseSearchForm");
+  const askList = ui.warehousePanel.querySelector("#warehouseAskList");
+  if (askList) {
+    askList.innerHTML = pendingAsks.length ? "" : `<div class="empty-state">Запросов сотрудников на выдачу нет</div>`;
+    pendingAsks.forEach(req => askList.append(requestCard(req)));
+  }
   const confirmList = ui.warehousePanel.querySelector("#warehouseConfirmList");
   if (confirmList) {
     confirmList.innerHTML = pendingConfirmations.length ? "" : `<div class="empty-state">Нет приходов без накладной на подтверждение</div>`;
@@ -4595,15 +6140,107 @@ function inventoryRemainderForRequest(req) {
   return Number(state.inventory?.[id]?.qty || 0);
 }
 
-function renderAccountingWrittenOffList() {
-  const items = allRequests()
+function accountingWrittenOffItems() {
+  return allRequests()
     .filter(req => req.accountingWrittenOff && !req.stock)
     .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
+}
+
+function printAccountingWrittenOffReport() {
+  const items = accountingWrittenOffItems();
+  if (!items.length) {
+    window.alert("Нет списанных деталей для печати.");
+    return;
+  }
+  const totalQty = items.reduce((sum, req) => sum + Number(req.qtyIssued || req.qtyInstalled || 0), 0);
+  const reportDate = new Date().toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+  const rows = items.map((req, index) => {
+    const accountingApproval = req.approvals?.accounting || {};
+    const installApproval = req.approvals?.productionDirector || req.approvals?.installApproval || {};
+    return `
+      <tr>
+        <td class="num">${index + 1}</td>
+        <td>
+          <strong>${escapeHtml(partNameFromRequest(req))}</strong>
+          <small>${escapeHtml(req.requestNumber || "")}</small>
+        </td>
+        <td>${escapeHtml(req.equipment || "—")}<small>${escapeHtml(req.node || "")}</small></td>
+        <td>${escapeHtml(req.stockArea || req.area || "—")}</td>
+        <td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}<small>${escapeHtml(req.issueTargetName || "")}</small></td>
+        <td class="qty">${Number(req.qtyIssued || req.qtyInstalled || 0)}</td>
+        <td>${escapeHtml(installApproval.name || "—")}<small>${escapeHtml(dateTimeHuman(installApproval.at || ""))}</small></td>
+        <td>${escapeHtml(accountingApproval.name || "—")}<small>${escapeHtml(dateTimeHuman(accountingApproval.at || req.updatedAt || ""))}</small></td>
+      </tr>
+    `;
+  }).join("");
+  const win = window.open("", "_blank", "width=1200,height=820");
+  if (!win) {
+    window.alert("Разрешите всплывающие окна для печати отчёта.");
+    return;
+  }
+  win.document.write(`<!doctype html>
+    <html lang="ru">
+      <head>
+        <meta charset="utf-8">
+        <title>Список списанных деталей</title>
+        <style>
+          * { box-sizing: border-box; }
+          @page { size: A4 landscape; margin: 12mm; }
+          body { margin: 0; font-family: Inter, Arial, sans-serif; color: #172b3a; background: #eef3f6; }
+          .sheet { max-width: 1180px; margin: 24px auto; background: #fff; padding: 30px; border-radius: 22px; box-shadow: 0 18px 55px rgba(20,50,74,.16); }
+          header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; padding-bottom: 22px; border-bottom: 3px solid #14324a; }
+          .brand { display: flex; gap: 14px; align-items: center; }
+          .mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 15px; background: linear-gradient(135deg,#14324a,#27769a); color: #fff; font-weight: 900; font-size: 20px; }
+          h1 { margin: 0; font-size: 27px; letter-spacing: -.5px; }
+          header p, small { display: block; margin: 5px 0 0; color: #637786; font-size: 11px; }
+          .meta { text-align: right; font-size: 12px; color: #637786; }
+          .summary { display: flex; gap: 12px; margin: 20px 0; }
+          .summary div { min-width: 150px; padding: 13px 16px; border-radius: 13px; background: #edf5f8; border: 1px solid #d7e5eb; }
+          .summary strong { display: block; font-size: 22px; color: #14324a; }
+          .summary span { font-size: 11px; color: #637786; text-transform: uppercase; letter-spacing: .5px; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid #d7e1e6; border-radius: 14px; }
+          th { padding: 11px 9px; background: #14324a; color: #fff; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .45px; }
+          td { padding: 11px 9px; border-bottom: 1px solid #e4eaed; vertical-align: top; font-size: 11px; }
+          tr:nth-child(even) td { background: #f6f9fa; }
+          tr:last-child td { border-bottom: 0; }
+          td strong { display: block; font-size: 12px; color: #102b3b; }
+          .num { width: 34px; text-align: center; font-weight: 900; color: #27769a; }
+          .qty { text-align: center; font-size: 15px; font-weight: 900; color: #14324a; }
+          footer { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 15px; border-top: 1px solid #d7e1e6; color: #637786; font-size: 11px; }
+          .actions { position: sticky; bottom: 16px; display: flex; justify-content: center; margin-top: 18px; }
+          button { border: 0; border-radius: 12px; background: #14324a; color: #fff; padding: 12px 28px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 20px rgba(20,50,74,.25); }
+          @media print { body { background: #fff; } .sheet { margin: 0; padding: 0; box-shadow: none; border-radius: 0; } .actions { display: none; } }
+        </style>
+      </head>
+      <body>
+        <main class="sheet">
+          <header>
+            <div class="brand"><div class="mark">ППР</div><div><h1>Список списанных деталей</h1><p>Бухгалтерский отчёт по установленным и списанным запасам</p></div></div>
+            <div class="meta"><strong>ППР Контроль</strong><br>${escapeHtml(reportDate)}</div>
+          </header>
+          <section class="summary">
+            <div><strong>${items.length}</strong><span>операций списания</span></div>
+            <div><strong>${totalQty}</strong><span>деталей списано</span></div>
+          </section>
+          <table>
+            <thead><tr><th>№</th><th>Деталь / заявка</th><th>Оборудование</th><th>Склад</th><th>Получатель</th><th>Кол-во</th><th>Подтвердил</th><th>Списал</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <footer><span>Сформировано автоматически системой «ППР Контроль»</span><span>Ответственный бухгалтер: ____________________</span></footer>
+          <div class="actions"><button onclick="window.print()">Печатать / сохранить PDF</button></div>
+        </main>
+      </body>
+    </html>`);
+  win.document.close();
+}
+
+function renderAccountingWrittenOffList() {
+  const items = accountingWrittenOffItems();
   return `
-    <div class="warehouse-pending">
+    <div class="warehouse-pending accounting-written-off">
       <div class="warehouse-stock-head">
-        <strong>Списанные запасы</strong>
-        <span>${items.length ? `${items.length} записей` : "Списаний нет"}</span>
+        <div><strong>Списанные запасы</strong><span>${items.length ? `${items.length} записей` : "Списаний нет"}</span></div>
+        ${items.length ? `<button type="button" class="accounting-print-button" data-print-accounting>Печатать</button>` : ""}
       </div>
       ${items.length ? items.map(req => `
         <div class="request-card">
@@ -4623,41 +6260,76 @@ function renderAccountingWrittenOffList() {
 }
 
 function requestCard(req) {
+  normalizeRequest(req);
   const card = document.createElement("div");
   card.className = "request-card";
-  if ((req.transferredToWarehouse && !req.warehouseReceived) || needsWarehouseNoInvoiceConfirmation(req)) {
-    card.classList.add("request-alert");
-  }
+  const actionRole = profile?.role === "editor" && current.requestRole === "all"
+    ? (waitingRole(req) === "confirmInstall" ? "engineer" : waitingRole(req))
+    : current.requestRole;
+  if (requestIsOverdue(req)) card.classList.add("overdue");
   if (current.requestRole === "warehouse" && current.warehouseSearch.trim() && requestMatchesWarehouseSearch(req, current.warehouseSearch)) {
     card.classList.add("search-hit");
   }
   card.innerHTML = `
     <div class="request-main">
-      <strong>${req.equipment}</strong>
-      <span>${req.node} · ${dateHuman(req.date)}</span>
-      <p>${req.comment || "Без комментария"}</p>
+      <div class="request-card-head">
+        <div>
+          <strong class="request-number">${escapeHtml(req.requestNumber)}</strong>
+          <b>${escapeHtml(req.equipment || "Без оборудования")}</b>
+          <span>${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""} · ${dateHuman(req.date)}</span>
+        </div>
+        <div class="request-badges">
+          <span class="request-route">${requestRouteLabel(req.route)}</span>
+          <span class="request-priority ${req.priority}">${requestPriorityLabel(req.priority)}</span>
+          ${req.dueDate ? `<span class="${requestIsOverdue(req) ? "request-overdue" : "request-due"}">${requestIsOverdue(req) ? "Просрочено: " : "Срок: "}${dateHuman(req.dueDate)}</span>` : ""}
+        </div>
+      </div>
+      ${requestStageHtml(req)}
+      ${requestQuantityHtml(req)}
+      ${req.returnedTo ? `<div class="request-returned"><strong>Возвращено: ${requestRoleLabel(req.returnedTo)}</strong><span>${escapeHtml(req.returnReason || "")}</span></div>` : ""}
+      ${req.rejected ? `<div class="request-returned request-rejected-source"><strong>Заявка возвращена автору на исправление</strong><span>${escapeHtml(req.rejectionReason || "")}</span>${req.rejectedByName ? `<small>Отклонил: ${escapeHtml(req.rejectedByName)} (${escapeHtml(requestRoleLabel(req.rejectedByRole))})</small>` : ""}</div>` : ""}
+      ${req.comment ? `<p>${escapeHtml(req.comment)}</p>` : ""}
       ${req.commentPhoto ? `<img class="request-photo" src="${req.commentPhoto}" alt="Фото замечания">` : ""}
-      <p class="request-text">${req.text}</p>
+      <p class="request-text">${escapeHtml(req.text)}</p>
       ${req.requestPhoto ? `<img class="request-photo" src="${req.requestPhoto}" alt="Фото заявки">` : ""}
+      ${(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []).map((photo, index) => `<img class="request-photo" src="${photo}" alt="Дополнительное фото заявки ${index + 1}">`).join("")}
       ${req.invoicePhoto ? `<img class="request-photo" src="${req.invoicePhoto}" alt="Фото накладной">` : ""}
       ${req.noInvoiceApproved && !req.accountingWrittenOff ? `<div class="request-no-invoice">Без накладной: подтверждено складом</div>` : ""}
-      <div class="request-status">${statusText(req.status)}</div>
-      <div class="request-waiting">Ждёт: ${requestRoleLabel(waitingRole(req))}</div>
-      ${req.issueTargetRole ? `<div class="request-waiting">Выдать: ${requestRoleLabel(req.issueTargetRole)}${req.issueTargetName ? ` · ${escapeHtml(req.issueTargetName)}` : ""}</div>` : ""}
+      <div class="request-current-stage">Текущий этап: ${requestRoleLabel(waitingRole(req))}</div>
+      ${req.issueTargetRole && req.issued && !req.mechanicInstalled ? `<div class="request-recipient">Получатель: ${requestRoleLabel(req.issueTargetRole)}${req.issueTargetName ? ` · ${escapeHtml(req.issueTargetName)}` : ""}</div>` : ""}
       <div class="request-finance">${financeInfoText(req)}</div>
-      <div class="request-quantity">${quantityText(req)}</div>
       ${req.installComment ? `<div class="request-no-invoice">Комментарий установки: ${escapeHtml(req.installComment)}</div>` : ""}
+      ${requestApprovalsHtml(req)}
     </div>
     <div class="request-actions"></div>
   `;
   const actions = card.querySelector(".request-actions");
-  const canAct = canActAsRole(current.requestRole);
+  const canAct = canActAsRole(actionRole);
+
+  if (canAct && actionRole === "shop" && requestWaitingForShopInitial(req)) {
+    const setup = document.createElement("div");
+    setup.className = "request-setup";
+    setup.innerHTML = `
+      <label><span>Маршрут</span><select data-request-route>
+        <option value="purchase" ${req.route === "purchase" ? "selected" : ""}>Закупка</option>
+        <option value="stock" ${req.route === "stock" ? "selected" : ""}>Со склада</option>
+      </select></label>
+      <label><span>Срочность</span><select data-request-priority>
+        <option value="normal" ${req.priority === "normal" ? "selected" : ""}>Обычная</option>
+        <option value="urgent" ${req.priority === "urgent" ? "selected" : ""}>Срочная</option>
+        <option value="emergency" ${req.priority === "emergency" ? "selected" : ""}>Аварийная</option>
+      </select></label>
+      <label><span>Срок исполнения</span><input data-request-due type="date" value="${escapeHtml(req.dueDate || "")}"></label>
+      <label><span>Запрошено, шт.</span><input data-request-qty type="number" min="1" step="1" value="${Number(req.requestedQty || 1)}"></label>
+    `;
+    actions.append(setup);
+  }
 
   if (!canAct) {
     actions.innerHTML = `<div class="readonly-note">Только просмотр. Выдачу подтверждает складовщик.</div>`;
   }
 
-  if (canAct && canConfirmIssuedInstall(req, current.requestRole)) {
+  if (canAct && canConfirmIssuedInstall(req, actionRole)) {
     let remarkSelect = null;
     const needsRemarkLink = !requestAggregateLinkKey(req);
     if (needsRemarkLink) {
@@ -4713,53 +6385,64 @@ function requestCard(req) {
       req.issueTargetPhone ||= profile?.phone || "";
       lockRequestInstalledQty(req);
       req.mechanicInstalled = true;
-      req.shopInstallApproved = true;
+      req.shopInstallApproved = false;
       req.productionDirectorApproved = false;
       req.done = false;
       req.stock = false;
       req.accountingWrittenOff = false;
-      req.status = "productionDirector";
+      req.status = "waitingShopDone";
+      requestRecordApproval(req, "install", "Установка выполнена");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
 
-  if (current.requestRole === "shop" && canAct && (requestWaitingForShopInitial(req) || requestWaitingForInstallApproval(req))) {
-    const isFinalApproval = requestWaitingForInstallApproval(req);
-    actions.append(actionButton(isFinalApproval ? "Подтвердить установку" : "Подтвердить начальником", () => {
-      if (isFinalApproval) {
-        req.shopInstallApproved = true;
-        req.productionDirectorApproved = false;
-        req.done = false;
-        req.status = "productionDirector";
-      } else {
-        req.shopApproved = true;
-        req.status = "engineer";
+  if (actionRole === "shop" && canAct && requestWaitingForShopInitial(req)) {
+    actions.append(actionButton("Подтвердить начальником", () => {
+      const route = actions.querySelector("[data-request-route]");
+      const priority = actions.querySelector("[data-request-priority]");
+      const dueDate = actions.querySelector("[data-request-due]");
+      const requestedQty = actions.querySelector("[data-request-qty]");
+      req.route = route?.value || req.route || "purchase";
+      req.priority = priority?.value || req.priority || "normal";
+      req.dueDate = dueDate?.value || "";
+      req.requestedQty = Number(requestedQty?.value || 0);
+      if (!req.dueDate || req.requestedQty <= 0) {
+        window.alert("Заполните срок исполнения и количество.");
+        return;
       }
+      req.shopApproved = true;
+      req.status = req.route === "stock" ? "warehouse" : "engineer";
+      requestRecordApproval(req, "shop", "Подтверждено начальником");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "engineer" && canAct && (requestWaitingForEngineerInitial(req) || requestWaitingForInstallApproval(req))) {
+  if (actionRole === "engineer" && canAct && (requestWaitingForEngineerInitial(req) || requestWaitingForInstallApproval(req))) {
     const isInstallApproval = requestWaitingForInstallApproval(req);
     actions.append(actionButton(isInstallApproval ? "Подтвердить установку" : "Подтвердить инженером", () => {
       if (isInstallApproval) {
         req.shopInstallApproved = true;
         req.productionDirectorApproved = false;
         req.done = false;
-        req.status = "productionDirector";
+        req.status = "accounting";
+        requestRecordApproval(req, "installApproval", "Установка подтверждена");
       } else {
         req.engineerApproved = true;
         req.status = "supply";
+        requestRecordApproval(req, "engineer", "Подтверждено инженером");
       }
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "supply" && canAct && (requestWaitingForSupplyPrepare(req) || requestWaitingForSupplyWarehouse(req))) {
+  if (actionRole === "supply" && canAct && (requestWaitingForSupplyPrepare(req) || requestWaitingForSupplyWarehouse(req))) {
     const price = document.createElement("input");
     price.placeholder = "Цена";
     price.value = req.price || "";
@@ -4780,9 +6463,10 @@ function requestCard(req) {
     actions.append(supplier);
     const supplyQty = document.createElement("input");
     supplyQty.type = "number";
-    supplyQty.min = "0";
-    supplyQty.placeholder = "Передано, шт";
-    supplyQty.value = req.qtyReceived || "";
+    supplyQty.min = "1";
+    supplyQty.step = "1";
+    supplyQty.placeholder = "Количество, шт";
+    supplyQty.value = Number(req.qtyReceived || req.qtyPurchased || req.requestedQty || 1);
     supplyQty.addEventListener("change", () => {
       req.qtyReceived = Number(supplyQty.value || 0);
       syncRequestToRecord(req);
@@ -4828,6 +6512,9 @@ function requestCard(req) {
         }
         req.supplyPrepared = true;
         req.status = "finance";
+        req.qtyPurchased = Number(supplyQty.value || 0);
+        requestRecordApproval(req, "supply", "Подготовлено снабжением");
+        clearRequestReturn(req);
         syncRequestToRecord(req);
         saveState();
         renderRequests();
@@ -4844,31 +6531,66 @@ function requestCard(req) {
         req.qtyReceived = Number(supplyQty.value || req.qtyReceived || 0);
         req.warehouseReceived = false;
         req.status = "waitingWarehouse";
+        clearRequestReturn(req);
         syncRequestToRecord(req);
         saveState();
         renderRequests();
       }));
     }
   }
-  if (current.requestRole === "finance" && canAct && req.supplyPrepared && !req.financeApproved && !req.done && !req.stock) {
+  if (actionRole === "finance" && canAct && req.supplyPrepared && !req.financeApproved && !req.done && !req.stock) {
     actions.append(actionButton("Подписать экономистом", () => {
       req.financeApproved = true;
       req.status = "cash";
+      requestRecordApproval(req, "finance", "Подтверждено экономистом");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "cash" && canAct && req.financeApproved && !req.cashApproved && !req.done && !req.stock) {
+  if (actionRole === "cash" && canAct && req.financeApproved && !req.cashApproved && !req.done && !req.stock) {
     actions.append(actionButton("Оплатить", () => {
       req.cashApproved = true;
       req.status = "cashApproved";
+      requestRecordApproval(req, "cash", "Оплачено кассой");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "warehouse" && canAct && (requestWaitingForWarehouse(req) || (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved))) {
+  if (actionRole === "warehouse" && canAct && req.warehouseAsk && !req.issued && !req.stock && !req.done) {
+    const requestedQty = Number(req.qtyIssued || req.qtyReceived || 1);
+    const availableQty = inventoryRemainderForRequest(req);
+    const issueNote = document.createElement("div");
+    issueNote.className = "readonly-note";
+    issueNote.textContent = `Запросил: ${requestRoleLabel(warehouseIssueTargetRole(req))}${req.issueTargetName ? ` · ${req.issueTargetName}` : ""}. Запрошено: ${requestedQty} шт. Доступно: ${availableQty} шт.`;
+    actions.append(issueNote);
+    actions.append(actionButton("Выдать", () => {
+      const targetArea = req.stockArea || req.area || COMMON_WAREHOUSE;
+      if (inventoryRemainderForRequest(req) < requestedQty) {
+        window.alert("На складе недостаточно запрошенного количества.");
+        return;
+      }
+      const issued = removeInventory(targetArea, partNameFromRequest(req), requestedQty, true);
+      if (!issued) return;
+      req.warehouseReceived = true;
+      req.warehouseReceivedAt = req.warehouseReceivedAt || new Date().toISOString();
+      req.issued = true;
+      req.qtyIssued = Number(issued);
+      req.qtyAccepted = Number(issued);
+      req.status = "issued";
+      req.done = false;
+      req.stock = false;
+      requestRecordApproval(req, "warehouse", "Выдано складом по запросу");
+      clearRequestReturn(req);
+      syncRequestToRecord(req);
+      saveState();
+      renderRequests();
+    }));
+  }
+  if (actionRole === "warehouse" && canAct && !req.warehouseAsk && (requestWaitingForWarehouse(req) || (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved))) {
     if (req.cashApproved && !req.transferredToWarehouse && !req.invoicePhoto && !req.noInvoiceApproved) {
       actions.append(actionButton("Подтвердить приход без накладной", () => {
         req.noInvoiceApproved = true;
@@ -4889,15 +6611,6 @@ function requestCard(req) {
     });
     actions.append(stockArea);
 
-    const targetRole = document.createElement("select");
-    targetRole.innerHTML = warehouseIssueRoleOptions(warehouseIssueTargetRole(req));
-    targetRole.addEventListener("change", () => {
-      req.issueTargetRole = targetRole.value;
-      syncRequestToRecord(req);
-      saveState();
-    });
-    actions.append(targetRole);
-
     const qtyReceived = document.createElement("input");
     qtyReceived.type = "number";
     qtyReceived.min = "0";
@@ -4912,67 +6625,6 @@ function requestCard(req) {
     });
     actions.append(qtyReceived);
 
-    const qtyIssued = document.createElement("input");
-    qtyIssued.type = "number";
-    qtyIssued.min = "0";
-    qtyIssued.placeholder = "Выдано, шт";
-    qtyIssued.value = req.qtyIssued || "";
-    qtyIssued.addEventListener("change", () => {
-      req.qtyIssued = Number(qtyIssued.value || 0);
-      if (req.qtyIssued > 0) {
-        req.shopApproved = true;
-        req.engineerApproved = true;
-        req.supplyPrepared = true;
-        req.financeApproved = true;
-        req.cashApproved = true;
-        req.transferredToWarehouse = true;
-        req.warehouseReceived = true;
-        req.issued = true;
-        req.issueTargetRole = targetRole.value || warehouseIssueTargetRole(req);
-        req.issueTargetName ||= "";
-        req.issueTargetPhone ||= "";
-        req.shopInstallApproved = false;
-        req.productionDirectorApproved = false;
-        req.accountingWrittenOff = false;
-        req.status = "issued";
-      }
-      syncRequestToRecord(req);
-      saveState();
-      renderRequests();
-    });
-    actions.append(qtyIssued);
-
-    actions.append(actionButton("Выдать роли", () => {
-      const targetArea = stockArea.value || req.stockArea || req.area || COMMON_WAREHOUSE;
-      const issued = Number(req.qtyIssued || qtyIssued.value || 1);
-      const removed = removeInventory(targetArea, partNameFromRequest(req), issued, true);
-      if (!removed) return;
-      const issuedAmount = Number(removed || 0);
-      req.shopApproved = true;
-      req.engineerApproved = true;
-      req.supplyPrepared = true;
-      req.financeApproved = true;
-      req.cashApproved = true;
-      req.transferredToWarehouse = true;
-      req.warehouseReceived = true;
-      req.warehouseReceivedAt = req.warehouseReceivedAt || new Date().toISOString();
-      req.issued = true;
-      req.issueTargetRole = targetRole.value || warehouseIssueTargetRole(req);
-      req.issueTargetName ||= "";
-      req.issueTargetPhone ||= "";
-      req.stock = false;
-      req.done = false;
-      req.shopInstallApproved = false;
-      req.productionDirectorApproved = false;
-      req.accountingWrittenOff = false;
-      if (!req.qtyReceived) req.qtyReceived = issuedAmount;
-      req.stockArea = targetArea;
-      req.qtyIssued = issuedAmount;
-      req.status = "issued";
-      syncRequestToRecord(req);
-      saveState();
-      renderRequests();
-    }));
     actions.append(actionButton("В запас", () => {
       const targetArea = stockArea.value || req.area || COMMON_WAREHOUSE;
       const received = Number(req.qtyReceived || qtyReceived.value || 1);
@@ -4990,30 +6642,105 @@ function requestCard(req) {
         req.inventoryAddedQty = alreadyAdded + delta;
       }
       req.status = "stock";
+      req.qtyAccepted = received;
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "productionDirector" && canAct && req.shopInstallApproved && !req.productionDirectorApproved && !req.stock && !req.done) {
-    actions.append(actionButton("Подтвердить списание", () => {
+  if (actionRole === "productionDirector" && canAct && requestWaitingForInstallApproval(req)) {
+    actions.append(actionButton("Подтвердить установку", () => {
       req.productionDirectorApproved = true;
       req.done = false;
       req.status = "accounting";
+      requestRecordApproval(req, "productionDirector", "Установка подтверждена директором производства");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
   }
-  if (current.requestRole === "accounting" && canAct && req.productionDirectorApproved && !req.accountingWrittenOff && !req.stock && !req.done) {
+  if (actionRole === "accounting" && canAct && requestReadyForAccounting(req) && !req.accountingWrittenOff) {
     actions.append(actionButton("Списать деталь", () => {
       req.accountingWrittenOff = true;
       req.done = true;
       req.status = "done";
+      requestRecordApproval(req, "accounting", "Списано бухгалтерией");
+      clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
       renderRequests();
     }));
+  }
+  if (canAct) {
+    const installApproverRole = req.approvals?.installApproval?.role;
+    const finalInstallApproverRole = req.approvals?.productionDirector?.role || installApproverRole;
+    const returnTargets = {
+      engineer: "shop",
+      supply: "engineer",
+      finance: "supply",
+      cash: "finance",
+      warehouse: req.route === "stock" ? "shop" : "supply",
+      mechanic: "warehouse",
+      electrician: "warehouse",
+      operator: "warehouse",
+      productionDirector: warehouseIssueTargetRole(req),
+      accounting: ["engineer", "productionDirector"].includes(finalInstallApproverRole)
+        ? finalInstallApproverRole
+        : "engineer"
+    };
+    appendReturnAction(actions, req, returnTargets[actionRole]);
+    appendRejectAction(actions, req);
+  }
+  if (req.rejected && isRequestSource(req)) {
+    actions.innerHTML = "";
+    const correctionNote = document.createElement("div");
+    correctionNote.className = "readonly-note request-alert";
+    correctionNote.textContent = "Заявка возвращена вам. Добавьте пояснение или новое фото и отправьте повторно.";
+    actions.append(correctionNote);
+    const correctionText = document.createElement("textarea");
+    correctionText.rows = 3;
+    correctionText.placeholder = "Что исправлено или уточнено";
+    actions.append(correctionText);
+    let correctionPhoto = "";
+    const correctionFile = document.createElement("label");
+    correctionFile.className = "request-file-row";
+    correctionFile.innerHTML = `<span>Новое фото к заявке</span><input type="file" accept="image/*" capture="environment">`;
+    correctionFile.querySelector("input").addEventListener("change", async event => {
+      correctionPhoto = await readPhotoFile(event.target.files?.[0]);
+      correctionFile.querySelector("span").textContent = correctionPhoto ? "Новое фото прикреплено" : "Новое фото к заявке";
+    });
+    actions.append(correctionFile);
+    actions.append(actionButton("Отправить повторно", () => {
+      if (!correctionText.value.trim() && !correctionPhoto) {
+        window.alert("Добавьте комментарий или новое фото.");
+        return;
+      }
+      if (resubmitRejectedRequest(req, correctionText.value, correctionPhoto)) renderRequests();
+    }));
+    const deleteButton = actionButton("Удалить заявку", () => {
+      if (!window.confirm("Точно удалить отклонённую заявку? Восстановить её будет нельзя.")) return;
+      const reason = window.prompt("Укажите причину удаления заявки:")?.trim();
+      if (!reason) return;
+      deleteRejectedRequest(req, reason);
+      renderRequests();
+    });
+    deleteButton.classList.add("secondary-action", "danger-action", "delete-request-action");
+    actions.append(deleteButton);
+  }
+  actions.querySelectorAll(".action-button").forEach(button => {
+    button.dataset.requestId = req.id;
+  });
+  if (pendingRequestIds.has(req.id)) {
+    card.classList.add("request-pending");
+    actions.querySelectorAll("button, input, select, textarea").forEach(control => {
+      control.disabled = true;
+    });
+    const note = document.createElement("div");
+    note.className = "request-sync-pending";
+    note.textContent = "В ожидании синхронизации у всех пользователей...";
+    actions.prepend(note);
   }
   return card;
 }
@@ -5046,6 +6773,23 @@ ui.today.addEventListener("click", () => {
   show("requests");
 });
 
+ui.globalReminderButton?.addEventListener("click", () => {
+  renderGlobalReminderPanel();
+  ui.globalReminderOverlay.hidden = false;
+  document.body.classList.add("global-reminder-open");
+});
+
+function closeGlobalReminderPanel() {
+  if (!ui.globalReminderOverlay) return;
+  ui.globalReminderOverlay.hidden = true;
+  document.body.classList.remove("global-reminder-open");
+}
+
+ui.globalReminderClose?.addEventListener("click", closeGlobalReminderPanel);
+ui.globalReminderOverlay?.addEventListener("click", event => {
+  if (event.target === ui.globalReminderOverlay) closeGlobalReminderPanel();
+});
+
 document.querySelectorAll("[data-mobile-view]").forEach(button => {
   button.addEventListener("click", () => {
     const target = button.dataset.mobileView;
@@ -5068,8 +6812,6 @@ ui.directorOpenButton?.addEventListener("click", () => {
 ui.downtimeOpenButton?.addEventListener("click", () => {
   show("downtime");
 });
-
-ui.equipmentSearch.addEventListener("input", renderEquipment);
 
 ui.alertCounter?.addEventListener("click", openFirstComment);
 
@@ -5131,6 +6873,7 @@ ui.commentPhotoInput.addEventListener("change", async () => {
   const rec = record();
   const item = rec[current.kind];
   if (!canEditComment(item)) return;
+  saveCommentDraft(item, ui.commentInput.value || item.comment || "");
   if (!sameCommentAuthor(item) && String(item.comment || "").trim()) {
     beginCommentEdit(item, "");
   }
@@ -5139,6 +6882,7 @@ ui.commentPhotoInput.addEventListener("change", async () => {
   item.commentUpdatedAt = new Date().toISOString();
   item.updatedAt = item.commentUpdatedAt;
   ui.commentPhotoInput.value = "";
+  if (state.requests?.[requestId()]) upsertRequestFromCurrent();
   saveState();
   renderChecklist();
 });
@@ -5147,8 +6891,10 @@ ui.requestPhotoInput.addEventListener("change", async () => {
   if (!canEditChecklist()) return;
   const rec = record();
   const item = rec[current.kind];
+  item.request = ui.requestInput.value || item.request || "";
   item.requestPhoto = await readPhotoFile(ui.requestPhotoInput.files?.[0]);
   ui.requestPhotoInput.value = "";
+  if (state.requests?.[requestId()]) upsertRequestFromCurrent();
   saveState();
   renderChecklist();
 });
@@ -5205,6 +6951,12 @@ ui.openRequestsButton.addEventListener("click", () => {
   show("requests");
 });
 
+ui.requestSearchInput?.addEventListener("input", () => {
+  current.requestSearch = ui.requestSearchInput.value;
+  clearTimeout(requestSearchTimer);
+  requestSearchTimer = window.setTimeout(renderRequests, 180);
+});
+
 ui.resolvedInput.addEventListener("change", () => {
   if (!canEditChecklist()) return;
   const rec = record();
@@ -5251,7 +7003,8 @@ window.addEventListener("visibilitychange", () => {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    refreshStaleAssetCache();
+    navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`, { updateViaCache: "none" }).catch(() => {});
   });
 }
 

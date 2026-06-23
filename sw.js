@@ -1,9 +1,15 @@
-const CACHE_NAME = "ppr-v167-mobile-pdf";
+const CACHE_NAME = "ppr-v244-mobile-layout";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=167-mobile-pdf",
-  "./app.js?v=167-mobile-pdf",
+  "./styles.css?v=243-modules-audit",
+  "./modules/compressor.js?v=243-modules-audit",
+  "./modules/shgrp.js?v=243-modules-audit",
+  "./modules/receiver.js?v=243-modules-audit",
+  "./modules/requests.js?v=243-modules-audit",
+  "./modules/comments.js?v=243-modules-audit",
+  "./modules/director.js?v=243-modules-audit",
+  "./app.js?v=243-modules-audit",
   "./manifest.json",
   "./icon.svg"
 ];

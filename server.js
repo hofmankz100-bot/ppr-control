@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -25,7 +26,7 @@ const contentTypes = {
 };
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {}, users: [] };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], users: [] };
 }
 
 function normalizeDb(db) {
@@ -39,6 +40,8 @@ function normalizeDb(db) {
   db.downtimes ||= [];
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
+  db.journalDueSince ||= {};
+  db.auditHistory ||= [];
   db.users ||= [];
   return db;
 }
@@ -164,7 +167,7 @@ function monthlyExport(db, month) {
     catalog: db.catalog || { equipment: {} },
     directorMessages,
     downtimes,
-    users: db.users || []
+    users: (db.users || []).map(userPublic)
   };
 }
 
@@ -318,13 +321,45 @@ function publicState(db = readDb()) {
     directorMessages: db.directorMessages,
     downtimes: db.downtimes,
     compressorJournal: db.compressorJournal,
-    gasJournal: db.gasJournal
+    gasJournal: db.gasJournal,
+    journalDueSince: db.journalDueSince,
+    auditHistory: db.auditHistory
   };
 }
 
 function sendJson(res, status, value) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(value));
+}
+
+function normalizeIdentifier(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function userPublic(user = {}) {
+  const { passwordHash, ...publicUser } = user;
+  return publicUser;
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function passwordMatches(password, stored) {
+  const [salt, expectedHex] = String(stored || "").split(":");
+  if (!salt || !expectedHex) return false;
+  const actual = crypto.scryptSync(String(password), salt, 64);
+  const expected = Buffer.from(expectedHex, "hex");
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function findUser(db, identifier) {
+  const normalized = normalizeIdentifier(identifier);
+  return (db.users || []).find(user =>
+    [user.employeeId, user.phone].some(value => normalizeIdentifier(value) === normalized)
+  );
 }
 
 function readBody(req) {
@@ -399,11 +434,74 @@ function isIncomingNewerRecord(current, incoming) {
   return true;
 }
 
+function protectPaidRequestProgress(current = {}, incoming = {}) {
+  if (!current?.cashApproved) return incoming;
+  const next = { ...incoming };
+  const recoveringPaidRejection = Boolean(
+    (current.rejected && incoming.rejected === false)
+    || (
+      current.done
+      && incoming.done === false
+      && current.status === "waitingWarehouse"
+      && incoming.status === "waitingWarehouse"
+    )
+  );
+  if (!current.rejected && next.rejected) {
+    next.rejected = false;
+    next.rejectionReason = "";
+    next.done = Boolean(current.done);
+  }
+  const irreversibleFlags = [
+    "cashApproved",
+    "transferredToWarehouse",
+    "warehouseReceived",
+    "issued",
+    "mechanicInstalled",
+    "shopInstallApproved",
+    "productionDirectorApproved",
+    "accountingWrittenOff",
+    "done",
+    "stock"
+  ];
+  irreversibleFlags.forEach(field => {
+    if (recoveringPaidRejection && field === "done") return;
+    if (current[field] === true) next[field] = true;
+  });
+  const stageRank = {
+    shop: 1,
+    engineer: 2,
+    supply: 3,
+    finance: 4,
+    cash: 5,
+    cashApproved: 6,
+    waitingWarehouse: 7,
+    warehouse: 8,
+    issued: 9,
+    waitingShopDone: 10,
+    productionDirector: 11,
+    accounting: 12,
+    done: 13,
+    stock: 13,
+    rejected: 0
+  };
+  const currentStatus = String(current.status || current.requestStatus || "cashApproved");
+  const incomingStatus = String(next.status || next.requestStatus || "");
+  if ((stageRank[incomingStatus] || 0) < (stageRank[currentStatus] || 6)) {
+    next.status = currentStatus;
+    next.requestStatus = current.requestStatus || currentStatus;
+  }
+  if (["shop", "engineer", "supply", "finance", "cash"].includes(String(next.returnedTo || ""))) {
+    next.returnedTo = "";
+    next.returnReason = "";
+  }
+  return next;
+}
+
 function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   const next = { ...(current || {}) };
   for (const [id, value] of Object.entries(incoming || {})) {
     if (id.includes("\uFFFD")) continue;
-    const cleanValue = sanitizeIncomingValue(next[id], value);
+    const cleanValue = protectPaidRequestProgress(next[id], sanitizeIncomingValue(next[id], value));
     if (isIncomingNewerRecord(next[id], cleanValue)) next[id] = cleanValue;
   }
   return next;
@@ -515,6 +613,82 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/auth/register" && req.method === "POST") {
+    const body = await readBody(req);
+    const name = String(body.name || "").trim();
+    const employeeId = String(body.employeeId || "").trim();
+    const phone = String(body.phone || "").trim();
+    const password = String(body.password || "");
+    if (name.length < 3 || employeeId.length < 2 || phone.length < 5 || password.length < 6) {
+      sendJson(res, 400, { ok: false, error: "Заполните ФИО, табельный номер, телефон и пароль не короче 6 символов." });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const duplicate = (db.users || []).find(user =>
+        normalizeIdentifier(user.employeeId) === normalizeIdentifier(employeeId) ||
+        normalizeIdentifier(user.phone) === normalizeIdentifier(phone)
+      );
+      if (duplicate) return { duplicate: true };
+      const user = {
+        id: `user:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
+        name,
+        employeeId,
+        phone,
+        passwordHash: hashPassword(password),
+        role: "",
+        area: "",
+        approved: false,
+        pendingApproval: true,
+        status: "pending",
+        registeredAt: new Date().toISOString()
+      };
+      db.users.push(user);
+      writeDb(db, { action: "user_register_pending", user: { name, employeeId, phone } });
+      return { user: userPublic(user) };
+    });
+    if (result.duplicate) {
+      sendJson(res, 409, { ok: false, error: "Такой табельный номер или телефон уже зарегистрирован." });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, user: result.user });
+    broadcastState("auth-register");
+    return true;
+  }
+
+  if (pathname === "/api/auth/login" && req.method === "POST") {
+    const body = await readBody(req);
+    const db = readDb();
+    const user = findUser(db, body.identifier);
+    const bootstrapPassword = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || "");
+    const legacyAdminLogin = Boolean(
+      bootstrapPassword &&
+      user &&
+      !user.passwordHash &&
+      ["editor", "director"].includes(user.role) &&
+      String(body.password) === bootstrapPassword
+    );
+    if (user && !user.passwordHash && !["editor", "director"].includes(user.role)) {
+      sendJson(res, 428, { ok: false, error: "Редактор должен сначала задать вам новый пароль." });
+      return true;
+    }
+    if (!user || (!legacyAdminLogin && !passwordMatches(body.password, user.passwordHash))) {
+      sendJson(res, 401, { ok: false, error: "Неверный табельный номер, телефон или пароль." });
+      return true;
+    }
+    if (user.approved === false || user.pendingApproval === true || !user.role) {
+      sendJson(res, 403, { ok: false, error: "Регистрация ещё не подтверждена редактором.", pending: true });
+      return true;
+    }
+    if (legacyAdminLogin) {
+      user.passwordHash = hashPassword(body.password);
+    }
+    user.lastLoginAt = new Date().toISOString();
+    writeDb(db, { action: legacyAdminLogin ? "legacy_admin_password_created" : "user_login", user: { name: user.name, phone: user.phone } });
+    sendJson(res, 200, { ok: true, user: userPublic(user) });
+    return true;
+  }
+
   if (pathname === "/api/export/month" && req.method === "GET") {
     const month = monthKeyFromUrl(url);
     await stateWriteQueue.catch(() => {});
@@ -542,7 +716,12 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/export/all" && req.method === "GET") {
     await stateWriteQueue.catch(() => {});
     createManualBackup("export_all");
-    sendDownload(res, `ppr_full_export_${todayStamp()}.json`, { exportedAt: new Date().toISOString(), ...readDb() });
+    const db = readDb();
+    sendDownload(res, `ppr_full_export_${todayStamp()}.json`, {
+      exportedAt: new Date().toISOString(),
+      ...db,
+      users: (db.users || []).map(userPublic)
+    });
     return true;
   }
 
@@ -573,6 +752,7 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
+        db.auditHistory = [];
       }
       db.checks = compactCheckRecords(mergeObjectRecordsByFreshness(db.checks, body.checks));
       db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
@@ -583,6 +763,8 @@ async function handleApi(req, res, pathname, url) {
       db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
       db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
       db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
+      db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
+      db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
       const actionId = String(body.actionId || "");
       writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
       return { actionId, state: publicState(db), origin: body.clientId || "api" };
@@ -599,7 +781,12 @@ async function handleApi(req, res, pathname, url) {
       const phone = String(user.phone || "").trim();
       const name = String(user.name || "").trim();
       const actionId = String(user.actionId || "");
-      const sameUser = item => (phone && item.phone === phone) || (!phone && name && item.name === name);
+      const employeeId = String(user.employeeId || "").trim();
+      const sameUser = item =>
+        (user.id && item.id === user.id) ||
+        (employeeId && item.employeeId === employeeId) ||
+        (phone && item.phone === phone) ||
+        (!phone && !employeeId && name && item.name === name);
       const existing = (db.users || []).find(sameUser);
       if (user.action === "delete") {
         db.users = (db.users || []).filter(item => !sameUser(item));
@@ -607,7 +794,17 @@ async function handleApi(req, res, pathname, url) {
         return { actionId, origin: user.clientId || "user" };
       }
       db.users = (db.users || []).filter(item => !sameUser(item));
-      db.users.push({ ...user, phone, registeredAt: existing?.registeredAt || user.registeredAt || new Date().toISOString() });
+      const { passwordHash: ignoredPasswordHash, ...safeUser } = user;
+      const nextUser = {
+        ...(existing || {}),
+        ...safeUser,
+        phone,
+        employeeId: employeeId || existing?.employeeId || "",
+        registeredAt: existing?.registeredAt || user.registeredAt || new Date().toISOString()
+      };
+      if (user.newPassword) nextUser.passwordHash = hashPassword(user.newPassword);
+      delete nextUser.newPassword;
+      db.users.push(nextUser);
       writeDb(db, { action: "user_register", actionId, clientId: String(user.clientId || ""), user: { name: user.name || "", role: user.role || "", phone: phone || "" } });
       return { actionId, origin: user.clientId || "user" };
     });
@@ -618,7 +815,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/users" && req.method === "GET") {
     await stateWriteQueue.catch(() => {});
-    sendJson(res, 200, readDb().users || []);
+    sendJson(res, 200, (readDb().users || []).map(userPublic));
     return true;
   }
 

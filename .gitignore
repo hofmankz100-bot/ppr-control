@@ -1,0 +1,17 @@
+# Runtime data and user uploads
+data/
+db.json
+db*.json
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and temporary files
+node_modules/
+work/
+*.zip
+*.bak
+*.tmp
