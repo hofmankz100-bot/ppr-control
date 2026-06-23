@@ -2,17 +2,17 @@ services:
   - type: web
     name: ppr-control
     env: node
-    plan: starter
+    plan: free
     buildCommand: ""
     startCommand: "node server.js"
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
-        value: /var/data
+        value: /tmp/ppr-data
       - key: ADMIN_BOOTSTRAP_PASSWORD
         sync: false
-    disk:
-      name: ppr-control-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: DATABASE_URL
+        sync: false
+      - key: REQUIRE_POSTGRES
+        value: "true"

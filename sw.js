@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v244-mobile-layout";
+const CACHE_NAME = "ppr-v246-neon-postgres";
 const ASSETS = [
   "./",
   "./index.html",

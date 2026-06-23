@@ -15,6 +15,9 @@ const dbFile = path.join(dataDir, "db.json");
 const backupDir = path.join(dataDir, "backups");
 const actionLogFile = path.join(dataDir, "actions.log");
 const port = Number(process.env.PORT || 8080);
+let postgresPool = null;
+let postgresState = null;
+let postgresWriteQueue = Promise.resolve();
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -71,7 +74,7 @@ function latestBackupFile() {
   }
 }
 
-function readDb() {
+function readDbFile() {
   ensureDb();
   try {
     return normalizeDb(JSON.parse(fs.readFileSync(dbFile, "utf8")));
@@ -86,6 +89,62 @@ function readDb() {
       }
     } catch {}
     return emptyDb();
+  }
+}
+
+function readDb() {
+  return postgresState || readDbFile();
+}
+
+function writeDbFile(db) {
+  ensureDb();
+  backupDbOncePerDay();
+  const tmp = `${dbFile}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(normalizeDb(db), null, 2));
+  fs.renameSync(tmp, dbFile);
+}
+
+async function initializeStorage() {
+  const connectionString = String(process.env.DATABASE_URL || "").trim();
+  if (!connectionString) return { mode: "json" };
+  try {
+    const { Pool } = require("pg");
+    const pool = new Pool({
+      connectionString,
+      ssl: process.env.PGSSL === "disable" ? false : { rejectUnauthorized: false },
+      max: Number(process.env.PG_POOL_SIZE || 5)
+    });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_settings (
+        setting_key text PRIMARY KEY,
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    const result = await pool.query(
+      "SELECT payload FROM ppr_settings WHERE setting_key = 'full_state' LIMIT 1"
+    );
+    if (result.rows[0]?.payload) {
+      postgresState = normalizeDb(result.rows[0].payload);
+      writeDbFile(postgresState);
+    } else {
+      postgresState = readDbFile();
+      await pool.query(
+        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
+         VALUES ('full_state', $1::jsonb, now())
+         ON CONFLICT(setting_key) DO UPDATE
+         SET payload = EXCLUDED.payload, updated_at = now()`,
+        [JSON.stringify(postgresState)]
+      );
+    }
+    postgresPool = pool;
+    return { mode: "postgres" };
+  } catch (error) {
+    console.error(`PostgreSQL unavailable, JSON fallback enabled: ${error.message}`);
+    if (process.env.REQUIRE_POSTGRES === "true") throw error;
+    postgresPool = null;
+    postgresState = null;
+    return { mode: "json-fallback", error: error.message };
   }
 }
 
@@ -304,11 +363,21 @@ function createManualBackup(label = "manual") {
 }
 
 function writeDb(db, action = {}) {
-  ensureDb();
-  backupDbOncePerDay();
-  const tmp = `${dbFile}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(normalizeDb(db), null, 2));
-  fs.renameSync(tmp, dbFile);
+  const normalized = normalizeDb(db);
+  if (postgresPool) postgresState = normalized;
+  writeDbFile(normalized);
+  if (postgresPool) {
+    const snapshot = JSON.stringify(normalized);
+    postgresWriteQueue = postgresWriteQueue
+      .then(() => postgresPool.query(
+        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
+         VALUES ('full_state', $1::jsonb, now())
+         ON CONFLICT(setting_key) DO UPDATE
+         SET payload = EXCLUDED.payload, updated_at = now()`,
+        [snapshot]
+      ))
+      .catch(error => console.error(`PostgreSQL write failed; JSON backup preserved: ${error.message}`));
+  }
   appendActionLog(action);
 }
 
@@ -885,15 +954,26 @@ const heartbeatTimer = setInterval(() => {
   }
 }, 15000);
 
-function shutdown() {
+async function shutdown() {
   clearInterval(heartbeatTimer);
+  try {
+    await postgresWriteQueue;
+    if (postgresPool) await postgresPool.end();
+  } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-server.listen(port, "0.0.0.0", () => {
-  ensureDb();
-  console.log(`PPR Control realtime server: http://0.0.0.0:${port}`);
-});
+initializeStorage()
+  .then(storage => {
+    server.listen(port, "0.0.0.0", () => {
+      ensureDb();
+      console.log(`PPR Control realtime server: http://0.0.0.0:${port} [${storage.mode}]`);
+    });
+  })
+  .catch(error => {
+    console.error(`Server startup failed: ${error.stack || error.message}`);
+    process.exit(1);
+  });
