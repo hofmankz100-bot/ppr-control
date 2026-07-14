@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v105";
+const APP_VERSION = "v106";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -12332,6 +12332,21 @@ ui.qrWalkButton?.addEventListener("click", async () => {
     while (true) {
       const parsed = await scanNodeQrCode(null, null, null);
       if (!parsed) break;
+      const shift = currentWalkShift();
+      if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
+        current.equipmentId = parsed.equipmentId;
+        current.nodeIndex = parsed.nodeIndex;
+        current.date = shift.date;
+        current.kind = "to";
+        current.scrollToQrNode = parsed.nodeIndex;
+        show("checklist");
+        window.setTimeout(() => {
+          ui.commentInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (canEditChecklist()) ui.commentInput?.focus();
+        }, 180);
+        showAppToast("Узел уже обойден — открыт комментарий узла.");
+        break;
+      }
       const action = await promptQrWalkDecision(parsed);
       if (action === "finish") break;
     }
