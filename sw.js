@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v119";
+const CACHE_NAME = "ppr-v120";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,7 +9,7 @@ const ASSETS = [
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=119",
+  "./app.js?v=120",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
   "./icon.svg"

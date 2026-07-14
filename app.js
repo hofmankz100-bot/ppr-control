@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v119";
+const APP_VERSION = "v120";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -11868,10 +11868,10 @@ function printRequestSheet(req, options = {}) {
           .excel-approval { width: 57mm; text-align: center; font-size: 8.5pt; line-height: 1.5; }
           .excel-request-line { margin: 4mm 0 2mm; font-size: 11pt; font-weight: 700; }
           .excel-date-line { margin-bottom: 4mm; font-size: 10pt; }
-          .excel-signatures { display: grid; grid-template-columns: 1fr 1.4fr; gap: 7mm 16mm; width: 70%; margin: 12mm auto 0; font-size: 9pt; }
-          .excel-signatures div { min-height: 7mm; border: 0; }
-          .excel-signatures strong { margin-left: 3mm; }
-          .excel-signatures .delivery-line { grid-column: 1 / -1; border-top: 1px solid #111; padding-top: 4mm; }
+          .excel-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm 8mm; width: 100%; margin: 4mm 0 0; font-size: 7.5pt; }
+          .excel-signatures div { min-height: 4mm; border: 0; white-space: nowrap; }
+          .excel-signatures strong { margin-left: 1.5mm; }
+          .excel-signatures .delivery-line { grid-column: 1 / -1; border-top: 1px solid #777; padding-top: 2mm; }
           .actions { display: flex; justify-content: center; margin: 16px auto; }
           button { border: 0; border-radius: 8px; background: #14324a; color: #fff; padding: 11px 24px; font-weight: 800; cursor: pointer; }
           @media print {
