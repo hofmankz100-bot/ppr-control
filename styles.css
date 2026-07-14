@@ -5015,6 +5015,73 @@ body.editor-profile .warehouse-folders button.request-alert {
   display: block;
 }
 
+.warehouse-archive-button,
+.warehouse-installed-head button {
+  border: 0;
+  border-radius: 8px;
+  background: #14324a;
+  color: #fff;
+  padding: 10px 14px;
+  font-weight: 900;
+}
+
+.warehouse-installed-parts {
+  display: grid;
+  gap: 10px;
+  border: 2px solid #14324a;
+  border-radius: 10px;
+  background: #f8fbfd;
+  padding: 12px;
+}
+
+.warehouse-installed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.warehouse-installed-head strong,
+.warehouse-installed-head span,
+.warehouse-installed-row strong,
+.warehouse-installed-row span,
+.warehouse-installed-row small {
+  display: block;
+}
+
+.warehouse-installed-head span,
+.warehouse-installed-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.warehouse-installed-list {
+  display: grid;
+  gap: 8px;
+}
+
+.warehouse-installed-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1.2fr 1fr;
+  gap: 10px;
+  border: 1px solid #d7e2e8;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.warehouse-installed-comment {
+  grid-column: 1 / -1;
+  border-top: 1px solid #e5edf1;
+  padding-top: 7px;
+}
+
+@media (max-width: 680px) {
+  .warehouse-installed-row { grid-template-columns: 1fr; }
+  .warehouse-installed-comment { grid-column: auto; }
+  .warehouse-installed-head { align-items: stretch; flex-direction: column; }
+}
+
 .warehouse-head span {
   margin-top: 3px;
   color: var(--muted);

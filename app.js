@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v114";
+const APP_VERSION = "v115";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -347,6 +347,7 @@ let current = {
   warehouseSearch: "",
   selectedStockArea: "",
   selectedWarehouseFolder: "",
+  warehouseInstalledArchiveOpen: false,
   scrollToCommentNode: null,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
@@ -5543,6 +5544,49 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
       }).join("") : `<div class="empty-state">На этом складе пока нет остатков</div>`}
     </div>
   `;
+}
+
+function warehouseInstalledRequests() {
+  return allRequests()
+    .filter(req => req.issued && req.mechanicInstalled)
+    .sort((a, b) => String(b.approvals?.install?.at || b.updatedAt || "").localeCompare(String(a.approvals?.install?.at || a.updatedAt || "")))
+    .slice(0, 100);
+}
+
+function warehouseInstalledPartsHtml() {
+  const installed = warehouseInstalledRequests();
+  const rows = installed.map(req => {
+    const items = requestItems(req);
+    const names = items.length
+      ? items.map(item => `${item.name || req.text || "Запчасть"}${item.article ? ` (${item.article})` : ""}`).join(", ")
+      : `${partNameFromRequest(req)}${partArticleFromRequest(req) ? ` (${partArticleFromRequest(req)})` : ""}`;
+    const qty = Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0);
+    const issuedAt = req.approvals?.warehouse?.at || req.warehouseReceivedAt || req.createdAt || "";
+    const installedAt = req.approvals?.install?.at || req.updatedAt || "";
+    return `
+      <article class="warehouse-installed-row">
+        <div class="warehouse-installed-part"><strong>${escapeHtml(names)}</strong><span>${qty} ${escapeHtml(items[0]?.unit || "шт")}</span></div>
+        <div><small>Кто взял</small><strong>${escapeHtml(req.issueTargetName || "Получатель не указан")}</strong><span>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</span></div>
+        <div><small>Куда установил</small><strong>${escapeHtml(req.equipment || "Оборудование не указано")}</strong><span>${escapeHtml(req.node || "Узел не указан")}</span></div>
+        <div><small>Даты</small><span>Выдано: ${escapeHtml(dateTimeHuman(issuedAt))}</span><span>Установлено: ${escapeHtml(dateTimeHuman(installedAt))}</span></div>
+        <div class="warehouse-installed-comment"><small>Комментарий установки</small><span>${escapeHtml(req.installComment || "Без комментария")}</span></div>
+      </article>
+    `;
+  }).join("");
+  return `<section class="warehouse-installed-parts">
+    <div class="warehouse-installed-head"><div><strong>Архив установленных запчастей</strong><span>${installed.length} записей</span></div><button type="button" data-print-warehouse-installed ${installed.length ? "" : "disabled"}>Печатать список</button></div>
+    <div class="warehouse-installed-list">${rows || `<div class="empty-state">Подтверждённых установок пока нет</div>`}</div>
+  </section>`;
+}
+
+function printWarehouseInstalledParts() {
+  const installed = warehouseInstalledRequests();
+  if (!installed.length) return;
+  const rows = installed.map((req, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(partNameFromRequest(req))}</td><td>${escapeHtml(partArticleFromRequest(req))}</td><td>${Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0)}</td><td>${escapeHtml(req.issueTargetName || "-")}</td><td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</td><td>${escapeHtml(req.equipment || "-")}</td><td>${escapeHtml(req.node || "-")}</td><td>${escapeHtml(req.installComment || "-")}</td><td>${escapeHtml(dateTimeHuman(req.approvals?.install?.at || req.updatedAt || ""))}</td></tr>`).join("");
+  const win = window.open("", "_blank", "width=1200,height=850");
+  if (!win) return;
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Архив установленных запчастей</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#111827}h1{font-size:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #9ca3af;padding:5px;font-size:9px;text-align:left;vertical-align:top}th{background:#14324a;color:#fff}.actions{text-align:center;margin:12px}button{border:0;border-radius:7px;background:#14324a;color:#fff;padding:10px 18px;font-weight:700}@media print{.actions{display:none}}</style></head><body><h1>Архив установленных запчастей</h1><p>Сформировано: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p><table><thead><tr><th>№</th><th>Запчасть</th><th>Артикул</th><th>Кол-во</th><th>Кто взял</th><th>Роль</th><th>Оборудование</th><th>Узел</th><th>Комментарий</th><th>Установлено</th></tr></thead><tbody>${rows}</tbody></table><div class="actions"><button onclick="window.print()">Печатать / PDF</button></div></body></html>`);
+  win.document.close();
 }
 
 function pendingWarehouseReceipts(area = warehouseFolderArea(), warehouseRequests = null) {
@@ -11273,6 +11317,7 @@ function renderWarehousePanel() {
         <strong>Склады по цехам</strong>
         <span>${query ? `Найдено: запас ${foundStock.length} · заявки ${foundRequests.length}` : "Выберите папку склада или найдите запчасть"}</span>
       </div>
+      <button type="button" class="warehouse-archive-button" data-toggle-warehouse-installed>Архив</button>
     </div>
     ${renderWarehouseFolders(folderArea, warehouseData)}
     <form class="warehouse-search" id="warehouseSearchForm">
@@ -11310,10 +11355,16 @@ function renderWarehousePanel() {
       </div>
       <div class="warehouse-pending-list" id="warehousePendingList"></div>
     </div>` : ""}
+    ${current.warehouseInstalledArchiveOpen ? warehouseInstalledPartsHtml() : ""}
     ${renderWarehouseInventory(folderArea, canManageWarehouse, warehouseData)}
     ${query ? `<div class="empty-state">${foundStock.length || foundRequests.length ? "Найденная позиция подсвечена. Если она была в другой папке, склад открыт автоматически." : "Поиск ничего не нашёл"}</div>` : ""}
   `;
   const form = ui.warehousePanel.querySelector("#manualInventoryForm");
+  ui.warehousePanel.querySelector("[data-toggle-warehouse-installed]")?.addEventListener("click", () => {
+    current.warehouseInstalledArchiveOpen = !current.warehouseInstalledArchiveOpen;
+    renderWarehousePanel();
+  });
+  ui.warehousePanel.querySelector("[data-print-warehouse-installed]")?.addEventListener("click", printWarehouseInstalledParts);
   const searchForm = ui.warehousePanel.querySelector("#warehouseSearchForm");
   const askList = ui.warehousePanel.querySelector("#warehouseAskList");
   if (askList) {
