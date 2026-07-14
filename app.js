@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v142";
+const APP_VERSION = "v143";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -8982,6 +8982,12 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
   const monthDate = new Date(data.year, data.month, 1);
   const monthLabel = monthDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   const leadingDays = (monthDate.getDay() + 6) % 7;
+  const monthPrefix = `${data.year}-${String(data.month + 1).padStart(2, "0")}`;
+  const defaultDate = todayISO().startsWith(monthPrefix) ? todayISO() : `${monthPrefix}-01`;
+  const selectedDate = String(current.pprCalendarSelectedDate || "").startsWith(monthPrefix)
+    ? current.pprCalendarSelectedDate
+    : defaultDate;
+  current.pprCalendarSelectedDate = selectedDate;
   const cells = [];
   for (let index = 0; index < leadingDays; index += 1) {
     cells.push(`<div class="ppr-calendar-day empty" aria-hidden="true"></div>`);
@@ -8992,46 +8998,60 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     const itemStatuses = items.map(item => pprJournalCompletion(equipmentById(item.equipmentId), date, item.node));
     const dayDone = items.length && itemStatuses.every(item => item.complete);
     const dayPartial = itemStatuses.some(item => item.partial && !item.complete);
-    const dayOverdue = date >= PPR_RECOMMENDED_START_DATE && date < todayISO() && itemStatuses.some(item => !item.complete);
-    const taskRows = items.map(item => `
-      ${(() => {
-        const journal = pprJournalCompletion(equipmentById(item.equipmentId), date, item.node);
-        const overdue = !journal.ignored && date < todayISO();
-        const statusClass = journal.complete ? "done" : overdue ? "overdue" : journal.partial ? "partial" : journal.ignored ? "history" : "planned";
-        const statusIcon = journal.complete ? "✅" : overdue ? "❌" : journal.partial ? "🟡" : journal.ignored ? "·" : "⏰";
-        const statusText = journal.ignored
-          ? "До запуска расчётного графика"
-          : journal.complete
-          ? `Журнал заполнен${journal.author ? ` · ${journal.author}` : ""}${journal.updatedAt ? ` · ${dateTimeHuman(journal.updatedAt)}` : ""}`
-          : journal.partial
-            ? "Журнал заполнен частично"
-            : date < todayISO()
-              ? "Журнал за этот день не заполнен"
-              : "Ожидает заполнения журнала";
-        return `<button type="button" class="ppr-calendar-task ${statusClass} ${profile?.role === "director" ? "informational" : ""}" data-ppr-task-date="${date}" data-ppr-task-equipment="${item.equipmentId}" data-ppr-task-node="${escapeHtml(item.node)}" ${profile?.role === "director" ? `aria-disabled="true"` : ""} title="${escapeHtml(`${item.equipment}: ${item.node}. ${statusText}`)}">
-        <span>${statusIcon}</span>
-        <strong>${escapeHtml(pprCalendarShortName(item.equipment))}</strong>
-        <small>${escapeHtml(statusText)}</small>
-      </button>`;
-      })()}
-    `).join("");
+    const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored);
+    const dayMissed = date < todayISO() && activeIncomplete;
+    const dayWarning = date >= todayISO() && activeIncomplete;
+    const stateClass = dayDone ? "completed" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
+    const statusIcon = dayDone ? "✓" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
+    const statusText = dayDone ? "ППР выполнен" : dayMissed ? "ППР не выполнен" : dayPartial ? "ППР выполнен частично" : dayWarning ? "Приближается срок ППР" : items.length ? "Архивный график" : "Работ нет";
     cells.push(`
-      <div class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${items.length ? "has-work" : ""} ${dayDone ? "completed" : ""} ${dayPartial ? "partial" : ""} ${dayOverdue ? "overdue" : ""}">
+      <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} · ${statusText}`)}">
         <time datetime="${date}">${day}</time>
-        <div class="ppr-calendar-tasks">${taskRows}</div>
-      </div>
+        ${statusIcon ? `<span class="ppr-day-status" aria-label="${escapeHtml(statusText)}">${statusIcon}</span>` : ""}
+        ${items.length > 1 ? `<small class="ppr-day-count">${items.length}</small>` : ""}
+      </button>
     `);
   }
+  const selectedItems = data.itemsByDate[selectedDate] || [];
+  const selectedTaskRows = selectedItems.map(item => {
+    const journal = pprJournalCompletion(equipmentById(item.equipmentId), selectedDate, item.node);
+    const overdue = !journal.ignored && selectedDate < todayISO();
+    const statusClass = journal.complete ? "done" : overdue ? "overdue" : journal.partial ? "partial" : journal.ignored ? "history" : "planned";
+    const statusIcon = journal.complete ? "✓" : overdue ? "×" : journal.partial ? "!" : journal.ignored ? "·" : "!";
+    const statusText = journal.ignored
+      ? "До запуска расчётного графика"
+      : journal.complete
+        ? `Выполнено${journal.author ? ` · ${journal.author}` : ""}${journal.updatedAt ? ` · ${dateTimeHuman(journal.updatedAt)}` : ""}`
+        : journal.partial
+          ? "Выполнено частично"
+          : overdue
+            ? "Не выполнено"
+            : "Приближается срок выполнения";
+    return `<button type="button" class="ppr-calendar-task ${statusClass} ${profile?.role === "director" ? "informational" : ""}" data-ppr-task-date="${selectedDate}" data-ppr-task-equipment="${item.equipmentId}" data-ppr-task-node="${escapeHtml(item.node)}" ${profile?.role === "director" ? `aria-disabled="true"` : ""}>
+      <span>${statusIcon}</span>
+      <strong>${escapeHtml(pprCalendarShortName(item.equipment))}</strong>
+      <small>${escapeHtml(item.node)} · ${escapeHtml(statusText)}</small>
+    </button>`;
+  }).join("");
   return `
     <div class="ppr-calendar-toolbar">
-      <button type="button" data-ppr-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button>
       <strong>${escapeHtml(monthLabel)}</strong>
-      <button type="button" data-ppr-calendar-shift="1" aria-label="Следующий месяц">›</button>
+      <div>
+        <button type="button" data-ppr-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button>
+        <button type="button" data-ppr-calendar-shift="1" aria-label="Следующий месяц">›</button>
+      </div>
+    </div>
+    <div class="ppr-calendar-legend" aria-label="Обозначения календаря">
+      <span class="done">✓ Сделано</span><span class="missed">× Не сделано</span><span class="warning">! Внимание</span>
     </div>
     <div class="ppr-calendar-weekdays">
       ${["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => `<span>${day}</span>`).join("")}
     </div>
     <div class="ppr-calendar-grid">${cells.join("")}</div>
+    <section class="ppr-selected-day">
+      <div><span>Выбранный день</span><strong>${dateHuman(selectedDate)}</strong></div>
+      <div class="ppr-calendar-tasks">${selectedTaskRows || `<p>На этот день работ ППР нет</p>`}</div>
+    </section>
   `;
 }
 
@@ -9045,12 +9065,19 @@ function shiftPprCalendar(monthDelta) {
     current.pprCalendarMonth = 0;
     current.pprCalendarYear += 1;
   }
+  current.pprCalendarSelectedDate = "";
 }
 
 function bindPprCalendarControls(container, rerender) {
   container?.querySelectorAll("[data-ppr-calendar-shift]").forEach(button => {
     button.addEventListener("click", () => {
       shiftPprCalendar(button.dataset.pprCalendarShift);
+      rerender();
+    });
+  });
+  container?.querySelectorAll("[data-ppr-day-date]").forEach(button => {
+    button.addEventListener("click", () => {
+      current.pprCalendarSelectedDate = button.dataset.pprDayDate;
       rerender();
     });
   });
