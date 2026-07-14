@@ -4,14 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#14324a">
+  <script>
+    (() => {
+      const saved = localStorage.getItem("ppr-theme-v1");
+      const theme = saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <title>ППР Контроль</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=132">
+  <link rel="stylesheet" href="styles.css?v=134">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
     <form id="loginForm" class="login-card">
+      <div class="login-brand">
+        <img src="hoffmann-logo.png" alt="Hoffmann Aluminium">
+        <button type="button" class="theme-toggle login-theme-toggle" data-theme-toggle aria-label="Сменить тему" title="Сменить тему">☾</button>
+      </div>
+      <div class="login-kicker">ЦИФРОВОЙ КОНТРОЛЬ ПРЕДПРИЯТИЯ</div>
       <h1 id="authTitle">Вход сотрудника</h1>
+      <p class="login-welcome">Безопасный вход в ППР, склад и производственные отчёты</p>
+      <div class="login-status"><span></span> Система готова к работе</div>
       <div class="auth-mode" role="tablist" aria-label="Вход или регистрация">
         <button type="button" class="active" data-auth-mode="login">Вход</button>
         <button type="button" data-auth-mode="register">Регистрация</button>
@@ -38,6 +52,7 @@
       <div class="form-error" id="loginError"></div>
       <button id="authSubmitButton" type="submit">Войти</button>
       <p id="authHint">Введите табельный номер или телефон и пароль.</p>
+      <div class="login-footer"><span>HOFFMANN CONTROL</span><span>v134</span></div>
     </form>
   </div>
 
@@ -51,6 +66,7 @@
         <div class="app-subtitle" id="screenSubtitle">Оборудование</div>
       </div>
       <div class="topbar-actions">
+        <button class="theme-toggle" data-theme-toggle type="button" aria-label="Сменить тему" title="Сменить тему">☾</button>
         <button class="global-reminder-button" id="globalReminderButton" type="button" aria-label="Напоминания и календарь ППР" title="Напоминания и календарь ППР">
           <span aria-hidden="true">🔔</span><strong id="globalReminderBadge">0</strong>
         </button>
@@ -248,7 +264,7 @@
   <script src="modules/requests.js?v=288-print-request-pages"></script>
   <script src="modules/comments.js?v=288-print-request-pages"></script>
   <script src="modules/director.js?v=288-print-request-pages"></script>
-  <script src="app.js?v=133"></script>
+  <script src="app.js?v=134"></script>
 </body>
 </html>
 

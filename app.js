@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v133";
+const APP_VERSION = "v134";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -243,8 +243,28 @@ let warehouseReconcileVersion = -1;
 let tmcRequestSubmitting = false;
 const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
+const THEME_KEY = "ppr-theme-v1";
 const CLIENT_ID = localStorage.getItem(CLIENT_ID_KEY) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 localStorage.setItem(CLIENT_ID_KEY, CLIENT_ID);
+
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(THEME_KEY, next);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#08141f" : "#14324a");
+  document.querySelectorAll("[data-theme-toggle]").forEach(button => {
+    button.textContent = next === "dark" ? "☀" : "☾";
+    button.setAttribute("aria-label", next === "dark" ? "Включить светлую тему" : "Включить тёмную тему");
+    button.setAttribute("title", next === "dark" ? "Светлая тема" : "Тёмная тема");
+  });
+}
+
+function setupTheme() {
+  applyTheme(document.documentElement.dataset.theme || "light");
+  document.querySelectorAll("[data-theme-toggle]").forEach(button => button.addEventListener("click", () => {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  }));
+}
 const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
   back: document.querySelector("#backButton"),
@@ -13087,6 +13107,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+setupTheme();
 setupLogin();
 (async () => {
   const deviceState = await loadStateFromDevice();
