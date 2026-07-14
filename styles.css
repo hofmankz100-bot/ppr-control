@@ -318,6 +318,17 @@ body.warehouse-only-profile .mobile-nav [data-mobile-view="downtime"] {
   background: #15803d;
 }
 
+.qr-walk-button {
+  border-color: #0f766e !important;
+  background: #0f766e !important;
+  color: #fff !important;
+  font-weight: 900 !important;
+}
+
+.qr-walk-button strong {
+  font-size: 22px;
+}
+
 @keyframes globalReminderBlink {
   50% { background: #fff; color: #b91c1c; box-shadow: 0 0 0 4px rgba(254, 202, 202, .25); }
 }

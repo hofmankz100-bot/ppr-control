@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v103";
+const APP_VERSION = "v104";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -247,6 +247,7 @@ const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
   back: document.querySelector("#backButton"),
   globalReminderButton: document.querySelector("#globalReminderButton"),
+  qrWalkButton: document.querySelector("#qrWalkButton"),
   globalReminderBadge: document.querySelector("#globalReminderBadge"),
   globalReminderOverlay: document.querySelector("#globalReminderOverlay"),
   globalReminderContent: document.querySelector("#globalReminderContent"),
@@ -2832,7 +2833,11 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (statusEl) statusEl.textContent = "Не удалось отметить узел";
       return false;
     }
-    if (hasExpectedNode) current.date = marked.date;
+    current.equipmentId = parsed.equipmentId;
+    current.nodeIndex = parsed.nodeIndex;
+    current.date = marked.date;
+    current.kind = "to";
+    current.scrollToQrNode = parsed.nodeIndex;
     return true;
   };
 
@@ -12218,6 +12223,33 @@ function goBack() {
 }
 
 ui.back.addEventListener("click", goBack);
+
+ui.qrWalkButton?.addEventListener("click", async () => {
+  if (!isProfileReady()) {
+    window.alert("Сначала войдите в ППР.");
+    return;
+  }
+  if (!canEditChecklist()) {
+    window.alert("Для обхода нужна роль, которой разрешено отмечать узлы.");
+    return;
+  }
+  setButtonBusy(ui.qrWalkButton, true, "Открываем камеру...");
+  try {
+    const scanned = await scanNodeQrCode(null, null, null);
+    if (!scanned) return;
+    show("checklist");
+    publishStateNow().catch(scheduleRemoteRetry);
+    window.setTimeout(() => {
+      const row = document.querySelector(`[data-node-walk-index="${current.nodeIndex}"]`);
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      row?.classList.add("qr-just-scanned");
+      window.setTimeout(() => row?.classList.remove("qr-just-scanned"), 1800);
+    }, 150);
+    showQrSavedNotice();
+  } finally {
+    if (ui.qrWalkButton?.isConnected) setButtonBusy(ui.qrWalkButton, false);
+  }
+});
 
 ui.globalReminderButton?.addEventListener("click", () => {
   renderGlobalReminderPanel();
