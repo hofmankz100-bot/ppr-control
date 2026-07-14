@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#14324a">
   <title>ППР Контроль</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=246-neon-postgres">
+  <link rel="stylesheet" href="styles.css?v=98">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -30,7 +30,10 @@
       </label>
       <label>
         <span>Пароль</span>
-        <input id="loginPassword" type="password" autocomplete="current-password" required minlength="6" placeholder="Не менее 6 символов">
+        <div class="password-field">
+          <input id="loginPassword" type="password" autocomplete="current-password" required minlength="6" placeholder="Не менее 6 символов">
+          <button type="button" id="toggleLoginPassword" aria-label="Показать пароль" title="Показать пароль">👁</button>
+        </div>
       </label>
       <div class="form-error" id="loginError"></div>
       <button id="authSubmitButton" type="submit">Войти</button>
@@ -51,9 +54,6 @@
         <button class="global-reminder-button" id="globalReminderButton" type="button" aria-label="Напоминания и календарь ППР" title="Напоминания и календарь ППР">
           <span aria-hidden="true">🔔</span><strong id="globalReminderBadge">0</strong>
         </button>
-        <button class="icon-button" id="todayButton" aria-label="Заявки" title="Заявки">
-          <span aria-hidden="true">З</span>
-        </button>
       </div>
     </header>
 
@@ -72,21 +72,74 @@
 
       <section id="equipmentScreen" class="view active">
         <div class="quick-nav">
-          <button type="button" data-open-role="shop">Начальник</button>
+          <button type="button" data-open-role="shop">Начальник цеха</button>
           <button type="button" data-open-role="engineer">Инженер</button>
-          <button type="button" data-open-role="supply">Снабжение</button>
-          <button type="button" data-open-role="finance">Экономист</button>
-          <button type="button" data-open-role="cash">Касса</button>
-          <button type="button" data-open-role="accounting">Бухгалтерия</button>
           <button type="button" data-open-role="productionDirector">Директор производства</button>
-          <button type="button" data-open-role="warehouse">Склад</button>
+          <button type="button" data-open-role="warehouse">Складовщик</button>
           <button type="button" data-open-role="mechanic">Механик</button>
           <button type="button" data-open-role="electrician">Электрик</button>
           <button type="button" data-open-role="operator">Оператор</button>
+          <button type="button" id="createTmcRequestButton" class="primary-nav-button"><span>Создать заявку</span><strong>+</strong></button>
           <button type="button" id="alertCounter"><span>Замечания</span><strong>0</strong></button>
           <button type="button" id="directorOpenButton"><span id="directorOpenLabel">Директорская</span> <strong id="directorBadge">0</strong></button>
         </div>
         <div id="equipmentList" class="equipment-list"></div>
+      </section>
+
+      <section id="requestCreateScreen" class="view">
+        <div class="panel-head compact">
+          <div>
+            <h1>Новая заявка</h1>
+            <p id="requestCreateMeta">Создание заявки на приобретение ТМЦ и услуг</p>
+          </div>
+        </div>
+        <div id="engineerIncomingTmcPanel" class="engineer-incoming-panel" hidden></div>
+        <form id="tmcRequestForm" class="tmc-request-form">
+          <div class="tmc-request-header">
+            <label>
+              <span>Цех / склад</span>
+              <select id="tmcRequestArea"></select>
+            </label>
+            <label>
+              <span>Оборудование</span>
+              <select id="tmcRequestEquipment"></select>
+            </label>
+            <label>
+              <span>Узел</span>
+              <select id="tmcRequestNode"></select>
+            </label>
+            <label>
+              <span>Срок доставки</span>
+              <input id="tmcRequestDue" type="date">
+            </label>
+          </div>
+          <div class="tmc-request-table-wrap">
+            <table class="tmc-request-table">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Наименование закупаемой ТМЦ и услуг</th>
+                  <th>Артикул</th>
+                  <th>Остаток</th>
+                  <th>Ед.</th>
+                  <th>Заявочное</th>
+                  <th>Необходимое</th>
+                  <th>Фото</th>
+                  <th>Примечание</th>
+                </tr>
+              </thead>
+              <tbody id="tmcRequestRows"></tbody>
+            </table>
+          </div>
+          <div class="tmc-request-footer">
+            <div class="tmc-request-actions">
+              <button type="button" id="addTmcRequestRow">Добавить строку</button>
+              <button type="submit" id="submitTmcRequest">Создать заявку</button>
+            </div>
+          </div>
+          <div id="tmcRequestStatus" class="request-inline-status"></div>
+        </form>
+        <div id="tmcRequestArchivePanel" class="request-create-archive" hidden></div>
       </section>
 
       <section id="nodeScreen" class="view">
@@ -123,9 +176,6 @@
           </div>
           <div class="status-pill" id="dayStatus">Пусто</div>
         </div>
-        <div class="tabs" role="tablist" aria-label="Вид ТО">
-          <button class="tab active" data-kind="to" type="button">ТО</button>
-        </div>
         <div id="taskList" class="task-list"></div>
         <div class="comment-panel">
           <label>
@@ -134,23 +184,9 @@
           </label>
           <label>
             <span>Фото замечания</span>
-            <input id="commentPhotoInput" type="file" accept="image/*" capture="environment">
+            <input id="commentPhotoInput" type="file" accept="image/*">
           </label>
           <div class="photo-preview" id="commentPhotoPreview"></div>
-          <label>
-            <span>Заявка</span>
-            <textarea id="requestInput" rows="3" placeholder="Какая запчасть или материал нужен"></textarea>
-          </label>
-          <label>
-            <span>Фото к заявке</span>
-            <input id="requestPhotoInput" type="file" accept="image/*" capture="environment">
-          </label>
-          <div class="photo-preview" id="requestPhotoPreview"></div>
-          <div class="request-inline">
-            <span id="requestInlineStatus">Заявка не создана</span>
-            <button id="createRequestButton" type="button">Создать заявку</button>
-            <button id="openRequestsButton" type="button">Открыть заявки</button>
-          </div>
           <label class="resolved-row">
             <input id="resolvedInput" type="checkbox">
             <span>Устранено</span>
@@ -162,13 +198,8 @@
         <div class="panel-head compact">
           <div>
             <h1>Заявки</h1>
-            <p id="requestsMeta">Выберите свой этап и выполните действие по заявке</p>
+            <p id="requestsMeta"></p>
           </div>
-        </div>
-        <div class="request-help">
-          <span><b>1</b> Найдите заявку</span>
-          <span><b>2</b> Проверьте выделенный этап</span>
-          <span><b>3</b> Заполните поля и нажмите действие</span>
         </div>
         <div id="warehousePanel" class="warehouse-panel"></div>
         <div id="requestList" class="request-list"></div>
@@ -194,9 +225,9 @@
         <span aria-hidden="true">▦</span>
         <small>Оборудование</small>
       </button>
-      <button type="button" data-mobile-view="requests">
-        <span aria-hidden="true">З</span>
-        <small>Заявки</small>
+      <button type="button" data-mobile-view="requestCreate">
+        <span aria-hidden="true">+</span>
+        <small>Создать</small>
       </button>
       <button type="button" data-mobile-view="downtime">
         <span aria-hidden="true">◷</span>
@@ -209,12 +240,31 @@
     </nav>
   </div>
 
-  <script src="modules/compressor.js?v=246-neon-postgres"></script>
-  <script src="modules/shgrp.js?v=246-neon-postgres"></script>
-  <script src="modules/receiver.js?v=246-neon-postgres"></script>
-  <script src="modules/requests.js?v=246-neon-postgres"></script>
-  <script src="modules/comments.js?v=246-neon-postgres"></script>
-  <script src="modules/director.js?v=246-neon-postgres"></script>
-  <script src="app.js?v=246-neon-postgres"></script>
+  <script src="node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes"></script>
+  <script src="modules/compressor.js?v=288-print-request-pages"></script>
+  <script src="modules/shgrp.js?v=288-print-request-pages"></script>
+  <script src="modules/receiver.js?v=288-print-request-pages"></script>
+  <script src="modules/requests.js?v=288-print-request-pages"></script>
+  <script src="modules/comments.js?v=288-print-request-pages"></script>
+  <script src="modules/director.js?v=288-print-request-pages"></script>
+  <script src="app.js?v=98"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

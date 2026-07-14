@@ -1,0 +1,11 @@
+{
+  "name": "ramazan-ppr-postgresql",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "migrate": "node migrate-json-to-postgres.js"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}

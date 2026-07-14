@@ -1,7 +1,10 @@
-const http = require("http");
+﻿const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
+const QRCode = require("qrcode");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -10,26 +13,55 @@ try {
 }
 
 const root = __dirname;
+
+function loadEnvFile() {
+  const envFile = path.join(root, ".env");
+  if (!fs.existsSync(envFile)) return;
+  const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
+loadEnvFile();
+
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const dbFile = path.join(dataDir, "db.json");
 const backupDir = path.join(dataDir, "backups");
+const photosDir = path.join(dataDir, "photos");
 const actionLogFile = path.join(dataDir, "actions.log");
 const port = Number(process.env.PORT || 8080);
+const qrPort = Number(process.env.QR_PORT || 8081);
+const httpsPort = Number(process.env.HTTPS_PORT || 8443);
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
+let storageStatus = { mode: "json" };
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
   ".svg": "image/svg+xml; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8"
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".mobileconfig": "application/x-apple-aspen-config"
 };
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], users: [] };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], walkShiftCleanupVersion: "", users: [], translationCache: {} };
 }
 
 function normalizeDb(db) {
@@ -40,12 +72,15 @@ function normalizeDb(db) {
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
   db.directorMessages ||= [];
+  db.serviceCosts ||= [];
   db.downtimes ||= [];
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
+  db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
+  db.translationCache ||= {};
   return db;
 }
 
@@ -104,14 +139,80 @@ function writeDbFile(db) {
   fs.renameSync(tmp, dbFile);
 }
 
+function photoExtensionFromMime(mime = "") {
+  const clean = String(mime || "").toLowerCase();
+  if (clean.includes("png")) return "png";
+  if (clean.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function savePhotoDataUrl(dataUrl = "") {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
+  if (!match) return "";
+  const bytes = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+  if (!bytes.length) return "";
+  fs.mkdirSync(photosDir, { recursive: true });
+  const ext = photoExtensionFromMime(match[1]);
+  const hash = crypto.createHash("sha1").update(bytes).digest("hex");
+  const fileName = `${hash}.${ext}`;
+  const file = path.join(photosDir, fileName);
+  if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
+  return `/api/photos/${fileName}`;
+}
+
+function externalizePhotosInValue(value, seen = new WeakSet()) {
+  let changed = false;
+  const walk = item => {
+    if (!item || typeof item !== "object") return item;
+    if (seen.has(item)) return item;
+    seen.add(item);
+    if (Array.isArray(item)) {
+      item.forEach((entry, index) => {
+        if (typeof entry === "string" && entry.startsWith("data:image/")) {
+          const url = savePhotoDataUrl(entry);
+          if (url) {
+            item[index] = url;
+            changed = true;
+          }
+          return;
+        }
+        walk(entry);
+      });
+      return item;
+    }
+    Object.keys(item).forEach(key => {
+      const entry = item[key];
+      if (typeof entry === "string" && entry.startsWith("data:image/")) {
+        const url = savePhotoDataUrl(entry);
+        if (url) {
+          item[key] = url;
+          changed = true;
+        }
+        return;
+      }
+      walk(entry);
+    });
+    return item;
+  };
+  walk(value);
+  return changed;
+}
+
 async function initializeStorage() {
   const connectionString = String(process.env.DATABASE_URL || "").trim();
-  if (!connectionString) return { mode: "json" };
+  if (!connectionString) {
+    const db = readDbFile();
+    if (migrateLegacyDirectorApprovals(db)) writeDbFile(db);
+    storageStatus = { mode: "json" };
+    return storageStatus;
+  }
   try {
     const { Pool } = require("pg");
+    const sslMode = String(process.env.PGSSL || process.env.PGSSLMODE || "").trim().toLowerCase();
+    const useSsl = ["1", "true", "require", "verify-ca", "verify-full"].includes(sslMode);
     const pool = new Pool({
       connectionString,
-      ssl: process.env.PGSSL === "disable" ? false : { rejectUnauthorized: false },
+      ssl: useSsl ? { rejectUnauthorized: false } : false,
       max: Number(process.env.PG_POOL_SIZE || 5)
     });
     await pool.query(`
@@ -126,9 +227,19 @@ async function initializeStorage() {
     );
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
+      if (migrateLegacyDirectorApprovals(postgresState)) {
+        await pool.query(
+          `INSERT INTO ppr_settings(setting_key, payload, updated_at)
+           VALUES ('full_state', $1::jsonb, now())
+           ON CONFLICT(setting_key) DO UPDATE
+           SET payload = EXCLUDED.payload, updated_at = now()`,
+          [JSON.stringify(postgresState)]
+        );
+      }
       writeDbFile(postgresState);
     } else {
       postgresState = readDbFile();
+      migrateLegacyDirectorApprovals(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -138,13 +249,15 @@ async function initializeStorage() {
       );
     }
     postgresPool = pool;
-    return { mode: "postgres" };
+    storageStatus = { mode: "postgres", table: "ppr_settings", key: "full_state" };
+    return storageStatus;
   } catch (error) {
     console.error(`PostgreSQL unavailable, JSON fallback enabled: ${error.message}`);
     if (process.env.REQUIRE_POSTGRES === "true") throw error;
     postgresPool = null;
     postgresState = null;
-    return { mode: "json-fallback", error: error.message };
+    storageStatus = { mode: "json-fallback", error: error.message };
+    return storageStatus;
   }
 }
 
@@ -209,6 +322,7 @@ function monthlyExport(db, month) {
   const checks = objectRecordsForMonth(db.checks, month);
   const requests = objectRecordsForMonth(db.requests, month);
   const directorMessages = (db.directorMessages || []).filter(item => itemBelongsToMonth(item, month));
+  const serviceCosts = (db.serviceCosts || []).filter(item => itemBelongsToMonth(item, month));
   const downtimes = (db.downtimes || []).filter(item => itemBelongsToMonth(item, month));
   return {
     exportedAt: new Date().toISOString(),
@@ -217,6 +331,7 @@ function monthlyExport(db, month) {
       checks: Object.keys(checks).length,
       requests: Object.keys(requests).length,
       directorMessages: directorMessages.length,
+      serviceCosts: serviceCosts.length,
       downtimes: downtimes.length,
       users: (db.users || []).length
     },
@@ -225,6 +340,7 @@ function monthlyExport(db, month) {
     inventory: db.inventory || {},
     catalog: db.catalog || { equipment: {} },
     directorMessages,
+    serviceCosts,
     downtimes,
     users: (db.users || []).map(userPublic)
   };
@@ -364,6 +480,7 @@ function createManualBackup(label = "manual") {
 
 function writeDb(db, action = {}) {
   const normalized = normalizeDb(db);
+  externalizePhotosInValue(normalized);
   if (postgresPool) postgresState = normalized;
   writeDbFile(normalized);
   if (postgresPool) {
@@ -381,6 +498,51 @@ function writeDb(db, action = {}) {
   appendActionLog(action);
 }
 
+function migrateLegacyDirectorApprovals(db) {
+  let changed = false;
+  const now = new Date().toISOString();
+  for (const req of Object.values(db.requests || {})) {
+    if (!req || typeof req !== "object") continue;
+    if (req.deleted || req.route === "stock" || req.sourceRole === "engineer") continue;
+    const isTmcRequest = req.kind === "tmc" || String(req.id || "").startsWith("tmc-request:");
+    if (!isTmcRequest || req.productionDirectorRequestApproved) continue;
+    const alreadyPastDirector = Boolean(
+      req.financePreApproved ||
+      req.supplyPrepared ||
+      req.financeApproved ||
+      req.cashApproved ||
+      req.transferredToWarehouse ||
+      req.warehouseReceived ||
+      req.issued ||
+      req.done ||
+      req.stock
+    );
+    if (!alreadyPastDirector) continue;
+    req.productionDirectorRequestApproved = true;
+    req.approvals ||= {};
+    req.approvals.productionDirectorRequest ||= {
+      role: "productionDirector",
+      name: "Перенесено из старой логики",
+      at: req.updatedAt || req.createdAt || now,
+      note: "Техническая миграция: заявка уже прошла дальше по старому маршруту."
+    };
+    req.history ||= [];
+    if (!req.history.some(entry => String(entry?.action || "").includes("старая логика"))) {
+      req.history.push({
+        at: now,
+        action: "Техническая отметка: директор производства",
+        details: "Перенесено из старой логики, заявка уже была на следующем этапе.",
+        status: req.status || "",
+        role: "system",
+        name: "PPR Control"
+      });
+    }
+    req.updatedAt = req.updatedAt || now;
+    changed = true;
+  }
+  return changed;
+}
+
 function publicState(db = readDb()) {
   return {
     checks: db.checks,
@@ -388,17 +550,205 @@ function publicState(db = readDb()) {
     inventory: db.inventory,
     catalog: db.catalog,
     directorMessages: db.directorMessages,
+    serviceCosts: db.serviceCosts,
     downtimes: db.downtimes,
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
     journalDueSince: db.journalDueSince,
-    auditHistory: db.auditHistory
+    auditHistory: db.auditHistory,
+    walkShiftCleanupVersion: db.walkShiftCleanupVersion || ""
   };
 }
 
+function hasMeaningfulCheckKindServer(item) {
+  if (!item || typeof item !== "object") return false;
+  if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
+  if (item.walkShifts && Object.values(item.walkShifts).some(shift => shift?.done)) return true;
+  if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
+  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
+  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
+  if (String(item.lastRequestId || item.requestStatus || item.status || "").trim()) return true;
+  if (String(item.nodeDraftText || "").trim()) return true;
+  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
+}
+
+function compactCheckRecordsServer(checks = {}) {
+  const next = {};
+  for (const [id, rec] of Object.entries(checks || {})) {
+    if (hasMeaningfulCheckKindServer(rec?.to)) next[id] = rec;
+  }
+  return next;
+}
+
+function isJournalRequestRecordServer(id, req = {}) {
+  const kind = String(req?.kind || "");
+  return kind === "journal-batch" || kind === "to" || String(id || "").includes(":to");
+}
+
+function removeJournalRequestsServer(db) {
+  let changed = false;
+  const now = new Date().toISOString();
+  db.requests ||= {};
+  db.checks ||= {};
+  for (const [id, req] of Object.entries(db.requests)) {
+    if (!isJournalRequestRecordServer(id, req)) continue;
+    delete db.requests[id];
+    changed = true;
+  }
+  for (const rec of Object.values(db.checks)) {
+    const item = rec?.to;
+    if (!item || typeof item !== "object") continue;
+    const fields = ["request", "requestPhoto", "requestStatus", "requestedTargetRole", "lastRequestId", "invoicePhoto", "noInvoiceApproved"];
+    const hasRequestFields = fields.some(field => Boolean(item[field]));
+    if (!hasRequestFields) continue;
+    fields.forEach(field => { item[field] = ""; });
+    item.updatedAt = now;
+    changed = true;
+  }
+  if (changed) db.checks = compactCheckRecordsServer(db.checks);
+  return changed;
+}
+
+function clearLegacyWalkCompletionsServer(db) {
+  let changed = false;
+  const now = new Date().toISOString();
+  Object.entries(db.checks || {}).forEach(([, rec]) => {
+    const item = rec?.to;
+    if (!item || typeof item !== "object") return;
+    if (!item.walkDone && !item.tasks?.[0]) return;
+    if (Array.isArray(item.tasks)) item.tasks[0] = false;
+    item.walkDone = false;
+    item.updatedAt = now;
+    rec.updatedAt = now;
+    changed = true;
+  });
+  if (changed) db.checks = compactCheckRecordsServer(db.checks || {});
+  return changed;
+}
+
 function sendJson(res, status, value) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-  res.end(JSON.stringify(value));
+  const data = Buffer.from(JSON.stringify(value));
+  const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(res.req?.headers?.["accept-encoding"] || ""));
+  if (acceptsGzip && data.length >= 1024) {
+    const compressed = zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED });
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Content-Encoding": "gzip",
+      "Content-Length": compressed.length,
+      "Vary": "Accept-Encoding"
+    });
+    res.end(compressed);
+    return;
+  }
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Content-Length": data.length,
+    "Vary": "Accept-Encoding"
+  });
+  res.end(data);
+}
+
+const TRANSLATE_LANGS = new Set(["ru", "kk", "uz", "en"]);
+
+function normalizeTranslateText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function shouldTranslateText(value) {
+  const text = normalizeTranslateText(value);
+  if (text.length < 2 || text.length > 1200) return false;
+  if (/^[\d\s.,:;()+\-/%в„–#]+$/.test(text)) return false;
+  if (looksLikeMojibake(text)) return false;
+  return /[\p{L}]/u.test(text);
+}
+
+function looksLikeMojibake(value) {
+  const text = String(value || "");
+  const fragments = [
+    "\u0420\u045f", "\u0420\u0452", "\u0420\u2019", "\u0420\u045c", "\u0420\u040e",
+    "\u0420\u2014", "\u0420\u00b0", "\u0420\u00b5", "\u0420\u0451", "\u0420\u0455",
+    "\u0420\u0491", "\u0420\u00b6", "\u0420\u00bb", "\u0420\u0458", "\u0420\u0405",
+    "\u0420\u0457", "\u0421\u0452", "\u0421\u0403", "\u0421\u201a", "\u0421\u2021",
+    "\u0421\u2030", "\u0421\u2020", "\u0421\u040a", "\u0421\u2039", "\u0421\u040f",
+    "\u00d0", "\u00d1"
+  ];
+  return fragments.some(fragment => text.includes(fragment));
+}
+
+function translationCacheKey(target, text) {
+  return `${target}::${crypto.createHash("sha1").update(text).digest("hex")}`;
+}
+
+async function translateExternal(text, target) {
+  if (!shouldTranslateText(text) || !TRANSLATE_LANGS.has(target)) return text;
+  if (target === "ru" && /^[\u0400-\u04FF0-9\s.,:;!?()"В«В»в„–%/+_-]+$/.test(text)) return text;
+  const endpoint = process.env.TRANSLATE_API_URL || "https://translate.googleapis.com/translate_a/single";
+  const url = endpoint.includes("translate_a/single")
+    ? `${endpoint}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
+    : `${endpoint}?sl=auto&tl=${encodeURIComponent(target)}&q=${encodeURIComponent(text)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number(process.env.TRANSLATE_TIMEOUT_MS || 7000));
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "PPR-Control/1.0" },
+      signal: controller.signal
+    });
+    if (!response.ok) return text;
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      const translated = (data[0] || []).map(part => part?.[0] || "").join("").trim();
+      return translated || text;
+    }
+    return String(data?.translatedText || data?.translation || text).trim() || text;
+  } catch {
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function translateTexts(texts, target) {
+  const lang = TRANSLATE_LANGS.has(target) ? target : "ru";
+  const db = readDb();
+  db.translationCache ||= {};
+  const result = {};
+  let changed = false;
+  const unique = [...new Set((Array.isArray(texts) ? texts : []).map(normalizeTranslateText).filter(shouldTranslateText))].slice(0, 250);
+  const missing = [];
+  for (const text of unique) {
+    const cacheKey = translationCacheKey(lang, text);
+    const cached = db.translationCache[cacheKey];
+    if (cached && (looksLikeMojibake(cached.text) || looksLikeMojibake(cached.translated))) {
+      delete db.translationCache[cacheKey];
+      changed = true;
+    }
+    if (!db.translationCache[cacheKey]) missing.push({ text, cacheKey });
+  }
+  for (let i = 0; i < missing.length; i += 8) {
+    const batch = missing.slice(i, i + 8);
+    const translatedBatch = await Promise.all(batch.map(item => translateExternal(item.text, lang)));
+    batch.forEach((item, index) => {
+      const translated = translatedBatch[index] || item.text;
+      if (!looksLikeMojibake(item.text) && !looksLikeMojibake(translated)) {
+        db.translationCache[item.cacheKey] = {
+          target: lang,
+          text: item.text,
+          translated,
+          updatedAt: new Date().toISOString()
+        };
+        changed = true;
+      }
+    });
+  }
+  for (const text of unique) {
+    const cacheKey = translationCacheKey(lang, text);
+    result[text] = db.translationCache[cacheKey]?.translated || text;
+  }
+  if (changed) writeDb(db, { action: "translate_cache", target: lang, count: unique.length });
+  return result;
 }
 
 function normalizeIdentifier(value) {
@@ -449,6 +799,109 @@ function readBody(req) {
   });
 }
 
+function decodeHtmlEntities(text = "") {
+  return String(text || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function httpGetText(targetUrl, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 PPR-Control price lookup",
+        "Accept-Language": "ru,en;q=0.8"
+      }
+    }, response => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        response.resume();
+        resolve(httpGetText(new URL(response.headers.location, targetUrl).toString(), timeoutMs));
+        return;
+      }
+      let data = "";
+      response.setEncoding("utf8");
+      response.on("data", chunk => {
+        data += chunk;
+        if (data.length > 700000) request.destroy();
+      });
+      response.on("end", () => resolve(data));
+    });
+    request.setTimeout(timeoutMs, () => request.destroy(new Error("timeout")));
+    request.on("error", reject);
+  });
+}
+
+function clearPriceLookupQuery(name = "") {
+  const cleanName = String(name || "").trim();
+  const words = cleanName.split(/\s+/).filter(word => word.length >= 3);
+  const generic = /^(bolt|nut|washer|profile|cable|oil|pipe|belt|pump|sensor|bearing|болт|гайка|шайба|профиль|кабель|масло|труба|лента|насос|датчик|подшипник)$/i.test(cleanName);
+  if (words.length >= 2 && cleanName.length >= 8 && !generic) return cleanName;
+  return "";
+}
+
+function extractPriceCandidates(text = "") {
+  const clean = decodeHtmlEntities(text)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
+  const patterns = [
+    /(\d[\d\s.,]{1,15})\s*(?:₸|тг\.?|тенге|kzt|KZT)\b/gi,
+    /(?:₸|тг\.?|тенге|kzt|KZT)\s*(\d[\d\s.,]{1,15})/gi,
+    /"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?\s*,\s*"priceCurrency"\s*:\s*"?KZT"?/gi,
+    /"priceCurrency"\s*:\s*"?KZT"?\s*,\s*"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?/gi
+  ];
+  const values = [];
+  patterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(clean))) {
+      const value = Number(String(match[1] || "").replace(/\s/g, "").replace(",", "."));
+      if (Number.isFinite(value) && value >= 10 && value <= 100000000) values.push(value);
+    }
+  });
+  return values;
+}
+
+async function lookupInternetPrice(name = "") {
+  const queryBase = clearPriceLookupQuery(name);
+  if (!queryBase) return { ok: false, reason: "unclear_query" };
+  const query = `${queryBase} цена купить Казахстан тенге`;
+  const searchUrls = [
+    `https://yandex.kz/search/?text=${encodeURIComponent(query)}`,
+    `https://satu.kz/search?search_term=${encodeURIComponent(queryBase)}`,
+    `https://kaspi.kz/shop/search/?text=${encodeURIComponent(queryBase)}`,
+    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  ];
+  const candidates = [];
+  const errors = [];
+  let answered = false;
+  for (const url of searchUrls) {
+    try {
+      const html = await httpGetText(url);
+      answered = true;
+      candidates.push(...extractPriceCandidates(html));
+      if (candidates.length >= 3) break;
+    } catch (error) {
+      errors.push(error.message || "lookup_failed");
+    }
+  }
+  if (!candidates.length && errors.length && !answered) return { ok: false, reason: "lookup_error" };
+  if (!candidates.length) return { ok: false, reason: "price_not_found" };
+  candidates.sort((a, b) => a - b);
+  const median = candidates[Math.floor(candidates.length / 2)];
+  const closeCount = candidates.filter(value => Math.abs(value - median) / Math.max(median, 1) <= 0.45).length;
+  if (closeCount < 1) return { ok: false, reason: "low_confidence" };
+  return {
+    ok: true,
+    price: Math.round(median),
+    currency: "KZT",
+    source: "internet",
+    query,
+    confidence: closeCount >= 2 ? "medium" : "low"
+  };
+}
 function mergeObjectRecords(current = {}, incoming = {}) {
   const next = { ...(current || {}) };
   for (const [id, value] of Object.entries(incoming || {})) {
@@ -481,19 +934,17 @@ function sanitizeIncomingValue(current, incoming) {
 
 function isIncomingNewerRecord(current, incoming) {
   const recordTime = record => {
-    const direct = Date.parse(record?.updatedAt || record?.createdAt || record?.commentUpdatedAt || record?.resolvedAt || "");
-    if (Number.isFinite(direct)) return direct;
+    if (!record || typeof record !== "object") return NaN;
+    const times = [Date.parse(record?.updatedAt || record?.createdAt || record?.commentUpdatedAt || record?.resolvedAt || "")];
     const commentTimes = Array.isArray(record?.commentLog)
       ? record.commentLog.map(entry => Date.parse(entry?.at || "")).filter(Number.isFinite)
       : [];
-    if (commentTimes.length) return Math.max(...commentTimes);
-    if (!record || typeof record !== "object") return NaN;
-    return Math.max(
-      ...Object.values(record)
-        .map(value => Date.parse(value?.updatedAt || value?.createdAt || value?.commentUpdatedAt || value?.resolvedAt || ""))
-        .filter(Number.isFinite),
-      NaN
-    );
+    times.push(...commentTimes);
+    times.push(...Object.values(record)
+      .map(value => Date.parse(value?.updatedAt || value?.createdAt || value?.commentUpdatedAt || value?.resolvedAt || ""))
+      .filter(Number.isFinite));
+    const finiteTimes = times.filter(Number.isFinite);
+    return finiteTimes.length ? Math.max(...finiteTimes) : NaN;
   };
   const currentTime = recordTime(current);
   const incomingTime = recordTime(incoming);
@@ -576,9 +1027,86 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
+function mergeCommentLogs(current = [], incoming = []) {
+  const map = new Map();
+  for (const entry of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    if (!entry || typeof entry !== "object") continue;
+    const key = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
+    map.set(key, entry);
+  }
+  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+}
+
+function mergeCheckRecord(current = {}, incoming = {}) {
+  const cleanIncoming = sanitizeIncomingValue(current, incoming);
+  const incomingWins = isIncomingNewerRecord(current, cleanIncoming);
+  const next = incomingWins ? { ...cleanIncoming } : { ...current };
+  const currentTo = current?.to && typeof current.to === "object" ? current.to : {};
+  const incomingTo = cleanIncoming?.to && typeof cleanIncoming.to === "object" ? cleanIncoming.to : {};
+  const baseTo = incomingWins ? incomingTo : currentTo;
+  next.to = {
+    ...baseTo,
+    commentLog: mergeCommentLogs(currentTo.commentLog, incomingTo.commentLog)
+  };
+  const timestamps = [current.updatedAt, cleanIncoming.updatedAt, currentTo.updatedAt, incomingTo.updatedAt]
+    .filter(Boolean)
+    .sort();
+  if (timestamps.length) next.updatedAt = timestamps.at(-1);
+  return next;
+}
+
+function mergeCheckRecordsByFreshness(current = {}, incoming = {}) {
+  const next = { ...(current || {}) };
+  for (const [id, value] of Object.entries(incoming || {})) {
+    if (id.includes("\uFFFD") || !value || typeof value !== "object") continue;
+    next[id] = mergeCheckRecord(next[id] || {}, value);
+  }
+  return next;
+}
+
+function inventoryCanonicalKey(item = {}) {
+  const area = String(item.area || "Общий склад");
+  const article = String(item.article || "").trim().toLowerCase();
+  if (article) return `${area}::article::${article}`;
+  return `${area}::name::${String(item.name || "").trim().toLowerCase()}`;
+}
+
+function canonicalizeInventoryRecords(records = {}) {
+  const next = {};
+  const sourceWasCanonical = new Map();
+  for (const [sourceId, rawItem] of Object.entries(records || {})) {
+    if (!rawItem || typeof rawItem !== "object" || sourceId.includes("\uFFFD")) continue;
+    const id = inventoryCanonicalKey(rawItem);
+    const isCanonical = sourceId === id;
+    if (next[id] && (sourceWasCanonical.get(id) || !isCanonical)) continue;
+    next[id] = { ...rawItem, id };
+    sourceWasCanonical.set(id, isCanonical);
+  }
+  return next;
+}
+
+function mergeInventoryRecordsByFreshness(current = {}, incoming = {}) {
+  const next = canonicalizeInventoryRecords(current);
+  const cleanIncoming = canonicalizeInventoryRecords(incoming);
+  for (const [id, value] of Object.entries(cleanIncoming)) {
+    const existing = next[id];
+    if (!existing) {
+      next[id] = sanitizeIncomingValue({}, value);
+      continue;
+    }
+    const currentTime = Date.parse(existing.updatedAt || existing.createdAt || "");
+    const incomingTime = Date.parse(value.updatedAt || value.createdAt || "");
+    if (Number.isFinite(incomingTime) && (!Number.isFinite(currentTime) || incomingTime > currentTime)) {
+      next[id] = sanitizeIncomingValue(existing, value);
+    }
+  }
+  return next;
+}
+
 function hasMeaningfulCheckKind(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
+  if (item.walkShifts && Object.values(item.walkShifts).some(shift => shift?.done)) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
   if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
   if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
@@ -632,27 +1160,37 @@ function enqueueStateWrite(task) {
 }
 
 let wss = null;
+const wsServers = [];
 const sseClients = new Set();
+const realtimeInstanceId = crypto.randomBytes(8).toString("hex");
+let realtimeStateCounter = 0;
+
+function realtimeStateVersion() {
+  return `${realtimeInstanceId}:${realtimeStateCounter}`;
+}
 
 function sendSse(res, payload) {
   try {
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    res.write(typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`);
   } catch {
     sseClients.delete(res);
   }
 }
 
-function broadcastState(origin = "server", actionId = "") {
-  const payload = { type: "state", origin, actionId, state: publicState() };
+function broadcastState(origin = "server", actionId = "", state = publicState(), partial = false) {
+  realtimeStateCounter += 1;
+  const payload = { type: "state", origin, actionId, stateVersion: realtimeStateVersion(), partial, state };
   if (wss) {
     const message = JSON.stringify(payload);
     for (const client of wss.clients) {
       if (client.readyState === 1) client.send(message);
     }
   }
+  const sseMessage = `data: ${JSON.stringify(payload)}\n\n`;
   for (const client of sseClients) {
-    sendSse(client, payload);
+    sendSse(client, sseMessage);
   }
+  return payload.stateVersion;
 }
 
 async function handleApi(req, res, pathname, url) {
@@ -665,7 +1203,7 @@ async function handleApi(req, res, pathname, url) {
     });
     res.write(": connected\n\n");
     sseClients.add(res);
-    sendSse(res, { type: "state", origin: "server", state: publicState() });
+    sendSse(res, { type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() });
     req.on("close", () => sseClients.delete(res));
     return true;
   }
@@ -674,11 +1212,34 @@ async function handleApi(req, res, pathname, url) {
     sendJson(res, 200, {
       ok: true,
       time: new Date().toISOString(),
+      storage: storageStatus,
       realtime: Boolean(wss) || sseClients.size > 0,
+      stateVersion: realtimeStateVersion(),
       websocket: Boolean(wss),
       websocketClients: wss ? wss.clients.size : 0,
       eventClients: sseClients.size
     });
+    return true;
+  }
+
+  if (pathname === "/api/qr" && req.method === "GET") {
+    const data = String(url.searchParams.get("data") || "").trim();
+    const size = Math.min(Math.max(Number(url.searchParams.get("size") || 240), 120), 640);
+    if (!data || data.length > 300) {
+      sendJson(res, 400, { ok: false, error: "QR data is empty or too long." });
+      return true;
+    }
+    const svg = await QRCode.toString(data, {
+      type: "svg",
+      margin: 2,
+      width: size,
+      errorCorrectionLevel: "M"
+    });
+    res.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-store"
+    });
+    res.end(svg);
     return true;
   }
 
@@ -688,6 +1249,7 @@ async function handleApi(req, res, pathname, url) {
     const employeeId = String(body.employeeId || "").trim();
     const phone = String(body.phone || "").trim();
     const password = String(body.password || "");
+    const language = ["ru", "kk"].includes(String(body.language || "")) ? String(body.language) : "ru";
     if (name.length < 3 || employeeId.length < 2 || phone.length < 5 || password.length < 6) {
       sendJson(res, 400, { ok: false, error: "Заполните ФИО, табельный номер, телефон и пароль не короче 6 символов." });
       return true;
@@ -707,6 +1269,7 @@ async function handleApi(req, res, pathname, url) {
         passwordHash: hashPassword(password),
         role: "",
         area: "",
+        language,
         approved: false,
         pendingApproval: true,
         status: "pending",
@@ -738,7 +1301,7 @@ async function handleApi(req, res, pathname, url) {
       String(body.password) === bootstrapPassword
     );
     if (user && !user.passwordHash && !["editor", "director"].includes(user.role)) {
-      sendJson(res, 428, { ok: false, error: "Редактор должен сначала задать вам новый пароль." });
+      sendJson(res, 428, { ok: false, error: "Админ должен сначала задать вам новый пароль." });
       return true;
     }
     if (!user || (!legacyAdminLogin && !passwordMatches(body.password, user.passwordHash))) {
@@ -746,7 +1309,7 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     if (user.approved === false || user.pendingApproval === true || !user.role) {
-      sendJson(res, 403, { ok: false, error: "Регистрация ещё не подтверждена редактором.", pending: true });
+      sendJson(res, 403, { ok: false, error: "Регистрация ещё не подтверждена админом.", pending: true });
       return true;
     }
     if (legacyAdminLogin) {
@@ -805,7 +1368,63 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/state" && req.method === "GET") {
     await stateWriteQueue.catch(() => {});
-    sendJson(res, 200, publicState());
+    const db = readDb();
+    if (externalizePhotosInValue(db)) writeDb(db, { action: "externalize_photos_get" });
+    sendJson(res, 200, publicState(db));
+    return true;
+  }
+
+  if (pathname === "/api/photos" && req.method === "POST") {
+    const body = await readBody(req);
+    const url = savePhotoDataUrl(body?.data || "");
+    if (!url) {
+      sendJson(res, 400, { ok: false, error: "Bad photo" });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, url });
+    return true;
+  }
+
+  if (pathname.startsWith("/api/photos/") && req.method === "GET") {
+    const fileName = path.basename(decodeURIComponent(pathname.slice("/api/photos/".length)));
+    if (!/^[a-f0-9]{40}\.(jpg|jpeg|png|webp)$/i.test(fileName)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return true;
+    }
+    const file = path.join(photosDir, fileName);
+    fs.readFile(file, (err, data) => {
+      if (err) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": contentTypes[path.extname(file).toLowerCase()] || "application/octet-stream",
+        "Cache-Control": "public, max-age=31536000, immutable"
+      });
+      res.end(data);
+    });
+    return true;
+  }
+
+  if (pathname === "/api/translate" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const target = String(body.target || "ru").trim();
+    const texts = Array.isArray(body.texts) ? body.texts : [];
+    const translations = await translateTexts(texts, target);
+    sendJson(res, 200, { ok: true, target: TRANSLATE_LANGS.has(target) ? target : "ru", translations });
+    return true;
+  }
+
+  if (pathname === "/api/price-lookup" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const result = await lookupInternetPrice(body.name || "");
+      sendJson(res, 200, result);
+    } catch (error) {
+      sendJson(res, 200, { ok: false, reason: "lookup_error" });
+    }
     return true;
   }
 
@@ -813,33 +1432,92 @@ async function handleApi(req, res, pathname, url) {
     const body = await readBody(req);
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      const beforeState = JSON.stringify(publicState(db));
       if (body.clearRecordedData === true) {
+        if (String(body.clearConfirm || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
+          return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "clear_requires_confirmation" };
+        }
         db.checks = {};
         db.requests = {};
         db.inventory = {};
         db.directorMessages = [];
+        db.serviceCosts = [];
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
         db.auditHistory = [];
       }
-      db.checks = compactCheckRecords(mergeObjectRecordsByFreshness(db.checks, body.checks));
+      if (body.walkShiftCleanupVersion) clearLegacyWalkCompletionsServer(db);
+      db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
+      if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
       db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
-      db.inventory = mergeObjectRecordsByFreshness(db.inventory, body.inventory);
+      removeJournalRequestsServer(db);
+      db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
       db.catalog = db.catalog || { equipment: {} };
       db.catalog.equipment = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
       db.directorMessages = mergeArrayById(db.directorMessages, body.directorMessages);
+      db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
       db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
       db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
       db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
       db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
       db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
+      db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
+      migrateLegacyDirectorApprovals(db);
       const actionId = String(body.actionId || "");
-      writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
-      return { actionId, state: publicState(db), origin: body.clientId || "api" };
+      const changed = beforeState !== JSON.stringify(publicState(db));
+      if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
+      return { actionId, changed, state: publicState(db), origin: body.clientId || "api" };
     });
+    if (result.error) {
+      sendJson(res, 400, { ok: false, error: result.error, actionId: result.actionId });
+      return true;
+    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, state: result.state });
-    broadcastState(result.origin, result.actionId);
+    if (result.changed) broadcastState(result.origin, result.actionId);
+    return true;
+  }
+
+  if (pathname === "/api/node-update" && req.method === "PUT") {
+    const body = await readBody(req);
+    const recordKey = String(body.key || "").trim();
+    if (!recordKey || recordKey.includes("\uFFFD") || !body.record || typeof body.record !== "object") {
+      sendJson(res, 400, { ok: false, error: "Bad node update" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
+      db.checks ||= {};
+      db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
+      db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
+      const patch = {
+        checks: db.checks[recordKey] ? { [recordKey]: db.checks[recordKey] } : {},
+        downtimes: db.downtimes || []
+      };
+      const changed = before !== JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
+      const actionId = String(body.actionId || "");
+      if (changed) {
+        writeDb(db, {
+          action: "node_update",
+          actionId,
+          clientId: String(body.clientId || ""),
+          user: body.user || null,
+          recordKey
+        });
+      }
+      return { actionId, changed, origin: body.clientId || "api", patch };
+    });
+    const stateVersion = result.changed
+      ? broadcastState(result.origin, result.actionId, result.patch, true)
+      : realtimeStateVersion();
+    sendJson(res, 200, {
+      ok: true,
+      actionId: result.actionId,
+      changed: result.changed,
+      stateVersion,
+      state: result.patch
+    });
     return true;
   }
 
@@ -851,19 +1529,25 @@ async function handleApi(req, res, pathname, url) {
       const name = String(user.name || "").trim();
       const actionId = String(user.actionId || "");
       const employeeId = String(user.employeeId || "").trim();
-      const sameUser = item =>
+      const sameUserForUpdate = item =>
         (user.id && item.id === user.id) ||
         (employeeId && item.employeeId === employeeId) ||
-        (phone && item.phone === phone) ||
-        (!phone && !employeeId && name && item.name === name);
-      const existing = (db.users || []).find(sameUser);
+        (phone && item.phone === phone);
+      const sameUserById = item => Boolean(user.id && item.id === user.id);
+      const existing = (db.users || []).find(sameUserForUpdate);
       if (user.action === "delete") {
-        db.users = (db.users || []).filter(item => !sameUser(item));
-        writeDb(db, { action: "user_delete", actionId, clientId: String(user.clientId || ""), user: { name, phone } });
+        if (!user.id) return { actionId, origin: user.clientId || "user", error: "delete_requires_id" };
+        const beforeCount = (db.users || []).length;
+        db.users = (db.users || []).filter(item => !sameUserById(item));
+        if (db.users.length === beforeCount) return { actionId, origin: user.clientId || "user", error: "user_not_found" };
+        writeDb(db, { action: "user_delete", actionId, clientId: String(user.clientId || ""), user: { id: user.id, name, phone } });
         return { actionId, origin: user.clientId || "user" };
       }
-      db.users = (db.users || []).filter(item => !sameUser(item));
+      db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
       const { passwordHash: ignoredPasswordHash, ...safeUser } = user;
+      if (existing?.role === "editor" && safeUser.role && safeUser.role !== "editor") {
+        safeUser.role = "editor";
+      }
       const nextUser = {
         ...(existing || {}),
         ...safeUser,
@@ -877,6 +1561,10 @@ async function handleApi(req, res, pathname, url) {
       writeDb(db, { action: "user_register", actionId, clientId: String(user.clientId || ""), user: { name: user.name || "", role: user.role || "", phone: phone || "" } });
       return { actionId, origin: user.clientId || "user" };
     });
+    if (result.error) {
+      sendJson(res, result.error === "user_not_found" ? 404 : 400, { ok: false, error: result.error, actionId: result.actionId });
+      return true;
+    }
     sendJson(res, 200, { ok: true, actionId: result.actionId });
     broadcastState(result.origin, result.actionId);
     return true;
@@ -923,12 +1611,62 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+const qrServer = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
+    serveStatic(req, res, url.pathname);
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error.message });
+  }
+});
+
+function createHttpsServer() {
+  const pfxFile = process.env.HTTPS_PFX_FILE || "";
+  const certFile = process.env.HTTPS_CERT_FILE || "";
+  const keyFile = process.env.HTTPS_KEY_FILE || "";
+  try {
+    let options = null;
+    if (pfxFile && fs.existsSync(path.resolve(root, pfxFile))) {
+      options = {
+        pfx: fs.readFileSync(path.resolve(root, pfxFile)),
+        passphrase: process.env.HTTPS_PFX_PASS || ""
+      };
+    } else if (certFile && keyFile && fs.existsSync(path.resolve(root, certFile)) && fs.existsSync(path.resolve(root, keyFile))) {
+      options = {
+        cert: fs.readFileSync(path.resolve(root, certFile)),
+        key: fs.readFileSync(path.resolve(root, keyFile))
+      };
+    }
+    if (!options) return null;
+    return https.createServer(options, async (req, res) => {
+      try {
+        const url = new URL(req.url || "/", `https://${req.headers.host || "localhost"}`);
+        if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
+        serveStatic(req, res, url.pathname);
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message });
+      }
+    });
+  } catch (error) {
+    console.warn(`HTTPS disabled: ${error.message}`);
+    return null;
+  }
+}
+
+const httpsServer = createHttpsServer();
+
 if (WebSocketServer) {
-  wss = new WebSocketServer({ server, path: "/ws" });
+  wss = new WebSocketServer({
+    server,
+    path: "/ws",
+    perMessageDeflate: { threshold: 1024 }
+  });
+  wsServers.push(wss);
   wss.on("connection", ws => {
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
-    ws.send(JSON.stringify({ type: "state", origin: "server", state: publicState() }));
+    ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
     ws.on("message", raw => {
       try {
         const msg = JSON.parse(String(raw || "{}"));
@@ -936,11 +1674,47 @@ if (WebSocketServer) {
       } catch {}
     });
   });
+  const qrWss = new WebSocketServer({
+    server: qrServer,
+    path: "/ws",
+    perMessageDeflate: { threshold: 1024 }
+  });
+  wsServers.push(qrWss);
+  qrWss.on("connection", ws => {
+    ws.isAlive = true;
+    ws.on("pong", () => { ws.isAlive = true; });
+    ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
+    ws.on("message", raw => {
+      try {
+        const msg = JSON.parse(String(raw || "{}"));
+        if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
+      } catch {}
+    });
+  });
+  if (httpsServer) {
+    const httpsWss = new WebSocketServer({
+      server: httpsServer,
+      path: "/ws",
+      perMessageDeflate: { threshold: 1024 }
+    });
+    wsServers.push(httpsWss);
+    httpsWss.on("connection", ws => {
+      ws.isAlive = true;
+      ws.on("pong", () => { ws.isAlive = true; });
+      ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
+      ws.on("message", raw => {
+        try {
+          const msg = JSON.parse(String(raw || "{}"));
+          if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
+        } catch {}
+      });
+    });
+  }
 }
 
 const heartbeatTimer = setInterval(() => {
-  if (wss) {
-    for (const ws of wss.clients) {
+  for (const wsServer of wsServers) {
+    for (const ws of wsServer.clients) {
       if (ws.isAlive === false) {
         try { ws.terminate(); } catch {}
         continue;
@@ -961,6 +1735,8 @@ async function shutdown() {
     if (postgresPool) await postgresPool.end();
   } catch {}
   server.close(() => process.exit(0));
+  qrServer.close(() => {});
+  if (httpsServer) httpsServer.close(() => {});
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("SIGTERM", shutdown);
@@ -972,8 +1748,19 @@ initializeStorage()
       ensureDb();
       console.log(`PPR Control realtime server: http://0.0.0.0:${port} [${storage.mode}]`);
     });
+    qrServer.listen(qrPort, "0.0.0.0", () => {
+      console.log(`PPR Control QR clean server: http://0.0.0.0:${qrPort} [${storage.mode}]`);
+    });
+    if (httpsServer) {
+      httpsServer.listen(httpsPort, "0.0.0.0", () => {
+        console.log(`PPR Control HTTPS server: https://0.0.0.0:${httpsPort} [${storage.mode}]`);
+      });
+    }
   })
   .catch(error => {
     console.error(`Server startup failed: ${error.stack || error.message}`);
     process.exit(1);
   });
+
+
+

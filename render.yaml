@@ -2,8 +2,8 @@ services:
   - type: web
     name: ppr-control
     env: node
-    plan: free
-    buildCommand: ""
+    plan: starter
+    buildCommand: "npm install"
     startCommand: "node server.js"
     envVars:
       - key: NODE_ENV

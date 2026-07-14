@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadCertificateFileName</key>
+      <string>PPR-Control-Root-CA.cer</string>
+      <key>PayloadContent</key>
+      <data>
+MIIDCDCCAfCgAwIBAgIQE7ketPCHF7NK0m5JLS2VwjANBgkqhkiG9w0BAQsFADAe
+MRwwGgYDVQQDDBNQUFIgQ29udHJvbCBSb290IENBMB4XDTI2MDcxMzA2MzcyNVoX
+DTMxMDcxMzA2NDcyNVowHjEcMBoGA1UEAwwTUFBSIENvbnRyb2wgUm9vdCBDQTCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALZLhtVX9RCF4RIanJoR45F0
+QrRwLdyt8aArPaCK3+kathZUD+mseM3+OAWe7yjKnubdFI7systggI7Gc0YcPW3B
+YDsNlBtFi5ikga+dtA8zfVlX2bDibMWfE6Gv+R9K/ahEZB6q68jRF9Cc+d/ftNfM
+HT5Ks0+WLViJtiiBzUTIH+W4XTdPHmv6BjkeF7LPqE3ZvXDOfGLI9iP+ZEV4rlSF
+pAzfVdzoQK9pdqgOCOJGKrwTOkgQduthQvtCeg5kw8bqewtdE8swBnPNSDdC6O/P
+hxvakgptNXDzJxJKSnRXA+krOauVnSehWtwEQXGRI1luYpKwxwFXIuYr2V2yXhUC
+AwEAAaNCMEAwDgYDVR0PAQH/BAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0O
+BBYEFA3FWsvKL0m4Er0U86eIpbhzT8KfMA0GCSqGSIb3DQEBCwUAA4IBAQA0nmVf
+vV1LAzgctkmvH5ng77OCBAtFRble5Ch3YmIZM8CxSkf+pSiLQS2ndwwNkfpiUFdO
+3ZeAtnnsZGNBiT91yuuPaTAJn8nSBco1d7Q8Vn+ezbHQlJ1CBVh67zb8Ctv+5ZzA
+fsnO42Uo5qHiQL4m/t/ERF+zifTAkEZ5HUOeEtbtgPYElEFKpyM71UmddhDitRQ1
+i0N1u+TKQR9KLk/RR9FI/myZZ+3e2rD4VqvlvwQCcLjwxleaXuN1LVEjTlKjiGJW
+nVkMkpq7Go/nDlEof+FbZa7PRlfq3Peh2bXrv/q7cjNanQdEiSID7hStLP3Ht/7k
+PQ3//uNMcGVdbw6W
+      </data>
+      <key>PayloadDescription</key>
+      <string>PPR Control local HTTPS root certificate</string>
+      <key>PayloadDisplayName</key>
+      <string>PPR Control Root CA</string>
+      <key>PayloadIdentifier</key>
+      <string>kz.ppr.control.rootca</string>
+      <key>PayloadType</key>
+      <string>com.apple.security.root</string>
+      <key>PayloadUUID</key>
+      <string>93F43AA0-FB81-43EB-B6BD-8850CC1DEEA7</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+  </array>
+  <key>PayloadDescription</key>
+  <string>Install this profile to trust PPR Control local HTTPS on this iPhone.</string>
+  <key>PayloadDisplayName</key>
+  <string>PPR Control HTTPS Certificate</string>
+  <key>PayloadIdentifier</key>
+  <string>kz.ppr.control.https.profile</string>
+  <key>PayloadOrganization</key>
+  <string>PPR Control</string>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>BCA34887-BFEC-42D1-AFE5-8E76BC3C3F70</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>
