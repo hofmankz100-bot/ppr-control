@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v106";
+const APP_VERSION = "v107";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -3442,7 +3442,11 @@ function saveCommentResolution(item, text = "", photo = "", options = {}) {
     item.commentOwnerName = "";
     item.commentUpdatedAt = "";
   }
+  item.comment = "";
   item.commentPhoto = "";
+  item.commentOwnerRole = "";
+  item.commentOwnerName = "";
+  item.commentUpdatedAt = "";
   item.nodeDraftText = "";
   item.updatedAt = now;
 }
