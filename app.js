@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v131";
+const APP_VERSION = "v132";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -11442,7 +11442,7 @@ function renderWarehousePanel() {
         <strong>Склады по цехам</strong>
         <span>${query ? `Найдено: запас ${foundStock.length} · заявки ${foundRequests.length}` : "Выберите папку склада или найдите запчасть"}</span>
       </div>
-      <div class="stock-action-line"><button type="button" class="warehouse-archive-button" data-toggle-warehouse-installed>Архив установок</button><button type="button" class="warehouse-archive-button" data-toggle-warehouse-zero>Нулевые остатки (${zeroInventoryItems().length})</button></div>
+      <div class="stock-action-line"><button type="button" class="warehouse-archive-button ${current.warehouseInstalledArchiveOpen ? "active" : ""}" data-toggle-warehouse-installed>${current.warehouseInstalledArchiveOpen ? "Закрыть архив установок ▲" : "Открыть архив установок ▼"}</button><button type="button" class="warehouse-archive-button ${current.warehouseZeroArchiveOpen ? "active" : ""}" data-toggle-warehouse-zero>${current.warehouseZeroArchiveOpen ? "Закрыть нулевые остатки ▲" : `Открыть нулевые остатки (${zeroInventoryItems().length}) ▼`}</button></div>
     </div>
     ${renderWarehouseFolders(folderArea, warehouseData)}
     <form class="warehouse-search" id="warehouseSearchForm">

@@ -2827,6 +2827,13 @@ textarea {
   animation: alertBlink 1s steps(2, start) infinite;
 }
 
+.warehouse-archive-button.active {
+  border-color: #15803d !important;
+  background: #dcfce7 !important;
+  color: #14532d !important;
+  box-shadow: inset 0 0 0 2px rgba(21,128,61,.18);
+}
+
 
 .quick-nav button.indicator-only {
   cursor: default;
