@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v116";
+const APP_VERSION = "v117";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -4212,7 +4212,8 @@ function requestPrintableFile(req) {
 
 async function shareRequestPrintFile(req) {
   try {
-    const file = requestPrintableFile(req);
+    const file = printRequestSheet(req, { asFile: true });
+    if (!file) throw new Error("print-file-not-created");
     if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
       await navigator.share({ title: req.requestNumber || "Заявка", text: "Файл заявки для печати", files: [file] });
       return;
@@ -11777,7 +11778,7 @@ function requestPrintSignatures(req, sourceRole) {
   `;
 }
 
-function printRequestSheet(req) {
+function printRequestSheet(req, options = {}) {
   normalizeRequest(req);
   const items = requestItems(req);
   const columns = requestPrintColumns(items);
@@ -11789,7 +11790,10 @@ function printRequestSheet(req) {
   for (let index = firstPageLimit; index < printItems.length; index += nextPageLimit) {
     continuationChunks.push(printItems.slice(index, index + nextPageLimit));
   }
-  const win = window.open("", "_blank", "width=1280,height=820");
+  let printableHtml = "";
+  const win = options.asFile
+    ? { document: { write(value) { printableHtml += String(value || ""); }, close() {} } }
+    : window.open("", "_blank", "width=1280,height=820");
   if (!win) {
     window.alert("Разрешите всплывающие окна для печати заявки.");
     return;
@@ -11899,6 +11903,10 @@ function printRequestSheet(req) {
       </body>
     </html>`);
   win.document.close();
+  if (options.asFile) {
+    const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
+    return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
+  }
 }
 
 function renderAccountingWrittenOffList() {
