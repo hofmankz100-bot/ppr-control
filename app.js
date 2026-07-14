@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v113";
+const APP_VERSION = "v114";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1840,7 +1840,7 @@ function canOpenRequestRole(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return false;
+    return role === profile?.role && canReceiveWarehouseIssue(role);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -1852,7 +1852,7 @@ function canSeeRequestRoleIndicator(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return false;
+    return role === profile?.role && canReceiveWarehouseIssue(role);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -2000,6 +2000,15 @@ function canReceiveWarehouseIssue(role) {
 
 function canConfirmIssuedInstall(req, role = current.requestRole) {
   return req.issued && !req.mechanicInstalled && !req.done && !req.stock && warehouseIssueTargetRole(req) === role;
+}
+
+function issuedWarehouseItemVisibleToProfile(req, role = profile?.role) {
+  if (!canConfirmIssuedInstall(req, role) || profile?.role !== role) return false;
+  const targetPhone = String(req.issueTargetPhone || "").trim();
+  const targetName = String(req.issueTargetName || "").trim().toLowerCase();
+  if (targetPhone && targetPhone !== String(profile?.phone || "").trim()) return false;
+  if (targetName && targetName !== String(profile?.name || "").trim().toLowerCase()) return false;
+  return true;
 }
 
 function userMatchesWarehouseIssueRequester(user, req) {
@@ -2287,7 +2296,8 @@ function requestVisibleForRole(req, role) {
   if (!canOpenRequestRole(role) || !requestAllowedByUser(req)) return false;
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "warehouse" && String(req.id || "").startsWith("stock-issue:")) return false;
-    return role === "all" || role === "warehouse";
+    if (role === "all" || role === "warehouse") return true;
+    return issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role);
   }
   if (["mechanic", "electrician", "operator"].includes(profile?.role) && role === "warehouse") {
     return req.transferredToWarehouse || req.warehouseReceived || req.stock || req.issued;
@@ -2299,7 +2309,8 @@ function requestVisibleForRoleIndicator(req, role) {
   if (!canSeeRequestRoleIndicator(role) || !requestAllowedByUser(req)) return false;
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "warehouse" && String(req.id || "").startsWith("stock-issue:")) return false;
-    return role === "all" || role === "warehouse";
+    if (role === "all" || role === "warehouse") return true;
+    return issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role);
   }
   if (profile?.role === "warehouse" && role !== "warehouse") return false;
   return requestMatchesRole(req, role);
@@ -5907,7 +5918,13 @@ function requestMatchesFilters(req) {
 
 function requestRoleCounts() {
   if (MANUAL_REQUEST_WORKFLOW) {
-    return { all: 0, shop: 0, engineer: 0, warehouse: 0, mechanic: 0, electrician: 0, operator: 0, productionDirector: 0 };
+    const counts = { all: 0, shop: 0, engineer: 0, warehouse: 0, mechanic: 0, electrician: 0, operator: 0, productionDirector: 0 };
+    allRequests().forEach(req => {
+      for (const role of ["shop", "engineer", "mechanic", "electrician", "operator"]) {
+        if (issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role)) counts[role] += 1;
+      }
+    });
+    return counts;
   }
   const all = allRequests();
   const roles = ["shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"];
@@ -11887,7 +11904,7 @@ function requestCard(req) {
     return card;
   }
 
-  if (MANUAL_REQUEST_WORKFLOW && actionRole !== "warehouse") {
+  if (MANUAL_REQUEST_WORKFLOW && actionRole !== "warehouse" && !issuedWarehouseItemVisibleToProfile(req, actionRole)) {
     actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">Электронный маршрут отключён. Распечатайте заявку и обходите вручную.</div>`);
     return card;
   }
