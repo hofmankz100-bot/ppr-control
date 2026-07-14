@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v127";
+const APP_VERSION = "v128";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -297,7 +297,6 @@ const ui = {
   createRequestButton: document.querySelector("#createRequestButton"),
   openRequestsButton: document.querySelector("#openRequestsButton"),
   createTmcRequestButton: document.querySelector("#createTmcRequestButton"),
-  warehouseRecipientAlertButton: document.querySelector("#warehouseRecipientAlertButton"),
   tmcRequestForm: document.querySelector("#tmcRequestForm"),
   tmcRequestArea: document.querySelector("#tmcRequestArea"),
   tmcRequestEquipment: document.querySelector("#tmcRequestEquipment"),
@@ -2369,11 +2368,7 @@ function renderProfile() {
       <select id="profileLanguageSelect">${languageOptions()}</select>
     </label>
   `;
-  const warehouseRoleIssuedCount = canReceiveWarehouseIssue(profile?.role)
-    ? allRequests().filter(req => req.issued && !req.mechanicInstalled && !req.done && !req.stock && warehouseIssueTargetRole(req) === profile.role).length
-    : 0;
   ui.profileBar.innerHTML = `
-    ${warehouseRoleIssuedCount ? `<button type="button" id="profileWarehouseAlert" class="profile-warehouse-alert"><span>Вам выдано со склада</span><strong>${warehouseRoleIssuedCount}</strong><small>Нажмите, чтобы открыть и подтвердить установку</small></button>` : ""}
     <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${employeeId}${phone}</span>${previewNote}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
@@ -2382,10 +2377,6 @@ function renderProfile() {
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
   `;
-  ui.profileBar.querySelector("#profileWarehouseAlert")?.addEventListener("click", () => {
-    current.requestRole = profile?.role || "all";
-    show("requests");
-  });
   ui.profileBar.querySelector("#editorPreviewRoleSelect")?.addEventListener("change", event => {
     setEditorPreviewRole(event.currentTarget.value);
   });
@@ -6071,7 +6062,10 @@ function requestRoleCounts() {
     const counts = { all: 0, shop: 0, engineer: 0, warehouse: 0, mechanic: 0, electrician: 0, operator: 0, productionDirector: 0 };
     allRequests().forEach(req => {
       for (const role of ["shop", "engineer", "mechanic", "electrician", "operator"]) {
-        if (issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role)) counts[role] += 1;
+        const issuedForCurrentRole = role === profile?.role
+          && req.issued && !req.mechanicInstalled && !req.done && !req.stock
+          && warehouseIssueTargetRole(req) === role;
+        if (issuedForCurrentRole || issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role)) counts[role] += 1;
       }
     });
     return counts;
@@ -6103,13 +6097,6 @@ function updateRoleBadges() {
   const ownRole = defaultRequestRole();
   const ownWaiting = counts[ownRole] || 0;
   document.querySelector('[data-mobile-view="requests"]')?.classList.toggle("request-alert", ownWaiting > 0);
-  const assignedCount = canReceiveWarehouseIssue(profile?.role) ? Number(counts[profile.role] || 0) : 0;
-  if (ui.warehouseRecipientAlertButton) {
-    ui.warehouseRecipientAlertButton.hidden = assignedCount <= 0;
-    ui.warehouseRecipientAlertButton.classList.toggle("request-alert", assignedCount > 0);
-    ui.warehouseRecipientAlertButton.classList.toggle("has-count", assignedCount > 0);
-    ui.warehouseRecipientAlertButton.innerHTML = `<span>Выдано со склада</span><strong>${assignedCount}</strong>`;
-  }
   updateTmcRequestButtonLabels();
   renderEngineerIncomingBanner();
   if (ui.createTmcRequestButton) ui.createTmcRequestButton.hidden = !canEditChecklist();
@@ -12735,11 +12722,6 @@ ui.createTmcRequestButton?.addEventListener("click", () => {
   if (profile?.role === "engineer" && engineerIncomingTmcItemCount() > 0) {
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
-});
-
-ui.warehouseRecipientAlertButton?.addEventListener("click", () => {
-  current.requestRole = profile?.role || "all";
-  show("requests");
 });
 
 ui.engineerIncomingBanner?.addEventListener("click", event => {
