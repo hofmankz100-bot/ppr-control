@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v130";
+const APP_VERSION = "v131";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -5603,6 +5603,7 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
           <div class="stock-row-actions">
             <input data-stock-qty="${escapeHtml(item.id)}" type="number" min="0.001" step="0.001" max="${Number(item.qty || 0)}" value="${Math.min(1, Number(item.qty || 0))}">
             ${canManageWarehouse ? `
+              <input data-stock-unit="${escapeHtml(item.id)}" type="text" value="${unit}" placeholder="Ед. изм.: кг, м, шт">
               <input data-stock-price="${escapeHtml(item.id)}" type="text" inputmode="decimal" value="${escapeHtml(priceTextFromAmount(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "")))}" placeholder="Цена за 1 ед. изм.">
               <button type="button" data-stock-price-lookup="${escapeHtml(item.id)}">Найти цену</button>
               <div class="stock-action-line">
@@ -11561,6 +11562,21 @@ function renderWarehousePanel() {
       }
       saveState();
       renderRequests();
+    });
+  });
+  ui.warehousePanel.querySelectorAll("[data-stock-unit]").forEach(input => {
+    input.addEventListener("change", () => {
+      const item = state.inventory?.[input.dataset.stockUnit || ""];
+      const unit = String(input.value || "").trim();
+      if (!item || !unit) {
+        if (item) input.value = item.unit || "шт";
+        return;
+      }
+      item.unit = unit;
+      item.updatedAt = new Date().toISOString();
+      saveState();
+      renderWarehousePanel();
+      showAppToast(`Единица измерения сохранена: ${unit}`);
     });
   });
   ui.warehousePanel.querySelectorAll("[data-stock-price-lookup]").forEach(button => {
