@@ -1445,6 +1445,7 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
+        db.journalDueSince = {};
         db.auditHistory = [];
       }
       if (body.walkShiftCleanupVersion) clearLegacyWalkCompletionsServer(db);
