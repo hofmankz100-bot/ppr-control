@@ -587,6 +587,7 @@ html[data-theme="dark"] {
 }
 html[data-theme="dark"] .login-overlay { background:radial-gradient(circle at 12% 8%,#145f7b,transparent 34%),linear-gradient(145deg,#02080d,#071c2a 55%,#0b4055); }
 html[data-theme="dark"] .login-card { border-color:#29485b; background:rgba(10,28,40,.97); box-shadow:0 28px 90px #000; }
+html[data-theme="dark"] .login-brand img { filter:grayscale(1) invert(1) brightness(1.4); }
 html[data-theme="dark"] .login-status { border-color:#1c6047; background:#0d3024; color:#7de3b4; }
 html[data-theme="dark"] .login-card input,
 html[data-theme="dark"] .login-card select,

@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v134";
+const CACHE_NAME = "ppr-v135";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=134",
+  "./styles.css?v=135",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=134",
+  "./app.js?v=135",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
   "./icon.svg"
