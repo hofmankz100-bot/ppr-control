@@ -1,6 +1,6 @@
 {
   "name": "ППР Контроль",
-  "short_name": "ППР",
+  "short_name": "ALKZ",
   "id": "/",
   "scope": "/",
   "start_url": "/",
@@ -10,7 +10,7 @@
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#14324a",
-  "description": "Мобильный журнал ППР, чек-листы и замечания.",
+  "description": "ALKZ — мобильный контроль ППР, склада, чек-листов и замечаний.",
   "icons": [
     {
       "src": "icon.svg",

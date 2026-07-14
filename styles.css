@@ -23,6 +23,147 @@
   font-family: Calibri, Arial, sans-serif;
 }
 
+/* Premium interface layer: consistent visual language without changing workflow layout. */
+body {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(39,154,194,.13), transparent 30%),
+    linear-gradient(180deg,#eef4f8 0,#f7f9fb 420px,#edf2f5 100%);
+  min-height:100vh;
+}
+
+.topbar {
+  min-height:68px;
+  background:linear-gradient(115deg,#071c2b 0%,#123b53 55%,#0a627e 130%);
+  border-bottom:1px solid rgba(160,226,246,.2);
+  box-shadow:0 10px 30px rgba(5,30,44,.2);
+}
+
+.app-title { font-weight:900; letter-spacing:.02em; }
+.app-subtitle { color:rgba(235,248,253,.72); }
+.icon-button,
+.global-reminder-button { border-radius:13px; backdrop-filter:blur(9px); }
+
+.profile-bar {
+  border-color:rgba(159,184,199,.55);
+  border-radius:17px;
+  background:rgba(255,255,255,.88);
+  padding:13px 15px;
+  box-shadow:0 12px 30px rgba(18,53,72,.09);
+  backdrop-filter:blur(12px);
+}
+
+.quick-nav {
+  gap:10px;
+  padding:5px 0 3px;
+}
+
+.quick-nav button,
+.request-tabs .tab,
+.warehouse-folders button {
+  border-color:#c8d7e0;
+  border-radius:14px;
+  background:linear-gradient(180deg,#fff,#f4f8fa);
+  box-shadow:0 7px 18px rgba(20,50,74,.07);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+}
+
+.quick-nav button:active,
+.request-tabs .tab:active,
+.warehouse-folders button:active { transform:translateY(1px); }
+
+.quick-nav button.primary-nav-button,
+.request-tabs .tab.active,
+.warehouse-folders button.active {
+  background:linear-gradient(120deg,#0d3046,#12627f);
+  color:#fff;
+  border-color:#1a6e8b;
+  box-shadow:0 10px 24px rgba(12,77,103,.22);
+}
+
+.equipment-card,
+.node-card,
+.request-card,
+.warehouse-panel,
+.warehouse-installed-parts,
+.factory-analytics-card,
+.director-annual-card,
+.director-progress-card,
+.director-health-card,
+.director-ppr-plan-card,
+.audit-history-panel {
+  border-color:#cfdce4;
+  border-radius:18px;
+  box-shadow:0 12px 32px rgba(20,50,74,.08);
+}
+
+.equipment-card,
+.node-card,
+.request-card { transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease; }
+
+@media (hover:hover) {
+  .equipment-card:hover,
+  .node-card:hover,
+  .request-card:hover { transform:translateY(-2px); border-color:#91b9cc; box-shadow:0 17px 38px rgba(20,70,94,.13); }
+  .quick-nav button:hover,
+  .request-tabs .tab:hover { transform:translateY(-1px); box-shadow:0 11px 24px rgba(20,70,94,.12); }
+}
+
+.screen input,
+.screen select,
+.screen textarea {
+  border-color:#cbd8e0;
+  border-radius:12px;
+  background:#fff;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+
+.screen input:focus,
+.screen select:focus,
+.screen textarea:focus {
+  outline:none;
+  border-color:#1682aa;
+  box-shadow:0 0 0 4px rgba(22,130,170,.13);
+}
+
+.screen button:not(.tab):not(.icon-button):not(.director-detail-close):not(.ppr-status-close) {
+  border-radius:12px;
+}
+
+.screen table {
+  border-collapse:separate;
+  border-spacing:0;
+  background:#fff;
+}
+
+.screen th {
+  background:#e8f1f6;
+  color:#17394d;
+  font-weight:900;
+}
+
+.screen tr:nth-child(even) td { background:rgba(239,245,248,.55); }
+
+@media (max-width:620px) {
+  body { background:linear-gradient(180deg,#eaf2f6,#f7f9fa 240px); }
+  .topbar { min-height:62px; padding:8px 10px; }
+  .screen { padding:10px 9px 88px; }
+  .profile-bar { border-radius:15px; padding:11px; }
+  .equipment-card,
+  .node-card,
+  .request-card,
+  .warehouse-panel,
+  .factory-analytics-card,
+  .director-annual-card { border-radius:16px; box-shadow:0 8px 22px rgba(20,50,74,.08); }
+  .quick-nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .quick-nav button { width:100%; min-width:0; }
+  .mobile-nav { border-top:1px solid rgba(150,177,192,.55); background:rgba(248,251,252,.94); box-shadow:0 -10px 28px rgba(20,50,74,.12); backdrop-filter:blur(16px); }
+  .mobile-nav button { border-radius:13px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto !important; transition:none !important; }
+}
+
 @media (max-width: 900px) {
   .annual-summary-grid,
   .annual-role-grid {
@@ -8165,4 +8306,39 @@ textarea:disabled {
   .gas-route-cell { font-size: 6.8pt !important; line-height: 1.03 !important; }
   .gas-journal-table input,
   .gas-journal-table select { border: 0 !important; outline: 0 !important; padding: 0 !important; font-size: 7.2pt !important; line-height: 1.08 !important; background: transparent !important; }
+}
+
+@media screen {
+/* Final premium overrides kept last so legacy screen styles remain structurally intact. */
+body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transparent 30%),linear-gradient(180deg,#eef4f8 0,#f7f9fb 420px,#edf2f5 100%); }
+.topbar { min-height:68px;background:linear-gradient(115deg,#071c2b 0%,#123b53 55%,#0a627e 130%);border-bottom:1px solid rgba(160,226,246,.2);box-shadow:0 10px 30px rgba(5,30,44,.2); }
+.app-title { font-weight:900;letter-spacing:.02em; }
+.app-subtitle { color:rgba(235,248,253,.72); }
+.profile-bar { border-color:rgba(159,184,199,.55);border-radius:17px;background:rgba(255,255,255,.94);padding:13px 15px;box-shadow:0 12px 30px rgba(18,53,72,.09);backdrop-filter:blur(12px); }
+.quick-nav { gap:10px;padding:5px 0 3px; }
+.quick-nav button,.request-tabs .tab,.warehouse-folders button { border-color:#c8d7e0;border-radius:14px;background:linear-gradient(180deg,#fff,#f4f8fa);box-shadow:0 7px 18px rgba(20,50,74,.07);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease; }
+.quick-nav button.primary-nav-button,.request-tabs .tab.active,.warehouse-folders button.active { background:linear-gradient(120deg,#0d3046,#12627f);color:#fff;border-color:#1a6e8b;box-shadow:0 10px 24px rgba(12,77,103,.22); }
+.equipment-card,.node-card,.request-card,.warehouse-panel,.warehouse-installed-parts,.factory-analytics-card,.director-annual-card,.director-progress-card,.director-health-card,.director-ppr-plan-card,.audit-history-panel { border-color:#cfdce4;border-radius:18px;box-shadow:0 12px 32px rgba(20,50,74,.08); }
+.equipment-card,.node-card,.request-card { transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease; }
+.screen input,.screen select,.screen textarea { border-color:#cbd8e0;border-radius:12px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease; }
+.screen input:focus,.screen select:focus,.screen textarea:focus { outline:none;border-color:#1682aa;box-shadow:0 0 0 4px rgba(22,130,170,.13); }
+.screen button:not(.tab):not(.icon-button):not(.director-detail-close):not(.ppr-status-close) { border-radius:12px; }
+.screen table { border-collapse:separate;border-spacing:0;background:#fff; }
+.screen th { background:#e8f1f6;color:#17394d;font-weight:900; }
+.screen tr:nth-child(even) td { background:rgba(239,245,248,.55); }
+@media (hover:hover) {
+  .equipment-card:hover,.node-card:hover,.request-card:hover { transform:translateY(-2px);border-color:#91b9cc;box-shadow:0 17px 38px rgba(20,70,94,.13); }
+  .quick-nav button:hover,.request-tabs .tab:hover { transform:translateY(-1px);box-shadow:0 11px 24px rgba(20,70,94,.12); }
+}
+@media (max-width:620px) {
+  body { background:linear-gradient(180deg,#eaf2f6,#f7f9fa 240px); }
+  .topbar { min-height:62px;padding:8px 10px; }
+  .screen { padding:10px 9px 88px; }
+  .profile-bar { border-radius:15px;padding:11px; }
+  .equipment-card,.node-card,.request-card,.warehouse-panel,.factory-analytics-card,.director-annual-card { border-radius:16px;box-shadow:0 8px 22px rgba(20,50,74,.08); }
+  .quick-nav { display:grid;grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .quick-nav button { width:100%;min-width:0; }
+  .mobile-nav { border-top:1px solid rgba(150,177,192,.55);background:rgba(248,251,252,.96);box-shadow:0 -10px 28px rgba(20,50,74,.12);backdrop-filter:blur(16px); }
+  .mobile-nav button { border-radius:13px; }
+}
 }
