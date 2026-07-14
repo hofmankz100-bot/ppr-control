@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v120";
+const APP_VERSION = "v121";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -11808,7 +11808,6 @@ function printRequestSheet(req, options = {}) {
         <div class="page-label">Лист ${pageNo}</div>
         ${requestPrintTable(columns, chunk, startIndex, 0)}
         ${isLastPage ? signaturesHtml : ""}
-        ${isLastPage ? `<div class="footer-note"><span>Пустые колонки скрыты автоматически.</span><span>ППР Контроль</span></div>` : ""}
       </main>
     `;
   }).join("");
@@ -11893,7 +11892,6 @@ function printRequestSheet(req, options = {}) {
           <div class="excel-date-line">Дата формирования: ${escapeHtml(createdDate)}</div>
           ${requestPrintTable(columns, firstPageItems, 0, 0)}
           ${continuationChunks.length ? "" : signaturesHtml}
-          ${continuationChunks.length ? "" : `<div class="footer-note"><span>Пустые колонки скрыты автоматически.</span><span>ППР Контроль</span></div>`}
         </main>
         ${continuationHtml}
         <div class="actions"><button onclick="window.print()">Печатать / сохранить PDF</button></div>
