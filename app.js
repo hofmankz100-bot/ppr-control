@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v108";
+const APP_VERSION = "v109";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -424,7 +424,7 @@ function ensureEngineerReportUi() {
       const button = document.createElement("button");
       button.type = "button";
       button.id = "engineerReportButton";
-      button.innerHTML = `<span>Отчёт инженера</span>`;
+      button.innerHTML = `<span>Состояние завода</span><strong>🏭</strong>`;
       const createButton = document.querySelector("#createTmcRequestButton");
       quickNav.insertBefore(button, createButton || null);
       ui.engineerReportButton = button;
@@ -5908,7 +5908,7 @@ function updateRoleBadges() {
   renderEngineerIncomingBanner();
   if (ui.createTmcRequestButton) ui.createTmcRequestButton.hidden = !canEditChecklist();
   if (ui.workerRatingButton) ui.workerRatingButton.hidden = !canOpenView("workerRating");
-  if (ui.engineerReportButton) ui.engineerReportButton.hidden = !canOpenView("engineerReport");
+  if (ui.engineerReportButton) ui.engineerReportButton.hidden = profile?.role !== "engineer";
 }
 
 function getRequestKindById(id) {
@@ -12324,7 +12324,7 @@ function goBack() {
 
 ui.back.addEventListener("click", goBack);
 
-ui.factoryStatusButton?.addEventListener("click", () => show("directorControl"));
+ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
 
 ui.qrWalkButton?.addEventListener("click", async () => {
   if (!isProfileReady()) {
