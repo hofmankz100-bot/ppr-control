@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v115";
+const APP_VERSION = "v116";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -4491,6 +4491,7 @@ function workerSendsTmcRequestToEngineer(role = profile?.role) {
 }
 
 function tmcRequestSubmitLabel(role = profile?.role) {
+  if (mobileShareMode()) return "Отправить в WhatsApp";
   return workerSendsTmcRequestToEngineer(role) ? "Отправить инженеру" : "Создать заявку";
 }
 
@@ -4639,6 +4640,46 @@ function createStandaloneTmcRequest() {
   });
   saveState();
   return state.requests[id];
+}
+
+function buildMobileTmcRequestDraft() {
+  if (!canEditChecklist()) return null;
+  const rawItems = readTmcRequestRows();
+  if (!rawItems.length || !rawItems.some(item => item.name)) return null;
+  const eq = selectedTmcEquipment();
+  const nodeIndex = Number(ui.tmcRequestNode?.value || 0);
+  const area = ui.tmcRequestArea?.value || eq?.area || profile?.area || "";
+  const items = tmcRequestItemsWithContext(rawItems, eq, nodeIndex).map(item => ({
+    ...item,
+    sourceRole: profile?.role || "",
+    sourceName: profile?.name || "",
+    sourcePhone: profile?.phone || "",
+    sourceArea: area
+  }));
+  const now = new Date().toISOString();
+  const id = `whatsapp-draft:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+  return normalizeRequest({
+    id,
+    requestNumber: requestNumberFromId({ id, createdAt: now }),
+    equipmentId: eq?.id || 0,
+    nodeIndex: Number.isFinite(nodeIndex) ? nodeIndex : 0,
+    date: todayISO(),
+    createdAt: now,
+    updatedAt: now,
+    area,
+    equipment: eq?.name || "Без оборудования",
+    node: eq?.nodes?.[nodeIndex] || "",
+    text: items.map(item => item.name).filter(Boolean).join("; "),
+    items,
+    dueDate: ui.tmcRequestDue?.value || "",
+    sourceRole: profile?.role || "",
+    sourceName: profile?.name || "",
+    sourcePhone: profile?.phone || "",
+    requestedQty: requestItemsTotal(items) || 1,
+    status: "manual",
+    history: [],
+    approvals: {}
+  });
 }
 
 function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, text, requestPhoto = "") {
@@ -12738,13 +12779,26 @@ ui.engineerIncomingTmcPanel?.addEventListener("click", event => {
   }
 });
 
-ui.tmcRequestForm?.addEventListener("submit", event => {
+ui.tmcRequestForm?.addEventListener("submit", async event => {
   event.preventDefault();
   if (tmcRequestSubmitting) return;
   tmcRequestSubmitting = true;
   setButtonBusy(ui.submitTmcRequest, true, "Отправляем...");
   try {
     restoreTranslatedPage(ui.requestCreateScreen || document.body);
+    if (mobileShareMode()) {
+      const draft = buildMobileTmcRequestDraft();
+      if (!draft) {
+        ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
+        ui.tmcRequestStatus.classList.add("error");
+        return;
+      }
+      ui.tmcRequestStatus.classList.remove("error");
+      await shareRequestPrintFile(draft);
+      resetTmcRequestForm();
+      ui.tmcRequestStatus.textContent = "Заявка передана для отправки в WhatsApp и не сохранена в ППР";
+      return;
+    }
     const req = createStandaloneTmcRequest();
     if (!req) {
       ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
