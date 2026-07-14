@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v125";
+const APP_VERSION = "v126";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -7918,6 +7918,10 @@ function renderEquipment() {
       const alert = hasOpenCommentEquipment(eq.id);
       const stoppedNodeIndex = eq.nodes.findIndex((_, nodeIndex) => activeDowntime(eq.id, nodeIndex));
       const equipmentDowntimeOpen = stoppedNodeIndex >= 0;
+      const equipmentDowntimeBlink = eq.nodes.some((_, nodeIndex) => {
+        const active = activeDowntime(eq.id, nodeIndex);
+        return Boolean(active && active.type !== "production");
+      });
       const downtimeColor = equipmentRowColor(eq);
       const downtimeStyle = downtimeColor ? ` style="--downtime-area-color:${downtimeColor}"` : "";
       const compressorJournalOverdueDays = compressorJournalIncompleteDays(eq.area);
@@ -7953,7 +7957,7 @@ function renderEquipment() {
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
         const baseClass = summary.done === summary.total ? "completed-day" : "to";
-        td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || downtimeOpen ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
+        td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
         td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
@@ -8071,13 +8075,15 @@ function renderSchedule() {
       const status = factStatus || plan;
       const open = hasOpenCommentRecord(rec);
       const requestOpen = hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(current.equipmentId, nodeIndex, date);
-      const downtimeOpen = Boolean(activeDowntime(current.equipmentId, nodeIndex));
+      const activeNodeDowntime = activeDowntime(current.equipmentId, nodeIndex);
+      const downtimeOpen = Boolean(activeNodeDowntime);
+      const downtimeBlink = Boolean(activeNodeDowntime && activeNodeDowntime.type !== "production");
       const overdue = plan && isDueOrPast(date) && walkShiftKeysDueForDate(date).length > 0 && !isPlannedDone(rec, plan, date);
       const blinkToday = plan && date === currentWalkShift().date && !isPlannedDone(rec, plan, date);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
       const baseClass = isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
-      td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeOpen ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
+      td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeBlink ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
       if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
       td.textContent = completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
       td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
@@ -8329,8 +8335,9 @@ function renderNodeWalkthrough(eq) {
         `).join("")}
       </div>
     ` : "";
-    const fixedButtonLabel = waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
-    const fixedButtonDisabled = !canEditChecklist() || !hasUnresolvedRemark || (waitingShopFix && !canConfirmInstallation());
+    const productionStopActive = activeStop?.type === "production";
+    const fixedButtonLabel = productionStopActive ? "Устранить" : waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
+    const fixedButtonDisabled = !canEditChecklist() || (!hasUnresolvedRemark && !productionStopActive) || (waitingShopFix && !canConfirmInstallation());
     const submitRemarkDisabled = !canEditThisComment || hasUnresolvedRemark;
     const submitRemarkLabel = hasUnresolvedRemark ? "Ждёт устранения" : "Отправить";
     const downtimeActiveBlock = activeStop ? `
@@ -8429,7 +8436,7 @@ function renderNodeWalkthrough(eq) {
       if (button.disabled) return;
       setButtonBusy(button, true, "Отправка...");
       try {
-        appendCommentEntry(liveItem, text, liveItem.commentPhoto);
+        if (sendChoice.downtimeType !== "production") appendCommentEntry(liveItem, text, liveItem.commentPhoto);
         if (sendChoice.downtime) openDowntimeFromRemark(eq.id, index, text, sendChoice.downtimeType);
         window.PPRModules?.comments?.clearComposer?.(liveItem);
         liveItem.nodeDraftText = "";
@@ -8460,6 +8467,15 @@ function renderNodeWalkthrough(eq) {
         commentBox.classList.add("comment-required-blink");
         commentBox.scrollIntoView({ behavior: "smooth", block: "center" });
         commentBox.focus();
+        return;
+      }
+      const activeStop = activeDowntime(eq.id, index);
+      if (activeStop?.type === "production") {
+        closeDowntimeFromFix(eq.id, index, fixText);
+        window.PPRModules?.comments?.clearComposer?.(liveItem);
+        liveItem.nodeDraftText = "";
+        saveState();
+        renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
       if (!hasAnyComment(liveItem)) {
