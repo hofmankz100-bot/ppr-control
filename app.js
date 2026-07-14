@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v132";
+const APP_VERSION = "v133";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -233,8 +233,10 @@ let realtimeEventSource = null;
 let realtimeReconnectTimer = null;
 let realtimePollTimer = null;
 let lastRealtimeMessageAt = 0;
-let realtimeStateVersion = "";
+const REALTIME_VERSION_KEY = "ppr-realtime-state-version-v1";
+let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
+let remoteStateLoadPromise = null;
 let requestSearchTimer = null;
 let renderTimer = null;
 let warehouseReconcileVersion = -1;
@@ -1095,10 +1097,26 @@ function mergeRealtimePatch(remote = {}) {
     state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
   }
   if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
+  if (remote.inventory) state.inventory = mergeObjectByFreshnessLocal(state.inventory, remote.inventory);
+  if (remote.catalog?.equipment) {
+    state.catalog ||= { equipment: {} };
+    state.catalog.equipment = { ...(state.catalog.equipment || {}), ...remote.catalog.equipment };
+  }
+  if (remote.compressorJournal) state.compressorJournal = mergeObjectByFreshnessLocal(state.compressorJournal, remote.compressorJournal);
+  if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
+  if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   if (remote.serviceCosts) state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
+  if (remote.auditHistory) state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
+  if (Object.prototype.hasOwnProperty.call(remote, "operationalResetAt")) state.operationalResetAt = remote.operationalResetAt;
+  if (Object.prototype.hasOwnProperty.call(remote, "walkShiftCleanupVersion")) state.walkShiftCleanupVersion = remote.walkShiftCleanupVersion;
   persistStateLocally(state);
+}
+
+function setRealtimeStateVersion(value) {
+  realtimeStateVersion = String(value || "");
+  if (realtimeStateVersion) localStorage.setItem(REALTIME_VERSION_KEY, realtimeStateVersion);
 }
 
 function scheduleRemoteRetry() {
@@ -1114,14 +1132,25 @@ function handleRealtimeMessage(data) {
   try {
     const msg = typeof data === "string" ? JSON.parse(data || "{}") : data || {};
     if (msg.type === "pong" || msg.type === "ping") return;
+    if (msg.type === "ready") {
+      const serverVersion = String(msg.stateVersion || "");
+      if (serverVersion && serverVersion !== realtimeStateVersion) {
+        loadRemoteState().then(loaded => {
+          if (loaded) setRealtimeStateVersion(serverVersion);
+        });
+      } else if (serverVersion) {
+        setRealtimeStateVersion(serverVersion);
+      }
+      return;
+    }
     if (msg.type !== "state") return;
     if (msg.origin === CLIENT_ID) {
-      if (msg.stateVersion) realtimeStateVersion = String(msg.stateVersion);
+      if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
       return;
     }
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else mergeRemoteState(msg.state || {}, { preferRemote: true });
-    if (msg.stateVersion) realtimeStateVersion = String(msg.stateVersion);
+    if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
     loadRemoteUsers();
     scheduleRender();
   } catch {}
@@ -1135,7 +1164,7 @@ async function pollRealtimeStateVersion() {
     const serverVersion = String(health?.stateVersion || "");
     if (serverVersion && serverVersion !== realtimeStateVersion) {
       const loaded = await loadRemoteState();
-      if (loaded) realtimeStateVersion = serverVersion;
+      if (loaded) setRealtimeStateVersion(serverVersion);
     }
   } catch {
     // The normal reconnect and state polling paths remain active.
@@ -1211,15 +1240,21 @@ function startRealtimePoll() {
 }
 
 async function loadRemoteState() {
-  try {
-    const remote = await apiJson("/api/state");
-    mergeRemoteState(remote, { preferRemote: true });
-    render();
-    return true;
-  } catch {
-    // Static/offline mode keeps using localStorage.
-    return false;
-  }
+  if (remoteStateLoadPromise) return remoteStateLoadPromise;
+  remoteStateLoadPromise = (async () => {
+    try {
+      const remote = await apiJson("/api/state");
+      mergeRemoteState(remote, { preferRemote: true });
+      render();
+      return true;
+    } catch {
+      // Static/offline mode keeps using localStorage.
+      return false;
+    } finally {
+      remoteStateLoadPromise = null;
+    }
+  })();
+  return remoteStateLoadPromise;
 }
 
 async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
@@ -1241,7 +1276,7 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
       })
     });
     if (result?.state) mergeRealtimePatch(result.state);
-    if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     persistStateLocally(state);
     return true;
   } catch {
@@ -1326,7 +1361,7 @@ async function saveRemoteState() {
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
     if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
-    if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     if (!hasNewLocalChanges && pendingRequestIds.size) {
       pendingRequestIds.clear();
       if (current.view === "requests") renderRequests();
@@ -11662,7 +11697,7 @@ function renderWarehousePanel() {
           })
         });
         if (result?.state) mergeRealtimePatch(result.state);
-        if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+        if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
         persistStateLocally(state);
         current.requestRole = "warehouse";
         showAppToast(`Выдано: ${targetName}. Остаток: ${Number(result.available || 0)} ${item.unit || "шт"}`);
@@ -12413,7 +12448,7 @@ function requestCard(req) {
           })
         });
         if (result?.state) mergeRealtimePatch(result.state);
-        if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+        if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
         persistStateLocally(state);
         showAppToast(`Выдано: ${req.issueTargetName}. Остаток: ${Number(result.available || 0)} ${stockItem.unit || "шт"}`);
       } catch (error) {

@@ -1195,6 +1195,32 @@ function broadcastState(origin = "server", actionId = "", state = publicState(),
   return payload.stateVersion;
 }
 
+function changedRecordPatch(before = {}, after = {}) {
+  const patch = {};
+  for (const key of new Set([...Object.keys(before || {}), ...Object.keys(after || {})])) {
+    if (!(key in (after || {}))) continue;
+    if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) patch[key] = after[key];
+  }
+  return patch;
+}
+
+function changedStatePatch(before = {}, after = {}) {
+  const patch = {};
+  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "journalDueSince"]) {
+    const records = changedRecordPatch(before?.[key], after?.[key]);
+    if (Object.keys(records).length) patch[key] = records;
+  }
+  const equipment = changedRecordPatch(before?.catalog?.equipment, after?.catalog?.equipment);
+  if (Object.keys(equipment).length) patch.catalog = { equipment };
+  for (const key of ["directorMessages", "serviceCosts", "downtimes", "auditHistory"]) {
+    if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) patch[key] = after?.[key] || [];
+  }
+  for (const key of ["operationalResetAt", "walkShiftCleanupVersion"]) {
+    if (String(before?.[key] || "") !== String(after?.[key] || "")) patch[key] = after?.[key] || "";
+  }
+  return patch;
+}
+
 async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/events" && req.method === "GET") {
     res.writeHead(200, {
@@ -1205,7 +1231,7 @@ async function handleApi(req, res, pathname, url) {
     });
     res.write(": connected\n\n");
     sseClients.add(res);
-    sendSse(res, { type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() });
+    sendSse(res, { type: "ready", origin: "server", stateVersion: realtimeStateVersion() });
     req.on("close", () => sseClients.delete(res));
     return true;
   }
@@ -1286,7 +1312,7 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     sendJson(res, 200, { ok: true, user: result.user });
-    broadcastState("auth-register");
+    broadcastState("auth-register", "", {}, true);
     return true;
   }
 
@@ -1477,16 +1503,17 @@ async function handleApi(req, res, pathname, url) {
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
       migrateLegacyDirectorApprovals(db);
       const actionId = String(body.actionId || "");
-      const changed = beforeState !== JSON.stringify(publicState(db));
+      const afterState = publicState(db);
+      const changed = beforeState !== JSON.stringify(afterState);
       if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
-      return { actionId, changed, state: publicState(db), origin: body.clientId || "api" };
+      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true };
     });
     if (result.error) {
       sendJson(res, 400, { ok: false, error: result.error, actionId: result.actionId });
       return true;
     }
     const stateVersion = result.changed
-      ? broadcastState(result.origin, result.actionId)
+      ? broadcastState(result.origin, result.actionId, result.cleared ? result.fullState : result.patch, !result.cleared)
       : realtimeStateVersion();
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
     return true;
@@ -1704,7 +1731,7 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId });
-    broadcastState(result.origin, result.actionId);
+    broadcastState(result.origin, result.actionId, {}, true);
     return true;
   }
 
@@ -1804,7 +1831,7 @@ if (WebSocketServer) {
   wss.on("connection", ws => {
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
-    ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
+    ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
     ws.on("message", raw => {
       try {
         const msg = JSON.parse(String(raw || "{}"));
@@ -1821,7 +1848,7 @@ if (WebSocketServer) {
   qrWss.on("connection", ws => {
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
-    ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
+    ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
     ws.on("message", raw => {
       try {
         const msg = JSON.parse(String(raw || "{}"));
@@ -1839,7 +1866,7 @@ if (WebSocketServer) {
     httpsWss.on("connection", ws => {
       ws.isAlive = true;
       ws.on("pong", () => { ws.isAlive = true; });
-      ws.send(JSON.stringify({ type: "state", origin: "server", stateVersion: realtimeStateVersion(), state: publicState() }));
+      ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
       ws.on("message", raw => {
         try {
           const msg = JSON.parse(String(raw || "{}"));
