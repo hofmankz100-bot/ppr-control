@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v135";
+const APP_VERSION = "v136";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -260,10 +260,7 @@ function applyTheme(theme) {
 }
 
 function setupTheme() {
-  applyTheme(document.documentElement.dataset.theme || "light");
-  document.querySelectorAll("[data-theme-toggle]").forEach(button => button.addEventListener("click", () => {
-    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-  }));
+  applyTheme("light");
 }
 const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
