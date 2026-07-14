@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v104";
+const APP_VERSION = "v105";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -835,11 +835,11 @@ function showAppToast(message, type = "ok") {
   }, 2600);
 }
 
-function showQrSavedNotice() {
+function showQrSavedNotice(message = "") {
   const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
   showAppToast(pending || !navigator.onLine
     ? "QR сохранён на телефоне. При появлении Wi‑Fi отправится автоматически."
-    : "QR отмечен и отправляется автоматически.");
+    : message || "QR отмечен и отправляется автоматически.");
 }
 
 async function runButtonOperation(button, handler, text = "В ожидании...") {
@@ -2827,18 +2827,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (statusEl) statusEl.textContent = "QR от другого узла";
       return false;
     }
-    const shift = currentWalkShift();
-    const marked = markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
-    if (!marked) {
+    const eq = equipmentById(parsed.equipmentId);
+    if (!eq?.nodes?.[parsed.nodeIndex]) {
       if (statusEl) statusEl.textContent = "Не удалось отметить узел";
       return false;
     }
-    current.equipmentId = parsed.equipmentId;
-    current.nodeIndex = parsed.nodeIndex;
-    current.date = marked.date;
-    current.kind = "to";
-    current.scrollToQrNode = parsed.nodeIndex;
-    return true;
+    return parsed;
   };
 
   const ensureJsQr = async () => {
@@ -3088,10 +3082,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     };
     const scanAutomatically = async () => {
       let ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
-      if (stopped || ok) return complete(Boolean(ok));
+      if (stopped || ok) return complete(ok || null);
       if (messageEl) messageEl.textContent = "Откройте камеру и наведите на QR узла.";
       ok = await scanFromPhoto(messageEl);
-      if (stopped || ok) return complete(Boolean(ok));
+      if (stopped || ok) return complete(ok || null);
       if (messageEl) messageEl.textContent = "QR не найден. Нажмите «Сканировать ещё раз» и наведите ближе.";
     };
     overlay.querySelector("[data-qr-cancel]")?.addEventListener("click", () => complete(false));
@@ -3101,9 +3095,109 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (messageEl) messageEl.textContent = "Откройте камеру и сфотографируйте QR узла.";
       const ok = await scanFromPhoto(messageEl);
       setButtonBusy(button, false);
-      if (ok) complete(true);
+      if (ok) complete(ok);
     });
     scanAutomatically();
+  });
+}
+
+function qrWalkProgress(equipmentId, shift = currentWalkShift()) {
+  const eq = equipmentById(equipmentId);
+  if (!eq) return { done: 0, total: 0 };
+  const done = eq.nodes.filter((_, nodeIndex) => isNodeShiftChecked(getRecord(eq.id, nodeIndex, shift.date), shift.key)).length;
+  return { done, total: eq.nodes.length };
+}
+
+function promptQrWalkDecision(parsed) {
+  const eq = equipmentById(parsed.equipmentId);
+  const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
+  const shift = currentWalkShift();
+  const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
+  const progress = qrWalkProgress(parsed.equipmentId, shift);
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay";
+  overlay.innerHTML = `
+    <section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Результат обхода QR">
+      <div class="qr-result-progress">Обойдено ${progress.done} из ${progress.total} · ${escapeHtml(shift.label)}</div>
+      <h2>${escapeHtml(eq?.name || "Оборудование")}</h2>
+      <p class="qr-result-node">${escapeHtml(nodeName)}</p>
+      ${alreadyDone ? `
+        <div class="qr-already-done">Этот узел уже проверен в текущую смену.</div>
+        <div class="qr-result-actions single">
+          <button type="button" class="qr-next-button" data-qr-next>Сканировать следующий</button>
+          <button type="button" class="qr-finish-button" data-qr-finish>Завершить обход</button>
+        </div>
+      ` : `
+        <div class="qr-result-actions">
+          <button type="button" class="qr-good-button" data-qr-good>✓ Всё хорошо</button>
+          <button type="button" class="qr-remark-button" data-qr-remark>! Есть замечание</button>
+          <button type="button" class="qr-rescan-button" data-qr-next>Сканировать заново</button>
+          <button type="button" class="qr-finish-button" data-qr-finish>Завершить обход</button>
+        </div>
+        <div class="qr-remark-form" hidden>
+          <label><span>Комментарий по узлу</span><textarea rows="4" data-qr-comment placeholder="Опишите замечание..."></textarea></label>
+          <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>
+          <div class="qr-remark-error" data-qr-error></div>
+          <div class="qr-result-actions single">
+            <button type="button" class="qr-save-remark-button" data-qr-save-remark>Сохранить замечание</button>
+            <button type="button" class="qr-rescan-button" data-qr-back>Назад</button>
+          </div>
+        </div>
+      `}
+    </section>
+  `;
+  document.body.append(overlay);
+  return new Promise(resolve => {
+    const finish = result => {
+      overlay.remove();
+      resolve(result);
+    };
+    overlay.querySelector("[data-qr-next]")?.addEventListener("click", () => finish("continue"));
+    overlay.querySelector("[data-qr-finish]")?.addEventListener("click", () => finish("finish"));
+    overlay.querySelector("[data-qr-good]")?.addEventListener("click", () => {
+      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+      publishStateNow().catch(scheduleRemoteRetry);
+      showQrSavedNotice();
+      finish("continue");
+    });
+    const form = overlay.querySelector(".qr-remark-form");
+    const actions = overlay.querySelector(":scope .qr-result-panel > .qr-result-actions");
+    overlay.querySelector("[data-qr-remark]")?.addEventListener("click", () => {
+      if (actions) actions.hidden = true;
+      if (form) form.hidden = false;
+      overlay.querySelector("[data-qr-comment]")?.focus();
+    });
+    overlay.querySelector("[data-qr-back]")?.addEventListener("click", () => {
+      if (form) form.hidden = true;
+      if (actions) actions.hidden = false;
+    });
+    overlay.querySelector("[data-qr-save-remark]")?.addEventListener("click", async event => {
+      const comment = String(overlay.querySelector("[data-qr-comment]")?.value || "").trim();
+      const errorEl = overlay.querySelector("[data-qr-error]");
+      if (!comment) {
+        if (errorEl) errorEl.textContent = "Напишите комментарий, чтобы сохранить замечание.";
+        return;
+      }
+      const button = event.currentTarget;
+      setButtonBusy(button, true, "Сохраняем...");
+      try {
+        const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
+        const photo = file ? await readPhotoFile(file) : "";
+        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+        const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
+        saveCommentDraft(item, comment);
+        item.commentPhoto = photo;
+        item.resolved = false;
+        item.updatedAt = new Date().toISOString();
+        saveState();
+        publishStateNow().catch(scheduleRemoteRetry);
+        showQrSavedNotice("Обход сохранён с замечанием");
+        finish("continue");
+      } catch {
+        if (errorEl) errorEl.textContent = "Не удалось обработать фото. Попробуйте ещё раз.";
+        setButtonBusy(button, false);
+      }
+    });
   });
 }
 
@@ -12235,17 +12329,12 @@ ui.qrWalkButton?.addEventListener("click", async () => {
   }
   setButtonBusy(ui.qrWalkButton, true, "Открываем камеру...");
   try {
-    const scanned = await scanNodeQrCode(null, null, null);
-    if (!scanned) return;
-    show("checklist");
-    publishStateNow().catch(scheduleRemoteRetry);
-    window.setTimeout(() => {
-      const row = document.querySelector(`[data-node-walk-index="${current.nodeIndex}"]`);
-      row?.scrollIntoView({ behavior: "smooth", block: "center" });
-      row?.classList.add("qr-just-scanned");
-      window.setTimeout(() => row?.classList.remove("qr-just-scanned"), 1800);
-    }, 150);
-    showQrSavedNotice();
+    while (true) {
+      const parsed = await scanNodeQrCode(null, null, null);
+      if (!parsed) break;
+      const action = await promptQrWalkDecision(parsed);
+      if (action === "finish") break;
+    }
   } finally {
     if (ui.qrWalkButton?.isConnected) setButtonBusy(ui.qrWalkButton, false);
   }

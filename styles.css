@@ -3902,6 +3902,119 @@ body.editor-profile .warehouse-folders button.request-alert {
   opacity: .55;
 }
 
+.qr-result-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background: rgba(8, 25, 38, .78);
+  padding: 18px;
+}
+
+.qr-result-panel {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+  border-radius: 14px;
+  background: #fff;
+  padding: 18px;
+  color: #132f42;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+}
+
+.qr-result-panel h2,
+.qr-result-panel p {
+  margin: 0;
+}
+
+.qr-result-progress {
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  padding: 8px 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.qr-result-node {
+  border-left: 5px solid #0f766e;
+  background: #f0fdfa;
+  padding: 12px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.qr-result-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.qr-result-actions.single {
+  grid-template-columns: 1fr;
+}
+
+.qr-result-actions button {
+  min-height: 52px;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px;
+  color: #fff;
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.qr-good-button,
+.qr-next-button,
+.qr-save-remark-button { background: #15803d; }
+.qr-remark-button { background: #d97706; }
+.qr-rescan-button { background: #0369a1; }
+.qr-finish-button { background: #475569; }
+
+.qr-already-done {
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.qr-remark-form {
+  display: grid;
+  gap: 12px;
+}
+
+.qr-remark-form[hidden] { display: none; }
+
+.qr-remark-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 900;
+}
+
+.qr-remark-form textarea,
+.qr-remark-form input {
+  width: 100%;
+  border: 1px solid #b8c8d1;
+  border-radius: 9px;
+  background: #fff;
+  padding: 11px;
+  font: inherit;
+}
+
+.qr-remark-error {
+  min-height: 18px;
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .qr-result-actions { grid-template-columns: 1fr; }
+}
+
 .app-toast {
   position: fixed;
   left: 50%;
