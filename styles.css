@@ -7731,6 +7731,195 @@ textarea:disabled {
     display: grid;
     place-items: center;
   }
+
+  /* Rating and factory status become phone-native without changing desktop. */
+  #workerRatingScreen,
+  #engineerReportScreen,
+  .worker-rating-panel,
+  .engineer-report-panel,
+  .engineer-report {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .worker-rating-controls,
+  .engineer-report-controls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .worker-rating-controls > *,
+  .engineer-report-controls > * {
+    min-width: 0;
+  }
+
+  .worker-rating-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .worker-rating-hero h2,
+  .worker-rating-hero.simple h2 {
+    overflow-wrap: anywhere;
+    font-size: 24px;
+  }
+
+  .worker-rating-hero.simple p {
+    font-size: 14px;
+  }
+
+  .worker-trophy {
+    width: 50px;
+    height: 50px;
+    font-size: 26px;
+  }
+
+  .worker-rating-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .worker-month-winners {
+    grid-template-columns: 1fr;
+  }
+
+  .worker-rating-summary div,
+  .worker-month-winners div,
+  .worker-rating-explain,
+  .worker-rating-graph,
+  .worker-rating-row {
+    border-radius: 14px;
+  }
+
+  .worker-rating-graph,
+  .worker-rating-graph.simple {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 10px;
+  }
+
+  .worker-graph-grid,
+  .worker-graph-grid.simple {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    min-width: min(560px, 100%);
+    min-height: 190px;
+    gap: 7px;
+  }
+
+  .worker-graph-grid.simple .worker-graph-item,
+  .worker-graph-item {
+    grid-template-rows: minmax(120px, 1fr) auto auto auto;
+  }
+
+  .worker-graph-grid.simple .worker-graph-bar-wrap,
+  .worker-graph-bar-wrap {
+    min-height: 120px;
+  }
+
+  .worker-rating-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: start;
+    padding: 10px;
+  }
+
+  .worker-place {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .worker-metrics,
+  .worker-time {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .worker-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-analytics-card,
+  .engineer-report {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .factory-analytics-head,
+  .engineer-report-title {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .factory-analytics-head h2,
+  .engineer-report-title h2 {
+    overflow-wrap: anywhere;
+    font-size: 20px;
+  }
+
+  .factory-current-score {
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .factory-current-score strong {
+    font-size: 32px;
+  }
+
+  .factory-graph {
+    grid-template-columns: repeat(12, 54px);
+    gap: 7px;
+    max-width: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .factory-month {
+    grid-template-rows: 138px auto auto auto;
+    min-width: 54px;
+    scroll-snap-align: start;
+  }
+
+  .factory-bar-wrap {
+    padding: 5px;
+  }
+
+  .factory-summary-strip,
+  .engineer-report-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-summary-strip div,
+  .engineer-report-summary div {
+    min-width: 0;
+    padding: 9px;
+  }
+
+  .engineer-report-year-strip,
+  .engineer-service-grid,
+  .engineer-report-signatures {
+    grid-template-columns: 1fr;
+  }
+
+  .engineer-report-block {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .engineer-report-block table {
+    min-width: 680px;
+  }
+
+  .engineer-report-block th,
+  .engineer-report-block td {
+    padding: 7px;
+    font-size: 12px;
+  }
 }
 .comment-panel {
   display: none !important;
