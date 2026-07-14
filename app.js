@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v117";
+const APP_VERSION = "v118";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -11730,19 +11730,16 @@ function requestApprovalCell(req, role, fallback = "") {
 }
 
 function requestPrintColumns(items) {
-  const has = predicate => items.some(predicate);
   return [
     { key: "number", label: "№", className: "num", show: true, value: (item, index) => index + 1 },
-    { key: "name", label: "Наименование ТМЦ / услуг", className: "name", show: true, value: item => item.name || "" },
-    { key: "article", label: "Артикул", className: "article", show: has(item => item.article), value: item => item.article || "" },
-    { key: "stock", label: "Остаток", className: "stock", show: has(item => item.stockRemainder), value: item => item.stockRemainder || "" },
-    { key: "unit", label: "Ед.", className: "unit", show: has(item => item.unit), value: item => item.unit || "" },
-    { key: "requested", label: "Заявочное", className: "qty", show: has(item => Number(item.requestedQty || 0)), value: item => Number(item.requestedQty || 0) || "" },
+    { key: "name", label: "Наименование закупаемой ТМЦ и услуг", className: "name", show: true, value: item => item.name || "" },
+    { key: "article", label: "Артикул", className: "article", show: true, value: item => item.article || "" },
+    { key: "stock", label: "Остаток на складе", className: "stock", show: true, value: item => item.stockRemainder || 0 },
+    { key: "unit", label: "Ед. измерения", className: "unit", show: true, value: item => item.unit || "" },
+    { key: "requested", label: "Заявочное количество", className: "qty", show: true, value: item => Number(item.requestedQty || 0) || "" },
     { key: "required", label: "Необходимое", className: "qty", show: true, value: item => Number(item.requiredQty || item.requestedQty || 0) || "" },
-    { key: "price", label: "Цена", className: "money", show: has(item => item.price), value: item => item.price || "" },
-    { key: "supplier", label: "Поставщик", className: "supplier", show: has(item => item.supplier), value: item => item.supplier || "" },
-    { key: "note", label: "Примечание", className: "note", show: has(item => item.note || item.supplyNote), value: item => [item.note, item.supplyNote].filter(Boolean).join(" · ") }
-  ].filter(column => column.show);
+    { key: "note", label: "Примечание", className: "note", show: true, value: item => [item.note, item.supplyNote].filter(Boolean).join(" · ") }
+  ];
 }
 
 function requestPrintRows(columns, rows, startIndex = 0, minRows = 0) {
@@ -11765,15 +11762,13 @@ function requestPrintTable(columns, rows, startIndex = 0, minRows = 0) {
 
 function requestPrintSignatures(req, sourceRole) {
   return `
-    <section class="signatures">
-      <div class="sign"><b>Заказчик</b><strong>${escapeHtml(req.sourceName || "________________")}</strong><span>${escapeHtml(sourceRole)}${req.area ? ` · ${escapeHtml(req.area)}` : ""}</span></div>
-      <div class="sign"><b>Начальник цеха</b><strong>________________</strong><span>ручное согласование</span></div>
-      <div class="sign"><b>Инженер</b><strong>________________</strong><span>ручное согласование</span></div>
-      <div class="sign"><b>Директор производства</b><strong>________________</strong><span>ручное согласование</span></div>
-      <div class="sign"><b>Ответственный</b><strong>________________</strong><span>ручной обход заявки</span></div>
-      <div class="sign"><b>Дата получения</b><strong>________________</strong><span>заполняется вручную</span></div>
-      <div class="sign"><b>Срок доставки</b><strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "________________"}</strong><span>по заявке</span></div>
-      <div class="sign"><b>Примечание</b><strong>________________</strong><span>заполняется вручную</span></div>
+    <section class="excel-signatures">
+      <div>Заявитель <strong>${escapeHtml(req.sourceName || "________________________")}</strong></div>
+      <div>Начальник цеха РКС <strong>________________________</strong></div>
+      <div>Финансист <strong>________________________</strong></div>
+      <div>Главный инженер <strong>________________________</strong></div>
+      <div>Зам. директора <strong>________________________</strong></div>
+      <div class="delivery-line">Срок доставки <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "_____ дней"}</strong> · Снабженец <strong>________________________</strong></div>
     </section>
   `;
 }
@@ -11783,8 +11778,8 @@ function printRequestSheet(req, options = {}) {
   const items = requestItems(req);
   const columns = requestPrintColumns(items);
   const printItems = items.length ? items : [{}];
-  const firstPageLimit = 9;
-  const nextPageLimit = 15;
+  const firstPageLimit = 24;
+  const nextPageLimit = 27;
   const firstPageItems = printItems.slice(0, firstPageLimit);
   const continuationChunks = [];
   for (let index = firstPageLimit; index < printItems.length; index += nextPageLimit) {
@@ -11799,7 +11794,7 @@ function printRequestSheet(req, options = {}) {
     return;
   }
   const sourceRole = ROLE_ACCESS[req.sourceRole]?.label || req.sourceRole || "";
-  const logoUrl = new URL("icon.svg", location.href).href;
+  const logoUrl = new URL("hoffmann-logo.png", location.href).href;
   const createdDate = dateTimeHuman(req.createdAt || req.date || new Date().toISOString());
   const totalQty = requestItemsTotal(items) || Number(req.requestedQty || 0);
   const status = statusText(req.status || waitingRole(req));
@@ -11864,6 +11859,19 @@ function printRequestSheet(req, options = {}) {
           .sign strong { display: block; margin-top: 3mm; font-size: 9pt; min-height: 5mm; }
           .sign span { display: block; margin-top: 1mm; color: #60737f; font-size: 7.5pt; }
           .footer-note { margin-top: 4mm; display: flex; justify-content: space-between; gap: 5mm; color: #60737f; font-size: 7.5pt; }
+          .excel-header { display: grid; grid-template-columns: 1fr 62mm; align-items: start; gap: 8mm; margin-bottom: 3mm; }
+          .excel-title-block { text-align: center; padding-top: 4mm; }
+          .excel-title-block h1 { text-align: center; font-size: 16pt; color: #111; }
+          .excel-title-block p { margin: 3mm 0 0; font-size: 9pt; }
+          .excel-logo-block { display: grid; justify-items: end; gap: 2mm; }
+          .excel-logo { width: 57mm; max-height: 20mm; object-fit: contain; object-position: right center; }
+          .excel-approval { width: 57mm; text-align: center; font-size: 8.5pt; line-height: 1.5; }
+          .excel-request-line { margin: 4mm 0 2mm; font-size: 11pt; font-weight: 700; }
+          .excel-date-line { margin-bottom: 4mm; font-size: 10pt; }
+          .excel-signatures { display: grid; grid-template-columns: 1fr 1.4fr; gap: 7mm 16mm; width: 70%; margin: 12mm auto 0; font-size: 9pt; }
+          .excel-signatures div { min-height: 7mm; border: 0; }
+          .excel-signatures strong { margin-left: 3mm; }
+          .excel-signatures .delivery-line { grid-column: 1 / -1; border-top: 1px solid #111; padding-top: 4mm; }
           .actions { display: flex; justify-content: center; margin: 16px auto; }
           button { border: 0; border-radius: 8px; background: #14324a; color: #fff; padding: 11px 24px; font-weight: 800; cursor: pointer; }
           @media print {
@@ -11877,24 +11885,13 @@ function printRequestSheet(req, options = {}) {
       </head>
       <body>
         <main class="sheet">
-          <header class="header">
-            <div class="brand">
-              <img class="logo" src="${escapeHtml(logoUrl)}" alt="ППР">
-              <div><h1>Заявка на приобретение ТМЦ и услуг</h1><div class="subtitle">ППР Контроль · сформировано автоматически</div></div>
-            </div>
-            <div class="meta">
-              <div><span>Номер</span><strong>${escapeHtml(req.requestNumber || "")}</strong></div>
-              <div><span>Дата</span><strong>${escapeHtml(createdDate)}</strong></div>
-              <div><span>Статус</span><strong>${escapeHtml(status)}</strong></div>
-              <div><span>Всего</span><strong>${Number(totalQty || 0)} шт.</strong></div>
-            </div>
+          <header class="excel-header">
+            <div class="excel-title-block"><h1>Заявка на приобретение ТМЦ и услуг</h1><p>«___» __________ 20___ года</p></div>
+            <div class="excel-logo-block"><img class="excel-logo" src="${escapeHtml(logoUrl)}" alt="Hoffmann Aluminium"><div class="excel-approval">Зам. директора __________________</div></div>
           </header>
-          <section class="context">
-            <div><span>Цех / склад</span><strong>${escapeHtml(req.area || "")}</strong></div>
-            <div><span>Оборудование</span><strong>${escapeHtml(req.equipment || "")}</strong></div>
-            <div><span>Узел</span><strong>${escapeHtml(req.node || "")}</strong></div>
-          </section>
-          ${requestPrintTable(columns, firstPageItems, 0, continuationChunks.length ? 0 : 6)}
+          <div class="excel-request-line">Заявка № ${escapeHtml(req.requestNumber || "_______")} · Цех: ${escapeHtml(req.area || "________________")}</div>
+          <div class="excel-date-line">Дата формирования: ${escapeHtml(createdDate)}</div>
+          ${requestPrintTable(columns, firstPageItems, 0, 24)}
           ${continuationChunks.length ? "" : signaturesHtml}
           ${continuationChunks.length ? "" : `<div class="footer-note"><span>Пустые колонки скрыты автоматически.</span><span>ППР Контроль</span></div>`}
         </main>
