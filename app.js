@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v107";
+const APP_VERSION = "v108";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -248,6 +248,7 @@ const ui = {
   back: document.querySelector("#backButton"),
   globalReminderButton: document.querySelector("#globalReminderButton"),
   qrWalkButton: document.querySelector("#qrWalkButton"),
+  factoryStatusButton: document.querySelector("#factoryStatusButton"),
   globalReminderBadge: document.querySelector("#globalReminderBadge"),
   globalReminderOverlay: document.querySelector("#globalReminderOverlay"),
   globalReminderContent: document.querySelector("#globalReminderContent"),
@@ -1786,7 +1787,7 @@ function defaultRequestRole(role = profile?.role) {
 
 function homeViewForProfile(role = profile?.role) {
   if (role === "warehouse") return "requests";
-  if (["director", "editor"].includes(role)) return "directorControl";
+  if (role === "director") return "directorControl";
   return "equipment";
 }
 
@@ -2306,6 +2307,7 @@ function requestVisibleForRoleIndicator(req, role) {
 
 function renderProfile() {
   if (!ui.profileBar) return;
+  if (ui.factoryStatusButton) ui.factoryStatusButton.hidden = profile?.role !== "editor";
   document.body.classList.toggle("editor-profile", profile?.role === "editor");
   document.body.classList.toggle("editor-preview-profile", isEditorSession() && profile?.role !== "editor");
   document.body.classList.toggle("warehouse-only-profile", profile?.role === "warehouse");
@@ -2347,7 +2349,7 @@ function renderProfile() {
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
-    ${["director", "editor"].includes(profile.role) && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
+    ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
   `;
@@ -10673,7 +10675,7 @@ function renderDirectorControl() {
     <div class="director-control-head">
       <div><span>КОНТРОЛЬ ПРЕДПРИЯТИЯ</span><h1>Общее состояние завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
       <div class="director-control-actions">
-        ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>← Обычный экран</button>` : ""}
+        ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>← Главный экран</button>` : ""}
         <button type="button" class="director-reminder-button ${totals.reminders.length ? "has-alerts" : ""}" data-open-global-reminders>🔔 Напоминания <strong>${totals.reminders.length}</strong></button>
         <button type="button" data-refresh-director-control>Общее состояние завода</button>
         <button type="button" data-open-director-messages>Директорская</button>
@@ -12321,6 +12323,8 @@ function goBack() {
 }
 
 ui.back.addEventListener("click", goBack);
+
+ui.factoryStatusButton?.addEventListener("click", () => show("directorControl"));
 
 ui.qrWalkButton?.addEventListener("click", async () => {
   if (!isProfileReady()) {
