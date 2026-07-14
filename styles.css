@@ -7647,7 +7647,7 @@ textarea:disabled {
     order: 1;
   }
 
-  .mobile-nav [data-mobile-view="equipment"] {
+  .mobile-nav [data-mobile-view="home"] {
     order: 2;
     overflow: visible;
     transform: translateY(-7px);
@@ -7657,12 +7657,12 @@ textarea:disabled {
     order: 3;
   }
 
-  .mobile-nav [data-mobile-view="equipment"].active {
+  .mobile-nav [data-mobile-view="home"].active {
     background: transparent;
   }
 
   .mobile-nav .iphone-home-button,
-  .mobile-nav [data-mobile-view="equipment"].active .iphone-home-button {
+  .mobile-nav [data-mobile-view="home"].active .iphone-home-button {
     width: 54px;
     height: 54px;
     margin-top: -19px;
@@ -7675,7 +7675,7 @@ textarea:disabled {
     box-shadow: 0 7px 18px rgba(20, 50, 74, .22), inset 0 0 0 3px #fff;
   }
 
-  .mobile-nav [data-mobile-view="equipment"].active .iphone-home-button {
+  .mobile-nav [data-mobile-view="home"].active .iphone-home-button {
     border-color: #7fa8bd;
     box-shadow: 0 8px 20px rgba(12, 77, 103, .28), inset 0 0 0 3px #fff;
   }
@@ -7687,7 +7687,7 @@ textarea:disabled {
     border-radius: 5px;
   }
 
-  .mobile-nav [data-mobile-view="equipment"] small {
+  .mobile-nav [data-mobile-view="home"] small {
     margin-top: -1px;
   }
 
