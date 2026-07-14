@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v128";
+const APP_VERSION = "v129";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -2015,11 +2015,21 @@ function issuedWarehouseItemVisibleToProfile(req, role = profile?.role) {
   if (!canConfirmIssuedInstall(req, role) || profile?.role !== role) return false;
   const targetPhone = String(req.issueTargetPhone || "").trim();
   const targetName = String(req.issueTargetName || "").trim().toLowerCase();
-  const profilePhone = String(profile?.phone || "").replace(/\D/g, "").replace(/^8(?=\d{10}$)/, "7");
+  const normalizeWarehousePhone = value => String(value || "").replace(/\D/g, "").replace(/^8(?=\d{10}$)/, "7");
+  const profilePhone = normalizeWarehousePhone(profile?.phone);
   const issuedPhone = targetPhone.replace(/\D/g, "").replace(/^8(?=\d{10}$)/, "7");
   const profileName = String(profile?.name || "").trim().toLowerCase();
-  const phoneMatches = Boolean(issuedPhone && profilePhone && issuedPhone === profilePhone);
-  const nameMatches = Boolean(targetName && profileName && targetName === profileName);
+  const registeredProfile = loadUsers().find(user => {
+    if (user.approved === false || user.pendingApproval === true || user.role !== profile?.role) return false;
+    if (profile?.id && user.id === profile.id) return true;
+    if (profile?.employeeId && user.employeeId === profile.employeeId) return true;
+    if (profilePhone && normalizeWarehousePhone(user.phone) === profilePhone) return true;
+    return profileName && String(user.name || "").trim().toLowerCase() === profileName;
+  });
+  const knownPhones = [profilePhone, normalizeWarehousePhone(registeredProfile?.phone)].filter(Boolean);
+  const knownNames = [profileName, String(registeredProfile?.name || "").trim().toLowerCase()].filter(Boolean);
+  const phoneMatches = Boolean(issuedPhone && knownPhones.includes(issuedPhone));
+  const nameMatches = Boolean(targetName && knownNames.includes(targetName));
   if ((targetPhone || targetName) && !phoneMatches && !nameMatches) return false;
   return true;
 }
