@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v121";
+const APP_VERSION = "v122";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -348,6 +348,9 @@ let current = {
   selectedStockArea: "",
   selectedWarehouseFolder: "",
   warehouseInstalledArchiveOpen: false,
+  warehouseInstalledArchivePage: 1,
+  warehouseZeroArchiveOpen: false,
+  warehouseZeroArchivePage: 1,
   scrollToCommentNode: null,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
@@ -936,7 +939,12 @@ async function apiJson(url, options = {}) {
       signal: options.signal || controller.signal
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(data.error || `HTTP ${response.status}`);
+      error.data = data;
+      error.status = response.status;
+      throw error;
+    }
     return data;
   } finally {
     window.clearTimeout(timer);
@@ -4677,8 +4685,14 @@ function buildMobileTmcRequestDraft() {
     sourceName: profile?.name || "",
     sourcePhone: profile?.phone || "",
     requestedQty: requestItemsTotal(items) || 1,
-    status: "manual",
-    history: [],
+    kind: "tmc",
+    status: "whatsapp",
+    whatsappOnly: true,
+    whatsappSent: true,
+    reportOnly: true,
+    done: true,
+    sourceKey: profileKey(),
+    history: [{ at: now, action: "Отправлено через WhatsApp", details: items.map(item => item.name).filter(Boolean).join("; "), status: "whatsapp", role: profile?.role || "", name: profile?.name || "" }],
     approvals: {}
   });
 }
@@ -5473,6 +5487,12 @@ function inventoryItems() {
   return inventoryItemsCache;
 }
 
+function zeroInventoryItems() {
+  return Object.values(state.inventory || {})
+    .filter(item => item && item.name && Number(item.qty || 0) <= 0)
+    .sort((a, b) => String(b.archivedAt || b.lastIssuedAt || b.updatedAt || "").localeCompare(String(a.archivedAt || a.lastIssuedAt || a.updatedAt || "")));
+}
+
 function reconcileWarehouseAskStockOuts() {
   let changed = false;
   allRequests()
@@ -5576,8 +5596,8 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
                 <button type="button" data-stock-move="${escapeHtml(item.id)}">Перенести</button>
               </div>
               <div class="stock-action-line">
-                <select data-stock-role="${escapeHtml(item.id)}">${warehouseIssueRoleOptions("mechanic")}</select>
-                <button type="button" data-stock-issue="${escapeHtml(item.id)}">Выдать роли</button>
+                <select data-stock-recipient="${escapeHtml(item.id)}">${warehouseRecipientOptions()}</select>
+                <button type="button" data-stock-issue="${escapeHtml(item.id)}">Выдать сотруднику</button>
               </div>
             ` : `<button type="button" data-stock-ask="${escapeHtml(item.id)}">Спросить</button>`}
           </div>
@@ -5591,13 +5611,17 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
 function warehouseInstalledRequests() {
   return allRequests()
     .filter(req => req.issued && req.mechanicInstalled)
-    .sort((a, b) => String(b.approvals?.install?.at || b.updatedAt || "").localeCompare(String(a.approvals?.install?.at || a.updatedAt || "")))
-    .slice(0, 100);
+    .sort((a, b) => String(b.approvals?.install?.at || b.updatedAt || "").localeCompare(String(a.approvals?.install?.at || a.updatedAt || "")));
 }
 
 function warehouseInstalledPartsHtml() {
   const installed = warehouseInstalledRequests();
-  const rows = installed.map(req => {
+  const pageSize = 25;
+  const pages = Math.max(1, Math.ceil(installed.length / pageSize));
+  current.warehouseInstalledArchivePage = Math.min(Math.max(1, Number(current.warehouseInstalledArchivePage || 1)), pages);
+  const start = (current.warehouseInstalledArchivePage - 1) * pageSize;
+  const pageItems = installed.slice(start, start + pageSize);
+  const rows = pageItems.map(req => {
     const items = requestItems(req);
     const names = items.length
       ? items.map(item => `${item.name || req.text || "Запчасть"}${item.article ? ` (${item.article})` : ""}`).join(", ")
@@ -5616,9 +5640,20 @@ function warehouseInstalledPartsHtml() {
     `;
   }).join("");
   return `<section class="warehouse-installed-parts">
-    <div class="warehouse-installed-head"><div><strong>Архив установленных запчастей</strong><span>${installed.length} записей</span></div><button type="button" data-print-warehouse-installed ${installed.length ? "" : "disabled"}>Печатать список</button></div>
+    <div class="warehouse-installed-head"><div><strong>Архив установленных запчастей</strong><span>${installed.length} записей · страница ${current.warehouseInstalledArchivePage} из ${pages}</span></div><button type="button" data-print-warehouse-installed ${installed.length ? "" : "disabled"}>Печатать весь список</button></div>
     <div class="warehouse-installed-list">${rows || `<div class="empty-state">Подтверждённых установок пока нет</div>`}</div>
+    ${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-installed-page="${current.warehouseInstalledArchivePage - 1}" ${current.warehouseInstalledArchivePage <= 1 ? "disabled" : ""}>← Назад</button><button type="button" data-installed-page="${current.warehouseInstalledArchivePage + 1}" ${current.warehouseInstalledArchivePage >= pages ? "disabled" : ""}>Далее →</button></div>` : ""}
   </section>`;
+}
+
+function warehouseZeroArchiveHtml() {
+  const all = zeroInventoryItems();
+  const pageSize = 50;
+  const pages = Math.max(1, Math.ceil(all.length / pageSize));
+  current.warehouseZeroArchivePage = Math.min(Math.max(1, Number(current.warehouseZeroArchivePage || 1)), pages);
+  const start = (current.warehouseZeroArchivePage - 1) * pageSize;
+  const rows = all.slice(start, start + pageSize).map(item => `<div class="warehouse-stock-row"><div><span>${escapeHtml(item.name)}</span><small>Артикул: ${escapeHtml(item.article || "без артикула")}</small><small>Склад: ${escapeHtml(item.area || COMMON_WAREHOUSE)} · Выдано всего: ${Number(item.issuedQty || 0)} ${escapeHtml(item.unit || "шт")}</small><small>Закончилась: ${escapeHtml(dateTimeHuman(item.archivedAt || item.lastIssuedAt || item.updatedAt || ""))}</small></div><strong>0 ${escapeHtml(item.unit || "шт")}</strong></div>`).join("");
+  return `<section class="warehouse-installed-parts"><div class="warehouse-installed-head"><div><strong>Архив нулевых остатков</strong><span>${all.length} позиций · страница ${current.warehouseZeroArchivePage} из ${pages}</span></div></div><div class="warehouse-installed-list">${rows || `<div class="empty-state">Нулевых остатков нет</div>`}</div>${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-zero-page="${current.warehouseZeroArchivePage - 1}" ${current.warehouseZeroArchivePage <= 1 ? "disabled" : ""}>← Назад</button><button type="button" data-zero-page="${current.warehouseZeroArchivePage + 1}" ${current.warehouseZeroArchivePage >= pages ? "disabled" : ""}>Далее →</button></div>` : ""}</section>`;
 }
 
 function printWarehouseInstalledParts() {
@@ -5681,6 +5716,7 @@ function addInventory(area, name, qty, source = "", meta = {}) {
     article,
     unit: String(meta.unit || old.unit || "шт").trim(),
     qty: Number(old.qty || 0) + amount,
+    archivedAt: "",
     receivedQty: nextReceivedQty,
     issuedQty: Number(old.issuedQty || 0),
     source: source || old.source || "",
@@ -5711,7 +5747,10 @@ function removeInventory(area, name, qty, countIssued = false, article = "") {
     item.lastIssuedAt = new Date().toISOString();
   }
   item.updatedAt = new Date().toISOString();
-  if (item.qty <= 0) item.qty = 0;
+  if (item.qty <= 0) {
+    item.qty = 0;
+    item.archivedAt = item.updatedAt;
+  }
   return removed;
 }
 
@@ -5941,6 +5980,13 @@ function createManualWarehouseRequest(area, name, qty, note, article = "", unit 
 
 function warehouseOptions(selectedArea = "") {
   return WAREHOUSE_AREAS.map(area => `<option value="${area}" ${area === selectedArea ? "selected" : ""}>${area}</option>`).join("");
+}
+
+function warehouseRecipientOptions(selectedRole = "mechanic", selectedPhone = "") {
+  const users = loadUsers()
+    .filter(user => user.approved !== false && user.pendingApproval !== true && canReceiveWarehouseIssue(user.role))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+  return `<option value="">Выберите сотрудника</option>${users.map(user => `<option value="${escapeHtml(user.phone || user.id || user.employeeId || user.name || "")}" data-role="${escapeHtml(user.role || selectedRole)}" data-name="${escapeHtml(user.name || "")}" data-phone="${escapeHtml(user.phone || "")}" ${(selectedPhone && String(user.phone || "") === String(selectedPhone)) ? "selected" : ""}>${escapeHtml(user.name || "Без имени")} · ${escapeHtml(requestRoleLabel(user.role))}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</option>`).join("")}`;
 }
 
 function requestMatchesWarehouseSearch(req, query) {
@@ -11359,7 +11405,7 @@ function renderWarehousePanel() {
         <strong>Склады по цехам</strong>
         <span>${query ? `Найдено: запас ${foundStock.length} · заявки ${foundRequests.length}` : "Выберите папку склада или найдите запчасть"}</span>
       </div>
-      <button type="button" class="warehouse-archive-button" data-toggle-warehouse-installed>Архив</button>
+      <div class="stock-action-line"><button type="button" class="warehouse-archive-button" data-toggle-warehouse-installed>Архив установок</button><button type="button" class="warehouse-archive-button" data-toggle-warehouse-zero>Нулевые остатки (${zeroInventoryItems().length})</button></div>
     </div>
     ${renderWarehouseFolders(folderArea, warehouseData)}
     <form class="warehouse-search" id="warehouseSearchForm">
@@ -11398,15 +11444,30 @@ function renderWarehousePanel() {
       <div class="warehouse-pending-list" id="warehousePendingList"></div>
     </div>` : ""}
     ${current.warehouseInstalledArchiveOpen ? warehouseInstalledPartsHtml() : ""}
+    ${current.warehouseZeroArchiveOpen ? warehouseZeroArchiveHtml() : ""}
     ${renderWarehouseInventory(folderArea, canManageWarehouse, warehouseData)}
     ${query ? `<div class="empty-state">${foundStock.length || foundRequests.length ? "Найденная позиция подсвечена. Если она была в другой папке, склад открыт автоматически." : "Поиск ничего не нашёл"}</div>` : ""}
   `;
   const form = ui.warehousePanel.querySelector("#manualInventoryForm");
   ui.warehousePanel.querySelector("[data-toggle-warehouse-installed]")?.addEventListener("click", () => {
     current.warehouseInstalledArchiveOpen = !current.warehouseInstalledArchiveOpen;
+    current.warehouseInstalledArchivePage = 1;
+    renderWarehousePanel();
+  });
+  ui.warehousePanel.querySelector("[data-toggle-warehouse-zero]")?.addEventListener("click", () => {
+    current.warehouseZeroArchiveOpen = !current.warehouseZeroArchiveOpen;
+    current.warehouseZeroArchivePage = 1;
     renderWarehousePanel();
   });
   ui.warehousePanel.querySelector("[data-print-warehouse-installed]")?.addEventListener("click", printWarehouseInstalledParts);
+  ui.warehousePanel.querySelectorAll("[data-installed-page]").forEach(button => button.addEventListener("click", () => {
+    current.warehouseInstalledArchivePage = Number(button.dataset.installedPage || 1);
+    renderWarehousePanel();
+  }));
+  ui.warehousePanel.querySelectorAll("[data-zero-page]").forEach(button => button.addEventListener("click", () => {
+    current.warehouseZeroArchivePage = Number(button.dataset.zeroPage || 1);
+    renderWarehousePanel();
+  }));
   const searchForm = ui.warehousePanel.querySelector("#warehouseSearchForm");
   const askList = ui.warehousePanel.querySelector("#warehouseAskList");
   if (askList) {
@@ -11512,19 +11573,56 @@ function renderWarehousePanel() {
     }));
   });
   ui.warehousePanel.querySelectorAll("[data-stock-issue]").forEach(button => {
-    button.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+    button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
       if (!canManageWarehouse) return;
       const id = button.dataset.stockIssue;
       const item = state.inventory?.[id];
       const qty = Number(ui.warehousePanel.querySelector(`[data-stock-qty="${CSS.escape(id)}"]`)?.value || 0);
-      const targetRole = ui.warehousePanel.querySelector(`[data-stock-role="${CSS.escape(id)}"]`)?.value || "mechanic";
+      const recipient = ui.warehousePanel.querySelector(`[data-stock-recipient="${CSS.escape(id)}"]`);
+      const selected = recipient?.selectedOptions?.[0];
+      const targetRole = selected?.dataset.role || "";
+      const targetName = selected?.dataset.name || "";
+      const targetPhone = selected?.dataset.phone || "";
       const priceInput = ui.warehousePanel.querySelector(`[data-stock-price="${CSS.escape(id)}"]`);
       if (!item || qty <= 0) return;
-      if (!ensureInventoryPriceForOperation(item, priceInput, "Перед выдачей укажите цену за 1 единицу измерения.")) return;
-      if (createMechanicIssueFromInventory(item, qty, targetRole)) {
-        saveState();
-        current.requestRole = targetRole;
+      if (!targetName) {
+        window.alert("Выберите конкретного сотрудника, которому выдаётся запчасть.");
+        recipient?.focus();
+        return;
+      }
+      const unitPrice = ensureInventoryPriceForOperation(item, priceInput, "Перед выдачей укажите цену за 1 единицу измерения.");
+      if (!unitPrice) return;
+      try {
+        const result = await apiJson("/api/warehouse/issue", {
+          method: "POST",
+          timeout: 30000,
+          body: JSON.stringify({
+            actionId: nextActionId(),
+            clientId: CLIENT_ID,
+            user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null,
+            inventoryId: id,
+            quantity: qty,
+            targetRole,
+            targetName,
+            targetPhone,
+            unitPrice,
+            priceText: priceTextFromAmount(unitPrice)
+          })
+        });
+        if (result?.state) mergeRealtimePatch(result.state);
+        if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+        persistStateLocally(state);
+        current.requestRole = "warehouse";
+        showAppToast(`Выдано: ${targetName}. Остаток: ${Number(result.available || 0)} ${item.unit || "шт"}`);
         renderRequests();
+      } catch (error) {
+        if (error?.message === "warehouse_insufficient_stock") {
+          await loadRemoteState();
+          window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${item.unit || "шт"}.`);
+          renderRequests();
+          return;
+        }
+        throw error;
       }
     }));
   });
@@ -12246,32 +12344,37 @@ function requestCard(req) {
         saveState();
       });
     }
-    actions.append(actionButton("Выдать", () => {
+    actions.append(actionButton("Выдать", async () => {
       const targetArea = req.stockArea || req.area || COMMON_WAREHOUSE;
       const stockItem = state.inventory?.[inventoryKey(targetArea, partNameFromRequest(req), partArticleFromRequest(req))];
-      if (!ensureInventoryPriceForOperation(stockItem, issuePrice, "Перед выдачей укажите цену за 1 единицу измерения.")) return;
-      const freshAvailableQty = inventoryRemainderForRequest(req);
-      if (freshAvailableQty < requestedQty) {
-        markWarehouseAskStockOut(req, freshAvailableQty);
-        saveState();
-        window.alert("Запас закончился. Заявка убрана из выдачи склада, автору отправлено уведомление.");
-        renderRequests();
-        return;
+      const unitPrice = ensureInventoryPriceForOperation(stockItem, issuePrice, "Перед выдачей укажите цену за 1 единицу измерения.");
+      if (!unitPrice || !stockItem) return;
+      try {
+        const result = await apiJson("/api/warehouse/issue", {
+          method: "POST",
+          timeout: 30000,
+          body: JSON.stringify({
+            actionId: nextActionId(), clientId: CLIENT_ID,
+            user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null,
+            inventoryId: stockItem.id, requestId: req.id, quantity: requestedQty,
+            unitPrice, priceText: priceTextFromAmount(unitPrice)
+          })
+        });
+        if (result?.state) mergeRealtimePatch(result.state);
+        if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
+        persistStateLocally(state);
+        showAppToast(`Выдано: ${req.issueTargetName}. Остаток: ${Number(result.available || 0)} ${stockItem.unit || "шт"}`);
+      } catch (error) {
+        if (error?.message === "warehouse_insufficient_stock") {
+          await loadRemoteState();
+          window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${stockItem.unit || "шт"}.`);
+        } else if (error?.message === "warehouse_request_already_processed") {
+          await loadRemoteState();
+          showAppToast("Эта заявка уже обработана другим складовщиком.", "error");
+        } else {
+          throw error;
+        }
       }
-      const issued = removeInventory(targetArea, partNameFromRequest(req), requestedQty, true, partArticleFromRequest(req));
-      if (!issued) return;
-      req.warehouseReceived = true;
-      req.warehouseReceivedAt = req.warehouseReceivedAt || new Date().toISOString();
-      req.issued = true;
-      req.qtyIssued = Number(issued);
-      req.qtyAccepted = Number(issued);
-      req.status = "issued";
-      req.done = false;
-      req.stock = false;
-      requestRecordApproval(req, "warehouse", "Выдано складовщиком по запросу");
-      clearRequestReturn(req);
-      syncRequestToRecord(req);
-      saveState();
       renderRequests();
     }));
   }
@@ -12797,9 +12900,13 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
         return;
       }
       ui.tmcRequestStatus.classList.remove("error");
+      state.requests ||= {};
+      state.requests[draft.id] = draft;
+      saveState();
+      await publishStateNow();
       await shareRequestPrintFile(draft);
       resetTmcRequestForm();
-      ui.tmcRequestStatus.textContent = "Заявка передана для отправки в WhatsApp и не сохранена в ППР";
+      ui.tmcRequestStatus.textContent = "Заявка сохранена в отчётах ППР и передана для отправки в WhatsApp";
       return;
     }
     const req = createStandaloneTmcRequest();

@@ -1492,6 +1492,130 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/warehouse/issue" && req.method === "POST") {
+    const body = await readBody(req);
+    const inventoryId = String(body.inventoryId || "").trim();
+    const quantity = Number(body.quantity || 0);
+    const targetRole = String(body.targetRole || "").trim();
+    const targetName = String(body.targetName || "").trim();
+    const targetPhone = String(body.targetPhone || "").trim();
+    const existingRequestId = String(body.requestId || "").trim();
+    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer"]);
+    if (!inventoryId || !Number.isFinite(quantity) || quantity <= 0 || (!existingRequestId && (!allowedRoles.has(targetRole) || !targetName))) {
+      sendJson(res, 400, { ok: false, error: "warehouse_issue_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.inventory = canonicalizeInventoryRecords(db.inventory);
+      db.requests ||= {};
+      const item = db.inventory[inventoryId];
+      const existingRequest = existingRequestId ? db.requests[existingRequestId] : null;
+      const effectiveTargetRole = String(existingRequest?.issueTargetRole || targetRole || "").trim();
+      const effectiveTargetName = String(existingRequest?.issueTargetName || targetName || "").trim();
+      const effectiveTargetPhone = String(existingRequest?.issueTargetPhone || targetPhone || "").trim();
+      const available = Number(item?.qty || 0);
+      if (!item) return { error: "warehouse_item_not_found", available: 0 };
+      if (existingRequestId && !existingRequest) return { error: "warehouse_request_not_found", available };
+      if (!allowedRoles.has(effectiveTargetRole) || !effectiveTargetName) return { error: "warehouse_issue_invalid", available };
+      if (existingRequest && (existingRequest.issued || existingRequest.done || !existingRequest.warehouseAsk)) return { error: "warehouse_request_already_processed", available };
+      if (available < quantity) return { error: "warehouse_insufficient_stock", available };
+      const now = new Date().toISOString();
+      const unitPrice = Number(body.unitPrice || 0);
+      if (Number.isFinite(unitPrice) && unitPrice > 0) {
+        item.unitPrice = unitPrice;
+        item.price = String(body.priceText || unitPrice);
+        item.lastPrice = item.price;
+        item.priceUpdatedAt = now;
+        item.priceUpdatedBy = String(body.user?.name || "");
+      }
+      item.qty = available - quantity;
+      item.issuedQty = Number(item.issuedQty || 0) + quantity;
+      item.lastIssuedAt = now;
+      item.updatedAt = now;
+      if (item.qty <= 0) item.archivedAt = now;
+      const requestId = existingRequestId || `stock-issue:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`;
+      const issuedRequest = existingRequest || {
+        id: requestId,
+        equipmentId: "",
+        nodeIndex: "",
+        date: now.slice(0, 10),
+        kind: "stock",
+        equipment: `Склад: ${item.area || "Общий склад"}`,
+        area: item.area || "Общий склад",
+        node: item.source || "Ручная выдача со склада",
+        comment: "Выдано из складского остатка",
+        text: item.name || "",
+        article: item.article || "",
+        items: [{ number: 1, name: item.name || "", article: item.article || "", stockRemainder: "", unit: item.unit || "шт", requestedQty: quantity, requiredQty: quantity, note: item.note || "" }],
+        status: "issued",
+        shopApproved: true,
+        engineerApproved: true,
+        supplyPrepared: true,
+        financeApproved: true,
+        cashApproved: true,
+        transferredToWarehouse: true,
+        warehouseReceived: true,
+        issued: true,
+        issueTargetRole: effectiveTargetRole,
+        issueTargetName: effectiveTargetName,
+        issueTargetPhone: effectiveTargetPhone,
+        installComment: "",
+        aggregateRemarkKey: "",
+        mechanicInstalled: false,
+        shopInstallApproved: false,
+        productionDirectorApproved: false,
+        accountingWrittenOff: false,
+        done: false,
+        stock: false,
+        qtyReceived: quantity,
+        qtyIssued: quantity,
+        aggregateInstalledQty: 0,
+        stockArea: item.area || "Общий склад",
+        inventoryAddedQty: 0,
+        approvals: { warehouse: { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "Выдано складовщиком" } },
+        createdAt: now,
+        updatedAt: now
+      };
+      if (existingRequest) {
+        Object.assign(issuedRequest, {
+          warehouseReceived: true,
+          warehouseReceivedAt: issuedRequest.warehouseReceivedAt || now,
+          issued: true,
+          warehouseAsk: false,
+          qtyIssued: quantity,
+          qtyAccepted: quantity,
+          status: "issued",
+          done: false,
+          stock: false,
+          updatedAt: now
+        });
+        issuedRequest.approvals ||= {};
+        issuedRequest.approvals.warehouse = { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "Выдано складовщиком по запросу" };
+      }
+      db.requests[requestId] = issuedRequest;
+      const actionId = String(body.actionId || "");
+      writeDb(db, { action: "warehouse_atomic_issue", actionId, clientId: String(body.clientId || ""), user: body.user || null, inventoryId, requestId, quantity, targetRole: effectiveTargetRole, targetName: effectiveTargetName });
+      return {
+        actionId,
+        origin: body.clientId || "api",
+        patch: { inventory: { [inventoryId]: item }, requests: { [requestId]: db.requests[requestId] } },
+        requestId,
+        available: item.qty
+      };
+    });
+    if (result.error) {
+      const status = ["warehouse_insufficient_stock", "warehouse_request_already_processed"].includes(result.error)
+        ? 409
+        : result.error === "warehouse_issue_invalid" ? 400 : 404;
+      sendJson(res, status, { ok: false, error: result.error, available: result.available });
+      return true;
+    }
+    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, requestId: result.requestId, available: result.available });
+    return true;
+  }
+
   if (pathname === "/api/node-update" && req.method === "PUT") {
     const body = await readBody(req);
     const recordKey = String(body.key || "").trim();
