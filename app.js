@@ -75,8 +75,11 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v99";
+const APP_VERSION = "v102";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
+const DEVICE_DB_NAME = "ppr-control-device";
+const DEVICE_DB_STORE = "state";
+const DEVICE_DB_KEY = "full-state";
 const MANUAL_REQUEST_WORKFLOW = true;
 const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply"]);
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
@@ -691,7 +694,7 @@ function loadState() {
     const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed;
     if (remoteMigrationChanged || articleMigration.changed) {
       parsed.journalRequestCleanupVersion = APP_VERSION;
-      localStorage.setItem(STORE_KEY, JSON.stringify(parsed));
+      persistStateLocally(parsed);
     }
     if (remoteMigrationChanged) {
       localStorage.setItem(`${STORE_KEY}-pending`, "1");
@@ -699,6 +702,70 @@ function loadState() {
     return parsed;
   } catch {
     return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+  }
+}
+
+function persistStateLocally(snapshot = state) {
+  persistStateToDevice(snapshot).catch(error => console.warn("Device database save failed", error));
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
+    return true;
+  } catch (error) {
+    const lightweight = {
+      ...snapshot,
+      inventory: {},
+      auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-100) : []
+    };
+    try {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.setItem(STORE_KEY, JSON.stringify(lightweight));
+    } catch {}
+    console.warn("Local state was reduced because browser storage is full", error);
+    return false;
+  }
+}
+
+function openDeviceDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB is unavailable"));
+      return;
+    }
+    const request = indexedDB.open(DEVICE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DEVICE_DB_STORE)) db.createObjectStore(DEVICE_DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+  });
+}
+
+async function persistStateToDevice(snapshot = state) {
+  const db = await openDeviceDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(DEVICE_DB_STORE, "readwrite");
+    transaction.objectStore(DEVICE_DB_STORE).put(snapshot, DEVICE_DB_KEY);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB write failed"));
+    transaction.onabort = () => reject(transaction.error || new Error("IndexedDB write aborted"));
+  });
+  db.close();
+}
+
+async function loadStateFromDevice() {
+  try {
+    const db = await openDeviceDatabase();
+    const cached = await new Promise((resolve, reject) => {
+      const transaction = db.transaction(DEVICE_DB_STORE, "readonly");
+      const request = transaction.objectStore(DEVICE_DB_STORE).get(DEVICE_DB_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("IndexedDB read failed"));
+    });
+    db.close();
+    return cached;
+  } catch {
+    return null;
   }
 }
 
@@ -722,7 +789,7 @@ function saveState(options = {}) {
   stateDataVersion += 1;
   state.checks = compactCheckRecords(state.checks);
   migrateInventoryArticles(state);
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  persistStateLocally(state);
   if (options.remote === false) {
     window.queueMicrotask(updateGlobalReminderBadge);
     return;
@@ -822,7 +889,7 @@ async function clearRecordedDataEverywhere() {
   state.directorMessages = [];
   state.serviceCosts = [];
   state.serviceCosts = [];
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   localStorage.setItem(`${STORE_KEY}-clear-recorded`, "1");
   localStorage.setItem(`${STORE_KEY}-clear-confirm`, "ОЧИСТИТЬ");
@@ -838,7 +905,7 @@ function applyWorkCleanFromUrl() {
     state.serviceCosts = [];
     state.compressorJournal = {};
     state.gasJournal = {};
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    persistStateLocally(state);
     return;
   }
   if (cleanMode !== "work") return;
@@ -851,7 +918,7 @@ function applyWorkCleanFromUrl() {
   state.directorMessages = [];
   state.serviceCosts = [];
   state.serviceCosts = [];
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  persistStateLocally(state);
 }
 
 async function apiJson(url, options = {}) {
@@ -992,7 +1059,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.journalRequestCleanupVersion = APP_VERSION;
     localStorage.setItem(`${STORE_KEY}-pending`, "1");
   }
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  persistStateLocally(state);
 }
 
 function mergeRealtimePatch(remote = {}) {
@@ -1004,7 +1071,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   if (remote.serviceCosts) state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  persistStateLocally(state);
 }
 
 function scheduleRemoteRetry() {
@@ -1148,7 +1215,7 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
     });
     if (result?.state) mergeRealtimePatch(result.state);
     if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    persistStateLocally(state);
     return true;
   } catch {
     localStorage.setItem(`${STORE_KEY}-pending`, "1");
@@ -1205,6 +1272,7 @@ async function saveRemoteState() {
   try {
     const result = await apiJson("/api/state", {
       method: "PUT",
+      timeout: 60000,
       body: JSON.stringify({
         actionId: nextActionId(),
         clientId: CLIENT_ID,
@@ -1230,6 +1298,7 @@ async function saveRemoteState() {
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
     if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
+    if (result?.stateVersion) realtimeStateVersion = String(result.stateVersion);
     if (!hasNewLocalChanges && pendingRequestIds.size) {
       pendingRequestIds.clear();
       if (current.view === "requests") renderRequests();
@@ -6958,7 +7027,7 @@ function journalDueStart(key, rows) {
   state.journalDueSince ||= {};
   if (!state.journalDueSince[key]) {
     state.journalDueSince[key] = journalEarliestDate(rows);
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    persistStateLocally(state);
     localStorage.setItem(`${STORE_KEY}-pending`, "1");
     queueRemoteStateSave();
   }
@@ -12499,22 +12568,25 @@ window.addEventListener("visibilitychange", () => {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
-    navigator.serviceWorker.getRegistrations()
-      .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+    navigator.serviceWorker.register("/sw.js")
+      .then(registration => registration.update())
       .catch(() => {});
   });
 }
 
 setupLogin();
-if (isProfileReady()) {
-  handleIncomingNodeQrFromUrl().then(handled => {
+(async () => {
+  const deviceState = await loadStateFromDevice();
+  if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
+  if (isProfileReady()) {
+    const handled = await handleIncomingNodeQrFromUrl();
     if (!handled) show(current.view, false);
-  });
-} else {
-  render();
-}
-loadRemoteState();
-loadRemoteUsers();
-connectRealtime();
-startRealtimePoll();
+  } else {
+    render();
+  }
+  await loadRemoteState();
+  loadRemoteUsers();
+  connectRealtime();
+  startRealtimePoll();
+})();
 

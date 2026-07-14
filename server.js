@@ -1473,8 +1473,10 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: result.error, actionId: result.actionId });
       return true;
     }
-    sendJson(res, 200, { ok: true, actionId: result.actionId, state: result.state });
-    if (result.changed) broadcastState(result.origin, result.actionId);
+    const stateVersion = result.changed
+      ? broadcastState(result.origin, result.actionId)
+      : realtimeStateVersion();
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
     return true;
   }
 
