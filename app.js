@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v126";
+const APP_VERSION = "v127";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -2369,7 +2369,11 @@ function renderProfile() {
       <select id="profileLanguageSelect">${languageOptions()}</select>
     </label>
   `;
+  const warehouseRoleIssuedCount = canReceiveWarehouseIssue(profile?.role)
+    ? allRequests().filter(req => req.issued && !req.mechanicInstalled && !req.done && !req.stock && warehouseIssueTargetRole(req) === profile.role).length
+    : 0;
   ui.profileBar.innerHTML = `
+    ${warehouseRoleIssuedCount ? `<button type="button" id="profileWarehouseAlert" class="profile-warehouse-alert"><span>Вам выдано со склада</span><strong>${warehouseRoleIssuedCount}</strong><small>Нажмите, чтобы открыть и подтвердить установку</small></button>` : ""}
     <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${employeeId}${phone}</span>${previewNote}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
@@ -2378,6 +2382,10 @@ function renderProfile() {
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
   `;
+  ui.profileBar.querySelector("#profileWarehouseAlert")?.addEventListener("click", () => {
+    current.requestRole = profile?.role || "all";
+    show("requests");
+  });
   ui.profileBar.querySelector("#editorPreviewRoleSelect")?.addEventListener("change", event => {
     setEditorPreviewRole(event.currentTarget.value);
   });
