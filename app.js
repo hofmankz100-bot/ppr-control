@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v112";
+const APP_VERSION = "v113";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -3979,7 +3979,6 @@ function tmcRequestRowHtml(row = blankTmcRequestRow(), index = 0) {
     <tr data-tmc-row data-tmc-row-photo="${escapeHtml(row.photo || "")}">
       <td>${index + 1}</td>
       <td><textarea data-tmc-name rows="2" placeholder="Наименование ТМЦ или услуги">${escapeHtml(row.name || "")}</textarea></td>
-      <td><input data-tmc-article type="text" value="${escapeHtml(row.article || "")}" placeholder="Артикул"></td>
       <td><input data-tmc-stock type="text" value="${escapeHtml(row.stockRemainder || "")}" placeholder="Остаток"></td>
       <td><input data-tmc-unit type="text" value="${escapeHtml(row.unit || "шт")}" placeholder="шт"></td>
       <td><input data-tmc-requested type="number" min="0" step="1" value="${Number(row.requestedQty || 1)}"></td>
@@ -4032,7 +4031,7 @@ function readTmcRequestRows() {
     .map((row, index) => ({
       number: index + 1,
       name: row.querySelector("[data-tmc-name]")?.value.trim() || "",
-      article: row.querySelector("[data-tmc-article]")?.value.trim() || "",
+      article: "",
       stockRemainder: row.querySelector("[data-tmc-stock]")?.value.trim() || "",
       unit: row.querySelector("[data-tmc-unit]")?.value.trim() || "шт",
       requestedQty: Number(row.querySelector("[data-tmc-requested]")?.value || 0),
@@ -4179,8 +4178,41 @@ function shareTextToWhatsApp(text) {
   window.open(url, "_blank", "noopener");
 }
 
+function requestPrintableFile(req) {
+  normalizeRequest(req);
+  const items = requestItems(req);
+  const rows = (items.length ? items : [{}]).map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(item.name || req.text || "Позиция")}</td>
+      <td>${escapeHtml(item.article || "")}</td>
+      <td>${escapeHtml(item.unit || "шт")}</td>
+      <td>${Number(item.requiredQty || item.requestedQty || 0)}</td>
+      <td>${escapeHtml(item.note || "")}</td>
+    </tr>
+  `).join("");
+  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(req.requestNumber || "Заявка")}</title><style>
+    @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#102331;margin:0;padding:12mm}h1{margin:0 0 5mm;color:#14324a;font-size:22px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;margin-bottom:5mm}.meta div{border:1px solid #cbd8df;border-radius:6px;padding:3mm}.meta span{display:block;color:#607785;font-size:11px}.meta strong{display:block;margin-top:1mm}table{width:100%;border-collapse:collapse}th,td{border:1px solid #b9c9d1;padding:2.5mm;text-align:left;font-size:12px;vertical-align:top}th{background:#14324a;color:#fff}.signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;margin-top:8mm}.signatures div{border-top:1px solid #102331;padding-top:2mm;font-size:12px}@media print{body{padding:0}}
+  </style></head><body><h1>Заявка на приобретение ТМЦ и услуг</h1><div class="meta"><div><span>Номер</span><strong>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</strong></div><div><span>Дата</span><strong>${escapeHtml(dateTimeHuman(req.createdAt || req.date))}</strong></div><div><span>Участок</span><strong>${escapeHtml(req.area || "")}</strong></div><div><span>Оборудование</span><strong>${escapeHtml(req.equipment || "")}</strong></div><div><span>Узел</span><strong>${escapeHtml(req.node || "")}</strong></div><div><span>Автор</span><strong>${escapeHtml(req.sourceName || profile?.name || "")}</strong></div></div><table><thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Количество</th><th>Примечание</th></tr></thead><tbody>${rows}</tbody></table><div class="signatures"><div>Составил: __________________</div><div>Согласовал: __________________</div><div>Получил: __________________</div></div><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+  const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
+  return new File([html], `${safeNumber}-print.html`, { type: "text/html" });
+}
+
+async function shareRequestPrintFile(req) {
+  try {
+    const file = requestPrintableFile(req);
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ title: req.requestNumber || "Заявка", text: "Файл заявки для печати", files: [file] });
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+  }
+  printRequestSheet(req);
+}
+
 function sendRequestByDevice(req) {
-  if (mobileShareMode()) shareTextToWhatsApp(requestShareText(req));
+  if (mobileShareMode()) shareRequestPrintFile(req);
   else printRequestSheet(req);
 }
 

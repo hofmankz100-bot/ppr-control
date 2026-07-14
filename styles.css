@@ -4876,14 +4876,13 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 900;
 }
 
-.tmc-request-table th:nth-child(2) { width: 260px; }
-.tmc-request-table th:nth-child(3) { width: 135px; }
-.tmc-request-table th:nth-child(4) { width: 115px; }
-.tmc-request-table th:nth-child(5) { width: 90px; }
-.tmc-request-table th:nth-child(6),
-.tmc-request-table th:nth-child(7) { width: 110px; }
-.tmc-request-table th:nth-child(8) { width: 150px; }
-.tmc-request-table th:nth-child(9) { width: 230px; }
+.tmc-request-table th:nth-child(2) { width: 280px; }
+.tmc-request-table th:nth-child(3) { width: 115px; }
+.tmc-request-table th:nth-child(4) { width: 90px; }
+.tmc-request-table th:nth-child(5),
+.tmc-request-table th:nth-child(6) { width: 110px; }
+.tmc-request-table th:nth-child(7) { width: 150px; }
+.tmc-request-table th:nth-child(8) { width: 250px; }
 
 .tmc-request-table textarea {
   min-height: 54px;
@@ -7004,13 +7003,12 @@ textarea:disabled {
 
   .tmc-request-table td:first-child::before { content: "Позиция № "; }
   .tmc-request-table td:nth-child(2)::before { content: "Наименование ТМЦ или услуги"; }
-  .tmc-request-table td:nth-child(3)::before { content: "Артикул"; }
-  .tmc-request-table td:nth-child(4)::before { content: "Остаток"; }
-  .tmc-request-table td:nth-child(5)::before { content: "Единица измерения"; }
-  .tmc-request-table td:nth-child(6)::before { content: "Заявочное количество"; }
-  .tmc-request-table td:nth-child(7)::before { content: "Необходимое количество"; }
-  .tmc-request-table td:nth-child(8)::before { content: "Фото"; }
-  .tmc-request-table td:nth-child(9)::before { content: "Примечание"; }
+  .tmc-request-table td:nth-child(3)::before { content: "Остаток"; }
+  .tmc-request-table td:nth-child(4)::before { content: "Единица измерения"; }
+  .tmc-request-table td:nth-child(5)::before { content: "Заявочное количество"; }
+  .tmc-request-table td:nth-child(6)::before { content: "Необходимое количество"; }
+  .tmc-request-table td:nth-child(7)::before { content: "Фото"; }
+  .tmc-request-table td:nth-child(8)::before { content: "Примечание"; }
 
   .tmc-request-table td:not(:first-child)::before {
     color: #526a77;
