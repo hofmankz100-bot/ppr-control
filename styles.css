@@ -7611,6 +7611,82 @@ textarea:disabled {
     display: none !important;
   }
 }
+
+/* Mobile home: work tools stay on the home screen, account settings live in Profile. */
+.mobile-equipment-overview {
+  display: none !important;
+}
+
+@media (max-width: 680px) {
+  body:not(.mobile-profile-focus) .profile-bar {
+    display: none !important;
+  }
+
+  body.mobile-profile-focus #equipmentScreen {
+    display: none !important;
+  }
+
+  body.mobile-profile-focus .profile-bar {
+    display: flex !important;
+    margin: 4px 0 18px;
+    outline: none;
+  }
+
+  .mobile-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: 32px;
+  }
+
+  .mobile-nav [data-mobile-view="requestCreate"],
+  .mobile-nav [data-mobile-view="downtime"] {
+    display: none !important;
+  }
+
+  .mobile-equipment-overview {
+    display: flex !important;
+  }
+
+  .quick-nav [data-open-role]:not([data-open-role="warehouse"]),
+  .quick-nav #qrWalkButton,
+  .quick-nav #directorOpenButton {
+    display: none !important;
+  }
+
+  .quick-nav [data-open-role="warehouse"] span {
+    font-size: 0;
+  }
+
+  .quick-nav [data-open-role="warehouse"] span::before {
+    content: "Склад";
+    font-size: 15px;
+  }
+
+  .quick-nav {
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .quick-nav button {
+    min-height: 82px;
+    border-radius: 16px;
+    padding: 13px 12px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .quick-nav button span,
+  .quick-nav button:not(:has(span)) {
+    font-size: 15px;
+    line-height: 1.18;
+  }
+
+  .quick-nav button strong {
+    min-width: 34px;
+    min-height: 34px;
+    display: grid;
+    place-items: center;
+  }
+}
 .comment-panel {
   display: none !important;
 }

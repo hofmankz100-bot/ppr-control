@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v137";
+const APP_VERSION = "v138";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -107,6 +107,7 @@ const I18N = {
   ru: {
     appTitle: "ППР Контроль",
     equipment: "Оборудование",
+    home: "Главная",
     requests: "Заявки",
     downtime: "Простои",
     profile: "Профиль",
@@ -140,13 +141,14 @@ const I18N = {
     clearRecords: "Очистить записи",
     logout: "Выйти",
     createRequest: "Создать заявку",
-    remarks: "Замечания",
+    remarks: "Предупреждения",
     director: "Директорская",
     aggregateJournal: "Агрегатный журнал"
   },
   kk: {
     appTitle: "ППР бақылау",
     equipment: "Жабдық",
+    home: "Басты бет",
     requests: "Өтінімдер",
     downtime: "Тоқтап тұру",
     profile: "Профиль",
@@ -1509,7 +1511,7 @@ function applyLanguage() {
   ui.globalReminderClose?.setAttribute("aria-label", t("close"));
   ui.back?.setAttribute("aria-label", t("back"));
   ui.back?.setAttribute("title", t("back"));
-  setText('[data-mobile-view="equipment"] small', t("equipment"));
+  setText('[data-mobile-view="equipment"] small', t("home"));
   setText('[data-mobile-view="requestCreate"] small', t("createRequest"));
   setText('[data-mobile-view="requests"] small', t("requests"));
   setText('[data-mobile-view="downtime"] small', t("downtime"));
@@ -12753,6 +12755,10 @@ document.querySelectorAll("[data-mobile-view]").forEach(button => {
     show(target);
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
+});
+
+document.querySelector("#mobileEquipmentOverviewButton")?.addEventListener("click", () => {
+  document.querySelector("#equipmentList")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 ui.directorOpenButton?.addEventListener("click", () => {
