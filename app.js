@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v102";
+const APP_VERSION = "v103";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -687,6 +687,7 @@ function loadState() {
     parsed.gasJournal ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
+    parsed.operationalResetAt ||= "";
     const walkCleanup = clearLegacyWalkCompletions(parsed);
     const migration = mergeLegacyOpenJournalRequests(parsed);
     const journalCleanup = removeJournalRequestsLocal(parsed);
@@ -701,7 +702,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -1027,6 +1028,20 @@ function mergeCheckRecordsLocal(current = {}, incoming = {}) {
 
 function mergeRemoteState(remote = {}, options = {}) {
   stateDataVersion += 1;
+  const remoteResetAt = String(remote.operationalResetAt || "");
+  if (remoteResetAt && remoteResetAt !== String(state.operationalResetAt || "")) {
+    state.checks = {};
+    state.requests = {};
+    state.downtimes = [];
+    state.compressorJournal = {};
+    state.gasJournal = {};
+    state.journalDueSince = {};
+    state.directorMessages = [];
+    state.serviceCosts = [];
+    state.auditHistory = [];
+    state.operationalResetAt = remoteResetAt;
+    localStorage.removeItem(`${STORE_KEY}-pending`);
+  }
   if (remote.walkShiftCleanupVersion !== WALK_SHIFT_CLEANUP_VERSION) clearLegacyWalkCompletions(remote);
   const preferRemote = options.preferRemote === true && localStorage.getItem(`${STORE_KEY}-pending`) !== "1";
   state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
@@ -1047,6 +1062,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     : mergeObjectByFreshnessLocal(state.gasJournal || {}, remote.gasJournal || {});
   state.journalDueSince = { ...(state.journalDueSince || {}), ...(remote.journalDueSince || {}) };
   state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
+  state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
   const migration = mergeLegacyOpenJournalRequests(state);
   const journalCleanup = removeJournalRequestsLocal(state);
@@ -1290,6 +1306,7 @@ async function saveRemoteState() {
         gasJournal: state.gasJournal || {},
         journalDueSince: state.journalDueSince || {},
         auditHistory: state.auditHistory || [],
+        operationalResetAt: state.operationalResetAt || "",
         walkShiftCleanupVersion: state.walkShiftCleanupVersion || ""
       })
     });

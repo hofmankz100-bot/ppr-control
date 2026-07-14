@@ -61,7 +61,7 @@ const contentTypes = {
 };
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], walkShiftCleanupVersion: "", users: [], translationCache: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
 }
 
 function normalizeDb(db) {
@@ -78,6 +78,7 @@ function normalizeDb(db) {
   db.gasJournal ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
+  db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
   db.translationCache ||= {};
@@ -556,6 +557,7 @@ function publicState(db = readDb()) {
     gasJournal: db.gasJournal,
     journalDueSince: db.journalDueSince,
     auditHistory: db.auditHistory,
+    operationalResetAt: db.operationalResetAt || "",
     walkShiftCleanupVersion: db.walkShiftCleanupVersion || ""
   };
 }
@@ -1447,22 +1449,31 @@ async function handleApi(req, res, pathname, url) {
         db.gasJournal = {};
         db.journalDueSince = {};
         db.auditHistory = [];
+        db.operationalResetAt = new Date().toISOString();
       }
-      if (body.walkShiftCleanupVersion) clearLegacyWalkCompletionsServer(db);
-      db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
-      if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
-      db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
-      removeJournalRequestsServer(db);
+      const acceptOperational = body.clearRecordedData === true
+        || !db.operationalResetAt
+        || String(body.operationalResetAt || "") === String(db.operationalResetAt);
+      if (acceptOperational && body.walkShiftCleanupVersion) clearLegacyWalkCompletionsServer(db);
+      if (acceptOperational) {
+        db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
+        if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
+        db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
+        removeJournalRequestsServer(db);
+      }
       db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
       db.catalog = db.catalog || { equipment: {} };
       db.catalog.equipment = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
-      db.directorMessages = mergeArrayById(db.directorMessages, body.directorMessages);
-      db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
-      db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
-      db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
-      db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
-      db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
-      db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
+      if (acceptOperational) {
+        db.directorMessages = mergeArrayById(db.directorMessages, body.directorMessages);
+        db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
+        db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
+        db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
+        db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
+        db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
+        db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
+      }
+      db.operationalResetAt = db.operationalResetAt || String(body.operationalResetAt || "");
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
       migrateLegacyDirectorApprovals(db);
       const actionId = String(body.actionId || "");
