@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v110";
+const APP_VERSION = "v111";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1806,7 +1806,7 @@ function roleAccess() {
 
 function canOpenView(view) {
   if (profile?.role === "warehouse") return view === "requests";
-  if (view === "directorControl") return ["director", "editor", "engineer"].includes(profile?.role);
+  if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return ["engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
@@ -6868,7 +6868,7 @@ function show(view, push = true) {
   document.body.classList.toggle("director-control-profile", view === "directorControl");
   document.querySelectorAll(".view").forEach(el => el.classList.remove("active"));
   document.querySelector(`#${view}Screen`).classList.add("active");
-  ui.back.disabled = view === homeViewForProfile(profile?.role);
+  ui.back.disabled = view === homeViewForProfile(profile?.role) || view === "directorControl";
   renderProfile();
   updateMobileNavigation();
   render();
@@ -10343,6 +10343,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   return `
     <article class="engineer-report ${printable ? "printable" : ""}">
+      ${printable ? "" : `<div class="engineer-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`}
       <div class="engineer-report-title">
         <div>
           <span>Месячный отчёт</span>
@@ -10585,9 +10586,9 @@ function directorEquipmentDetail(eq) {
 }
 
 function renderDirectorControl() {
-  if (!ui.directorControlPanel || !["director", "editor", "engineer"].includes(profile?.role)) return;
-  const directorAnalyticsOnly = ["director", "editor", "engineer"].includes(profile?.role);
-  ui.subtitle.textContent = "Статистика";
+  if (!ui.directorControlPanel || !["director", "editor"].includes(profile?.role)) return;
+  const directorAnalyticsOnly = profile?.role === "director";
+  ui.subtitle.textContent = directorAnalyticsOnly ? "Статистика" : "Общий контроль";
   const totals = directorControlTotals();
   const detailEq = current.directorControlEquipmentId ? equipmentById(current.directorControlEquipmentId) : null;
   const controlRows = totals.equipment.filter(eq => eq.area !== "Резерв").map(eq => {
@@ -12324,7 +12325,7 @@ function goBack() {
 
 ui.back.addEventListener("click", goBack);
 
-ui.factoryStatusButton?.addEventListener("click", () => show("directorControl"));
+ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
 
 ui.qrWalkButton?.addEventListener("click", async () => {
   if (!isProfileReady()) {
@@ -12412,7 +12413,7 @@ ui.downtimeOpenButton?.addEventListener("click", () => {
 });
 
 ui.engineerReportButton?.addEventListener("click", () => {
-  show("directorControl");
+  show("engineerReport");
 });
 
 ui.workerRatingButton?.addEventListener("click", () => {
