@@ -3244,8 +3244,13 @@ html[data-theme="dark"] td { border-color:var(--line); }
 .director-node-list li.missing > span { color: #dc2626; }
 .director-node-list small { display: block; margin-top: 3px; color: #607785; }
 
-body.director-control-profile .mobile-nav {
+body.director-control-profile:not(.editor-preview-profile) .mobile-nav {
   display: none !important;
+}
+
+/* The persistent Home button replaces the removed top-left Back button. */
+.topbar {
+  grid-template-columns: minmax(0, 1fr) auto !important;
 }
 
 body.director-control-profile .screen {
@@ -7960,16 +7965,19 @@ textarea:disabled {
 
   .mobile-nav [data-mobile-view="requestCreate"] {
     order: 1;
+    grid-column: 1;
   }
 
   .mobile-nav [data-mobile-view="home"] {
     order: 2;
+    grid-column: 2;
     overflow: visible;
     transform: translateY(-7px);
   }
 
   .mobile-nav [data-mobile-view="profile"] {
     order: 3;
+    grid-column: 3;
   }
 
   .mobile-nav [data-mobile-view="home"].active {

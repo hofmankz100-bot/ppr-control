@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v144";
+const APP_VERSION = "v145";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -7133,7 +7133,7 @@ function show(view, push = true) {
   document.body.classList.toggle("director-control-profile", view === "directorControl");
   document.querySelectorAll(".view").forEach(el => el.classList.remove("active"));
   document.querySelector(`#${view}Screen`).classList.add("active");
-  ui.back.disabled = view === homeViewForProfile(profile?.role) || view === "directorControl";
+  if (ui.back) ui.back.disabled = view === homeViewForProfile(profile?.role) || view === "directorControl";
   renderProfile();
   updateMobileNavigation();
   render();
@@ -7141,13 +7141,14 @@ function show(view, push = true) {
 
 function updateMobileNavigation() {
   const profileFocused = document.body.classList.contains("mobile-profile-focus");
+  const adminAtHome = isEditorSession() && profile?.role === "editor" && current.view === "equipment";
   document.querySelectorAll("[data-mobile-view]").forEach(button => {
     const target = button.dataset.mobileView;
     button.hidden = !canShowMobileView(target);
     const active = target === "profile"
       ? profileFocused && current.view === homeViewForProfile(profile?.role)
       : target === "home"
-        ? !profileFocused && current.view === homeViewForProfile(profile?.role)
+        ? !profileFocused && (isEditorSession() ? adminAtHome : current.view === homeViewForProfile(profile?.role))
       : !profileFocused && target === current.view;
     button.classList.toggle("active", active);
     button.setAttribute("aria-current", active ? "page" : "false");
@@ -12851,7 +12852,7 @@ function goBack() {
   show(previous, false);
 }
 
-ui.back.addEventListener("click", goBack);
+ui.back?.addEventListener("click", goBack);
 
 ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
 
@@ -12916,6 +12917,12 @@ document.querySelectorAll("[data-mobile-view]").forEach(button => {
     if (target === "home") {
       document.body.classList.remove("mobile-profile-focus");
       nav.length = 0;
+      if (isEditorSession() && profile?.role !== "editor") {
+        localStorage.setItem(EDITOR_PREVIEW_ROLE_KEY, "editor");
+        localStorage.removeItem(EDITOR_PREVIEW_AREA_KEY);
+        profile = activeProfileFromSession(authenticatedProfile);
+        current.requestRole = defaultRequestRole(profile?.role);
+      }
       show(homeViewForProfile(profile?.role), false);
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
