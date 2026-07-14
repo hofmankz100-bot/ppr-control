@@ -61,7 +61,7 @@ const contentTypes = {
 };
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
 }
 
 function normalizeDb(db) {
@@ -76,6 +76,7 @@ function normalizeDb(db) {
   db.downtimes ||= [];
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
+  db.pprSheets ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   db.operationalResetAt ||= "";
@@ -555,6 +556,7 @@ function publicState(db = readDb()) {
     downtimes: db.downtimes,
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
+    pprSheets: db.pprSheets,
     journalDueSince: db.journalDueSince,
     auditHistory: db.auditHistory,
     operationalResetAt: db.operationalResetAt || "",
@@ -1206,7 +1208,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "pprSheets", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
@@ -1473,6 +1475,7 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
+        db.pprSheets = {};
         db.journalDueSince = {};
         db.auditHistory = [];
         db.operationalResetAt = new Date().toISOString();
@@ -1496,6 +1499,7 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
         db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
+        db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
       }

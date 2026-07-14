@@ -8999,3 +8999,145 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   .ppr-calendar-day > time { width:auto;height:auto;margin:0;font-size:19px; }
 }
 }
+
+/* This PPR print rule must stay last because older journal print layouts are global. */
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  html:has(body.printing-ppr-sheet),
+  body.printing-ppr-sheet {
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body.printing-ppr-sheet .ppr-maintenance-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* Fillable daily PPR maintenance sheet. */
+.ppr-maintenance-sheet {
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid #c7d3db;
+  border-radius: 16px;
+  background: #fff;
+  color: #142f40;
+  box-shadow: 0 10px 28px rgba(8, 29, 42, .18);
+}
+.ppr-maintenance-sheet.complete { border-color: #47a96d; }
+.ppr-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  background: #eef4f7;
+  border-bottom: 1px solid #c7d3db;
+}
+.ppr-sheet-header span { display: block; color: #637986; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.ppr-sheet-header h3 { margin: 2px 0 0; color: #102f42; font-size: 18px; }
+.ppr-sheet-header button { flex: 0 0 auto; min-height: 40px; }
+.ppr-sheet-equipment { margin: 0; padding: 10px 14px; color: #405d6c; font-size: 12px; border-bottom: 1px solid #d7e0e5; }
+.ppr-sheet-table-wrap { overflow-x: auto; }
+.ppr-sheet-table { width: 100%; min-width: 0; border-collapse: collapse !important; table-layout: fixed; color: #102d3d; }
+.ppr-sheet-table th,
+.ppr-sheet-table td { border: 1px solid #9eb0bc !important; padding: 0; vertical-align: middle; }
+.ppr-sheet-table th { padding: 7px 5px; background: #e8f1f6 !important; color: #17394d; font-size: 12px; text-align: center; }
+.ppr-sheet-table th:first-child,
+.ppr-sheet-number { width: 38px; text-align: center; }
+.ppr-sheet-table th:last-child,
+.ppr-sheet-mark { width: 104px; text-align: center; }
+.ppr-sheet-table textarea {
+  display: block;
+  width: 100%;
+  min-height: 55px;
+  resize: vertical;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 9px !important;
+  background: transparent !important;
+  color: #132f3f;
+  font: inherit;
+  box-shadow: none !important;
+}
+.ppr-sheet-table tbody tr:nth-child(even) td { background: #eef5fa !important; }
+.ppr-sheet-mark-buttons { display: flex; justify-content: center; gap: 6px; padding: 6px; }
+.ppr-sheet-mark-buttons button {
+  width: 39px;
+  height: 39px;
+  min-height: 0;
+  border: 1px solid #b8c7d0;
+  border-radius: 10px;
+  background: #fff;
+  color: #617582;
+  font-size: 24px;
+  font-weight: 900;
+}
+.ppr-sheet-mark-buttons button.done.active { border-color: #18864a; background: #18864a; color: #fff; }
+.ppr-sheet-mark-buttons button.na.active { border-color: #566874; background: #566874; color: #fff; }
+.ppr-sheet-print-mark { display: none; font-size: 22px; }
+.ppr-sheet-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; padding: 12px 14px; background: #f5f8fa; }
+.ppr-sheet-footer > small { flex: 1 1 180px; color: #637985; }
+.ppr-sheet-footer > button { margin-left: auto; }
+.ppr-sheet-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; }
+.ppr-sheet-state strong { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #dce6eb; }
+.ppr-sheet-state.done { color: #147441; }
+.ppr-sheet-state.done strong { background: #d8f3e3; }
+.ppr-sheet-state.partial { color: #9b6800; }
+.ppr-sheet-state.partial strong { background: #fff0bf; }
+
+@media (max-width: 620px) {
+  .ppr-selected-day { margin: 10px -5px 0; padding: 8px 5px 4px; }
+  .ppr-selected-day > div:first-child { padding: 0 6px; }
+  .ppr-maintenance-sheet { border-radius: 14px; }
+  .ppr-sheet-header { align-items: flex-start; padding: 11px 10px; }
+  .ppr-sheet-header h3 { font-size: 16px; }
+  .ppr-sheet-header button { padding: 7px 9px; font-size: 12px; }
+  .ppr-sheet-equipment { padding: 8px 10px; }
+  .ppr-sheet-table th:last-child,
+  .ppr-sheet-mark { width: 88px; }
+  .ppr-sheet-table textarea { min-height: 62px; padding: 8px 7px !important; font-size: 14px; }
+  .ppr-sheet-mark-buttons { gap: 4px; padding: 4px; }
+  .ppr-sheet-mark-buttons button { width: 35px; height: 38px; font-size: 22px; }
+  .ppr-sheet-footer { padding: 10px; }
+  .ppr-sheet-footer > button { width: 100%; margin-left: 0; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  body.printing-ppr-sheet { width: auto !important; height: auto !important; overflow: visible !important; background: #fff !important; }
+  body.printing-ppr-sheet * { visibility: hidden !important; }
+  body.printing-ppr-sheet .ppr-maintenance-sheet,
+  body.printing-ppr-sheet .ppr-maintenance-sheet * { visibility: visible !important; }
+  body.printing-ppr-sheet .ppr-maintenance-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    border: 1px solid #111 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+  }
+  body.printing-ppr-sheet .no-print,
+  body.printing-ppr-sheet .ppr-sheet-mark-buttons { display: none !important; }
+  body.printing-ppr-sheet .ppr-sheet-print-mark { display: block !important; }
+  body.printing-ppr-sheet .ppr-sheet-header,
+  body.printing-ppr-sheet .ppr-sheet-footer,
+  body.printing-ppr-sheet .ppr-sheet-equipment { background: #fff !important; color: #000 !important; }
+  body.printing-ppr-sheet .ppr-sheet-table th,
+  body.printing-ppr-sheet .ppr-sheet-table td { border-color: #111 !important; background: #fff !important; color: #000 !important; }
+  body.printing-ppr-sheet .ppr-sheet-table textarea {
+    min-height: 15mm !important;
+    resize: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+  }
+}

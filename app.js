@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v143";
+const APP_VERSION = "v144";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -712,6 +712,7 @@ function loadState() {
     parsed.downtimes ||= [];
     parsed.compressorJournal ||= {};
     parsed.gasJournal ||= {};
+    parsed.pprSheets ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
     parsed.operationalResetAt ||= "";
@@ -729,7 +730,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -914,6 +915,7 @@ async function clearRecordedDataEverywhere() {
   state.downtimes = downtimeTombstones;
   state.compressorJournal = {};
   state.gasJournal = {};
+  state.pprSheets = {};
   state.directorMessages = [];
   state.serviceCosts = [];
   state.serviceCosts = [];
@@ -933,6 +935,7 @@ function applyWorkCleanFromUrl() {
     state.serviceCosts = [];
     state.compressorJournal = {};
     state.gasJournal = {};
+    state.pprSheets = {};
     persistStateLocally(state);
     return;
   }
@@ -943,6 +946,7 @@ function applyWorkCleanFromUrl() {
   state.downtimes = [];
   state.compressorJournal = {};
   state.gasJournal = {};
+  state.pprSheets = {};
   state.directorMessages = [];
   state.serviceCosts = [];
   state.serviceCosts = [];
@@ -1067,6 +1071,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.downtimes = [];
     state.compressorJournal = {};
     state.gasJournal = {};
+    state.pprSheets = {};
     state.journalDueSince = {};
     state.directorMessages = [];
     state.serviceCosts = [];
@@ -1092,6 +1097,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.gasJournal = preferRemote
     ? { ...(remote.gasJournal || {}) }
     : mergeObjectByFreshnessLocal(state.gasJournal || {}, remote.gasJournal || {});
+  state.pprSheets = preferRemote
+    ? { ...(remote.pprSheets || {}) }
+    : mergeObjectByFreshnessLocal(state.pprSheets || {}, remote.pprSheets || {});
   state.journalDueSince = { ...(state.journalDueSince || {}), ...(remote.journalDueSince || {}) };
   state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
@@ -1123,6 +1131,7 @@ function mergeRealtimePatch(remote = {}) {
   }
   if (remote.compressorJournal) state.compressorJournal = mergeObjectByFreshnessLocal(state.compressorJournal, remote.compressorJournal);
   if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
+  if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
@@ -1369,6 +1378,7 @@ async function saveRemoteState() {
         downtimes: state.downtimes || [],
         compressorJournal: state.compressorJournal || {},
         gasJournal: state.gasJournal || {},
+        pprSheets: state.pprSheets || {},
         journalDueSince: state.journalDueSince || {},
         auditHistory: state.auditHistory || [],
         operationalResetAt: state.operationalResetAt || "",
@@ -8906,6 +8916,129 @@ function pprCalendarShortName(name) {
     .trim();
 }
 
+const PPR_SHEET_DEFAULT_ROWS = 8;
+
+function pprSheetDefaultRows(date, count = PPR_SHEET_DEFAULT_ROWS) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${date}-work-${index + 1}`,
+    work: "",
+    mark: ""
+  }));
+}
+
+function pprSheetRecord(date, create = false) {
+  state.pprSheets ||= {};
+  if (!state.pprSheets[date] && create) {
+    state.pprSheets[date] = {
+      id: `ppr-sheet:${date}`,
+      date,
+      rows: pprSheetDefaultRows(date),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedByName: profile?.name || ""
+    };
+  }
+  return state.pprSheets[date] || {
+    id: `ppr-sheet:${date}`,
+    date,
+    rows: pprSheetDefaultRows(date),
+    createdAt: "",
+    updatedAt: "",
+    updatedByName: ""
+  };
+}
+
+function pprSheetCompletion(date) {
+  const sheet = pprSheetRecord(date);
+  const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+  const activeRows = rows.filter(row => String(row?.work || "").trim() || row?.mark);
+  const complete = activeRows.length > 0 && activeRows.every(row =>
+    String(row?.work || "").trim() && ["done", "na"].includes(row?.mark)
+  );
+  const marked = activeRows.filter(row => ["done", "na"].includes(row?.mark)).length;
+  return { complete, partial: activeRows.length > 0 && !complete, active: activeRows.length, marked };
+}
+
+function touchPprSheet(sheet) {
+  sheet.updatedAt = new Date().toISOString();
+  sheet.updatedByName = profile?.name || sheet.updatedByName || "";
+  saveState();
+}
+
+function renderPprMaintenanceSheet(date, scheduledItems = []) {
+  const sheet = pprSheetRecord(date);
+  const rows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
+  const completion = pprSheetCompletion(date);
+  const editable = canEditChecklist();
+  const equipmentNames = [...new Set(scheduledItems.map(item => item.equipment).filter(Boolean))];
+  const statusText = completion.complete
+    ? "ППР выполнен · лист сохранён в архиве календаря"
+    : completion.active
+      ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
+      : "Запишите план работ вручную";
+  const rowHtml = rows.map((row, index) => `
+    <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
+      <td class="ppr-sheet-number">${index + 1}</td>
+      <td class="ppr-sheet-work">
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" rows="2" placeholder="Запишите работу" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+      </td>
+      <td class="ppr-sheet-mark">
+        <div class="ppr-sheet-mark-buttons" role="group" aria-label="Отметка по строке ${index + 1}">
+          <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${editable ? "" : "disabled"} aria-label="Выполнено">✓</button>
+          <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${editable ? "" : "disabled"} aria-label="Не требуется">−</button>
+        </div>
+        <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
+      </td>
+    </tr>
+  `).join("");
+  return `
+    <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}">
+      <header class="ppr-sheet-header">
+        <div>
+          <span>Лист планового обслуживания</span>
+          <h3>ППР · ${dateHuman(date)}</h3>
+        </div>
+        <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
+      </header>
+      ${equipmentNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(equipmentNames.join(", "))}</p>` : ""}
+      <div class="ppr-sheet-table-wrap">
+        <table class="ppr-sheet-table">
+          <thead>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
+            <tr><th>A</th></tr>
+          </thead>
+          <tbody>${rowHtml}</tbody>
+        </table>
+      </div>
+      <footer class="ppr-sheet-footer">
+        <div class="ppr-sheet-state ${completion.complete ? "done" : completion.partial ? "partial" : "empty"}">
+          <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
+          <span>${escapeHtml(statusText)}</span>
+        </div>
+        ${sheet.updatedByName ? `<small>Заполнил: ${escapeHtml(sheet.updatedByName)}${sheet.updatedAt ? ` · ${dateTimeHuman(sheet.updatedAt)}` : ""}</small>` : ""}
+        ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
+        ${editable ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
+      </footer>
+    </section>
+  `;
+}
+
+function printPprMaintenanceSheet(date) {
+  const sheet = document.querySelector(`[data-ppr-sheet-date="${date}"]`);
+  if (!sheet) return;
+  const oldTitle = document.title;
+  document.title = `Лист ППР ${date}`;
+  document.body.classList.add("printing-ppr-sheet");
+  const cleanup = () => {
+    document.title = oldTitle;
+    document.body.classList.remove("printing-ppr-sheet");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1800);
+}
+
 function pprJournalCompletion(eq, date, node = "") {
   if (date < PPR_RECOMMENDED_START_DATE) {
     return { complete: false, partial: false, ignored: true, author: "", updatedAt: "" };
@@ -8996,11 +9129,13 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     const date = `${data.year}-${String(data.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = data.itemsByDate[date] || [];
     const itemStatuses = items.map(item => pprJournalCompletion(equipmentById(item.equipmentId), date, item.node));
-    const dayDone = items.length && itemStatuses.every(item => item.complete);
-    const dayPartial = itemStatuses.some(item => item.partial && !item.complete);
+    const sheetStatus = pprSheetCompletion(date);
+    const usesSheet = sheetStatus.active > 0;
+    const dayDone = items.length && (usesSheet ? sheetStatus.complete : itemStatuses.every(item => item.complete));
+    const dayPartial = usesSheet ? sheetStatus.partial : itemStatuses.some(item => item.partial && !item.complete);
     const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored);
-    const dayMissed = date < todayISO() && activeIncomplete;
-    const dayWarning = date >= todayISO() && activeIncomplete;
+    const dayMissed = date < todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
+    const dayWarning = date >= todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
     const stateClass = dayDone ? "completed" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
     const statusIcon = dayDone ? "✓" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
     const statusText = dayDone ? "ППР выполнен" : dayMissed ? "ППР не выполнен" : dayPartial ? "ППР выполнен частично" : dayWarning ? "Приближается срок ППР" : items.length ? "Архивный график" : "Работ нет";
@@ -9013,26 +9148,6 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     `);
   }
   const selectedItems = data.itemsByDate[selectedDate] || [];
-  const selectedTaskRows = selectedItems.map(item => {
-    const journal = pprJournalCompletion(equipmentById(item.equipmentId), selectedDate, item.node);
-    const overdue = !journal.ignored && selectedDate < todayISO();
-    const statusClass = journal.complete ? "done" : overdue ? "overdue" : journal.partial ? "partial" : journal.ignored ? "history" : "planned";
-    const statusIcon = journal.complete ? "✓" : overdue ? "×" : journal.partial ? "!" : journal.ignored ? "·" : "!";
-    const statusText = journal.ignored
-      ? "До запуска расчётного графика"
-      : journal.complete
-        ? `Выполнено${journal.author ? ` · ${journal.author}` : ""}${journal.updatedAt ? ` · ${dateTimeHuman(journal.updatedAt)}` : ""}`
-        : journal.partial
-          ? "Выполнено частично"
-          : overdue
-            ? "Не выполнено"
-            : "Приближается срок выполнения";
-    return `<button type="button" class="ppr-calendar-task ${statusClass} ${profile?.role === "director" ? "informational" : ""}" data-ppr-task-date="${selectedDate}" data-ppr-task-equipment="${item.equipmentId}" data-ppr-task-node="${escapeHtml(item.node)}" ${profile?.role === "director" ? `aria-disabled="true"` : ""}>
-      <span>${statusIcon}</span>
-      <strong>${escapeHtml(pprCalendarShortName(item.equipment))}</strong>
-      <small>${escapeHtml(item.node)} · ${escapeHtml(statusText)}</small>
-    </button>`;
-  }).join("");
   return `
     <div class="ppr-calendar-toolbar">
       <strong>${escapeHtml(monthLabel)}</strong>
@@ -9050,7 +9165,7 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     <div class="ppr-calendar-grid">${cells.join("")}</div>
     <section class="ppr-selected-day">
       <div><span>Выбранный день</span><strong>${dateHuman(selectedDate)}</strong></div>
-      <div class="ppr-calendar-tasks">${selectedTaskRows || `<p>На этот день работ ППР нет</p>`}</div>
+      <div class="ppr-calendar-tasks">${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : `<p>На этот день работ ППР нет</p>`}</div>
     </section>
   `;
 }
@@ -9079,15 +9194,46 @@ function bindPprCalendarControls(container, rerender) {
     button.addEventListener("click", () => {
       current.pprCalendarSelectedDate = button.dataset.pprDayDate;
       rerender();
+      window.setTimeout(() => {
+        const selected = container.querySelector(`[data-ppr-sheet-date="${button.dataset.pprDayDate}"]`) || container.querySelector(".ppr-selected-day");
+        selected?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
     });
   });
-  container?.querySelectorAll("[data-ppr-task-date]").forEach(button => {
-    if (profile?.role === "director") return;
-    button.addEventListener("click", () => openPprLinkedJournal(
-      button.dataset.pprTaskDate,
-      Number(button.dataset.pprTaskEquipment),
-      button.dataset.pprTaskNode || ""
-    ));
+  container?.querySelectorAll("[data-ppr-work-input]").forEach(input => {
+    input.addEventListener("input", () => {
+      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
+      if (!date) return;
+      const sheet = pprSheetRecord(date, true);
+      const row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
+      if (!row) return;
+      row.work = input.value;
+      touchPprSheet(sheet);
+    });
+  });
+  container?.querySelectorAll("[data-ppr-row-mark]").forEach(button => {
+    button.addEventListener("click", () => {
+      const date = button.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
+      if (!date) return;
+      const sheet = pprSheetRecord(date, true);
+      const row = sheet.rows.find(item => item.id === button.dataset.pprRowMark);
+      if (!row) return;
+      row.mark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
+      touchPprSheet(sheet);
+      rerender();
+    });
+  });
+  container?.querySelectorAll("[data-add-ppr-row]").forEach(button => {
+    button.addEventListener("click", () => {
+      const date = button.dataset.addPprRow;
+      const sheet = pprSheetRecord(date, true);
+      sheet.rows.push({ id: `${date}-work-${Date.now()}`, work: "", mark: "" });
+      touchPprSheet(sheet);
+      rerender();
+    });
+  });
+  container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
+    button.addEventListener("click", () => printPprMaintenanceSheet(button.dataset.printPprSheet));
   });
 }
 
