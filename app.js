@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v122";
+const APP_VERSION = "v123";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -5587,7 +5587,7 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
           </div>
           <strong>${Number(item.qty || 0)} ${unit}</strong>
           <div class="stock-row-actions">
-            <input data-stock-qty="${escapeHtml(item.id)}" type="number" min="1" max="${Number(item.qty || 0)}" value="1">
+            <input data-stock-qty="${escapeHtml(item.id)}" type="number" min="0.001" step="0.001" max="${Number(item.qty || 0)}" value="${Math.min(1, Number(item.qty || 0))}">
             ${canManageWarehouse ? `
               <input data-stock-price="${escapeHtml(item.id)}" type="text" inputmode="decimal" value="${escapeHtml(priceTextFromAmount(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "")))}" placeholder="Цена за 1 ед. изм.">
               <button type="button" data-stock-price-lookup="${escapeHtml(item.id)}">Найти цену</button>
@@ -5980,6 +5980,11 @@ function createManualWarehouseRequest(area, name, qty, note, article = "", unit 
 
 function warehouseOptions(selectedArea = "") {
   return WAREHOUSE_AREAS.map(area => `<option value="${area}" ${area === selectedArea ? "selected" : ""}>${area}</option>`).join("");
+}
+
+function inventoryUnitOptions(selected = "шт") {
+  const units = ["шт", "кг", "м", "л", "комплект", "упаковка", "рулон"];
+  return units.map(unit => `<option value="${unit}" ${unit === selected ? "selected" : ""}>${unit}</option>`).join("");
 }
 
 function warehouseRecipientOptions(selectedRole = "mechanic", selectedPhone = "") {
@@ -11421,8 +11426,8 @@ function renderWarehousePanel() {
         <select id="manualInventoryArea">${warehouseOptions(folderArea)}</select>
         <input id="manualInventoryName" type="text" placeholder="Наименование запчасти">
         <input id="manualInventoryArticle" type="text" placeholder="Артикул (авто)">
-        <input id="manualInventoryUnit" type="text" placeholder="Ед. изм.">
-        <input id="manualInventoryQty" type="number" min="1" placeholder="Кол-во">
+        <select id="manualInventoryUnit" aria-label="Единица измерения">${inventoryUnitOptions("шт")}</select>
+        <input id="manualInventoryQty" type="number" min="0.001" step="0.001" placeholder="Количество">
         <input id="manualInventoryPrice" type="text" inputmode="decimal" placeholder="Цена за 1 ед. изм.">
         <button type="button" id="manualInventoryPriceLookup">Найти цену</button>
         <input id="manualInventoryNote" type="text" placeholder="Место / полка / примечание">
