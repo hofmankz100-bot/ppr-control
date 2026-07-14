@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v123";
+const APP_VERSION = "v124";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -7085,6 +7085,7 @@ function render() {
   renderProfile();
   updateDirectorBadge();
   updateDowntimeBadge();
+  updateRoleBadges();
   renderGlobalReminderPanel();
   if (current.view === "equipment") renderEquipment();
   if (current.view === "node") renderNodes();
