@@ -6942,7 +6942,7 @@ textarea:disabled {
 
   .tmc-request-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 
@@ -6950,6 +6950,83 @@ textarea:disabled {
     min-height: 58px;
     white-space: normal;
     line-height: 1.15;
+  }
+
+  .tmc-request-table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .tmc-request-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .tmc-request-table thead {
+    display: none;
+  }
+
+  .tmc-request-table tbody {
+    display: grid;
+    gap: 14px;
+  }
+
+  .tmc-request-table tr[data-tmc-row] {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    border: 1px solid #d7e2e8;
+    border-radius: 12px;
+    background: #f8fbfc;
+    padding: 12px;
+    box-shadow: 0 5px 16px rgba(20, 50, 74, .08);
+  }
+
+  .tmc-request-table td,
+  .tmc-request-table td:first-child {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  .tmc-request-table td:first-child {
+    display: block;
+    border-bottom: 1px solid #dbe6ec;
+    padding-bottom: 8px;
+    color: #14324a;
+    font-size: 16px;
+  }
+
+  .tmc-request-table td:first-child::before { content: "Позиция № "; }
+  .tmc-request-table td:nth-child(2)::before { content: "Наименование ТМЦ или услуги"; }
+  .tmc-request-table td:nth-child(3)::before { content: "Артикул"; }
+  .tmc-request-table td:nth-child(4)::before { content: "Остаток"; }
+  .tmc-request-table td:nth-child(5)::before { content: "Единица измерения"; }
+  .tmc-request-table td:nth-child(6)::before { content: "Заявочное количество"; }
+  .tmc-request-table td:nth-child(7)::before { content: "Необходимое количество"; }
+  .tmc-request-table td:nth-child(8)::before { content: "Фото"; }
+  .tmc-request-table td:nth-child(9)::before { content: "Примечание"; }
+
+  .tmc-request-table td:not(:first-child)::before {
+    color: #526a77;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .tmc-request-table input,
+  .tmc-request-table textarea,
+  .tmc-row-photo-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .tmc-request-table textarea {
+    min-height: 76px;
   }
 
   .request-create-archive {
