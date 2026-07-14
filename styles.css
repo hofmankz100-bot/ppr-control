@@ -7692,7 +7692,6 @@ textarea:disabled {
   }
 
   .quick-nav [data-open-role]:not([data-open-role="warehouse"]),
-  .quick-nav #qrWalkButton,
   .quick-nav #createTmcRequestButton,
   .quick-nav #directorOpenButton {
     display: none !important;
