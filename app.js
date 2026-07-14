@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v129";
+const APP_VERSION = "v130";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -6072,10 +6072,7 @@ function requestRoleCounts() {
     const counts = { all: 0, shop: 0, engineer: 0, warehouse: 0, mechanic: 0, electrician: 0, operator: 0, productionDirector: 0 };
     allRequests().forEach(req => {
       for (const role of ["shop", "engineer", "mechanic", "electrician", "operator"]) {
-        const issuedForCurrentRole = role === profile?.role
-          && req.issued && !req.mechanicInstalled && !req.done && !req.stock
-          && warehouseIssueTargetRole(req) === role;
-        if (issuedForCurrentRole || issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role)) counts[role] += 1;
+        if (issuedWarehouseItemVisibleToProfile(req, role) || stockOutVisibleToProfile(req, role)) counts[role] += 1;
       }
     });
     return counts;
