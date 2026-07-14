@@ -7613,11 +7613,11 @@ textarea:disabled {
 }
 
 /* Mobile home: work tools stay on the home screen, account settings live in Profile. */
-.mobile-equipment-overview {
-  display: none !important;
-}
-
 @media (max-width: 680px) {
+  body {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+
   body:not(.mobile-profile-focus) .profile-bar {
     display: none !important;
   }
@@ -7633,21 +7633,67 @@ textarea:disabled {
   }
 
   .mobile-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding-inline: 32px;
+    min-height: 78px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
   }
 
-  .mobile-nav [data-mobile-view="requestCreate"],
   .mobile-nav [data-mobile-view="downtime"] {
     display: none !important;
   }
 
-  .mobile-equipment-overview {
-    display: flex !important;
+  .mobile-nav [data-mobile-view="requestCreate"] {
+    order: 1;
+  }
+
+  .mobile-nav [data-mobile-view="equipment"] {
+    order: 2;
+    overflow: visible;
+    transform: translateY(-7px);
+  }
+
+  .mobile-nav [data-mobile-view="profile"] {
+    order: 3;
+  }
+
+  .mobile-nav [data-mobile-view="equipment"].active {
+    background: transparent;
+  }
+
+  .mobile-nav .iphone-home-button,
+  .mobile-nav [data-mobile-view="equipment"].active .iphone-home-button {
+    width: 54px;
+    height: 54px;
+    margin-top: -19px;
+    display: grid;
+    place-items: center;
+    border: 3px solid #d7e1e7;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #ffffff, #edf3f6);
+    color: var(--nav);
+    box-shadow: 0 7px 18px rgba(20, 50, 74, .22), inset 0 0 0 3px #fff;
+  }
+
+  .mobile-nav [data-mobile-view="equipment"].active .iphone-home-button {
+    border-color: #7fa8bd;
+    box-shadow: 0 8px 20px rgba(12, 77, 103, .28), inset 0 0 0 3px #fff;
+  }
+
+  .iphone-home-button i {
+    width: 17px;
+    height: 17px;
+    border: 2px solid currentColor;
+    border-radius: 5px;
+  }
+
+  .mobile-nav [data-mobile-view="equipment"] small {
+    margin-top: -1px;
   }
 
   .quick-nav [data-open-role]:not([data-open-role="warehouse"]),
   .quick-nav #qrWalkButton,
+  .quick-nav #createTmcRequestButton,
   .quick-nav #directorOpenButton {
     display: none !important;
   }
