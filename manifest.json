@@ -1,7 +1,12 @@
 {
   "name": "ППР Контроль",
   "short_name": "ППР",
-  "start_url": "./index.html",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#14324a",

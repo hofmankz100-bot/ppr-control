@@ -75,7 +75,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v98";
+const APP_VERSION = "v99";
+const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const MANUAL_REQUEST_WORKFLOW = true;
 const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply"]);
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
@@ -2499,9 +2500,7 @@ function nodeQrDisplayCode(equipmentId, nodeIndex) {
 }
 
 function nodeQrBaseUrl() {
-  const host = String(location.hostname || "").toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "10.0.0.125") return "http://10.0.0.125:8080";
-  return `${location.protocol}//${location.host}`;
+  return PUBLIC_APP_URL;
 }
 
 function nodeQrUrl(equipmentId, nodeIndex) {
@@ -2659,7 +2658,7 @@ function printNodeQrCode(eq, nodeIndex) {
           <p><strong>Узел:</strong> ${escapeHtml(nodeName)}</p>
         </div>
         <div class="qr"><img src="${qrUrl}" alt="QR код"></div>
-        <p class="hint">Сканируйте обычной камерой телефона. ППР откроется сам и отметит узел.</p>
+        <p class="hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</p>
         <div class="code">${escapeHtml(displayCode)}</div>
         <div class="link">${escapeHtml(payload)} · ${escapeHtml(qrLink)}</div>
       </div>
@@ -2691,7 +2690,7 @@ function printEquipmentQrCodes(eq) {
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
         <div class="qr-code">${escapeHtml(displayCode)}</div>
         <div class="qr-payload">${escapeHtml(qrLink)}</div>
-        <div class="qr-hint">Сканируйте обычной камерой телефона — ППР откроется и отметит узел</div>
+        <div class="qr-hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</div>
       </section>
     `;
   });
