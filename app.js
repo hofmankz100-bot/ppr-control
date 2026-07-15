@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v147";
+const APP_VERSION = "v148";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -9010,7 +9010,11 @@ async function publishPprSheetAction(date, action, details = {}) {
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const sheet = pprSheetRecord(date);
-  const rows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
+  const savedRows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
+  const rows = [...savedRows];
+  while (rows.length < scheduledItems.length) {
+    rows.push({ id: `${date}-work-${rows.length + 1}`, work: "", mark: "" });
+  }
   const completion = pprSheetCompletion(date);
   const locked = Boolean(sheet.approvedAt);
   const canPlan = canPlanPprSheet() && !locked;
@@ -9023,11 +9027,21 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     : completion.active
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
       : "Инженер должен заполнить перечень работ";
-  const rowHtml = rows.map((row, index) => `
+  const rowHtml = rows.map((row, index) => {
+    const scheduled = scheduledItems[index] || (scheduledItems.length === 1 ? scheduledItems[0] : null);
+    const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
+    const equipmentName = row.equipment || scheduled?.equipment || "";
+    const nodeName = row.node || scheduled?.node || "";
+    const areaName = row.area || scheduled?.area || "";
+    return `
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
+      <td class="ppr-sheet-object">
+        <strong>${escapeHtml(equipmentName || "Дополнительная работа")}</strong>
+        ${nodeName ? `<span>${escapeHtml(nodeName)}</span>` : ""}
+      </td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
       <td class="ppr-sheet-mark">
         <div class="ppr-sheet-mark-buttons" role="group" aria-label="Отметка по строке ${index + 1}">
@@ -9038,7 +9052,8 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
   return `
     <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}">
       <header class="ppr-sheet-header">
@@ -9052,7 +9067,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       <div class="ppr-sheet-table-wrap">
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Оборудование / узел по графику</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
             <tr><th>A</th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
@@ -9265,8 +9280,11 @@ function bindPprCalendarControls(container, rerender) {
       const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
       if (!date) return;
       const sheet = pprSheetRecord(date, true);
-      const row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
-      if (!row) return;
+      let row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
+      if (!row) {
+        row = { id: input.dataset.pprWorkInput, work: "", mark: "" };
+        sheet.rows.push(row);
+      }
       if (row.work !== input.value && row.mark) {
         row.mark = "";
         row.markedByName = "";
@@ -9274,6 +9292,10 @@ function bindPprCalendarControls(container, rerender) {
         row.markedAt = "";
       }
       row.work = input.value;
+      row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
+      row.equipment = input.dataset.pprEquipment || row.equipment || "";
+      row.node = input.dataset.pprNode || row.node || "";
+      row.area = input.dataset.pprArea || row.area || "";
       sheet.plannedByName = profile?.name || sheet.plannedByName || "";
       sheet.plannedByRole = profile?.role || sheet.plannedByRole || "";
       sheet.plannedAt ||= new Date().toISOString();
@@ -10712,18 +10734,23 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
       workerRole: req.issueTargetRole || ""
     }))
     .sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
+  const pprSchedule = pprCalendarMonthData(allEquipment(), year, month).itemsByDate;
   const pprSheets = Object.entries(state.pprSheets || {})
     .filter(([date]) => String(date).slice(0, 7) === key)
     .map(([date, sheet]) => {
+      const scheduledItems = pprSchedule[date] || [];
       const works = (Array.isArray(sheet?.rows) ? sheet.rows : [])
-        .filter(row => String(row?.work || "").trim())
-        .map(row => ({
+        .map((row, index) => ({
           work: String(row.work).trim(),
+          equipment: row.equipment || scheduledItems[index]?.equipment || "",
+          node: row.node || scheduledItems[index]?.node || "",
+          area: row.area || scheduledItems[index]?.area || "",
           mark: row.mark || "",
           markedByName: row.markedByName || "",
           markedByRole: row.markedByRole || "",
           markedAt: row.markedAt || ""
-        }));
+        }))
+        .filter(row => row.work);
       return { date, sheet, works, completion: pprSheetCompletion(date) };
     })
     .filter(item => item.works.length)
@@ -10812,7 +10839,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(dateHuman(item.date))}</td>
         <td>${item.completion.complete ? "Принято инженером" : item.completion.awaitingApproval ? "Ожидает приёмки" : "В работе"}</td>
         <td>${item.works.length}</td>
-        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.work}${work.markedByName ? ` — ${work.markedByName}` : ""}`).join("; "))}</td>
+        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.equipment || "Оборудование"}${work.node ? ` / ${work.node}` : ""}: ${work.work}${work.markedByName ? ` — ${work.markedByName}` : ""}`).join("; "))}</td>
         <td>${escapeHtml(item.sheet?.plannedByName || item.sheet?.updatedByName || "-")}</td>
         <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} · ${dateTimeHuman(item.sheet.approvedAt)}` : "-")}</td>
       </tr>

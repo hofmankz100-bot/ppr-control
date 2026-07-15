@@ -451,9 +451,9 @@ function monthlyCsvRows(db, month) {
       rows.push([
         "Лист ППР",
         date,
-        "",
-        "Плановое обслуживание",
-        "",
+        row.area || "",
+        row.equipment || "Плановое обслуживание",
+        row.node || "",
         row.mark === "done" ? "Выполнено" : row.mark === "na" ? "Не требуется" : "Без отметки",
         "",
         row.markedByName || sheet?.updatedByName || "",
