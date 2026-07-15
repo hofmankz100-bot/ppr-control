@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v162";
+const APP_VERSION = "v164";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1332,6 +1332,7 @@ async function loadRemoteState() {
   remoteStateLoadPromise = (async () => {
     try {
       const remote = await apiJson("/api/state");
+      if (remote?.stateVersion) setRealtimeStateVersion(remote.stateVersion);
       rememberRemoteStateBaseline(remote);
       mergeRemoteState(remote, { preferRemote: true });
       render();
@@ -5733,7 +5734,7 @@ function renderWarehouseFolders(selectedArea = warehouseFolderArea(), data = nul
         return `
           <button type="button" data-warehouse-folder="${escapeHtml(area)}" class="${area === selectedArea ? "active" : ""} ${stats.pending ? "request-alert" : ""}">
             <span>${escapeHtml(area)}</span>
-            <strong>${stats.positions} поз. · ${stats.qty} шт${stats.pending ? ` · приход ${stats.pending}` : ""}</strong>
+            <strong>${stats.positions} поз.${stats.pending ? ` · приход ${stats.pending}` : ""}</strong>
           </button>
         `;
       }).join("")}
@@ -5843,7 +5844,11 @@ function warehouseZeroArchiveHtml() {
 function printWarehouseInstalledParts() {
   const installed = warehouseInstalledRequests();
   if (!installed.length) return;
-  const rows = installed.map((req, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(partNameFromRequest(req))}</td><td>${escapeHtml(partArticleFromRequest(req))}</td><td>${Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0)}</td><td>${escapeHtml(req.issueTargetName || "-")}</td><td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</td><td>${escapeHtml(req.equipment || "-")}</td><td>${escapeHtml(req.node || "-")}</td><td>${escapeHtml(req.installComment || "-")}</td><td>${escapeHtml(dateTimeHuman(req.approvals?.install?.at || req.updatedAt || ""))}</td></tr>`).join("");
+  const rows = installed.map((req, index) => {
+    const item = requestItems(req)[0] || {};
+    const quantity = Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0);
+    return `<tr><td>${index + 1}</td><td>${escapeHtml(partNameFromRequest(req))}</td><td>${escapeHtml(partArticleFromRequest(req))}</td><td>${quantity} ${escapeHtml(item.unit || "шт")}</td><td>${escapeHtml(req.issueTargetName || "-")}</td><td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</td><td>${escapeHtml(req.equipment || "-")}</td><td>${escapeHtml(req.node || "-")}</td><td>${escapeHtml(req.installComment || "-")}</td><td>${escapeHtml(dateTimeHuman(req.approvals?.install?.at || req.updatedAt || ""))}</td></tr>`;
+  }).join("");
   const win = window.open("", "_blank", "width=1200,height=850");
   if (!win) return;
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Архив установленных запчастей</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#111827}h1{font-size:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #9ca3af;padding:5px;font-size:9px;text-align:left;vertical-align:top}th{background:#14324a;color:#fff}.actions{text-align:center;margin:12px}button{border:0;border-radius:7px;background:#14324a;color:#fff;padding:10px 18px;font-weight:700}@media print{.actions{display:none}}</style></head><body><h1>Архив установленных запчастей</h1><p>Сформировано: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p><table><thead><tr><th>№</th><th>Запчасть</th><th>Артикул</th><th>Кол-во</th><th>Кто взял</th><th>Роль</th><th>Оборудование</th><th>Узел</th><th>Комментарий</th><th>Установлено</th></tr></thead><tbody>${rows}</tbody></table><div class="actions"><button onclick="window.print()">Печатать / PDF</button></div></body></html>`);
@@ -12225,7 +12230,7 @@ function renderWarehousePanel() {
         renderRequests();
       } catch (error) {
         if (error?.message === "warehouse_insufficient_stock") {
-          await loadRemoteState();
+          await syncRemoteChanges();
           window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${item.unit || "шт"}.`);
           renderRequests();
           return;
@@ -12974,10 +12979,10 @@ function requestCard(req) {
         showAppToast(`Выдано: ${req.issueTargetName}. Остаток: ${Number(result.available || 0)} ${stockItem.unit || "шт"}`);
       } catch (error) {
         if (error?.message === "warehouse_insufficient_stock") {
-          await loadRemoteState();
+          await syncRemoteChanges();
           window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${stockItem.unit || "шт"}.`);
         } else if (error?.message === "warehouse_request_already_processed") {
-          await loadRemoteState();
+          await syncRemoteChanges();
           showAppToast("Эта заявка уже обработана другим складовщиком.", "error");
         } else {
           throw error;
@@ -13594,14 +13599,14 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
 
 window.addEventListener("online", () => {
   flushPendingWork();
-  loadRemoteState();
+  syncRemoteChanges();
   pollRemoteUsers(true);
 });
 
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     flushPendingWork();
-    loadRemoteState();
+    syncRemoteChanges();
     pollRemoteUsers(true);
   }
 });

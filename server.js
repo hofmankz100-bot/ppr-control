@@ -44,6 +44,10 @@ const httpsPort = Number(process.env.HTTPS_PORT || 8443);
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
+let postgresPendingState = null;
+let postgresWriterActive = false;
+let localBackupPendingState = null;
+let localBackupTimer = null;
 let storageStatus = { mode: "json" };
 
 const contentTypes = {
@@ -491,6 +495,7 @@ function monthlyCsvRows(db, month) {
 }
 
 function createManualBackup(label = "manual") {
+  flushLocalBackup();
   ensureDb();
   fs.mkdirSync(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -500,23 +505,70 @@ function createManualBackup(label = "manual") {
   return backupFile;
 }
 
+function flushLocalBackup() {
+  if (localBackupTimer) {
+    clearTimeout(localBackupTimer);
+    localBackupTimer = null;
+  }
+  if (!localBackupPendingState) return;
+  const latest = localBackupPendingState;
+  localBackupPendingState = null;
+  writeDbFile(latest);
+}
+
+function scheduleLocalBackup(db) {
+  localBackupPendingState = db;
+  if (localBackupTimer) return;
+  localBackupTimer = setTimeout(() => {
+    localBackupTimer = null;
+    flushLocalBackup();
+  }, 250);
+}
+
+function schedulePostgresWrite(db) {
+  if (!postgresPool) return;
+  postgresPendingState = db;
+  if (postgresWriterActive) return;
+  postgresWriterActive = true;
+  postgresWriteQueue = (async () => {
+    while (postgresPendingState) {
+      const latest = postgresPendingState;
+      postgresPendingState = null;
+      try {
+        await postgresPool.query(
+          `INSERT INTO ppr_settings(setting_key, payload, updated_at)
+           VALUES ('full_state', $1::jsonb, now())
+           ON CONFLICT(setting_key) DO UPDATE
+           SET payload = EXCLUDED.payload, updated_at = now()`,
+          [JSON.stringify(latest)]
+        );
+      } catch (error) {
+        console.error(`PostgreSQL write failed; JSON backup preserved: ${error.message}`);
+      }
+    }
+  })().finally(() => {
+    postgresWriterActive = false;
+    if (postgresPendingState) schedulePostgresWrite(postgresPendingState);
+  });
+}
+
+async function flushPostgresWrites() {
+  while (postgresWriterActive || postgresPendingState) {
+    if (!postgresWriterActive && postgresPendingState) schedulePostgresWrite(postgresPendingState);
+    const activeWrite = postgresWriteQueue;
+    await activeWrite;
+    if (activeWrite === postgresWriteQueue && !postgresWriterActive && !postgresPendingState) break;
+  }
+}
+
 function writeDb(db, action = {}) {
   const normalized = normalizeDb(db);
   externalizePhotosInValue(normalized);
-  if (postgresPool) postgresState = normalized;
-  writeDbFile(normalized);
   if (postgresPool) {
-    const snapshot = JSON.stringify(normalized);
-    postgresWriteQueue = postgresWriteQueue
-      .then(() => postgresPool.query(
-        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
-         VALUES ('full_state', $1::jsonb, now())
-         ON CONFLICT(setting_key) DO UPDATE
-         SET payload = EXCLUDED.payload, updated_at = now()`,
-        [snapshot]
-      ))
-      .catch(error => console.error(`PostgreSQL write failed; JSON backup preserved: ${error.message}`));
-  }
+    postgresState = normalized;
+    scheduleLocalBackup(normalized);
+    schedulePostgresWrite(normalized);
+  } else writeDbFile(normalized);
   appendActionLog(action);
 }
 
@@ -680,7 +732,7 @@ let publicStateResponseCache = { version: "", data: null, gzip: null };
 function sendPublicState(res, db) {
   const version = realtimeStateVersion();
   if (publicStateResponseCache.version !== version || !publicStateResponseCache.data) {
-    const data = Buffer.from(JSON.stringify(publicState(db)));
+    const data = Buffer.from(JSON.stringify({ ...publicState(db), stateVersion: version }));
     publicStateResponseCache = {
       version,
       data,
@@ -2062,7 +2114,8 @@ const heartbeatTimer = setInterval(() => {
 async function shutdown() {
   clearInterval(heartbeatTimer);
   try {
-    await postgresWriteQueue;
+    flushLocalBackup();
+    await flushPostgresWrites();
     if (postgresPool) await postgresPool.end();
   } catch {}
   server.close(() => process.exit(0));
