@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v166";
+const APP_VERSION = "v167";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1333,8 +1333,24 @@ async function loadRemoteState() {
     try {
       const remote = await apiJson("/api/state");
       if (remote?.stateVersion) setRealtimeStateVersion(remote.stateVersion);
+      const localResetAtBeforeMerge = String(state.operationalResetAt || "");
+      const remoteResetAt = String(remote.operationalResetAt || "");
       rememberRemoteStateBaseline(remote);
       mergeRemoteState(remote, { preferRemote: true });
+      const sameOperationalPeriod = !remoteResetAt || localResetAtBeforeMerge === remoteResetAt;
+      if (sameOperationalPeriod) {
+        const recoveredChecks = {};
+        Object.entries(state.checks || {}).forEach(([recordKey, mergedRecord]) => {
+          const serverRecord = remote.checks?.[recordKey];
+          if (JSON.stringify(mergedRecord) === JSON.stringify(serverRecord)) return;
+          if (!serverRecord || isIncomingNewerRecord(serverRecord, mergedRecord)) {
+            recoveredChecks[recordKey] = mergedRecord;
+          }
+        });
+        if (Object.keys(recoveredChecks).length) {
+          await publishRecoveredChecksNow(recoveredChecks, remoteResetAt);
+        }
+      }
       render();
       return true;
     } catch {
@@ -1345,6 +1361,35 @@ async function loadRemoteState() {
     }
   })();
   return remoteStateLoadPromise;
+}
+
+async function publishRecoveredChecksNow(checks, operationalResetAt) {
+  try {
+    const result = await apiJson("/api/state", {
+      method: "PUT",
+      timeout: 60000,
+      body: JSON.stringify({
+        actionId: nextActionId(),
+        clientId: CLIENT_ID,
+        baseOperationalResetAt: String(operationalResetAt || state.operationalResetAt || ""),
+        user: profile ? {
+          name: profile.name || "",
+          role: profile.role || "",
+          phone: profile.phone || "",
+          authenticatedRole: authenticatedProfile?.role || profile.role || ""
+        } : null,
+        checks
+      })
+    });
+    remoteSectionFingerprints.set("checks", JSON.stringify(state.checks || {}));
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+    persistStateLocally(state);
+    return true;
+  } catch {
+    localStorage.setItem(`${STORE_KEY}-pending`, "1");
+    scheduleRemoteRetry();
+    return false;
+  }
 }
 
 async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
