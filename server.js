@@ -1,4 +1,4 @@
-const http = require("http");
+﻿const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -439,15 +439,15 @@ function sendExcelDownload(res, filename, rows) {
 
 function monthlyCsvRows(db, month) {
   const exported = monthlyExport(db, month);
-  const rows = [["??????", "????", "???", "????????????", "????", "??????", "??????????", "??? ???????", "??????????? / ????????"]];
+  const rows = [["Раздел", "Дата", "Цех", "Оборудование", "Узел", "Статус", "Количество", "Кто записал", "Комментарий / описание"]];
   for (const [key, value] of Object.entries(exported.checks || {})) {
     rows.push([
-      "????? / ?????????",
+      "Обход / замечание",
       value?.date || key,
       value?.area || "",
       value?.equipment || "",
       value?.node || key,
-      value?.resolved ? "?????????" : value?.comment ? "???????" : value?.status || "",
+      value?.resolved ? "Устранено" : value?.comment ? "Открыто" : value?.status || "",
       "",
       value?.commentAuthorName || value?.authorName || "",
       value?.comment || value?.request || JSON.stringify(value || {})
@@ -455,7 +455,7 @@ function monthlyCsvRows(db, month) {
   }
   for (const [key, value] of Object.entries(exported.requests || {})) {
     rows.push([
-      "??????",
+      "Заявка",
       value?.createdAt || value?.date || key,
       value?.area || value?.stockArea || "",
       value?.equipment || value?.title || key,
@@ -471,21 +471,21 @@ function monthlyCsvRows(db, month) {
       .filter(row => String(row?.work || "").trim());
     for (const row of sheetRows) {
       rows.push([
-        "???? ???",
+        "Лист ППР",
         date,
         row.area || "",
-        row.equipment || "???????? ????????????",
+        row.equipment || "Плановое обслуживание",
         row.node || "",
-        row.mark === "done" ? "?????????" : row.mark === "na" ? "?? ?????????" : "??? ???????",
+        row.mark === "done" ? "Выполнено" : row.mark === "na" ? "Не требуется" : "Без отметки",
         "",
         row.markedByName || sheet?.updatedByName || "",
-        `${row.work || ""}${row.markedAt ? ` ? ${row.markedAt}` : ""}${sheet?.approvedByName ? ` ? ?????? ???????: ${sheet.approvedByName}` : ""}`
+        `${row.work || ""}${row.markedAt ? ` · ${row.markedAt}` : ""}${sheet?.approvedByName ? ` · Принял инженер: ${sheet.approvedByName}` : ""}`
       ]);
     }
   }
   for (const item of exported.downtimes || []) {
     rows.push([
-      "???????",
+      "Простой",
       item?.startedAt || item?.date || "",
       item?.area || "",
       item?.equipment || "",
@@ -498,7 +498,7 @@ function monthlyCsvRows(db, month) {
   }
   for (const item of exported.directorMessages || []) {
     rows.push([
-      "????????????",
+      "Директорская",
       item?.createdAt || item?.date || "",
       item?.department || item?.area || "",
       "",
@@ -614,16 +614,16 @@ function migrateLegacyDirectorApprovals(db) {
     req.approvals ||= {};
     req.approvals.productionDirectorRequest ||= {
       role: "productionDirector",
-      name: "?????????? ?? ?????? ??????",
+      name: "Перенесено из старой логики",
       at: req.updatedAt || req.createdAt || now,
-      note: "??????????? ????????: ?????? ??? ?????? ?????? ?? ??????? ????????."
+      note: "Техническая миграция: заявка уже прошла дальше по старому маршруту."
     };
     req.history ||= [];
-    if (!req.history.some(entry => String(entry?.action || "").includes("?????? ??????"))) {
+    if (!req.history.some(entry => String(entry?.action || "").includes("старая логика"))) {
       req.history.push({
         at: now,
-        action: "??????????? ???????: ???????? ????????????",
-        details: "?????????? ?? ?????? ??????, ?????? ??? ???? ?? ????????? ?????.",
+        action: "Техническая отметка: директор производства",
+        details: "Перенесено из старой логики, заявка уже была на следующем этапе.",
         status: req.status || "",
         role: "system",
         name: "PPR Control"
@@ -780,7 +780,7 @@ function normalizeTranslateText(value) {
 function shouldTranslateText(value) {
   const text = normalizeTranslateText(value);
   if (text.length < 2 || text.length > 1200) return false;
-  if (/^[\d\s.,:;()+\-/%???#]+$/.test(text)) return false;
+  if (/^[\d\s.,:;()+\-/%в„–#]+$/.test(text)) return false;
   if (looksLikeMojibake(text)) return false;
   return /[\p{L}]/u.test(text);
 }
@@ -804,7 +804,7 @@ function translationCacheKey(target, text) {
 
 async function translateExternal(text, target) {
   if (!shouldTranslateText(text) || !TRANSLATE_LANGS.has(target)) return text;
-  if (target === "ru" && /^[\u0400-\u04FF0-9\s.,:;!?()"???????%/+_-]+$/.test(text)) return text;
+  if (target === "ru" && /^[\u0400-\u04FF0-9\s.,:;!?()"В«В»в„–%/+_-]+$/.test(text)) return text;
   const endpoint = process.env.TRANSLATE_API_URL || "https://translate.googleapis.com/translate_a/single";
   const url = endpoint.includes("translate_a/single")
     ? `${endpoint}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
@@ -958,7 +958,7 @@ function httpGetText(targetUrl, timeoutMs = 8000) {
 function clearPriceLookupQuery(name = "") {
   const cleanName = String(name || "").trim();
   const words = cleanName.split(/\s+/).filter(word => word.length >= 3);
-  const generic = /^(bolt|nut|washer|profile|cable|oil|pipe|belt|pump|sensor|bearing|????|?????|?????|???????|??????|?????|?????|?????|?????|??????|?????????)$/i.test(cleanName);
+  const generic = /^(bolt|nut|washer|profile|cable|oil|pipe|belt|pump|sensor|bearing|болт|гайка|шайба|профиль|кабель|масло|труба|лента|насос|датчик|подшипник)$/i.test(cleanName);
   if (words.length >= 2 && cleanName.length >= 8 && !generic) return cleanName;
   return "";
 }
@@ -968,8 +968,8 @@ function extractPriceCandidates(text = "") {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
   const patterns = [
-    /(\d[\d\s.,]{1,15})\s*(?:?|??\.?|?????|kzt|KZT)\b/gi,
-    /(?:?|??\.?|?????|kzt|KZT)\s*(\d[\d\s.,]{1,15})/gi,
+    /(\d[\d\s.,]{1,15})\s*(?:₸|тг\.?|тенге|kzt|KZT)\b/gi,
+    /(?:₸|тг\.?|тенге|kzt|KZT)\s*(\d[\d\s.,]{1,15})/gi,
     /"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?\s*,\s*"priceCurrency"\s*:\s*"?KZT"?/gi,
     /"priceCurrency"\s*:\s*"?KZT"?\s*,\s*"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?/gi
   ];
@@ -987,7 +987,7 @@ function extractPriceCandidates(text = "") {
 async function lookupInternetPrice(name = "") {
   const queryBase = clearPriceLookupQuery(name);
   if (!queryBase) return { ok: false, reason: "unclear_query" };
-  const query = `${queryBase} ???? ?????? ????????? ?????`;
+  const query = `${queryBase} цена купить Казахстан тенге`;
   const searchUrls = [
     `https://yandex.kz/search/?text=${encodeURIComponent(query)}`,
     `https://satu.kz/search?search_term=${encodeURIComponent(queryBase)}`,
@@ -1188,7 +1188,7 @@ function mergeCheckRecordsByFreshness(current = {}, incoming = {}) {
 }
 
 function inventoryCanonicalKey(item = {}) {
-  const area = String(item.area || "????? ?????");
+  const area = String(item.area || "Общий склад");
   const article = String(item.article || "").trim().toLowerCase();
   if (article) return `${area}::article::${article}`;
   return `${area}::name::${String(item.name || "").trim().toLowerCase()}`;
@@ -1427,7 +1427,7 @@ async function handleApi(req, res, pathname, url) {
     const password = String(body.password || "");
     const language = ["ru", "kk"].includes(String(body.language || "")) ? String(body.language) : "ru";
     if (name.length < 3 || employeeId.length < 2 || phone.length < 5 || password.length < 6) {
-      sendJson(res, 400, { ok: false, error: "????????? ???, ????????? ?????, ??????? ? ?????? ?? ?????? 6 ????????." });
+      sendJson(res, 400, { ok: false, error: "Заполните ФИО, табельный номер, телефон и пароль не короче 6 символов." });
       return true;
     }
     const result = await enqueueStateWrite(async () => {
@@ -1456,7 +1456,7 @@ async function handleApi(req, res, pathname, url) {
       return { user: userPublic(user) };
     });
     if (result.duplicate) {
-      sendJson(res, 409, { ok: false, error: "????? ????????? ????? ??? ??????? ??? ???????????????." });
+      sendJson(res, 409, { ok: false, error: "Такой табельный номер или телефон уже зарегистрирован." });
       return true;
     }
     sendJson(res, 200, { ok: true, user: result.user });
@@ -1477,15 +1477,15 @@ async function handleApi(req, res, pathname, url) {
       String(body.password) === bootstrapPassword
     );
     if (user && !user.passwordHash && !["editor", "director"].includes(user.role)) {
-      sendJson(res, 428, { ok: false, error: "????? ?????? ??????? ?????? ??? ????? ??????." });
+      sendJson(res, 428, { ok: false, error: "Админ должен сначала задать вам новый пароль." });
       return true;
     }
     if (!user || (!legacyAdminLogin && !passwordMatches(body.password, user.passwordHash))) {
-      sendJson(res, 401, { ok: false, error: "???????? ????????? ?????, ??????? ??? ??????." });
+      sendJson(res, 401, { ok: false, error: "Неверный табельный номер, телефон или пароль." });
       return true;
     }
     if (user.approved === false || user.pendingApproval === true || !user.role) {
-      sendJson(res, 403, { ok: false, error: "??????????? ??? ?? ???????????? ???????.", pending: true });
+      sendJson(res, 403, { ok: false, error: "Регистрация ещё не подтверждена админом.", pending: true });
       return true;
     }
     if (legacyAdminLogin) {
@@ -1618,7 +1618,7 @@ async function handleApi(req, res, pathname, url) {
         return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "admin_required" };
       }
       if (body.clearRecordedData === true) {
-        if (String(body.clearConfirm || "").trim().toUpperCase() !== "????????") {
+        if (String(body.clearConfirm || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
           return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "clear_requires_confirmation" };
         }
         db.checks = {};
@@ -1813,13 +1813,13 @@ async function handleApi(req, res, pathname, url) {
         nodeIndex: "",
         date: now.slice(0, 10),
         kind: "stock",
-        equipment: `?????: ${item.area || "????? ?????"}`,
-        area: item.area || "????? ?????",
-        node: item.source || "?????? ?????? ?? ??????",
-        comment: "?????? ?? ?????????? ???????",
+        equipment: `Склад: ${item.area || "Общий склад"}`,
+        area: item.area || "Общий склад",
+        node: item.source || "Ручная выдача со склада",
+        comment: "Выдано из складского остатка",
         text: item.name || "",
         article: item.article || "",
-        items: [{ number: 1, name: item.name || "", article: item.article || "", stockRemainder: "", unit: item.unit || "??", requestedQty: quantity, requiredQty: quantity, note: item.note || "" }],
+        items: [{ number: 1, name: item.name || "", article: item.article || "", stockRemainder: "", unit: item.unit || "шт", requestedQty: quantity, requiredQty: quantity, note: item.note || "" }],
         status: "issued",
         shopApproved: true,
         engineerApproved: true,
@@ -1843,9 +1843,9 @@ async function handleApi(req, res, pathname, url) {
         qtyReceived: quantity,
         qtyIssued: quantity,
         aggregateInstalledQty: 0,
-        stockArea: item.area || "????? ?????",
+        stockArea: item.area || "Общий склад",
         inventoryAddedQty: 0,
-        approvals: { warehouse: { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "?????? ????????????" } },
+        approvals: { warehouse: { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "Выдано складовщиком" } },
         createdAt: now,
         updatedAt: now
       };
@@ -1863,7 +1863,7 @@ async function handleApi(req, res, pathname, url) {
           updatedAt: now
         });
         issuedRequest.approvals ||= {};
-        issuedRequest.approvals.warehouse = { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "?????? ???????????? ?? ???????" };
+        issuedRequest.approvals.warehouse = { at: now, role: "warehouse", name: String(body.user?.name || ""), action: "Выдано складовщиком по запросу" };
       }
       db.requests[requestId] = issuedRequest;
       const actionId = String(body.actionId || "");

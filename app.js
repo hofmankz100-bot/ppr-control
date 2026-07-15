@@ -1,73 +1,73 @@
-const TASKS = {
+﻿const TASKS = {
   to: [
-    "??????? ?????? ???????????? ? ??????? ????.",
-    "????????? ?????????? ???????????? ????, ???????? ? ?????????.",
-    "????????? ?????????? ?????? ?????, ???????, ???? ??? ????.",
-    "????????? ????????? ????????, ??????????? ? ?????????.",
-    "????????? ???????? ??????, ?????????? ? ????????? ?????????.",
-    "????????? ????????? ???????, ???????, ????????????? ? ??????????.",
-    "????????? ??????? ???????????? ? ?????????? ???????????.",
-    "????????? ?????????? ??????????? ????????? ?? ?????????? ??????.",
-    "????????? ??????????? ?????? ?????????? ? ?????? ?????????.",
-    "????????? ??????????? ???????? ? ???? ????????????.",
-    "????????? ????????? ?????????? ? ??????????????? ????????.",
-    "????????? ????????? ??????? ????.",
-    "????????? ????????? ??????????? ??????.",
-    "????????????? ?????????? ????????? ? ???????????.",
-    "???????? ????????? ??????????? ??."
+    "Внешний осмотр оборудования и рабочей зоны.",
+    "Проверить отсутствие постороннего шума, вибрации и перегрева.",
+    "Проверить отсутствие утечек масла, воздуха, воды или газа.",
+    "Проверить показания давления, температуры и индикации.",
+    "Проверить защитные кожухи, ограждения и аварийную остановку.",
+    "Проверить состояние кабелей, шлангов, трубопроводов и соединений.",
+    "Проверить чистоту оборудования и отсутствие загрязнений.",
+    "Проверить отсутствие посторонних предметов на движущихся частях.",
+    "Проверить исправность кнопок управления и панели оператора.",
+    "Проверить доступность проходов и зоны обслуживания.",
+    "Проверить состояние маркировки и предупреждающих табличек.",
+    "Проверить освещение рабочей зоны.",
+    "Проверить замечания предыдущего обхода.",
+    "Зафиксировать выявленные замечания в комментарии.",
+    "Записать результат ежедневного ТО."
   ]
 };
 
 const PRESS_NODES = [
-  "??????? ??????? ??????", "?????????????? ??????? ??????", "???????? ??? ? ?????????? ?????", "????????? ????? ? ???????????????????",
-  "???????? / ?????-????", "?????-????? / dummy block", "????????? ?????????", "?????? ??????????",
-  "???????????????? / die holder", "??????? ? ???????? ????????", "???????? ????? ? ??????? ??????", "??????? ? ???????????? ??????",
-  "???? ??????? ?????????", "???? ???????? ?????????", "??????? ?????? ?????????", "???????? / ??? ????? ?????????",
-  "?????? / ??????? ?????????? ???????", "???????? ??????????? ? ??????????? ????", "??????? ?????????? ????? ? ???????", "???? ??????????, PLC, ??????? ? ??????????"
+  "Главный цилиндр пресса", "Гидравлическая станция пресса", "Масляный бак и фильтрация масла", "Клапанная плита и гидрораспределители",
+  "Штемпель / пресс-шток", "Пресс-шайба / dummy block", "Контейнер заготовки", "Нагрев контейнера",
+  "Матрицедержатель / die holder", "Матрица и комплект оснастки", "Передняя плита и колонны пресса", "Станина и направляющие пресса",
+  "Печь нагрева заготовок", "Стол загрузки заготовок", "Система подачи заготовок", "Пилотина / нож резки заготовки",
+  "Пуллер / тянущее устройство профиля", "Выходной транспортер и охлаждающий стол", "Система охлаждения масла и профиля", "Шкаф управления, PLC, датчики и блокировки"
 ];
 
 const DEFAULT_NODES = [
-  "???????? ????????????", "?????? ? ???????????? ?????", "????????????? ?????", "?????? ?????????? ? ??????????",
-  "??????? ????????????", "?????? ? ????????????", "??????? ????", "?????????", "???? ??????????", "?????? ?????????"
+  "Основное оборудование", "Привод и механическая часть", "Электрическая часть", "Панель управления и автоматика",
+  "Система безопасности", "Смазка и обслуживание", "Рабочая зона", "Освещение", "Шкаф управления", "Журнал замечаний"
 ];
 
 const EQUIPMENT = [
-  { id: 1, name: "????? 2400 EGE", area: "????????? ???????", nodes: [
-    "??????? ??????? ??????", "?????????????? ??????? ??????", "???????? ??? ? ?????????? ?????", "????????? ????? ? ???????????????????",
-    "???????? / ?????-????", "?????-????? / dummy block", "????????? ?????????", "?????? ??????????",
-    "???????????????? / die holder", "??????? ? ???????? ????????", "???????? ????? ? ??????? ??????", "??????? ? ???????????? ??????",
-    "???? ??????? ?????????", "???? ???????? ?????????", "??????? ?????? ?????????", "???????? / ??? ????? ?????????",
-    "?????? / ??????? ?????????? ???????", "???????? ??????????? ? ??????????? ????", "??????? ?????????? ????? ? ???????", "???? ??????????, PLC, ??????? ? ??????????"
+  { id: 1, name: "пресс 2400 EGE", area: "Прессовый участок", nodes: [
+    "Главный цилиндр пресса", "Гидравлическая станция пресса", "Масляный бак и фильтрация масла", "Клапанная плита и гидрораспределители",
+    "Штемпель / пресс-шток", "Пресс-шайба / dummy block", "Контейнер заготовки", "Нагрев контейнера",
+    "Матрицедержатель / die holder", "Матрица и комплект оснастки", "Передняя плита и колонны пресса", "Станина и направляющие пресса",
+    "Печь нагрева заготовок", "Стол загрузки заготовок", "Система подачи заготовок", "Пилотина / нож резки заготовки",
+    "Пуллер / тянущее устройство профиля", "Выходной транспортер и охлаждающий стол", "Система охлаждения масла и профиля", "Шкаф управления, PLC, датчики и блокировки"
   ]},
-  { id: 2, name: "????? 1540 EGE", area: "????????? ???????", nodes: [
-    "??????? ???????", "?????????????? ???????", "???????? ???????", "???????????????????", "?????-????", "Dummy block", "?????????", "?????? ??????????",
-    "????????????????", "????????", "??????? ??????", "???????", "???? ???????", "???? ????????", "?????? ?????????", "??? ?????", "??????", "??????????? ????", "?????????? ?????", "???? ??????????"
+  { id: 2, name: "пресс 1540 EGE", area: "Прессовый участок", nodes: [
+    "Главный цилиндр", "Гидравлическая станция", "Масляная система", "Гидрораспределители", "Пресс-шток", "Dummy block", "Контейнер", "Нагрев контейнера",
+    "Матрицедержатель", "Оснастка", "Колонны пресса", "Станина", "Печь нагрева", "Стол загрузки", "Подача заготовок", "Нож резки", "Пуллер", "Охлаждающий стол", "Охлаждение масла", "Шкаф управления"
   ]},
-  { id: 3, name: "???????? ???", area: "???????? ???", nodes: [
-    "???????? ????", "???? ??????? ???????", "???? ????? ??????????? ???????", "??????????? ????????", "?????????", "???? ????????? ????", "????-????? 6,2 ?????"
+  { id: 3, name: "Литейный цех", area: "Литейный цех", nodes: [
+    "Литейная печь", "Стол заливки слитков", "Пила резки алюминиевых слитков", "Транспортер загрузки", "Освещение", "ШГРП литейного цеха", "Кран-балка 6,2 тонны"
   ]},
-  { id: 4, name: "??????????? ???", area: "??????????? ???", nodes: DEFAULT_NODES },
-  { id: 5, name: "???????? ???", area: "???????? ???", nodes: ["??????? 1", "??????? 2", "????? ??????????????? 1", "????? ??????????????? 2", "?????????", "????"] },
-  { id: 6, name: "??????? ???", area: "??????? ???", nodes: DEFAULT_NODES },
-  { id: 7, name: "????????", area: "????????", nodes: DEFAULT_NODES },
-  { id: 8, name: "???????????????? ???", area: "???????????????? ???", nodes: DEFAULT_NODES },
-  { id: 9, name: "?????????????", area: "?????????????", nodes: [
-    "?????????? EKOMAK 90 ??? ?1", "?????????? EKOMAK 90 ??? ?2", "?????????? EKOMAK 110 ??? ?3", "??????? ??????? ??????? ?1",
-    "??????? ??????? ??????? ?2", "????????? AirPIK", "????????? COMPRAG RDX", "??? ?????????????", "????????? ?????? ?????????????"
+  { id: 4, name: "Покрасочный цех", area: "Покрасочный цех", nodes: DEFAULT_NODES },
+  { id: 5, name: "Шихтовый цех", area: "Шихтовый цех", nodes: ["Ножницы 1", "Ножницы 2", "Пресс брикетировочный 1", "Пресс брикетировочный 2", "Освещение", "ШГРП"] },
+  { id: 6, name: "Анодный цех", area: "Анодный цех", nodes: DEFAULT_NODES },
+  { id: 7, name: "Упаковка", area: "Упаковка", nodes: DEFAULT_NODES },
+  { id: 8, name: "инструментальный цех", area: "Инструментальный цех", nodes: DEFAULT_NODES },
+  { id: 9, name: "Компрессорная", area: "Компрессорная", nodes: [
+    "Компрессор EKOMAK 90 кВт №1", "Компрессор EKOMAK 90 кВт №2", "Компрессор EKOMAK 110 кВт №3", "Ресивер сжатого воздуха №1",
+    "Ресивер сжатого воздуха №2", "Осушитель AirPIK", "Осушитель COMPRAG RDX", "ГРШ компрессорной", "Освещение здания компрессорной"
   ]},
-  { id: 10, name: "????????", area: "????????", nodes: DEFAULT_NODES },
-  { id: 11, name: "???????? ???", area: "???????? ???", nodes: ["???????? ??????", "??????????? ??????"] },
-  { id: 12, name: "?????????????????", area: "?????????????????", nodes: DEFAULT_NODES },
-  { id: 13, name: "??????? ?????????", area: "??????????", nodes: ["????? ?????????", "????? ?????????", "???????????", "???? ?????????? ??????????", "????????? ?????"] },
-  { id: 14, name: "??????? ?????????", area: "??????? ?????????", nodes: ["?????????", "???????????", "?????????? ??????", "??????????", "???????? ????????????"] },
-  { id: 15, name: "???? / ??? / ???", area: "??????? ?????????", nodes: [
-    "????", "???", "???", "????????? ???????? ????", "???", "???", "?????? ????", "????????? ??????????", "??????????? ?????? ? ???????", "???????? ???? ???????????"
+  { id: 10, name: "Насосная", area: "Насосная", nodes: DEFAULT_NODES },
+  { id: 11, name: "Токарный цех", area: "Токарный цех", nodes: ["Токарный станок", "Сверлильный станок"] },
+  { id: 12, name: "Электроподстанции", area: "Электроподстанции", nodes: DEFAULT_NODES },
+  { id: 13, name: "уличное освещение", area: "Территория", nodes: ["Линии освещения", "Опоры освещения", "Светильники", "Щиты управления освещением", "Кабельные линии"] },
+  { id: 14, name: "Офисные помещения", area: "Офисные помещения", nodes: ["Освещение", "Электрощиты", "Розеточные группы", "Вентиляция", "Пожарная сигнализация"] },
+  { id: 15, name: "ШГРП / ГРП / ГРУ", area: "Газовое хозяйство", nodes: [
+    "ШГРП", "ГРП", "ГРУ", "Регулятор давления газа", "ПЗК", "ПСК", "Фильтр газа", "Подземный газопровод", "Контрольные трубки и колодцы", "Охранная зона газопровода"
   ]},
-  { id: 16, name: "???????????? 16", area: "??????", nodes: DEFAULT_NODES },
-  { id: 17, name: "???????????? 17", area: "??????", nodes: DEFAULT_NODES },
-  { id: 18, name: "???????????? 18", area: "??????", nodes: DEFAULT_NODES },
-  { id: 19, name: "???????????? 19", area: "??????", nodes: DEFAULT_NODES },
-  { id: 20, name: "???????????? 20", area: "??????", nodes: DEFAULT_NODES }
+  { id: 16, name: "оборудование 16", area: "Резерв", nodes: DEFAULT_NODES },
+  { id: 17, name: "оборудование 17", area: "Резерв", nodes: DEFAULT_NODES },
+  { id: 18, name: "оборудование 18", area: "Резерв", nodes: DEFAULT_NODES },
+  { id: 19, name: "оборудование 19", area: "Резерв", nodes: DEFAULT_NODES },
+  { id: 20, name: "оборудование 20", area: "Резерв", nodes: DEFAULT_NODES }
 ];
 
 const STORE_KEY = "ppr-pwa-state-v2";
@@ -100,91 +100,91 @@ let translationTimer = null;
 let translationRunId = 0;
 let translationCacheSaveTimer = null;
 const LANGUAGES = {
-  ru: "???????",
-  kk: "???????"
+  ru: "Русский",
+  kk: "Қазақша"
 };
 const I18N = {
   ru: {
-    appTitle: "??? ????????",
-    equipment: "????????????",
-    home: "???????",
-    requests: "??????",
-    downtime: "???????",
-    profile: "???????",
-    reminders: "??????????? ? ????????? ???",
-    todayControl: "???????? ?? ???????",
-    close: "???????",
-    back: "?????",
-    loginTitle: "???? ??????????",
-    registerTitle: "??????????? ??????????",
-    loginTab: "????",
-    registerTab: "???????????",
-    fullName: "???",
-    fullNamePlaceholder: "??????? ?????? ???",
-    identifier: "????????? ????? ??? ???????",
-    employeeId: "????????? ?????",
-    employeeIdPlaceholder: "??????? ????????? ?????",
-    phone: "???????",
-    password: "??????",
-    passwordPlaceholder: "?? ????? 6 ????????",
-    loginButton: "?????",
-    registerButton: "????????? ???????????",
-    loginHint: "??????? ????????? ????? ??? ??????? ? ??????.",
-    registerHint: "???? ? ??????? ???????? ????? ????? ????????.",
-    loginFailed: "?? ??????? ?????.",
-    registerFailed: "?? ??????? ????????? ???????????.",
-    pendingApproval: "??????????? ?????????? ??????. ????? ????????????? ??????? ?? ?????????? ?????? ??? ???????? ? ??????.",
-    language: "????",
-    changeRole: "??????? ????",
-    viewMode: "????? ?????????",
-    commonControl: "????? ????????",
-    clearRecords: "???????? ??????",
-    logout: "?????",
-    createRequest: "??????? ??????",
-    remarks: "??????????????",
-    director: "????????????",
-    aggregateJournal: "?????????? ??????"
+    appTitle: "ППР Контроль",
+    equipment: "Оборудование",
+    home: "Главная",
+    requests: "Заявки",
+    downtime: "Простои",
+    profile: "Профиль",
+    reminders: "Напоминания и календарь ППР",
+    todayControl: "Контроль на сегодня",
+    close: "Закрыть",
+    back: "Назад",
+    loginTitle: "Вход сотрудника",
+    registerTitle: "Регистрация сотрудника",
+    loginTab: "Вход",
+    registerTab: "Регистрация",
+    fullName: "ФИО",
+    fullNamePlaceholder: "Введите полное имя",
+    identifier: "Табельный номер или телефон",
+    employeeId: "Табельный номер",
+    employeeIdPlaceholder: "Введите табельный номер",
+    phone: "Телефон",
+    password: "Пароль",
+    passwordPlaceholder: "Не менее 6 символов",
+    loginButton: "Войти",
+    registerButton: "Отправить регистрацию",
+    loginHint: "Введите табельный номер или телефон и пароль.",
+    registerHint: "Роль и участок назначит админ после проверки.",
+    loginFailed: "Не удалось войти.",
+    registerFailed: "Не удалось отправить регистрацию.",
+    pendingApproval: "Регистрация отправлена админу. После подтверждения войдите по табельному номеру или телефону и паролю.",
+    language: "Язык",
+    changeRole: "Сменить роль",
+    viewMode: "Режим просмотра",
+    commonControl: "Общий контроль",
+    clearRecords: "Очистить записи",
+    logout: "Выйти",
+    createRequest: "Создать заявку",
+    remarks: "Предупреждения",
+    director: "Директорская",
+    aggregateJournal: "Агрегатный журнал"
   },
   kk: {
-    appTitle: "??? ???????",
-    equipment: "??????",
-    home: "????? ???",
-    requests: "?????????",
-    downtime: "?????? ????",
-    profile: "???????",
-    reminders: "??? ???? ?????????? ??? ??????????",
-    todayControl: "??????? ???????",
-    close: "????",
-    back: "?????",
-    loginTitle: "????????? ?????",
-    registerTitle: "??????????? ??????",
-    loginTab: "????",
-    registerTab: "???????",
-    fullName: "???-????",
-    fullNamePlaceholder: "????? ???? ?????????",
-    identifier: "?????? ?????? ?????? ???????",
-    employeeId: "?????? ??????",
-    employeeIdPlaceholder: "?????? ??????? ?????????",
-    phone: "???????",
-    password: "????????",
-    passwordPlaceholder: "??????? 6 ?????",
-    loginButton: "????",
-    registerButton: "???????? ??????",
-    loginHint: "?????? ??????? ?????? ????????? ???? ?????????? ?????????.",
-    registerHint: "??? ??? ???????? ??????????? ????? ????? ????????????.",
-    loginFailed: "???? ?????? ???????.",
-    registerFailed: "???????? ?????? ?????? ???????.",
-    pendingApproval: "?????? ??????? ?????????. ???????????? ????? ?????? ?????? ?????? ??????? ???? ???????? ?????? ???????.",
-    language: "???",
-    changeRole: "????? ????????",
-    viewMode: "???? ??????",
-    commonControl: "????? ???????",
-    clearRecords: "?????????? ???????",
-    logout: "????",
-    createRequest: "?????? ?????",
-    remarks: "??????????",
-    director: "???????????",
-    aggregateJournal: "??????? ???????"
+    appTitle: "ППР бақылау",
+    equipment: "Жабдық",
+    home: "Басты бет",
+    requests: "Өтінімдер",
+    downtime: "Тоқтап тұру",
+    profile: "Профиль",
+    reminders: "ППР еске салғыштары мен күнтізбесі",
+    todayControl: "Бүгінгі бақылау",
+    close: "Жабу",
+    back: "Артқа",
+    loginTitle: "Қызметкер кіруі",
+    registerTitle: "Қызметкерді тіркеу",
+    loginTab: "Кіру",
+    registerTab: "Тіркелу",
+    fullName: "Аты-жөні",
+    fullNamePlaceholder: "Толық атын енгізіңіз",
+    identifier: "Табель нөмірі немесе телефон",
+    employeeId: "Табель нөмірі",
+    employeeIdPlaceholder: "Табель нөмірін енгізіңіз",
+    phone: "Телефон",
+    password: "Құпиясөз",
+    passwordPlaceholder: "Кемінде 6 таңба",
+    loginButton: "Кіру",
+    registerButton: "Тіркеуге жіберу",
+    loginHint: "Табель нөмірін немесе телефонды және құпиясөзді енгізіңіз.",
+    registerHint: "Рөл мен учаскені тексерістен кейін админ тағайындайды.",
+    loginFailed: "Кіру мүмкін болмады.",
+    registerFailed: "Тіркеуді жіберу мүмкін болмады.",
+    pendingApproval: "Тіркеу админге жіберілді. Расталғаннан кейін табель нөмірі немесе телефон және құпиясөз арқылы кіріңіз.",
+    language: "Тіл",
+    changeRole: "Рөлді ауыстыру",
+    viewMode: "Көру режимі",
+    commonControl: "Жалпы бақылау",
+    clearRecords: "Жазбаларды тазалау",
+    logout: "Шығу",
+    createRequest: "Өтінім жасау",
+    remarks: "Ескертулер",
+    director: "Директорлық",
+    aggregateJournal: "Агрегат журналы"
   }
 };
 const DOWNTIME_COLORS = [
@@ -194,26 +194,26 @@ const DOWNTIME_COLORS = [
   "#0891b2", "#4f46e5", "#65a30d", "#ea580c", "#0d9488", "#9333ea"
 ];
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
-const COMMON_WAREHOUSE = "????? ?????? ???????????";
+const COMMON_WAREHOUSE = "Склад общего пользования";
 const WAREHOUSE_AREAS = [COMMON_WAREHOUSE, ...AREAS];
 const WAREHOUSE_RENDER_LIMIT = 80;
 const DOWNTIME_MONTH_LIMIT_MS = 125 * 60 * 60 * 1000;
 const WALK_SHIFT_DAY_START = 8;
 const WALK_SHIFT_NIGHT_START = 20;
 const WALK_SHIFT_LABELS = {
-  day: "??????? ?????",
-  night: "?????? ?????"
+  day: "Дневная смена",
+  night: "Ночная смена"
 };
 const ROLE_ACCESS = {
-  mechanic: { label: "???????", requestRoles: ["warehouse", "mechanic"], equipment: "all", checklist: true },
-  electrician: { label: "????????", requestRoles: ["warehouse", "electrician"], equipment: "all", checklist: true },
-  operator: { label: "????????", requestRoles: ["warehouse", "operator"], equipment: "area", checklist: true },
-  shop: { label: "????????? ????", requestRoles: ["all", "shop", "warehouse"], equipment: "area", checklist: true },
-  engineer: { label: "???????", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  warehouse: { label: "??????????", requestRoles: ["warehouse"], equipment: "none", checklist: false },
-  productionDirector: { label: "???????? ????????????", requestRoles: ["all", "warehouse", "productionDirector"], equipment: "all", checklist: true },
-  director: { label: "????????", requestRoles: [], equipment: "none", checklist: false },
-  editor: { label: "?????", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true }
+  mechanic: { label: "Механик", requestRoles: ["warehouse", "mechanic"], equipment: "all", checklist: true },
+  electrician: { label: "Электрик", requestRoles: ["warehouse", "electrician"], equipment: "all", checklist: true },
+  operator: { label: "Оператор", requestRoles: ["warehouse", "operator"], equipment: "area", checklist: true },
+  shop: { label: "Начальник цеха", requestRoles: ["all", "shop", "warehouse"], equipment: "area", checklist: true },
+  engineer: { label: "Инженер", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  warehouse: { label: "Складовщик", requestRoles: ["warehouse"], equipment: "none", checklist: false },
+  productionDirector: { label: "Директор производства", requestRoles: ["all", "warehouse", "productionDirector"], equipment: "all", checklist: true },
+  director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
+  editor: { label: "Админ", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true }
 };
 const state = loadState();
 let stateDataVersion = 0;
@@ -263,9 +263,9 @@ function applyTheme(theme) {
   localStorage.setItem(THEME_KEY, next);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#08141f" : "#14324a");
   document.querySelectorAll("[data-theme-toggle]").forEach(button => {
-    button.textContent = next === "dark" ? "?" : "?";
-    button.setAttribute("aria-label", next === "dark" ? "???????? ??????? ????" : "???????? ?????? ????");
-    button.setAttribute("title", next === "dark" ? "??????? ????" : "?????? ????");
+    button.textContent = next === "dark" ? "☀" : "☾";
+    button.setAttribute("aria-label", next === "dark" ? "Включить светлую тему" : "Включить тёмную тему");
+    button.setAttribute("title", next === "dark" ? "Светлая тема" : "Тёмная тема");
   });
 }
 
@@ -411,7 +411,7 @@ function ensureDowntimeUi() {
       const button = document.createElement("button");
       button.type = "button";
       button.id = "downtimeOpenButton";
-      button.innerHTML = `??????? <strong id="downtimeBadge">0</strong>`;
+      button.innerHTML = `Простои <strong id="downtimeBadge">0</strong>`;
       const directorButton = document.querySelector("#directorOpenButton");
       quickNav.insertBefore(button, directorButton || null);
       ui.downtimeOpenButton = button;
@@ -426,13 +426,13 @@ function ensureDowntimeUi() {
     section.innerHTML = `
       <div class="panel-head compact">
         <div>
-          <h1>??????? ?? ?????</h1>
-          <p id="downtimeMeta">??????? ??????? ?? ????? ? ??????? ?? ????????</p>
+          <h1>Простои по цехам</h1>
+          <p id="downtimeMeta">Процент простоя за месяц и причины по участкам</p>
         </div>
-        <div class="segmented" role="tablist" aria-label="????? ????????">
-          <button id="prevDowntimeMonth" type="button">?</button>
+        <div class="segmented" role="tablist" aria-label="Месяц простоев">
+          <button id="prevDowntimeMonth" type="button">‹</button>
           <strong id="downtimeMonthLabel"></strong>
-          <button id="nextDowntimeMonth" type="button">?</button>
+          <button id="nextDowntimeMonth" type="button">›</button>
         </div>
       </div>
       <div id="downtimeChart" class="downtime-chart"></div>
@@ -458,7 +458,7 @@ function ensureEngineerReportUi() {
       button.type = "button";
       button.id = "engineerReportButton";
       button.className = "topbar-overview-button topbar-factory-button";
-      button.innerHTML = `<span>????????? ??????</span><strong>??</strong>`;
+      button.innerHTML = `<span>Состояние завода</span><strong>🏭</strong>`;
       topbarActions.append(button);
       ui.engineerReportButton = button;
     }
@@ -471,12 +471,12 @@ function ensureEngineerReportUi() {
     section.innerHTML = `
       <div class="panel-head compact">
         <div>
-          <h1>????? ????????</h1>
-          <p>???????? ????? ??? ?????? ? ?????????? ?????????</p>
+          <h1>Отчёт инженера</h1>
+          <p>Месячный отчёт для печати и объяснения директору</p>
         </div>
-        <div class="segmented engineer-report-controls" role="group" aria-label="????? ??????">
+        <div class="segmented engineer-report-controls" role="group" aria-label="Месяц отчёта">
           <input id="engineerReportMonth" type="month">
-          <button id="engineerReportPrint" type="button">??????</button>
+          <button id="engineerReportPrint" type="button">Печать</button>
         </div>
       </div>
       <div id="engineerReportPanel" class="engineer-report-panel"></div>
@@ -504,7 +504,7 @@ function ensureWorkerRatingUi() {
       button.type = "button";
       button.id = "workerRatingButton";
       button.className = "topbar-overview-button topbar-rating-button";
-      button.innerHTML = `<span>???????</span><strong aria-hidden="true">?</strong>`;
+      button.innerHTML = `<span>Рейтинг</span><strong aria-hidden="true">★</strong>`;
       const firstFactoryButton = topbarActions.querySelector(".topbar-factory-button");
       topbarActions.insertBefore(button, firstFactoryButton || null);
       const createButton = document.querySelector("#createTmcRequestButton");
@@ -520,13 +520,13 @@ function ensureWorkerRatingUi() {
     section.innerHTML = `
       <div class="panel-head compact">
         <div>
-          <h1>??????? ?????????? ? ?????????</h1>
-          <p>?????, ???, ???????? ???????, ??????, ??? ? ?????? ????????? ??????</p>
+          <h1>Рейтинг электриков и механиков</h1>
+          <p>Баллы, КПД, скорость ремонта, аварии, ППР и лучший сотрудник месяца</p>
         </div>
-        <div class="segmented worker-rating-controls" role="group" aria-label="??? ????????">
-          <button id="prevRatingYear" type="button">?</button>
+        <div class="segmented worker-rating-controls" role="group" aria-label="Год рейтинга">
+          <button id="prevRatingYear" type="button">‹</button>
           <strong id="workerRatingYearLabel"></strong>
-          <button id="nextRatingYear" type="button">?</button>
+          <button id="nextRatingYear" type="button">›</button>
         </div>
       </div>
       <div id="workerRatingPanel" class="worker-rating-panel"></div>
@@ -551,8 +551,8 @@ function ensureAggregateJournalUi() {
     section.innerHTML = `
       <div class="panel-head compact">
         <div>
-          <h1 id="aggregateJournalTitle">?????????? ??????</h1>
-          <p id="aggregateJournalMeta">????????? ? ??????? ?????????? ????</p>
+          <h1 id="aggregateJournalTitle">Агрегатный журнал</h1>
+          <p id="aggregateJournalMeta">Замечания и поломки выбранного цеха</p>
         </div>
       </div>
       <div id="aggregateJournalList" class="aggregate-journal-list"></div>
@@ -594,7 +594,7 @@ function normalizeArticle(value) {
 }
 
 function inventoryKey(area, name, article = "") {
-  const cleanArea = area || "????? ?????";
+  const cleanArea = area || "Общий склад";
   const cleanArticle = normalizeArticle(article);
   if (cleanArticle) return `${cleanArea}::article::${cleanArticle.toLowerCase()}`;
   return `${cleanArea}::name::${String(name || "").trim().toLowerCase()}`;
@@ -628,11 +628,11 @@ function nextInventoryArticle(targetState = state, reserved = new Set()) {
 }
 
 function findInventoryArticleByName(area, name, targetState = state) {
-  const cleanArea = area || "????? ?????";
+  const cleanArea = area || "Общий склад";
   const cleanName = String(name || "").trim().toLowerCase();
   if (!cleanName) return "";
   const existing = Object.values(targetState?.inventory || {}).find(item =>
-    (item?.area || "????? ?????") === cleanArea
+    (item?.area || "Общий склад") === cleanArea
     && String(item?.name || "").trim().toLowerCase() === cleanName
     && normalizeArticle(item?.article)
   );
@@ -874,7 +874,7 @@ async function publishStateNow() {
   }
 }
 
-function setButtonBusy(button, busy, text = "? ????????...") {
+function setButtonBusy(button, busy, text = "В ожидании...") {
   if (!button) return;
   if (busy) {
     button.dataset.oldText = button.textContent;
@@ -902,11 +902,11 @@ function showAppToast(message, type = "ok") {
 function showQrSavedNotice(message = "") {
   const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
   showAppToast(pending || !navigator.onLine
-    ? "QR ???????? ?? ????????. ??? ????????? Wi?Fi ?????????? ?????????????."
-    : message || "QR ??????? ? ???????????? ?????????????.");
+    ? "QR сохранён на телефоне. При появлении Wi‑Fi отправится автоматически."
+    : message || "QR отмечен и отправляется автоматически.");
 }
 
-async function runButtonOperation(button, handler, text = "? ????????...") {
+async function runButtonOperation(button, handler, text = "В ожидании...") {
   if (!button || button.disabled) return;
   const requestId = button.dataset.requestId || "";
   if (requestId) pendingRequestIds.add(requestId);
@@ -919,7 +919,7 @@ async function runButtonOperation(button, handler, text = "? ????????...") {
   } catch (error) {
     if (requestId) pendingRequestIds.delete(requestId);
     console.error("Request action failed", error);
-    window.alert("???????? ?? ???????????. ?????????? ??? ???.");
+    window.alert("Действие не сохранилось. Попробуйте ещё раз.");
     if (current.view === "requests") renderRequests();
   } finally {
     if (requestId && localStorage.getItem(`${STORE_KEY}-pending`) !== "1") {
@@ -959,7 +959,7 @@ async function clearRecordedDataEverywhere() {
   persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   localStorage.setItem(`${STORE_KEY}-clear-recorded`, "1");
-  localStorage.setItem(`${STORE_KEY}-clear-confirm`, "????????");
+  localStorage.setItem(`${STORE_KEY}-clear-confirm`, "ОЧИСТИТЬ");
   await publishStateNow();
 }
 
@@ -1505,7 +1505,7 @@ async function saveRemoteState() {
       localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
       localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
       await loadRemoteState();
-      showAppToast("?????? ??????? ??? ????????. ?????? ???????????????? ? ????????? ????????? ????????.", "error");
+      showAppToast("Период записей был обновлён. Данные синхронизированы — повторите последнее действие.", "error");
     } else {
       // If the backend is unavailable, local work remains saved and will be resent.
       scheduleRemoteRetry();
@@ -1550,7 +1550,7 @@ function activeProfileFromSession(user) {
   if (!user || user.role !== "editor") return user;
   const previewRole = editorPreviewRole();
   const area = needsArea(previewRole)
-    ? editorPreviewArea(previewRole) || user.area || AREAS.find(areaName => areaName !== "??????") || ""
+    ? editorPreviewArea(previewRole) || user.area || AREAS.find(areaName => areaName !== "Резерв") || ""
     : user.area || "";
   return {
     ...user,
@@ -1687,8 +1687,8 @@ function translationRoot() {
 function isTranslatableText(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length < 2 || text.length > 1200) return false;
-  if (/^[\d\s.,:;()+\-/%?#]+$/.test(text)) return false;
-  return /[A-Za-z?-??-?????????????????????????????]/.test(text);
+  if (/^[\d\s.,:;()+\-/%№#]+$/.test(text)) return false;
+  return /[A-Za-zА-Яа-яЁёІіҢңҒғҚқҰұҮүӨөӘәҺһЎўҚқҒғҲҳ]/.test(text);
 }
 
 function looksLikeMojibake(value) {
@@ -2260,12 +2260,12 @@ function markWarehouseAskStockOut(req, availableQty = 0) {
   req.stockOutNotifyRole = notifyRole;
   req.stockOutRecipientMissing = !requesterExists;
   req.stockOutReason = requesterExists
-    ? "????? ??????????. ????? ?? ????? ?????? ??????????? ???????."
-    : "????? ??????????. ????? ?????? ?? ??????, ??????????? ?????????? ??????????? ?? ????.";
+    ? "Запас закончился. Склад не может выдать запрошенную позицию."
+    : "Запас закончился. Автор заявки не найден, уведомление направлено замещающему по роли.";
   req.warehouseAsk = false;
   req.status = "stockOut";
   req.updatedAt = new Date().toISOString();
-  requestAddHistory(req, "????? ??????????", `${partNameFromRequest(req)} ? ?????????: ${requestedQty} ??. ? ????????: ${Number(availableQty || 0)} ??.`);
+  requestAddHistory(req, "Запас закончился", `${partNameFromRequest(req)} · Запрошено: ${requestedQty} шт. · Доступно: ${Number(availableQty || 0)} шт.`);
   syncRequestToRecord(req);
   return true;
 }
@@ -2386,7 +2386,7 @@ function recordAudit(action, target, reason = "", details = "") {
     target: String(target || "").trim(),
     reason: String(reason || "").trim(),
     details: String(details || "").trim(),
-    userName: profile?.name || "???????",
+    userName: profile?.name || "Система",
     userRole: profile?.role || ""
   });
   state.auditHistory = state.auditHistory.slice(0, 1000);
@@ -2394,12 +2394,12 @@ function recordAudit(action, target, reason = "", details = "") {
 
 function auditHistoryRows() {
   const rows = (state.auditHistory || []).slice(0, 100);
-  if (!rows.length) return `<div class="director-empty-ok"><strong>??????? ????????? ???? ?????</strong></div>`;
+  if (!rows.length) return `<div class="director-empty-ok"><strong>История изменений пока пуста</strong></div>`;
   return rows.map(item => `
     <div class="audit-history-row">
       <time>${dateTimeHuman(item.at)}</time>
-      <div><strong>${escapeHtml(item.userName || "???????")}</strong><span>${escapeHtml(item.action)}${item.target ? ` ? ${escapeHtml(item.target)}` : ""}</span></div>
-      <p>${item.reason ? `???????: ${escapeHtml(item.reason)}` : escapeHtml(item.details || "")}</p>
+      <div><strong>${escapeHtml(item.userName || "Система")}</strong><span>${escapeHtml(item.action)}${item.target ? ` · ${escapeHtml(item.target)}` : ""}</span></div>
+      <p>${item.reason ? `Причина: ${escapeHtml(item.reason)}` : escapeHtml(item.details || "")}</p>
     </div>
   `).join("");
 }
@@ -2425,7 +2425,7 @@ function updateDirectorBadge() {
   const adminSession = isEditorSession();
   const hiddenForRole = ["warehouse", "mechanic", "electrician", "operator"].includes(profile?.role);
   ui.directorOpenButton.hidden = !adminSession && hiddenForRole;
-  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = adminSession ? "?????" : "????????????";
+  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = adminSession ? "Админ" : "Директорская";
   const count = directorUnreadCount();
   ui.directorBadge.textContent = count;
   ui.directorOpenButton.classList.toggle("request-alert", count > 0);
@@ -2481,20 +2481,20 @@ function createDirectorMessage(data) {
 }
 
 function directorMemoText(data) {
-  return `?-?? ??????? ?.
-????????? ??? ?Aluminium of Kazakhstan?
+  return `Г-ну Азизову Б.
+Директору ТОО «Aluminium of Kazakhstan»
 
-?? ${String(data?.fromName || "__________________________").trim()}
-????????? ${String(data?.position || "___________________").trim()}
-????????????? ${String(data?.department || "_______________").trim()}
+от ${String(data?.fromName || "__________________________").trim()}
+должность ${String(data?.position || "___________________").trim()}
+подразделение ${String(data?.department || "_______________").trim()}
 
-????????? ???????
+СЛУЖЕБНАЯ ЗАПИСКА
 
-? ${String(data?.memoNumber || "_________").trim()}                           ?${String(data?.memoDay || "").trim()}? ${String(data?.memoMonth || "__________").trim()} ${String(data?.memoYear || "20__").trim()} ?.
+№ ${String(data?.memoNumber || "_________").trim()}                           «${String(data?.memoDay || "").trim()}» ${String(data?.memoMonth || "__________").trim()} ${String(data?.memoYear || "20__").trim()} г.
 
-????: ${String(data?.topic || "___________________________________________").trim()}
+Тема: ${String(data?.topic || "___________________________________________").trim()}
 
-????????? ?????? ?.!
+Уважаемый Азизов Б.!
 
 ${String(data?.body || "").trim()}`;
 }
@@ -2534,9 +2534,9 @@ function renderProfile() {
     ui.profileBar.innerHTML = "";
     return;
   }
-  const area = profile.area ? ` ? ${profile.area}` : "";
-  const phone = profile.phone ? ` ? ${profile.phone}` : "";
-  const employeeId = profile.employeeId ? ` ? ???. ? ${profile.employeeId}` : "";
+  const area = profile.area ? ` · ${profile.area}` : "";
+  const phone = profile.phone ? ` · ${profile.phone}` : "";
+  const employeeId = profile.employeeId ? ` · Таб. № ${profile.employeeId}` : "";
   const editorRoleSwitcher = isEditorSession() ? `
     <label class="editor-role-switcher">
       <span>${escapeHtml(t("changeRole"))}</span>
@@ -2547,9 +2547,9 @@ function renderProfile() {
   ` : "";
   const editorAreaSwitcher = isEditorSession() && needsArea(profile.role) ? `
     <label class="editor-area-switcher">
-      <span>???</span>
+      <span>Цех</span>
       <select id="editorPreviewAreaSelect">
-        ${AREAS.filter(areaName => areaName !== "??????").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}
+        ${AREAS.filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}
       </select>
     </label>
   ` : "";
@@ -2582,22 +2582,22 @@ function renderProfile() {
   });
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
-    if (!window.confirm("???????? ??? ?????????? ??????: ???????????, ??????, ????????? ???????, ??????? ? ????????????? ??????? ? ???????????? ?????????.")) return;
-    const confirmation = window.prompt("??? ????????????? ??????? ????? ????????:");
-    if (String(confirmation || "").trim().toUpperCase() !== "????????") {
-      window.alert("??????? ????????.");
+    if (!window.confirm("Очистить все записанные данные: комментарии, заявки, складские остатки, простои и директорскую? Памятки и оборудование останутся.")) return;
+    const confirmation = window.prompt("Для подтверждения введите слово ОЧИСТИТЬ:");
+    if (String(confirmation || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
+      window.alert("Очистка отменена.");
       return;
     }
-    const reason = window.prompt("??????? ??????? ??????? ???????:")?.trim();
+    const reason = window.prompt("Укажите причину очистки записей:")?.trim();
     if (!reason) return;
     runButtonOperation(event.currentTarget, async () => {
-      recordAudit("??????? ??????? ??????", "??? ???????", reason);
+      recordAudit("Очистил рабочие записи", "Все разделы", reason);
       await clearRecordedDataEverywhere();
       render();
-    }, "?????????...");
+    }, "Очищается...");
   });
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", () => {
-    if (!window.confirm("????? ????? ?? ????????")) return;
+    if (!window.confirm("Точно выйти из профиля?")) return;
     localStorage.removeItem(PROFILE_KEY);
     localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
     location.reload();
@@ -2621,7 +2621,7 @@ function downloadServerFile(url) {
 }
 
 async function createManualBackupAndExport(button, format = "json") {
-  setButtonBusy(button, true, "?????????...");
+  setButtonBusy(button, true, "Готовится...");
   try {
     await publishStateNow();
     await apiJson("/api/backup/manual", {
@@ -2630,7 +2630,7 @@ async function createManualBackupAndExport(button, format = "json") {
     });
     downloadServerFile(format === "csv" ? `/api/export/month.xls?month=${currentMonthKey()}` : `/api/export/month?month=${currentMonthKey()}`);
   } catch (error) {
-    alert("?? ??????? ??????? ???????. ??????? ???????? ? ??????, ????? ???????? ??? ???.");
+    alert("Не удалось сделать экспорт. Проверь интернет и сервер, затем попробуй ещё раз.");
   } finally {
     setButtonBusy(button, false);
   }
@@ -2642,8 +2642,8 @@ function setupLogin() {
   ui.toggleLoginPassword?.addEventListener("click", () => {
     const visible = ui.loginPassword.type === "text";
     ui.loginPassword.type = visible ? "password" : "text";
-    ui.toggleLoginPassword.setAttribute("aria-label", visible ? "???????? ??????" : "?????? ??????");
-    ui.toggleLoginPassword.setAttribute("title", visible ? "???????? ??????" : "?????? ??????");
+    ui.toggleLoginPassword.setAttribute("aria-label", visible ? "Показать пароль" : "Скрыть пароль");
+    ui.toggleLoginPassword.setAttribute("title", visible ? "Показать пароль" : "Скрыть пароль");
     ui.toggleLoginPassword.classList.toggle("active", !visible);
   });
   if (!ui.loginForm.querySelector("#loginLanguageSelect")) {
@@ -2681,7 +2681,7 @@ function setupLogin() {
     event.preventDefault();
     const submitButton = ui.loginForm.querySelector("button[type='submit']");
     if (submitButton?.disabled) return;
-    setButtonBusy(submitButton, true, authMode === "register" ? "??????????..." : "??????...");
+    setButtonBusy(submitButton, true, authMode === "register" ? "Отправляем..." : "Входим...");
     try {
       if (authMode === "register") {
         await registerEmployee({
@@ -2780,7 +2780,7 @@ function printActionLabel(desktopLabel, mobileLabel = "PDF") {
   return mobilePdfMode() ? mobileLabel : desktopLabel;
 }
 
-function printCurrentDocument(title = "??? ????????") {
+function printCurrentDocument(title = "ППР Контроль") {
   const oldTitle = document.title;
   document.title = title;
   document.body.classList.toggle("mobile-pdf-mode", mobilePdfMode());
@@ -2891,14 +2891,14 @@ async function handleIncomingNodeQrFromUrl() {
   }
   if (!isProfileReady()) return false;
   if (!canEditChecklist()) {
-    window.alert("??? ?????? ??????? ?????, ??????? ????????? ??????????? QR.");
+    window.alert("Для обхода войдите ролью, которой разрешено сканировать QR.");
     clearIncomingNodeQrFromUrl();
     return false;
   }
   const shift = currentWalkShift();
   const marked = markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
   if (!marked) {
-    window.alert("QR ??????, ?? ???? ? ??????? ?? ??????. ?????????, ??? QR ?????????? ?? ???? ?????? ???.");
+    window.alert("QR найден, но узел в журнале не найден. Проверьте, что QR распечатан из этой версии ППР.");
     clearIncomingNodeQrFromUrl();
     return false;
   }
@@ -2925,7 +2925,7 @@ async function handleIncomingNodeQrFromUrl() {
 function refreshNodeWalkProgress(eq) {
   const shift = visibleWalkShiftForDate(current.date);
   const doneCount = eq.nodes.filter((_, index) => isNodeShiftChecked(getRecord(eq.id, index, current.date), shift.key)).length;
-  ui.dayStatus.textContent = `${doneCount}/${eq.nodes.length} ? ${shift.label}`;
+  ui.dayStatus.textContent = `${doneCount}/${eq.nodes.length} · ${shift.label}`;
   ui.dayStatus.style.background = doneCount === eq.nodes.length ? "var(--to)" : "var(--nav-soft)";
 }
 
@@ -2937,7 +2937,7 @@ function printNodeQrCode(eq, nodeIndex) {
   const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
   const win = window.open("", "_blank", "width=760,height=760");
   if (!win) {
-    window.alert("????????? ??????????? ???? ??? ?????? QR.");
+    window.alert("Разрешите всплывающие окна для печати QR.");
     return;
   }
   win.document.write(`<!doctype html>
@@ -2959,29 +2959,29 @@ function printNodeQrCode(eq, nodeIndex) {
       <div class="sheet">
         <div class="top"><span>${escapeHtml(new Date().toLocaleString("ru-RU"))}</span><span>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</span></div>
         <div class="head">
-          <h1>QR ??? ?????? ????</h1>
-          <p><strong>????????????:</strong> ${escapeHtml(eq.name)}</p>
-          <p><strong>???????:</strong> ${escapeHtml(eq.area || "")}</p>
-          <p><strong>????:</strong> ${escapeHtml(nodeName)}</p>
+          <h1>QR код обхода узла</h1>
+          <p><strong>Оборудование:</strong> ${escapeHtml(eq.name)}</p>
+          <p><strong>Участок:</strong> ${escapeHtml(eq.area || "")}</p>
+          <p><strong>Узел:</strong> ${escapeHtml(nodeName)}</p>
         </div>
-        <div class="qr"><img src="${qrUrl}" alt="QR ???"></div>
-        <p class="hint">?????????? ??? ?? ????? ????????, ????? ????????? QR ??????????? ? ??????????. ??? ????????? ??????????? ?????? ?????? ???.</p>
+        <div class="qr"><img src="${qrUrl}" alt="QR код"></div>
+        <p class="hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</p>
         <div class="code">${escapeHtml(displayCode)}</div>
-        <div class="link">${escapeHtml(payload)} ? ${escapeHtml(qrLink)}</div>
+        <div class="link">${escapeHtml(payload)} · ${escapeHtml(qrLink)}</div>
       </div>
-      <div class="actions"><button onclick="window.print()">???????? QR</button></div>
+      <div class="actions"><button onclick="window.print()">Печатать QR</button></div>
     </body></html>`);
   win.document.close();
 }
 
 function printEquipmentQrCodes(eq) {
   if (!eq?.nodes?.length) {
-    window.alert("? ????? ???????????? ??? ????? ??? ?????? QR.");
+    window.alert("У этого оборудования нет узлов для печати QR.");
     return;
   }
   const win = window.open("", "_blank", "width=960,height=900");
   if (!win) {
-    window.alert("????????? ??????????? ???? ??? ?????? QR.");
+    window.alert("Разрешите всплывающие окна для печати QR.");
     return;
   }
   const cards = eq.nodes.map((nodeName, nodeIndex) => {
@@ -2991,13 +2991,13 @@ function printEquipmentQrCodes(eq) {
     const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
     return `
       <section class="qr-card">
-        <div class="qr-title">${escapeHtml(eq.name || `???????????? ${eq.id}`)}</div>
+        <div class="qr-title">${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</div>
         <div class="qr-area">${escapeHtml(eq.area || "")}</div>
         <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}</div>
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
         <div class="qr-code">${escapeHtml(displayCode)}</div>
         <div class="qr-payload">${escapeHtml(qrLink)}</div>
-        <div class="qr-hint">?????????? ??? ?? ????? ????????, ????? ????????? QR ??????????? ? ??????????. ??? ????????? ??????????? ?????? ?????? ???.</div>
+        <div class="qr-hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</div>
       </section>
     `;
   });
@@ -3006,7 +3006,7 @@ function printEquipmentQrCodes(eq) {
     pages.push(`<main class="qr-page">${cards.slice(index, index + 4).join("")}</main>`);
   }
   win.document.write(`<!doctype html>
-    <html lang="ru"><head><meta charset="utf-8"><title>QR - ${escapeHtml(eq.name || `???????????? ${eq.id}`)}</title>
+    <html lang="ru"><head><meta charset="utf-8"><title>QR - ${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</title>
     <style>
       @page{size:A4 portrait;margin:8mm}
       *{box-sizing:border-box}
@@ -3028,7 +3028,7 @@ function printEquipmentQrCodes(eq) {
     <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),700));</script>
     </head><body>
       ${pages.join("")}
-      <div class="actions"><button onclick="window.print()">???????? QR ???? ?????</button></div>
+      <div class="actions"><button onclick="window.print()">Печатать QR всех узлов</button></div>
     </body></html>`);
   win.document.close();
 }
@@ -3040,16 +3040,16 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const applyScannedValue = value => {
     const parsed = parseNodeQrPayload(value);
     if (!parsed) {
-      if (statusEl) statusEl.textContent = "QR ??? ?? ?????????";
+      if (statusEl) statusEl.textContent = "QR код не распознан";
       return false;
     }
     if (hasExpectedNode && (parsed.equipmentId !== expected.equipmentId || parsed.nodeIndex !== expected.nodeIndex)) {
-      if (statusEl) statusEl.textContent = "QR ?? ??????? ????";
+      if (statusEl) statusEl.textContent = "QR от другого узла";
       return false;
     }
     const eq = equipmentById(parsed.equipmentId);
     if (!eq?.nodes?.[parsed.nodeIndex]) {
-      if (statusEl) statusEl.textContent = "?? ??????? ???????? ????";
+      if (statusEl) statusEl.textContent = "Не удалось отметить узел";
       return false;
     }
     return parsed;
@@ -3085,7 +3085,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       video.srcObject = stream;
       video.hidden = false;
       await video.play();
-      if (messageEl) messageEl.textContent = "???????? ?????? ?? QR. ????? ?????????? ????? ???? ??????.";
+      if (messageEl) messageEl.textContent = "Наведите камеру на QR. После считывания можно идти дальше.";
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       const started = Date.now();
@@ -3098,7 +3098,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         const tick = async () => {
           if (shouldStop()) return finish(false);
           if (Date.now() - started > 45000) {
-            if (messageEl) messageEl.textContent = "QR ?? ??????. ????????? ????? ??? ??????? ???????????? ??? ????.";
+            if (messageEl) messageEl.textContent = "QR не найден. Поднесите ближе или нажмите «Сканировать ещё раз».";
             return finish(false);
           }
           if (!scanning && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
@@ -3239,7 +3239,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       resolve(value);
     };
     const timeout = window.setTimeout(() => {
-      const message = "QR ?? ??????. ??????????????? ?????, ????? ? ??? ??????.";
+      const message = "QR не найден. Сфотографируйте ближе, ровно и без бликов.";
       if (messageEl) messageEl.textContent = message;
       if (statusEl) statusEl.textContent = message;
       finish(false);
@@ -3247,21 +3247,21 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) {
-        if (messageEl) messageEl.textContent = "???? ?? ???????. ?????????? ??? ???.";
+        if (messageEl) messageEl.textContent = "Фото не выбрано. Попробуйте ещё раз.";
         finish(false);
         return;
       }
       try {
-        if (messageEl) messageEl.textContent = "?????? QR ? ????...";
+        if (messageEl) messageEl.textContent = "Читаем QR с фото...";
         const value = await readQrFromPhotoFile(file);
         if (!value) {
-          if (messageEl) messageEl.textContent = "QR ?? ??????. ???????? ?????? ?????, ????? QR ??????? ????? ???? ?????.";
+          if (messageEl) messageEl.textContent = "QR не найден. Наведите камеру ближе, чтобы QR занимал почти весь экран.";
           finish(false);
           return;
         }
         finish(applyScannedValue(value));
       } catch {
-        if (messageEl) messageEl.textContent = "???? ?? ??????? ?????????. ?????????? ????? ??? ???????? QR ??????? ???????.";
+        if (messageEl) messageEl.textContent = "Фото не удалось прочитать. Попробуйте ближе или откройте QR обычной камерой.";
         finish(false);
       }
     }, { once: true });
@@ -3273,12 +3273,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   overlay.className = "qr-scan-overlay";
   overlay.innerHTML = `
     <div class="qr-scan-panel">
-      <strong>???????????? QR</strong>
+      <strong>Сканирование QR</strong>
       <video playsinline muted hidden></video>
-      <span class="qr-scan-message">????????? ??????. ???????? ?? QR ????.</span>
+      <span class="qr-scan-message">Открываем камеру. Наведите на QR узла.</span>
       <div class="qr-scan-actions">
-        <button type="button" data-qr-photo>??????????? ??? ???</button>
-        <button type="button" data-qr-cancel>??????</button>
+        <button type="button" data-qr-photo>Сканировать ещё раз</button>
+        <button type="button" data-qr-cancel>Отмена</button>
       </div>
     </div>
   `;
@@ -3303,16 +3303,16 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     const scanAutomatically = async () => {
       let ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
       if (stopped || ok) return complete(ok || null);
-      if (messageEl) messageEl.textContent = "???????? ?????? ? ???????? ?? QR ????.";
+      if (messageEl) messageEl.textContent = "Откройте камеру и наведите на QR узла.";
       ok = await scanFromPhoto(messageEl);
       if (stopped || ok) return complete(ok || null);
-      if (messageEl) messageEl.textContent = "QR ?? ??????. ??????? ???????????? ??? ???? ? ???????? ?????.";
+      if (messageEl) messageEl.textContent = "QR не найден. Нажмите «Сканировать ещё раз» и наведите ближе.";
     };
     overlay.querySelector("[data-qr-cancel]")?.addEventListener("click", () => complete(false));
     overlay.querySelector("[data-qr-photo]")?.addEventListener("click", async event => {
       const button = event.currentTarget;
-      setButtonBusy(button, true, "??????...");
-      if (messageEl) messageEl.textContent = "???????? ?????? ? ??????????????? QR ????.";
+      setButtonBusy(button, true, "Чтение...");
+      if (messageEl) messageEl.textContent = "Откройте камеру и сфотографируйте QR узла.";
       const ok = await scanFromPhoto(messageEl);
       setButtonBusy(button, false);
       if (ok) complete(ok);
@@ -3330,37 +3330,37 @@ function qrWalkProgress(equipmentId, shift = currentWalkShift()) {
 
 function promptQrWalkDecision(parsed) {
   const eq = equipmentById(parsed.equipmentId);
-  const nodeName = eq?.nodes?.[parsed.nodeIndex] || "????";
+  const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
   const shift = currentWalkShift();
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   const progress = qrWalkProgress(parsed.equipmentId, shift);
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay";
   overlay.innerHTML = `
-    <section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="????????? ?????? QR">
-      <div class="qr-result-progress">???????? ${progress.done} ?? ${progress.total} ? ${escapeHtml(shift.label)}</div>
-      <h2>${escapeHtml(eq?.name || "????????????")}</h2>
+    <section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Результат обхода QR">
+      <div class="qr-result-progress">Обойдено ${progress.done} из ${progress.total} · ${escapeHtml(shift.label)}</div>
+      <h2>${escapeHtml(eq?.name || "Оборудование")}</h2>
       <p class="qr-result-node">${escapeHtml(nodeName)}</p>
       ${alreadyDone ? `
-        <div class="qr-already-done">???? ???? ??? ???????? ? ??????? ?????.</div>
+        <div class="qr-already-done">Этот узел уже проверен в текущую смену.</div>
         <div class="qr-result-actions single">
-          <button type="button" class="qr-next-button" data-qr-next>??????????? ?????????</button>
-          <button type="button" class="qr-finish-button" data-qr-finish>????????? ?????</button>
+          <button type="button" class="qr-next-button" data-qr-next>Сканировать следующий</button>
+          <button type="button" class="qr-finish-button" data-qr-finish>Завершить обход</button>
         </div>
       ` : `
         <div class="qr-result-actions">
-          <button type="button" class="qr-good-button" data-qr-good>? ??? ??????</button>
-          <button type="button" class="qr-remark-button" data-qr-remark>! ???? ?????????</button>
-          <button type="button" class="qr-rescan-button" data-qr-next>??????????? ??????</button>
-          <button type="button" class="qr-finish-button" data-qr-finish>????????? ?????</button>
+          <button type="button" class="qr-good-button" data-qr-good>✓ Всё хорошо</button>
+          <button type="button" class="qr-remark-button" data-qr-remark>! Есть замечание</button>
+          <button type="button" class="qr-rescan-button" data-qr-next>Сканировать заново</button>
+          <button type="button" class="qr-finish-button" data-qr-finish>Завершить обход</button>
         </div>
         <div class="qr-remark-form" hidden>
-          <label><span>??????????? ?? ????</span><textarea rows="4" data-qr-comment placeholder="??????? ?????????..."></textarea></label>
-          <label><span>???? (?????????????)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>
+          <label><span>Комментарий по узлу</span><textarea rows="4" data-qr-comment placeholder="Опишите замечание..."></textarea></label>
+          <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>
           <div class="qr-remark-error" data-qr-error></div>
           <div class="qr-result-actions single">
-            <button type="button" class="qr-save-remark-button" data-qr-save-remark>????????? ?????????</button>
-            <button type="button" class="qr-rescan-button" data-qr-back>?????</button>
+            <button type="button" class="qr-save-remark-button" data-qr-save-remark>Сохранить замечание</button>
+            <button type="button" class="qr-rescan-button" data-qr-back>Назад</button>
           </div>
         </div>
       `}
@@ -3395,11 +3395,11 @@ function promptQrWalkDecision(parsed) {
       const comment = String(overlay.querySelector("[data-qr-comment]")?.value || "").trim();
       const errorEl = overlay.querySelector("[data-qr-error]");
       if (!comment) {
-        if (errorEl) errorEl.textContent = "???????? ???????????, ????? ????????? ?????????.";
+        if (errorEl) errorEl.textContent = "Напишите комментарий, чтобы сохранить замечание.";
         return;
       }
       const button = event.currentTarget;
-      setButtonBusy(button, true, "?????????...");
+      setButtonBusy(button, true, "Сохраняем...");
       try {
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
@@ -3411,10 +3411,10 @@ function promptQrWalkDecision(parsed) {
         item.updatedAt = new Date().toISOString();
         saveState();
         publishStateNow().catch(scheduleRemoteRetry);
-        showQrSavedNotice("????? ???????? ? ??????????");
+        showQrSavedNotice("Обход сохранён с замечанием");
         finish("continue");
       } catch {
-        if (errorEl) errorEl.textContent = "?? ??????? ?????????? ????. ?????????? ??? ???.";
+        if (errorEl) errorEl.textContent = "Не удалось обработать фото. Попробуйте ещё раз.";
         setButtonBusy(button, false);
       }
     });
@@ -3505,10 +3505,10 @@ function nodeWalkCompletion(rec, date = current.date) {
 
 function nodeWalkShiftStatusText(rec, date = current.date) {
   const completion = nodeWalkCompletion(rec, date);
-  if (!completion.total) return "????? ??? ?? ????????";
-  if (completion.complete) return "????? ????????";
-  if (completion.partial) return `????????? ${completion.done}/${completion.total} ????`;
-  return "????? ?? ????????";
+  if (!completion.total) return "Смена ещё не началась";
+  if (completion.complete) return "Обход выполнен";
+  if (completion.partial) return `Выполнено ${completion.done}/${completion.total} смен`;
+  return "Обход не выполнен";
 }
 
 function currentRoleId() {
@@ -3534,7 +3534,7 @@ function sameCommentAuthor(item) {
 
 function commentEntryAuthor(entry) {
   const role = ROLE_ACCESS[entry.role]?.label || entry.role || "";
-  return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "?????????";
+  return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
 }
 
 function currentCommentEntry(item) {
@@ -3612,7 +3612,7 @@ function commentInputValue(item) {
 
 function isDowntimeCommentEntry(entry) {
   const text = String(entry?.text || "").trim();
-  return entry?.type === "downtime" || text.startsWith("????:") || text.startsWith("????:");
+  return entry?.type === "downtime" || text.startsWith("Пуск:") || text.startsWith("Стоп:");
 }
 
 function hasAnyComment(item) {
@@ -3681,10 +3681,10 @@ function commentResolutionText(item) {
   const durationMs = Number(item.resolvedDurationMs || 0);
   const startedAt = item.resolvedStartedAt || firstCommentTime(item);
   const endedAt = item.resolvedAt || "";
-  if (durationMs > 0) return `????????? ?? ${durationText(durationMs)}`;
+  if (durationMs > 0) return `Устранено за ${durationText(durationMs)}`;
   const startMs = Date.parse(startedAt || "");
   const endMs = Date.parse(endedAt || "");
-  if (Number.isFinite(startMs) && Number.isFinite(endMs)) return `????????? ?? ${durationText(Math.max(endMs - startMs, 0))}`;
+  if (Number.isFinite(startMs) && Number.isFinite(endMs)) return `Устранено за ${durationText(Math.max(endMs - startMs, 0))}`;
   return "";
 }
 
@@ -3697,7 +3697,7 @@ function commentsSummary(item) {
 function commentOwnerText(item) {
   if (!item.commentOwnerRole) return "";
   const role = ROLE_ACCESS[item.commentOwnerRole]?.label || item.commentOwnerRole;
-  return item.commentOwnerName ? `???????: ${item.commentOwnerName} (${role})` : `???????: ${role}`;
+  return item.commentOwnerName ? `Записал: ${item.commentOwnerName} (${role})` : `Записал: ${role}`;
 }
 
 function requestId(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date, kind = current.kind) {
@@ -3716,7 +3716,7 @@ function requestNumberFromId(req) {
   const year = String(req.createdAt || req.date || todayISO()).slice(0, 4) || String(new Date().getFullYear());
   let hash = 0;
   for (const char of String(req.id || "")) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-  return `?-${year}-${String(Math.abs(hash) % 100000).padStart(5, "0")}`;
+  return `З-${year}-${String(Math.abs(hash) % 100000).padStart(5, "0")}`;
 }
 
 function requestAddHistory(req, action, details = "") {
@@ -3786,7 +3786,7 @@ function normalizeRequest(req) {
   if (!req.history.length) {
     req.history.push({
       at: req.createdAt || req.updatedAt || new Date().toISOString(),
-      action: "?????? ???????",
+      action: "Заявка создана",
       details: req.text || "",
       status: req.status || "shop",
       role: "",
@@ -3798,11 +3798,11 @@ function normalizeRequest(req) {
 
 function requestAuthorHtml(req) {
   if (req.engineerCombinedBatch) {
-    const authors = [...new Set(requestItems(req).map(item => [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" ? ")).filter(Boolean))];
+    const authors = [...new Set(requestItems(req).map(item => [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · ")).filter(Boolean))];
     return `
       <div class="request-author">
-        <strong>??????? ??????:</strong>
-        <span>${escapeHtml(authors.length ? authors.join("; ") : "????????? ????????????")}</span>
+        <strong>Сводная заявка:</strong>
+        <span>${escapeHtml(authors.length ? authors.join("; ") : "несколько отправителей")}</span>
       </div>
     `;
   }
@@ -3812,14 +3812,14 @@ function requestAuthorHtml(req) {
   const employeeId = req.sourceEmployeeId || req.createdByEmployeeId || "";
   const meta = [
     role ? requestRoleLabel(role) : "",
-    employeeId ? `???. ${employeeId}` : "",
+    employeeId ? `таб. ${employeeId}` : "",
     phone
-  ].filter(Boolean).join(" ? ");
-  if (!name && !meta) return `<div class="request-author missing">????? ??????: ?? ??????</div>`;
+  ].filter(Boolean).join(" · ");
+  if (!name && !meta) return `<div class="request-author missing">Автор заявки: не указан</div>`;
   return `
     <div class="request-author">
-      <strong>????? ??????:</strong>
-      <span>${escapeHtml(name || "?? ??????")}${meta ? ` ? ${escapeHtml(meta)}` : ""}</span>
+      <strong>Автор заявки:</strong>
+      <span>${escapeHtml(name || "Не указан")}${meta ? ` · ${escapeHtml(meta)}` : ""}</span>
     </div>
   `;
 }
@@ -3832,7 +3832,7 @@ function normalizeRequestItems(items, req = {}) {
       name: String(item?.name || item?.text || "").trim(),
       article: String(item?.article || "").trim(),
       stockRemainder: String(item?.stockRemainder ?? item?.stock ?? "").trim(),
-      unit: String(item?.unit || "??").trim(),
+      unit: String(item?.unit || "шт").trim(),
       requestedQty: Number(item?.requestedQty || item?.qty || 0),
       requiredQty: Number(item?.requiredQty || item?.neededQty || item?.requestedQty || item?.qty || 0),
       note: String(item?.note || "").trim(),
@@ -3856,7 +3856,7 @@ function normalizeRequestItems(items, req = {}) {
     name,
     article: normalizeArticle(req.article || ""),
     stockRemainder: "",
-    unit: "??",
+    unit: "шт",
     requestedQty: Number(req.requestedQty || req.quantity || 1),
     requiredQty: Number(req.requestedQty || req.quantity || 1),
     note: String(req.comment || "").trim(),
@@ -3900,10 +3900,10 @@ function nodeWalkRequestItem(text, eq, nodeIndex, date, item = {}) {
     name: String(text || "").trim(),
     article: "",
     stockRemainder: "",
-    unit: "??",
+    unit: "шт",
     requestedQty: 1,
     requiredQty: 1,
-    note: noteParts.join(" ? "),
+    note: noteParts.join(" · "),
     price: "",
     supplier: "",
     supplyNote: ""
@@ -4180,14 +4180,14 @@ function createDirectRequestFromCurrent() {
 }
 
 function blankTmcRequestRow() {
-  return { name: "", article: "", stockRemainder: "", unit: "??", requestedQty: 1, requiredQty: 1, note: "", photo: "" };
+  return { name: "", article: "", stockRemainder: "", unit: "шт", requestedQty: 1, requiredQty: 1, note: "", photo: "" };
 }
 
 function tmcRowPhotoPreviewHtml(photo = "") {
   return photo ? `
     <div class="tmc-row-photo-preview">
-      <img src="${photo}" alt="???? ???????">
-      <button type="button" data-clear-tmc-row-photo>???????</button>
+      <img src="${photo}" alt="Фото позиции">
+      <button type="button" data-clear-tmc-row-photo>Удалить</button>
     </div>
   ` : `<div class="tmc-row-photo-preview"></div>`;
 }
@@ -4196,21 +4196,21 @@ function tmcRequestRowHtml(row = blankTmcRequestRow(), index = 0) {
   return `
     <tr data-tmc-row data-tmc-row-photo="${escapeHtml(row.photo || "")}">
       <td>${index + 1}</td>
-      <td><textarea data-tmc-name rows="2" placeholder="???????????? ??? ??? ??????">${escapeHtml(row.name || "")}</textarea></td>
-      <td><input data-tmc-stock type="text" value="${escapeHtml(row.stockRemainder || "")}" placeholder="???????"></td>
-      <td><input data-tmc-unit type="text" value="${escapeHtml(row.unit || "??")}" placeholder="??"></td>
+      <td><textarea data-tmc-name rows="2" placeholder="Наименование ТМЦ или услуги">${escapeHtml(row.name || "")}</textarea></td>
+      <td><input data-tmc-stock type="text" value="${escapeHtml(row.stockRemainder || "")}" placeholder="Остаток"></td>
+      <td><input data-tmc-unit type="text" value="${escapeHtml(row.unit || "шт")}" placeholder="шт"></td>
       <td><input data-tmc-requested type="number" min="0" step="1" value="${Number(row.requestedQty || 1)}"></td>
       <td><input data-tmc-required type="number" min="0" step="1" value="${Number(row.requiredQty || row.requestedQty || 1)}"></td>
       <td>
         <label class="tmc-row-photo-field">
-          <span>????</span>
+          <span>Фото</span>
           <input data-tmc-row-photo-input type="file" accept="image/*">
         </label>
         ${tmcRowPhotoPreviewHtml(row.photo || "")}
       </td>
       <td>
-        <textarea data-tmc-note rows="2" placeholder="??????????">${escapeHtml(row.note || "")}</textarea>
-        ${index > 0 ? `<button type="button" class="tmc-row-remove" data-remove-tmc-row>??????</button>` : ""}
+        <textarea data-tmc-note rows="2" placeholder="Примечание">${escapeHtml(row.note || "")}</textarea>
+        ${index > 0 ? `<button type="button" class="tmc-row-remove" data-remove-tmc-row>Убрать</button>` : ""}
       </td>
     </tr>
   `;
@@ -4251,7 +4251,7 @@ function readTmcRequestRows() {
       name: row.querySelector("[data-tmc-name]")?.value.trim() || "",
       article: "",
       stockRemainder: row.querySelector("[data-tmc-stock]")?.value.trim() || "",
-      unit: row.querySelector("[data-tmc-unit]")?.value.trim() || "??",
+      unit: row.querySelector("[data-tmc-unit]")?.value.trim() || "шт",
       requestedQty: Number(row.querySelector("[data-tmc-requested]")?.value || 0),
       requiredQty: Number(row.querySelector("[data-tmc-required]")?.value || 0),
       note: row.querySelector("[data-tmc-note]")?.value.trim() || "",
@@ -4266,11 +4266,11 @@ function readTmcRequestRows() {
 
 function tmcRequestItemsWithContext(items, eq, nodeIndex) {
   const nodeName = Number.isFinite(Number(nodeIndex)) ? eq?.nodes?.[Number(nodeIndex)] || "" : "";
-  const context = [eq?.name || "", nodeName].filter(Boolean).join(" ? ");
+  const context = [eq?.name || "", nodeName].filter(Boolean).join(" · ");
   if (!context) return items;
   return items.map(item => ({
     ...item,
-    note: [context, item.note].filter(Boolean).join(" ? ")
+    note: [context, item.note].filter(Boolean).join(" · ")
   }));
 }
 
@@ -4340,7 +4340,7 @@ function compactTmcArchiveCard(req, archiveMode = false) {
   normalizeRequest(req);
   const items = requestItems(req);
   const itemText = items.length
-    ? items.slice(0, 4).map((item, index) => `${index + 1}. ${item.sourceName ? `${item.sourceName}: ` : ""}${item.name || item.article || "???????"}${item.requiredQty || item.requestedQty ? ` - ${Number(item.requiredQty || item.requestedQty)} ${item.unit || "??"}` : ""}`).join("; ")
+    ? items.slice(0, 4).map((item, index) => `${index + 1}. ${item.sourceName ? `${item.sourceName}: ` : ""}${item.name || item.article || "Позиция"}${item.requiredQty || item.requestedQty ? ` - ${Number(item.requiredQty || item.requestedQty)} ${item.unit || "шт"}` : ""}`).join("; ")
     : req.text || "";
   return `
     <article class="request-card archive-request-card" data-archive-request-card="${escapeHtml(req.id)}">
@@ -4348,8 +4348,8 @@ function compactTmcArchiveCard(req, archiveMode = false) {
         <div class="request-card-head">
           <div>
             <strong class="request-number">${escapeHtml(req.requestNumber || requestNumberFromId(req))}</strong>
-            <b class="manual-text">${escapeHtml(req.equipment || "??? ????????????")}</b>
-            <span><span class="manual-text">${escapeHtml(req.area || "")}${req.node ? ` ? ${escapeHtml(req.node)}` : ""}</span> ? ${dateHuman(req.date)}</span>
+            <b class="manual-text">${escapeHtml(req.equipment || "Без оборудования")}</b>
+            <span><span class="manual-text">${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}</span> · ${dateHuman(req.date)}</span>
           </div>
           <div class="request-badges">
             <span class="request-route">${requestRoleLabel(req.status || waitingRole(req))}</span>
@@ -4357,12 +4357,12 @@ function compactTmcArchiveCard(req, archiveMode = false) {
         </div>
         ${requestAuthorHtml(req)}
         <p class="request-text manual-text">${escapeHtml(itemText)}</p>
-        ${items.some(item => item.photo) ? `<div class="request-photo-strip">${items.filter(item => item.photo).slice(0, 4).map((item, index) => `<img class="request-photo" src="${item.photo}" alt="???? ??????? ${index + 1}">`).join("")}</div>` : ""}
+        ${items.some(item => item.photo) ? `<div class="request-photo-strip">${items.filter(item => item.photo).slice(0, 4).map((item, index) => `<img class="request-photo" src="${item.photo}" alt="Фото позиции ${index + 1}">`).join("")}</div>` : ""}
         ${requestHistoryHtml(req)}
         <div class="archive-request-actions">
           ${archiveMode
-            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "????????? WhatsApp" : "????????"}</button>`
-            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "????????? ? WhatsApp" : "????????? ? ????????"}</button>`}
+            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>`
+            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "Сохранить и WhatsApp" : "Сохранить и печатать"}</button>`}
         </div>
       </div>
     </article>
@@ -4376,16 +4376,16 @@ function mobileShareMode() {
 function requestShareText(req) {
   normalizeRequest(req);
   const rows = requestItems(req).map((item, index) => {
-    const author = [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" ? ");
+    const author = [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · ");
     const qty = Number(item.requiredQty || item.requestedQty || 0);
-    return `${index + 1}. ${author ? `${author}: ` : ""}${item.name || item.article || "???????"}${qty ? ` - ${qty} ${item.unit || "??"}` : ""}${item.note ? ` (${item.note})` : ""}`;
+    return `${index + 1}. ${author ? `${author}: ` : ""}${item.name || item.article || "Позиция"}${qty ? ` - ${qty} ${item.unit || "шт"}` : ""}${item.note ? ` (${item.note})` : ""}`;
   }).join("\n");
   return [
-    `?????? ${req.requestNumber || requestNumberFromId(req)}`,
-    `${req.equipment || ""}${req.node ? ` ? ${req.node}` : ""}`,
-    `???????: ${req.area || ""}`,
-    `????: ${dateHuman(req.date)}`,
-    `?????: ${req.engineerCombinedBatch ? "??????? ??????" : (req.sourceName || "?? ??????")}`,
+    `Заявка ${req.requestNumber || requestNumberFromId(req)}`,
+    `${req.equipment || ""}${req.node ? ` · ${req.node}` : ""}`,
+    `Участок: ${req.area || ""}`,
+    `Дата: ${dateHuman(req.date)}`,
+    `Автор: ${req.engineerCombinedBatch ? "Сводная заявка" : (req.sourceName || "Не указан")}`,
     "",
     rows || req.text || ""
   ].filter(line => line !== null && line !== undefined).join("\n");
@@ -4402,17 +4402,17 @@ function requestPrintableFile(req) {
   const rows = (items.length ? items : [{}]).map((item, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td>${escapeHtml(item.name || req.text || "???????")}</td>
+      <td>${escapeHtml(item.name || req.text || "Позиция")}</td>
       <td>${escapeHtml(item.article || "")}</td>
-      <td>${escapeHtml(item.unit || "??")}</td>
+      <td>${escapeHtml(item.unit || "шт")}</td>
       <td>${Number(item.requiredQty || item.requestedQty || 0)}</td>
       <td>${escapeHtml(item.note || "")}</td>
     </tr>
   `).join("");
-  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(req.requestNumber || "??????")}</title><style>
+  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(req.requestNumber || "Заявка")}</title><style>
     @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#102331;margin:0;padding:12mm}h1{margin:0 0 5mm;color:#14324a;font-size:22px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;margin-bottom:5mm}.meta div{border:1px solid #cbd8df;border-radius:6px;padding:3mm}.meta span{display:block;color:#607785;font-size:11px}.meta strong{display:block;margin-top:1mm}table{width:100%;border-collapse:collapse}th,td{border:1px solid #b9c9d1;padding:2.5mm;text-align:left;font-size:12px;vertical-align:top}th{background:#14324a;color:#fff}.signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;margin-top:8mm}.signatures div{border-top:1px solid #102331;padding-top:2mm;font-size:12px}@media print{body{padding:0}}
-  </style></head><body><h1>?????? ?? ???????????? ??? ? ?????</h1><div class="meta"><div><span>?????</span><strong>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</strong></div><div><span>????</span><strong>${escapeHtml(dateTimeHuman(req.createdAt || req.date))}</strong></div><div><span>???????</span><strong>${escapeHtml(req.area || "")}</strong></div><div><span>????????????</span><strong>${escapeHtml(req.equipment || "")}</strong></div><div><span>????</span><strong>${escapeHtml(req.node || "")}</strong></div><div><span>?????</span><strong>${escapeHtml(req.sourceName || profile?.name || "")}</strong></div></div><table><thead><tr><th>?</th><th>????????????</th><th>???????</th><th>??.</th><th>??????????</th><th>??????????</th></tr></thead><tbody>${rows}</tbody></table><div class="signatures"><div>????????: __________________</div><div>??????????: __________________</div><div>???????: __________________</div></div><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
-  const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Z?-??-?0-9_-]+/g, "-");
+  </style></head><body><h1>Заявка на приобретение ТМЦ и услуг</h1><div class="meta"><div><span>Номер</span><strong>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</strong></div><div><span>Дата</span><strong>${escapeHtml(dateTimeHuman(req.createdAt || req.date))}</strong></div><div><span>Участок</span><strong>${escapeHtml(req.area || "")}</strong></div><div><span>Оборудование</span><strong>${escapeHtml(req.equipment || "")}</strong></div><div><span>Узел</span><strong>${escapeHtml(req.node || "")}</strong></div><div><span>Автор</span><strong>${escapeHtml(req.sourceName || profile?.name || "")}</strong></div></div><table><thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Количество</th><th>Примечание</th></tr></thead><tbody>${rows}</tbody></table><div class="signatures"><div>Составил: __________________</div><div>Согласовал: __________________</div><div>Получил: __________________</div></div><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+  const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
   return new File([html], `${safeNumber}-print.html`, { type: "text/html" });
 }
 
@@ -4421,7 +4421,7 @@ async function shareRequestPrintFile(req) {
     const file = printRequestSheet(req, { asFile: true });
     if (!file) throw new Error("print-file-not-created");
     if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-      await navigator.share({ title: req.requestNumber || "??????", text: "???? ?????? ??? ??????", files: [file] });
+      await navigator.share({ title: req.requestNumber || "Заявка", text: "Файл заявки для печати", files: [file] });
       return;
     }
   } catch (error) {
@@ -4444,7 +4444,7 @@ function bindTmcArchiveActions(root = document) {
       req.stock = false;
       req.status = "done";
       req.updatedAt = new Date().toISOString();
-      requestAddHistory(req, "????????? ? ????? ? ?????????? ?? ??????", profile?.name || "");
+      requestAddHistory(req, "Сохранено в архив и отправлено на печать", profile?.name || "");
       syncRequestToRecord(req);
       saveState();
       publishStateNow().catch(scheduleRemoteRetry);
@@ -4463,7 +4463,7 @@ function bindTmcArchiveActions(root = document) {
 function printTmcArchiveSheet(requests = []) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const title = profile?.role === "shop" ? "????? ?????? ???????" : "????? ?????? ????????";
+  const title = profile?.role === "shop" ? "Архив заявок участка" : "Архив заявок инженеру";
   win.document.write(`
     <html>
       <head>
@@ -4486,25 +4486,25 @@ function printTmcArchiveSheet(requests = []) {
           return `
             <section class="sheet">
               <h1>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</h1>
-              <p><b>????????????:</b> ${escapeHtml(req.equipment || "")}${req.node ? ` ? ${escapeHtml(req.node)}` : ""}</p>
-              <p><b>???????:</b> ${escapeHtml(req.area || "")} ? <b>????:</b> ${dateHuman(req.date)}</p>
-              <p><b>?????:</b> ${escapeHtml(req.sourceName || "?? ??????")} ${req.sourceRole ? `(${escapeHtml(requestRoleLabel(req.sourceRole))})` : ""} ${req.sourcePhone ? ` ? ${escapeHtml(req.sourcePhone)}` : ""}</p>
-              <h2>???????</h2>
+              <p><b>Оборудование:</b> ${escapeHtml(req.equipment || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}</p>
+              <p><b>Участок:</b> ${escapeHtml(req.area || "")} · <b>Дата:</b> ${dateHuman(req.date)}</p>
+              <p><b>Автор:</b> ${escapeHtml(req.sourceName || "Не указан")} ${req.sourceRole ? `(${escapeHtml(requestRoleLabel(req.sourceRole))})` : ""} ${req.sourcePhone ? ` · ${escapeHtml(req.sourcePhone)}` : ""}</p>
+              <h2>Позиции</h2>
               <table>
-                <thead><tr><th>?</th><th>??? ????????</th><th>????????????</th><th>???????</th><th>??.</th><th>???-??</th><th>??????????</th></tr></thead>
+                <thead><tr><th>№</th><th>Кто отправил</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Кол-во</th><th>Примечание</th></tr></thead>
                 <tbody>${requestItems(req).map((item, index) => `
                   <tr>
                     <td>${index + 1}</td>
-                    <td>${escapeHtml([item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" ? "))}</td>
+                    <td>${escapeHtml([item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · "))}</td>
                     <td>${escapeHtml(item.name || "")}</td>
                     <td>${escapeHtml(item.article || "")}</td>
-                    <td>${escapeHtml(item.unit || "??")}</td>
+                    <td>${escapeHtml(item.unit || "шт")}</td>
                     <td>${Number(item.requiredQty || item.requestedQty || 0)}</td>
                     <td>${escapeHtml(item.note || "")}</td>
                   </tr>
                 `).join("")}</tbody>
               </table>
-              <h2>???????</h2>
+              <h2>История</h2>
               ${(req.history || []).map(entry => `<p class="muted">${dateTimeHuman(entry.at)} - ${escapeHtml(entry.action || "")}${entry.name ? ` - ${escapeHtml(entry.name)}` : ""}</p>`).join("")}
             </section>
           `;
@@ -4519,7 +4519,7 @@ function printTmcArchiveSheet(requests = []) {
 
 function shareTmcArchive(requests = []) {
   if (!requests.length) return;
-  const title = profile?.role === "shop" ? "????? ?????? ???????" : "????? ?????? ????????";
+  const title = profile?.role === "shop" ? "Архив заявок участка" : "Архив заявок инженеру";
   const text = [title, "", ...requests.map(requestShareText)].join("\n\n---\n\n");
   shareTextToWhatsApp(text);
 }
@@ -4532,15 +4532,15 @@ function openTmcArchiveDialog() {
     <section class="request-archive-dialog" role="dialog" aria-modal="true">
       <header>
         <div>
-          <strong>${profile?.role === "shop" ? "????? ?????? ???????" : "????? ?????? ????????"}</strong>
-          <span>${requests.length} ??????? ??? ????????? ? ??????</span>
+          <strong>${profile?.role === "shop" ? "Архив заявок участка" : "Архив заявок инженеру"}</strong>
+          <span>${requests.length} записей для просмотра и отчёта</span>
         </div>
-        <button type="button" data-close-request-archive>???????</button>
+        <button type="button" data-close-request-archive>Закрыть</button>
       </header>
       <div class="archive-request-actions archive-dialog-actions">
-        <button type="button" class="action-button" data-print-request-archive-all ${requests.length ? "" : "disabled"}>${mobileShareMode() ? "????????? ????? WhatsApp" : "???????? ????? ?? ??????"}</button>
+        <button type="button" class="action-button" data-print-request-archive-all ${requests.length ? "" : "disabled"}>${mobileShareMode() ? "Отправить архив WhatsApp" : "Печатать архив по листам"}</button>
       </div>
-      <div class="request-archive-dialog-list">${requests.length ? requests.map(req => compactTmcArchiveCard(req, true)).join("") : `<div class="empty-state">????? ???? ????</div>`}</div>
+      <div class="request-archive-dialog-list">${requests.length ? requests.map(req => compactTmcArchiveCard(req, true)).join("") : `<div class="empty-state">Архив пока пуст</div>`}</div>
     </section>
   `;
   const close = () => overlay.remove();
@@ -4572,14 +4572,14 @@ function renderTmcRequestArchivePanel() {
     <section class="request-create-archive-section">
       <div class="warehouse-stock-head">
         <div>
-          <strong>${profile?.role === "shop" ? "?????? ???????" : "?????? ????????"}</strong>
-          <span>?????, ????????????, ??????? ? ???????</span>
+          <strong>${profile?.role === "shop" ? "Заявки участка" : "Заявки инженеру"}</strong>
+          <span>Автор, оборудование, позиции и история</span>
         </div>
-        <button type="button" class="mini-action" data-open-request-archive>????? (${archive.length})</button>
+        <button type="button" class="mini-action" data-open-request-archive>Архив (${archive.length})</button>
       </div>
       <details open>
-        <summary>??????? (${active.length})</summary>
-        <div class="request-create-archive-list">${active.length ? active.map(req => compactTmcArchiveCard(req, false)).join("") : `<div class="empty-state">??????? ?????? ???</div>`}</div>
+        <summary>Текущие (${active.length})</summary>
+        <div class="request-create-archive-list">${active.length ? active.map(req => compactTmcArchiveCard(req, false)).join("") : `<div class="empty-state">Текущих заявок нет</div>`}</div>
       </details>
     </section>
   `;
@@ -4599,7 +4599,7 @@ function saveEngineerIncomingTmcRow(req, index, row) {
     name: row.querySelector("[data-engineer-item-name]")?.value.trim() || "",
     article: row.querySelector("[data-engineer-item-article]")?.value.trim() || "",
     stockRemainder: row.querySelector("[data-engineer-item-stock]")?.value.trim() || "",
-    unit: row.querySelector("[data-engineer-item-unit]")?.value.trim() || "??",
+    unit: row.querySelector("[data-engineer-item-unit]")?.value.trim() || "шт",
     requestedQty: Number(row.querySelector("[data-engineer-item-requested]")?.value || 0),
     requiredQty: Number(row.querySelector("[data-engineer-item-required]")?.value || 0),
     note: row.querySelector("[data-engineer-item-note]")?.value.trim() || ""
@@ -4618,14 +4618,14 @@ function deleteEngineerIncomingTmcRow(req, index) {
   if (!items.length) {
     req.deleted = true;
     req.updatedAt = new Date().toISOString();
-    requestAddHistory(req, "??????? ??????????? ??????", "??????? ?????? ????????? ??????");
+    requestAddHistory(req, "Удалена накопленная заявка", "Инженер удалил последнюю строку");
     return true;
   }
   req.items = normalizeRequestItems(items, req);
   req.text = requestItemsText(req.items);
   req.requestedQty = requestItemsTotal(req.items) || 1;
   req.updatedAt = new Date().toISOString();
-  requestAddHistory(req, "??????? ?????? ??????", `??????? ${index + 1}`);
+  requestAddHistory(req, "Удалена строка заявки", `Позиция ${index + 1}`);
   return true;
 }
 
@@ -4642,34 +4642,34 @@ function renderEngineerIncomingTmcPanel() {
   panel.innerHTML = `
     <div class="engineer-incoming-head">
       <div>
-        <strong>??????????? ?????? ????????</strong>
-        <span>${count} ??????? ??????? ????????</span>
+        <strong>Накопленные заявки инженеру</strong>
+        <span>${count} позиций ожидает проверки</span>
       </div>
-      <button type="button" data-open-engineer-requests>??????? ??????</button>
+      <button type="button" data-open-engineer-requests>Открыть список</button>
     </div>
     ${requests.map(req => `
       <section class="engineer-incoming-request" data-engineer-req="${escapeHtml(req.id)}">
         <header>
           <b>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</b>
-          <span>${escapeHtml(req.area || "")} ? ${dateHuman(req.date)}${req.sourceName ? ` ? ?? ${escapeHtml(req.sourceName)}` : ""}</span>
-          <button type="button" data-print-engineer-req="${escapeHtml(req.id)}">${mobileShareMode() ? "????????? WhatsApp" : "????????"}</button>
+          <span>${escapeHtml(req.area || "")} · ${dateHuman(req.date)}${req.sourceName ? ` · от ${escapeHtml(req.sourceName)}` : ""}</span>
+          <button type="button" data-print-engineer-req="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>
         </header>
         <div class="engineer-incoming-table-wrap">
           <table class="engineer-incoming-table">
-            <thead><tr><th>?</th><th>??? ????????</th><th>????????????</th><th>???????</th><th>???????</th><th>??.</th><th>????.</th><th>?????.</th><th>??????????</th><th></th></tr></thead>
+            <thead><tr><th>№</th><th>Кто отправил</th><th>Наименование</th><th>Артикул</th><th>Остаток</th><th>Ед.</th><th>Заяв.</th><th>Необх.</th><th>Примечание</th><th></th></tr></thead>
             <tbody>
               ${requestItems(req).map((item, index) => `
                 <tr data-engineer-req-row="${escapeHtml(req.id)}" data-engineer-item-index="${index}">
                   <td>${index + 1}</td>
-                  <td><span class="manual-text">${escapeHtml([item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" ? "))}</span></td>
+                  <td><span class="manual-text">${escapeHtml([item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · "))}</span></td>
                   <td><textarea data-engineer-item-name rows="2">${escapeHtml(item.name || "")}</textarea></td>
                   <td><input data-engineer-item-article type="text" value="${escapeHtml(item.article || "")}"></td>
                   <td><input data-engineer-item-stock type="text" value="${escapeHtml(item.stockRemainder || "")}"></td>
-                  <td><input data-engineer-item-unit type="text" value="${escapeHtml(item.unit || "??")}"></td>
+                  <td><input data-engineer-item-unit type="text" value="${escapeHtml(item.unit || "шт")}"></td>
                   <td><input data-engineer-item-requested type="number" min="0" step="1" value="${Number(item.requestedQty || 0)}"></td>
                   <td><input data-engineer-item-required type="number" min="0" step="1" value="${Number(item.requiredQty || item.requestedQty || 0)}"></td>
-                  <td><textarea data-engineer-item-note rows="2">${escapeHtml(item.note || "")}</textarea>${item.photo ? `<img class="request-item-photo" src="${item.photo}" alt="???? ??????? ${index + 1}">` : ""}</td>
-                  <td><button type="button" data-delete-engineer-item>???????</button></td>
+                  <td><textarea data-engineer-item-note rows="2">${escapeHtml(item.note || "")}</textarea>${item.photo ? `<img class="request-item-photo" src="${item.photo}" alt="Фото позиции ${index + 1}">` : ""}</td>
+                  <td><button type="button" data-delete-engineer-item>Удалить</button></td>
                 </tr>
               `).join("")}
             </tbody>
@@ -4698,8 +4698,8 @@ function workerSendsTmcRequestToEngineer(role = profile?.role) {
 }
 
 function tmcRequestSubmitLabel(role = profile?.role) {
-  if (mobileShareMode()) return "????????? ? WhatsApp";
-  return workerSendsTmcRequestToEngineer(role) ? "????????? ????????" : "??????? ??????";
+  if (mobileShareMode()) return "Отправить в WhatsApp";
+  return workerSendsTmcRequestToEngineer(role) ? "Отправить инженеру" : "Создать заявку";
 }
 
 function updateTmcRequestButtonLabels() {
@@ -4707,15 +4707,15 @@ function updateTmcRequestButtonLabels() {
   const quickLabel = ui.createTmcRequestButton?.querySelector("span");
   const quickBadge = ui.createTmcRequestButton?.querySelector("strong");
   const engineerCount = profile?.role === "engineer" ? engineerIncomingTmcItemCount() : 0;
-  if (quickLabel) quickLabel.textContent = engineerCount > 0 ? "??????" : submitLabel;
-  if (quickBadge) quickBadge.textContent = engineerCount > 0 ? engineerCount : workerSendsTmcRequestToEngineer() ? "?" : "+";
+  if (quickLabel) quickLabel.textContent = engineerCount > 0 ? "Заявки" : submitLabel;
+  if (quickBadge) quickBadge.textContent = engineerCount > 0 ? engineerCount : workerSendsTmcRequestToEngineer() ? "→" : "+";
   ui.createTmcRequestButton?.classList.toggle("request-alert", engineerCount > 0);
   ui.createTmcRequestButton?.classList.toggle("has-count", engineerCount > 0);
   if (ui.submitTmcRequest) ui.submitTmcRequest.textContent = submitLabel;
 }
 
 function renderRequestCreate() {
-  ui.subtitle.textContent = "????? ??????";
+  ui.subtitle.textContent = "Новая заявка";
   updateTmcRequestButtonLabels();
   renderEngineerIncomingBanner();
   renderEngineerIncomingTmcPanel();
@@ -4724,8 +4724,8 @@ function renderRequestCreate() {
   ensureTmcRequestRows();
   if (ui.tmcRequestStatus && !ui.tmcRequestStatus.textContent) {
     ui.tmcRequestStatus.textContent = workerSendsTmcRequestToEngineer()
-      ? "????????? ?????? ?????? ? ????????? ????????"
-      : "????????? ?????? ?????? ? ??????? ???????";
+      ? "Заполните строки заявки и отправьте инженеру"
+      : "Заполните строки заявки и нажмите создать";
   }
 }
 
@@ -4767,7 +4767,7 @@ function createStandaloneTmcRequest() {
     if (ui.tmcRequestDue?.value && (!existing.dueDate || ui.tmcRequestDue.value < existing.dueDate)) {
       existing.dueDate = ui.tmcRequestDue.value;
     }
-    requestAddHistory(existing, "????????? ?????? ??????", text);
+    requestAddHistory(existing, "Добавлены строки заявки", text);
     saveState();
     current.tmcRequestMerged = true;
     return existing;
@@ -4779,8 +4779,8 @@ function createStandaloneTmcRequest() {
     nodeIndex: Number.isFinite(nodeIndex) ? nodeIndex : 0,
     date: todayISO(),
     kind: "tmc",
-    equipment: eq?.name || "??? ????????????",
-    area: authorSendsToEngineer ? "??????? ?????? ????????" : area,
+    equipment: eq?.name || "Без оборудования",
+    area: authorSendsToEngineer ? "Сводная заявка инженеру" : area,
     node: eq?.nodes?.[nodeIndex] || "",
     comment: "",
     commentPhoto: "",
@@ -4837,7 +4837,7 @@ function createStandaloneTmcRequest() {
     updatedAt: now,
     history: [{
       at: now,
-      action: "?????? ???????",
+      action: "Заявка создана",
       details: text,
       status: initialRequestStatus,
       role: profile?.role || "",
@@ -4874,7 +4874,7 @@ function buildMobileTmcRequestDraft() {
     createdAt: now,
     updatedAt: now,
     area,
-    equipment: eq?.name || "??? ????????????",
+    equipment: eq?.name || "Без оборудования",
     node: eq?.nodes?.[nodeIndex] || "",
     text: items.map(item => item.name).filter(Boolean).join("; "),
     items,
@@ -4890,7 +4890,7 @@ function buildMobileTmcRequestDraft() {
     reportOnly: true,
     done: true,
     sourceKey: profileKey(),
-    history: [{ at: now, action: "?????????? ????? WhatsApp", details: items.map(item => item.name).filter(Boolean).join("; "), status: "whatsapp", role: profile?.role || "", name: profile?.name || "" }],
+    history: [{ at: now, action: "Отправлено через WhatsApp", details: items.map(item => item.name).filter(Boolean).join("; "), status: "whatsapp", role: profile?.role || "", name: profile?.name || "" }],
     approvals: {}
   });
 }
@@ -4917,7 +4917,7 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
     existing.additionalPhotos = Array.isArray(existing.additionalPhotos) ? existing.additionalPhotos : [];
     if (requestPhoto) existing.additionalPhotos.push(requestPhoto);
     existing.comment = [existing.comment, commentsSummary(item) || item.comment || ""].filter(Boolean).join("\n");
-    requestAddHistory(existing, "????????? ?????? ?? ???????", `${eq?.name || ""} ? ${eq?.nodes?.[nodeIndex] || ""}: ${cleanText}`);
+    requestAddHistory(existing, "Добавлена строка из журнала", `${eq?.name || ""} · ${eq?.nodes?.[nodeIndex] || ""}: ${cleanText}`);
     syncRequestToRecord(existing);
     item.lastRequestId = existing.id;
     item.request = "";
@@ -4983,8 +4983,8 @@ function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, tex
     updatedAt: now,
     history: [{
       at: now,
-      action: "?????? ??????? ?? ???????",
-      details: `${eq?.name || ""} ? ${eq?.nodes?.[nodeIndex] || ""}: ${cleanText}`,
+      action: "Заявка создана из журнала",
+      details: `${eq?.name || ""} · ${eq?.nodes?.[nodeIndex] || ""}: ${cleanText}`,
       status: initialRequestStatus,
       role: profile?.role || "",
       name: profile?.name || ""
@@ -5110,13 +5110,13 @@ function askCommentSubmit() {
     };
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
-        <strong>????????? ? ???????????</strong>
-        <p>???? ???? ??????????, ?????? ??????? ? ???????.</p>
+        <strong>Замечание с остановкой?</strong>
+        <p>Если узел остановлен, запись попадет в простои.</p>
         <div class="send-kind-actions">
-          <button type="button" data-send-without-stop>??? ?????????</button>
-          <button type="button" data-send-stop-type="breakdown">????????? ?????????</button>
-          <button type="button" data-send-stop-type="production">???????????????? ?????????</button>
-          <button type="button" data-send-cancel>??????</button>
+          <button type="button" data-send-without-stop>Без остановки</button>
+          <button type="button" data-send-stop-type="breakdown">Аварийная остановка</button>
+          <button type="button" data-send-stop-type="production">Производственная остановка</button>
+          <button type="button" data-send-cancel>Отмена</button>
         </div>
       </div>
     `;
@@ -5172,21 +5172,21 @@ function requestNeedsRole(req, role) {
 
 function requestRoleLabel(role) {
   return {
-    all: "???",
-    manual: "?????? ?????",
-    shop: "????????? ????",
-    confirmInstall: "???????/???????? ????????????",
-    engineer: "???????",
-    financePre: "?????? ????????????",
-    supply: "?????? ????????????",
-    finance: "?????? ????????????",
-    cash: "?????? ????????????",
-    productionDirector: "???????? ????????????",
-    accounting: "?????????????",
-    warehouse: "??????????",
-    mechanic: "???????",
-    electrician: "????????",
-    operator: "????????"
+    all: "Все",
+    manual: "Ручной обход",
+    shop: "Начальник цеха",
+    confirmInstall: "Инженер/Директор производства",
+    engineer: "Инженер",
+    financePre: "Ручное согласование",
+    supply: "Ручное согласование",
+    finance: "Ручное согласование",
+    cash: "Ручное согласование",
+    productionDirector: "Директор производства",
+    accounting: "Ответственный",
+    warehouse: "Складовщик",
+    mechanic: "Механик",
+    electrician: "Электрик",
+    operator: "Оператор"
   }[role] || role;
 }
 
@@ -5224,7 +5224,7 @@ function quantityText(req) {
   const issued = Number(req.qtyIssued || 0);
   if (!received && !issued) return "";
   const left = Math.max(received - issued, 0);
-  return `????????: ${received} ??. ? ??????: ${issued} ??. ? ????????: ${left} ??.`;
+  return `Получено: ${received} шт. · Выдано: ${issued} шт. · Осталось: ${left} шт.`;
 }
 
 function financeInfoText(req) {
@@ -5232,16 +5232,16 @@ function financeInfoText(req) {
   const supplier = String(req.supplier || "").trim();
   if (!price && !supplier) return "";
   return [
-    price ? `????: ${price}` : "",
-    supplier ? `?????????: ${supplier}` : ""
-  ].filter(Boolean).join(" ? ");
+    price ? `Цена: ${price}` : "",
+    supplier ? `Поставщик: ${supplier}` : ""
+  ].filter(Boolean).join(" · ");
 }
 
 function renderPhotoPreview(container, src, label) {
   if (!container) return;
   container.innerHTML = src ? `
     <img src="${src}" alt="${label}">
-    <button type="button" data-clear-photo="${label}">??????? ????</button>
+    <button type="button" data-clear-photo="${label}">Удалить фото</button>
   ` : "";
 }
 
@@ -5342,14 +5342,14 @@ function durationText(ms) {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours && minutes) return `${hours} ? ${minutes} ???`;
-  if (hours) return `${hours} ?`;
-  return `${minutes} ???`;
+  if (hours && minutes) return `${hours} ч ${minutes} мин`;
+  if (hours) return `${hours} ч`;
+  return `${minutes} мин`;
 }
 
 function downtimeTypeLabel(type) {
-  if (type === "remark") return "?????????";
-  return type === "production" ? "????????????" : "???????";
+  if (type === "remark") return "Замечание";
+  return type === "production" ? "Производство" : "Поломка";
 }
 
 function chooseDowntimeType() {
@@ -5358,11 +5358,11 @@ function chooseDowntimeType() {
     overlay.className = "downtime-type-overlay";
     overlay.innerHTML = `
       <div class="downtime-type-dialog" role="dialog" aria-modal="true">
-        <strong>??? ?????????</strong>
-        <p>????????, ?????? ?????????? ????.</p>
-        <button type="button" data-downtime-type="production">????????????</button>
-        <button type="button" data-downtime-type="breakdown">???????</button>
-        <button type="button" data-downtime-type="">??????</button>
+        <strong>Тип остановки</strong>
+        <p>Выберите, почему остановлен узел.</p>
+        <button type="button" data-downtime-type="production">Производство</button>
+        <button type="button" data-downtime-type="breakdown">Поломка</button>
+        <button type="button" data-downtime-type="">Отмена</button>
       </div>
     `;
     overlay.addEventListener("click", event => {
@@ -5442,7 +5442,7 @@ function downtimeAreaColor(area) {
 
 function equipmentRowColor(eq) {
   const sameAreaCount = allEquipment().filter(item => item.area === eq.area).length;
-  const isReserveEquipment = sameAreaCount > 1 && /^????????????\s+\d+$/i.test(String(eq.name || "").trim());
+  const isReserveEquipment = sameAreaCount > 1 && /^оборудование\s+\d+$/i.test(String(eq.name || "").trim());
   if (!isReserveEquipment) return downtimeAreaColor(eq.area);
   const index = allEquipment()
     .filter(item => item.area === eq.area)
@@ -5471,7 +5471,7 @@ function downtimePieChart(stats) {
   const { start, end } = monthRange(current.downtimeYear, current.downtimeMonth);
   const monthMs = end.getTime() - start.getTime();
   if (!monthMs || !activeStats.length) {
-    return `<div class="empty-state">?? ????????? ????? ???????? ???</div>`;
+    return `<div class="empty-state">За выбранный месяц простоев нет</div>`;
   }
   const colors = DOWNTIME_COLORS;
   let angle = 0;
@@ -5508,14 +5508,14 @@ function downtimePieChart(stats) {
       <button type="button" class="downtime-legend-item ${current.selectedDowntimeArea === item.area ? "active" : ""} ${overLimit ? "limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
         <i style="background:${colors[index % colors.length]}"></i>
         <span>${escapeHtml(item.area)}</span>
-        <strong>${percent}% ? ${durationText(item.totalMs)}${overLimit ? " ? ???????? ????? 125 ?" : ""}</strong>
+        <strong>${percent}% · ${durationText(item.totalMs)}${overLimit ? " · превышен лимит 125 ч" : ""}</strong>
       </button>
     `;
   }).join("");
   return `
     <div class="downtime-pie-wrap">
-      <div class="downtime-pie-note">???? ???? - ????????? ?????. ??????? ?????? ???? ?????????? ??? ??????? ?? ?????. ?????: 125 ????? ?? ???; ?????????? ??????.</div>
-      <svg class="downtime-pie" viewBox="0 0 240 240" role="img" aria-label="???????? ???????? ?? ?????">
+      <div class="downtime-pie-note">Весь круг - выбранный месяц. Цветной сектор цеха показывает его простой за месяц. Лимит: 125 часов на цех; превышение мигает.</div>
+      <svg class="downtime-pie" viewBox="0 0 240 240" role="img" aria-label="Проценты простоев по цехам">
         ${slices}
         ${restSlice}
       </svg>
@@ -5563,35 +5563,35 @@ function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdo
   if (!text || activeDowntime(equipmentId, nodeIndex)) return null;
   openDowntime(equipmentId, nodeIndex, text, type, { remote: false });
   const opened = activeDowntime(equipmentId, nodeIndex);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "?????????", text);
+  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Остановка", text);
   return opened;
 }
 
 function closeDowntimeFromFix(equipmentId, nodeIndex, comment) {
   const active = activeDowntime(equipmentId, nodeIndex);
   if (!active) return;
-  const text = String(comment || "").trim() || "????????? ?????????";
+  const text = String(comment || "").trim() || "Замечание устранено";
   closeDowntime(active, text);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "????", text);
+  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Пуск", text);
 }
 
 async function toggleDowntime(equipmentId, nodeIndex) {
   const active = activeDowntime(equipmentId, nodeIndex);
   if (active) {
-    const comment = window.prompt("??????????? ? ?????. ??? ??????????? ???? ?? ?????????.");
+    const comment = window.prompt("Комментарий к пуску. Без комментария пуск не сохраняем.");
     if (!String(comment || "").trim()) return;
     closeDowntime(active, comment);
-    appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "????", comment);
+    appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Пуск", comment);
     saveState();
     renderChecklist();
     return;
   }
   const type = await chooseDowntimeType();
   if (!type) return;
-  const comment = window.prompt("??????? ???????. ??? ??????????? ????????? ?? ?????????.");
+  const comment = window.prompt("Причина простоя. Без комментария остановку не сохраняем.");
   if (!String(comment || "").trim()) return;
   openDowntime(equipmentId, nodeIndex, comment, type);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "????", comment);
+  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Стоп", comment);
   saveState();
   renderChecklist();
 }
@@ -5604,7 +5604,7 @@ function updateDowntimeBadge() {
 }
 
 function partNameFromRequest(req) {
-  return String(req.text || "").trim() || "???????? ??? ????????";
+  return String(req.text || "").trim() || "Запчасть без названия";
 }
 
 function partArticleFromRequest(req) {
@@ -5612,7 +5612,7 @@ function partArticleFromRequest(req) {
 }
 
 function inventoryNameFromRequestItem(item, fallback = "") {
-  return String(item?.name || item?.text || fallback || "???????? ??? ????????").trim();
+  return String(item?.name || item?.text || fallback || "Запчасть без названия").trim();
 }
 
 function requestInventoryLines(req) {
@@ -5623,8 +5623,8 @@ function requestInventoryLines(req) {
       name: partNameFromRequest(req),
       article: partArticleFromRequest(req),
       qty: Number(req.qtyReceived || req.requestedQty || 1) || 1,
-      unit: requestItems(req)[0]?.unit || req.unit || "??",
-      note: [req.node, req.comment].filter(Boolean).join(" ? ")
+      unit: requestItems(req)[0]?.unit || req.unit || "шт",
+      note: [req.node, req.comment].filter(Boolean).join(" · ")
     }];
   }
   return items
@@ -5633,8 +5633,8 @@ function requestInventoryLines(req) {
       name: inventoryNameFromRequestItem(item, partNameFromRequest(req)),
       article: normalizeArticle(item.article),
       qty: Number(item.requiredQty || item.requestedQty || 0),
-      unit: item.unit || "??",
-      note: [item.note, item.supplyNote].filter(Boolean).join(" ? ")
+      unit: item.unit || "шт",
+      note: [item.note, item.supplyNote].filter(Boolean).join(" · ")
     }))
     .filter(line => line.name && line.qty > 0);
 }
@@ -5661,7 +5661,7 @@ function addRequestItemsToInventory(req, targetArea, totalReceived = 0) {
     const already = Number(added[line.key] || 0);
     const delta = Math.max(acceptedQty - already, 0);
     if (delta <= 0) return;
-    addInventory(targetArea, line.name, delta, `?????: ${req.equipment || req.requestNumber || ""}`, {
+    addInventory(targetArea, line.name, delta, `Запас: ${req.equipment || req.requestNumber || ""}`, {
       stockAt: now,
       article: line.article,
       unit: line.unit,
@@ -5748,7 +5748,7 @@ function renderWarehouseFolders(selectedArea = warehouseFolderArea(), data = nul
         return `
           <button type="button" data-warehouse-folder="${escapeHtml(area)}" class="${area === selectedArea ? "active" : ""} ${stats.pending ? "request-alert" : ""}">
             <span>${escapeHtml(area)}</span>
-            <strong>${stats.positions} ???.${stats.pending ? ` ? ?????? ${stats.pending}` : ""}</strong>
+            <strong>${stats.positions} поз.${stats.pending ? ` · приход ${stats.pending}` : ""}</strong>
           </button>
         `;
       }).join("")}
@@ -5765,44 +5765,44 @@ function renderWarehouseInventory(area = warehouseFolderArea(), canManageWarehou
   return `
     <div class="warehouse-stock-folder">
       <div class="warehouse-stock-head">
-        <strong>?????: ${escapeHtml(area)}</strong>
-        <span>${matchedItems.length ? `???????? ${items.length} ?? ${matchedItems.length} ???????` : "???? ?????"}</span>
+        <strong>Склад: ${escapeHtml(area)}</strong>
+        <span>${matchedItems.length ? `Показано ${items.length} из ${matchedItems.length} позиций` : "Пока пусто"}</span>
       </div>
-      ${hiddenCount ? `<div class="empty-state">???????? ?????? ${WAREHOUSE_RENDER_LIMIT} ???????. ??? ???????? ???????? ???????? ????????, ????? ??? ?????????? ? ?????.</div>` : ""}
+      ${hiddenCount ? `<div class="empty-state">Показаны первые ${WAREHOUSE_RENDER_LIMIT} позиций. Для быстрого перехода напишите название, полку или примечание в поиск.</div>` : ""}
       ${items.length ? items.map(item => {
-        const unit = escapeHtml(item.unit || "??");
+        const unit = escapeHtml(item.unit || "шт");
         return `
         <div class="warehouse-stock-row ${q && inventoryMatchesWarehouseSearch(item, q) ? "search-hit" : ""}" data-stock-row="${escapeHtml(item.id)}">
           <div>
             <span>${escapeHtml(item.name)}</span>
-            <small>???????: ${escapeHtml(item.article || "??? ????????")}</small>
-            <small>??. ???.: ${unit}</small>
-            ${item.note || item.location ? `<small>?????/??????????: ${escapeHtml(item.note || item.location || "")}</small>` : ""}
+            <small>Артикул: ${escapeHtml(item.article || "без артикула")}</small>
+            <small>Ед. изм.: ${unit}</small>
+            ${item.note || item.location ? `<small>Место/примечание: ${escapeHtml(item.note || item.location || "")}</small>` : ""}
             <small>${escapeHtml(item.source || "")}</small>
-            <small class="${parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "") ? "" : "request-alert"}">???? ?? 1 ${unit}: ${parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "") ? escapeHtml(formatMoney(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || ""))) : "??? ????, ?????????? ?????? ????????"}</small>
-            <small>??????: ${escapeHtml(dateTimeHuman(item.lastReceivedAt || item.updatedAt || ""))}${item.lastStockAt ? ` ? ? ?????: ${escapeHtml(dateTimeHuman(item.lastStockAt))}` : ""}</small>
-            <small>????????: ${Number(item.receivedQty || (Number(item.qty || 0) + Number(item.issuedQty || 0)))} ${unit} ? ??????: ${Number(item.issuedQty || 0)} ${unit} ? ????????: ${Number(item.qty || 0)} ${unit}</small>
+            <small class="${parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "") ? "" : "request-alert"}">Цена за 1 ${unit}: ${parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "") ? escapeHtml(formatMoney(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || ""))) : "нет цены, складовщик должен добавить"}</small>
+            <small>Приход: ${escapeHtml(dateTimeHuman(item.lastReceivedAt || item.updatedAt || ""))}${item.lastStockAt ? ` · В запас: ${escapeHtml(dateTimeHuman(item.lastStockAt))}` : ""}</small>
+            <small>Получено: ${Number(item.receivedQty || (Number(item.qty || 0) + Number(item.issuedQty || 0)))} ${unit} · Выдано: ${Number(item.issuedQty || 0)} ${unit} · Осталось: ${Number(item.qty || 0)} ${unit}</small>
           </div>
           <strong>${Number(item.qty || 0)} ${unit}</strong>
           <div class="stock-row-actions">
             <input data-stock-qty="${escapeHtml(item.id)}" type="number" min="0.001" step="0.001" max="${Number(item.qty || 0)}" value="${Math.min(1, Number(item.qty || 0))}">
             ${canManageWarehouse ? `
-              <input data-stock-unit="${escapeHtml(item.id)}" type="text" value="${unit}" placeholder="??. ???.: ??, ?, ??">
-              <input data-stock-price="${escapeHtml(item.id)}" type="text" inputmode="decimal" value="${escapeHtml(priceTextFromAmount(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "")))}" placeholder="???? ?? 1 ??. ???.">
-              <button type="button" data-stock-price-lookup="${escapeHtml(item.id)}">????? ????</button>
+              <input data-stock-unit="${escapeHtml(item.id)}" type="text" value="${unit}" placeholder="Ед. изм.: кг, м, шт">
+              <input data-stock-price="${escapeHtml(item.id)}" type="text" inputmode="decimal" value="${escapeHtml(priceTextFromAmount(parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "")))}" placeholder="Цена за 1 ед. изм.">
+              <button type="button" data-stock-price-lookup="${escapeHtml(item.id)}">Найти цену</button>
               <div class="stock-action-line">
                 <select data-stock-target="${escapeHtml(item.id)}">${warehouseOptions(item.area)}</select>
-                <button type="button" data-stock-move="${escapeHtml(item.id)}">?????????</button>
+                <button type="button" data-stock-move="${escapeHtml(item.id)}">Перенести</button>
               </div>
               <div class="stock-action-line">
                 <select data-stock-recipient="${escapeHtml(item.id)}">${warehouseRecipientOptions()}</select>
-                <button type="button" data-stock-issue="${escapeHtml(item.id)}">?????? ??????????</button>
+                <button type="button" data-stock-issue="${escapeHtml(item.id)}">Выдать сотруднику</button>
               </div>
-            ` : `<button type="button" data-stock-ask="${escapeHtml(item.id)}">????????</button>`}
+            ` : `<button type="button" data-stock-ask="${escapeHtml(item.id)}">Спросить</button>`}
           </div>
         </div>
       `;
-      }).join("") : `<div class="empty-state">?? ???? ?????? ???? ??? ????????</div>`}
+      }).join("") : `<div class="empty-state">На этом складе пока нет остатков</div>`}
     </div>
   `;
 }
@@ -5823,25 +5823,25 @@ function warehouseInstalledPartsHtml() {
   const rows = pageItems.map(req => {
     const items = requestItems(req);
     const names = items.length
-      ? items.map(item => `${item.name || req.text || "????????"}${item.article ? ` (${item.article})` : ""}`).join(", ")
+      ? items.map(item => `${item.name || req.text || "Запчасть"}${item.article ? ` (${item.article})` : ""}`).join(", ")
       : `${partNameFromRequest(req)}${partArticleFromRequest(req) ? ` (${partArticleFromRequest(req)})` : ""}`;
     const qty = Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0);
     const issuedAt = req.approvals?.warehouse?.at || req.warehouseReceivedAt || req.createdAt || "";
     const installedAt = req.approvals?.install?.at || req.updatedAt || "";
     return `
       <article class="warehouse-installed-row">
-        <div class="warehouse-installed-part"><strong>${escapeHtml(names)}</strong><span>${qty} ${escapeHtml(items[0]?.unit || "??")}</span></div>
-        <div><small>??? ????</small><strong>${escapeHtml(req.issueTargetName || "?????????? ?? ??????")}</strong><span>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</span></div>
-        <div><small>???? ?????????</small><strong>${escapeHtml(req.equipment || "???????????? ?? ???????")}</strong><span>${escapeHtml(req.node || "???? ?? ??????")}</span></div>
-        <div><small>????</small><span>??????: ${escapeHtml(dateTimeHuman(issuedAt))}</span><span>???????????: ${escapeHtml(dateTimeHuman(installedAt))}</span></div>
-        <div class="warehouse-installed-comment"><small>??????????? ?????????</small><span>${escapeHtml(req.installComment || "??? ???????????")}</span></div>
+        <div class="warehouse-installed-part"><strong>${escapeHtml(names)}</strong><span>${qty} ${escapeHtml(items[0]?.unit || "шт")}</span></div>
+        <div><small>Кто взял</small><strong>${escapeHtml(req.issueTargetName || "Получатель не указан")}</strong><span>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</span></div>
+        <div><small>Куда установил</small><strong>${escapeHtml(req.equipment || "Оборудование не указано")}</strong><span>${escapeHtml(req.node || "Узел не указан")}</span></div>
+        <div><small>Даты</small><span>Выдано: ${escapeHtml(dateTimeHuman(issuedAt))}</span><span>Установлено: ${escapeHtml(dateTimeHuman(installedAt))}</span></div>
+        <div class="warehouse-installed-comment"><small>Комментарий установки</small><span>${escapeHtml(req.installComment || "Без комментария")}</span></div>
       </article>
     `;
   }).join("");
   return `<section class="warehouse-installed-parts">
-    <div class="warehouse-installed-head"><div><strong>????? ????????????? ?????????</strong><span>${installed.length} ??????? ? ???????? ${current.warehouseInstalledArchivePage} ?? ${pages}</span></div><button type="button" data-print-warehouse-installed ${installed.length ? "" : "disabled"}>???????? ???? ??????</button></div>
-    <div class="warehouse-installed-list">${rows || `<div class="empty-state">?????????????? ????????? ???? ???</div>`}</div>
-    ${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-installed-page="${current.warehouseInstalledArchivePage - 1}" ${current.warehouseInstalledArchivePage <= 1 ? "disabled" : ""}>? ?????</button><button type="button" data-installed-page="${current.warehouseInstalledArchivePage + 1}" ${current.warehouseInstalledArchivePage >= pages ? "disabled" : ""}>????? ?</button></div>` : ""}
+    <div class="warehouse-installed-head"><div><strong>Архив установленных запчастей</strong><span>${installed.length} записей · страница ${current.warehouseInstalledArchivePage} из ${pages}</span></div><button type="button" data-print-warehouse-installed ${installed.length ? "" : "disabled"}>Печатать весь список</button></div>
+    <div class="warehouse-installed-list">${rows || `<div class="empty-state">Подтверждённых установок пока нет</div>`}</div>
+    ${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-installed-page="${current.warehouseInstalledArchivePage - 1}" ${current.warehouseInstalledArchivePage <= 1 ? "disabled" : ""}>← Назад</button><button type="button" data-installed-page="${current.warehouseInstalledArchivePage + 1}" ${current.warehouseInstalledArchivePage >= pages ? "disabled" : ""}>Далее →</button></div>` : ""}
   </section>`;
 }
 
@@ -5851,8 +5851,8 @@ function warehouseZeroArchiveHtml() {
   const pages = Math.max(1, Math.ceil(all.length / pageSize));
   current.warehouseZeroArchivePage = Math.min(Math.max(1, Number(current.warehouseZeroArchivePage || 1)), pages);
   const start = (current.warehouseZeroArchivePage - 1) * pageSize;
-  const rows = all.slice(start, start + pageSize).map(item => `<div class="warehouse-stock-row"><div><span>${escapeHtml(item.name)}</span><small>???????: ${escapeHtml(item.article || "??? ????????")}</small><small>?????: ${escapeHtml(item.area || COMMON_WAREHOUSE)} ? ?????? ?????: ${Number(item.issuedQty || 0)} ${escapeHtml(item.unit || "??")}</small><small>???????????: ${escapeHtml(dateTimeHuman(item.archivedAt || item.lastIssuedAt || item.updatedAt || ""))}</small></div><strong>0 ${escapeHtml(item.unit || "??")}</strong></div>`).join("");
-  return `<section class="warehouse-installed-parts"><div class="warehouse-installed-head"><div><strong>????? ??????? ????????</strong><span>${all.length} ??????? ? ???????? ${current.warehouseZeroArchivePage} ?? ${pages}</span></div></div><div class="warehouse-installed-list">${rows || `<div class="empty-state">??????? ???????? ???</div>`}</div>${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-zero-page="${current.warehouseZeroArchivePage - 1}" ${current.warehouseZeroArchivePage <= 1 ? "disabled" : ""}>? ?????</button><button type="button" data-zero-page="${current.warehouseZeroArchivePage + 1}" ${current.warehouseZeroArchivePage >= pages ? "disabled" : ""}>????? ?</button></div>` : ""}</section>`;
+  const rows = all.slice(start, start + pageSize).map(item => `<div class="warehouse-stock-row"><div><span>${escapeHtml(item.name)}</span><small>Артикул: ${escapeHtml(item.article || "без артикула")}</small><small>Склад: ${escapeHtml(item.area || COMMON_WAREHOUSE)} · Выдано всего: ${Number(item.issuedQty || 0)} ${escapeHtml(item.unit || "шт")}</small><small>Закончилась: ${escapeHtml(dateTimeHuman(item.archivedAt || item.lastIssuedAt || item.updatedAt || ""))}</small></div><strong>0 ${escapeHtml(item.unit || "шт")}</strong></div>`).join("");
+  return `<section class="warehouse-installed-parts"><div class="warehouse-installed-head"><div><strong>Архив нулевых остатков</strong><span>${all.length} позиций · страница ${current.warehouseZeroArchivePage} из ${pages}</span></div></div><div class="warehouse-installed-list">${rows || `<div class="empty-state">Нулевых остатков нет</div>`}</div>${pages > 1 ? `<div class="warehouse-archive-pages"><button type="button" data-zero-page="${current.warehouseZeroArchivePage - 1}" ${current.warehouseZeroArchivePage <= 1 ? "disabled" : ""}>← Назад</button><button type="button" data-zero-page="${current.warehouseZeroArchivePage + 1}" ${current.warehouseZeroArchivePage >= pages ? "disabled" : ""}>Далее →</button></div>` : ""}</section>`;
 }
 
 function printWarehouseInstalledParts() {
@@ -5861,11 +5861,11 @@ function printWarehouseInstalledParts() {
   const rows = installed.map((req, index) => {
     const item = requestItems(req)[0] || {};
     const quantity = Number(req.qtyInstalled || req.aggregateInstalledQty || req.qtyIssued || 0);
-    return `<tr><td>${index + 1}</td><td>${escapeHtml(partNameFromRequest(req))}</td><td>${escapeHtml(partArticleFromRequest(req))}</td><td>${quantity} ${escapeHtml(item.unit || "??")}</td><td>${escapeHtml(req.issueTargetName || "-")}</td><td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</td><td>${escapeHtml(req.equipment || "-")}</td><td>${escapeHtml(req.node || "-")}</td><td>${escapeHtml(req.installComment || "-")}</td><td>${escapeHtml(dateTimeHuman(req.approvals?.install?.at || req.updatedAt || ""))}</td></tr>`;
+    return `<tr><td>${index + 1}</td><td>${escapeHtml(partNameFromRequest(req))}</td><td>${escapeHtml(partArticleFromRequest(req))}</td><td>${quantity} ${escapeHtml(item.unit || "шт")}</td><td>${escapeHtml(req.issueTargetName || "-")}</td><td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}</td><td>${escapeHtml(req.equipment || "-")}</td><td>${escapeHtml(req.node || "-")}</td><td>${escapeHtml(req.installComment || "-")}</td><td>${escapeHtml(dateTimeHuman(req.approvals?.install?.at || req.updatedAt || ""))}</td></tr>`;
   }).join("");
   const win = window.open("", "_blank", "width=1200,height=850");
   if (!win) return;
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>????? ????????????? ?????????</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#111827}h1{font-size:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #9ca3af;padding:5px;font-size:9px;text-align:left;vertical-align:top}th{background:#14324a;color:#fff}.actions{text-align:center;margin:12px}button{border:0;border-radius:7px;background:#14324a;color:#fff;padding:10px 18px;font-weight:700}@media print{.actions{display:none}}</style></head><body><h1>????? ????????????? ?????????</h1><p>????????????: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p><table><thead><tr><th>?</th><th>????????</th><th>???????</th><th>???-??</th><th>??? ????</th><th>????</th><th>????????????</th><th>????</th><th>???????????</th><th>???????????</th></tr></thead><tbody>${rows}</tbody></table><div class="actions"><button onclick="window.print()">???????? / PDF</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Архив установленных запчастей</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#111827}h1{font-size:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #9ca3af;padding:5px;font-size:9px;text-align:left;vertical-align:top}th{background:#14324a;color:#fff}.actions{text-align:center;margin:12px}button{border:0;border-radius:7px;background:#14324a;color:#fff;padding:10px 18px;font-weight:700}@media print{.actions{display:none}}</style></head><body><h1>Архив установленных запчастей</h1><p>Сформировано: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p><table><thead><tr><th>№</th><th>Запчасть</th><th>Артикул</th><th>Кол-во</th><th>Кто взял</th><th>Роль</th><th>Оборудование</th><th>Узел</th><th>Комментарий</th><th>Установлено</th></tr></thead><tbody>${rows}</tbody></table><div class="actions"><button onclick="window.print()">Печатать / PDF</button></div></body></html>`);
   win.document.close();
 }
 
@@ -5896,14 +5896,14 @@ function pendingWarehouseConfirmations() {
 
 function addInventory(area, name, qty, source = "", meta = {}) {
   state.inventory ||= {};
-  const cleanArea = area || "????? ?????";
+  const cleanArea = area || "Общий склад";
   const cleanName = String(name || "").trim();
   const amount = Number(qty || 0);
   if (!cleanName || amount <= 0) return null;
   const article = ensureInventoryArticle(cleanArea, cleanName, meta.article);
   const id = inventoryKey(cleanArea, cleanName, article);
   const now = new Date().toISOString();
-  const old = state.inventory[id] || { id, area: cleanArea, name: cleanName, article, qty: 0, source: "", unit: "??" };
+  const old = state.inventory[id] || { id, area: cleanArea, name: cleanName, article, qty: 0, source: "", unit: "шт" };
   const newPrice = parseMoneyAmount(meta.price || meta.unitPrice || "");
   const oldPrice = parseMoneyAmount(old.unitPrice || old.price || old.lastPrice || "");
   const nextReceivedQty = Number(old.receivedQty || (Number(old.qty || 0) + Number(old.issuedQty || 0))) + amount;
@@ -5917,7 +5917,7 @@ function addInventory(area, name, qty, source = "", meta = {}) {
     area: cleanArea,
     name: cleanName,
     article,
-    unit: String(meta.unit || old.unit || "??").trim(),
+    unit: String(meta.unit || old.unit || "шт").trim(),
     qty: Number(old.qty || 0) + amount,
     archivedAt: "",
     receivedQty: nextReceivedQty,
@@ -5938,7 +5938,7 @@ function addInventory(area, name, qty, source = "", meta = {}) {
 
 function removeInventory(area, name, qty, countIssued = false, article = "") {
   state.inventory ||= {};
-  const id = inventoryKey(area || "????? ?????", name, article);
+  const id = inventoryKey(area || "Общий склад", name, article);
   const item = state.inventory[id];
   const amount = Number(qty || 0);
   if (!item || amount <= 0) return false;
@@ -5970,7 +5970,7 @@ function updateInventoryUnitPrice(item, price) {
   return amount;
 }
 
-function ensureInventoryPriceForOperation(item, priceInput, message = "??????? ???? ?? 1 ??????? ?????????. ??? ???? ????????? ???????? ?????????.") {
+function ensureInventoryPriceForOperation(item, priceInput, message = "Укажите цену за 1 единицу измерения. Без цены складская операция запрещена.") {
   if (!item) return 0;
   const typedPrice = parseMoneyAmount(priceInput?.value ?? priceInput ?? "");
   const currentPrice = parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "");
@@ -5996,10 +5996,10 @@ function createMechanicIssueFromInventory(item, qty, targetRole = "mechanic") {
     nodeIndex: "",
     date: todayISO(),
     kind: "stock",
-    equipment: `?????: ${item.area}`,
+    equipment: `Склад: ${item.area}`,
     area: item.area,
-    node: item.source || "?????? ?????? ?? ??????",
-    comment: "?????? ?? ?????????? ???????",
+    node: item.source || "Ручная выдача со склада",
+    comment: "Выдано из складского остатка",
     text: item.name,
     article: item.article || "",
     items: [{
@@ -6007,7 +6007,7 @@ function createMechanicIssueFromInventory(item, qty, targetRole = "mechanic") {
       name: item.name,
       article: item.article || "",
       stockRemainder: "",
-      unit: item.unit || "??",
+      unit: item.unit || "шт",
       requestedQty: issuedAmount,
       requiredQty: issuedAmount,
       note: item.note || ""
@@ -6056,9 +6056,9 @@ function createWarehouseAskFromInventory(item, qty) {
     nodeIndex: "",
     date: todayISO(),
     kind: "stock",
-    equipment: `?????: ${item.area}`,
+    equipment: `Склад: ${item.area}`,
     area: item.area,
-    node: item.source || "?????? ?? ??????",
+    node: item.source || "Запрос со склада",
     comment: `${ROLE_ACCESS[profile.role]?.label || profile.role}: ${profile.name || ""}`,
     text: item.name,
     article: item.article || "",
@@ -6067,7 +6067,7 @@ function createWarehouseAskFromInventory(item, qty) {
       name: item.name,
       article: item.article || "",
       stockRemainder: "",
-      unit: item.unit || "??",
+      unit: item.unit || "шт",
       requestedQty: askedAmount,
       requiredQty: askedAmount,
       note: item.note || ""
@@ -6115,9 +6115,9 @@ function createWarehouseAskFromInventory(item, qty) {
   return true;
 }
 
-function createManualWarehouseRequest(area, name, qty, note, article = "", unit = "??", price = "") {
+function createManualWarehouseRequest(area, name, qty, note, article = "", unit = "шт", price = "") {
   const cleanName = String(name || "").trim();
-  const cleanUnit = String(unit || "??").trim() || "??";
+  const cleanUnit = String(unit || "шт").trim() || "шт";
   const amount = Number(qty || 0);
   if (!cleanName || amount <= 0) return null;
   const cleanArticle = ensureInventoryArticle(area || COMMON_WAREHOUSE, cleanName, article);
@@ -6131,10 +6131,10 @@ function createManualWarehouseRequest(area, name, qty, note, article = "", unit 
     nodeIndex: "",
     date: todayISO(),
     kind: "manual",
-    equipment: "?????? ?? ?????",
+    equipment: "Приход на склад",
     area: area || COMMON_WAREHOUSE,
-    node: note || "????????? ????????????",
-    comment: note || "?????????? ?? ?????",
+    node: note || "Добавлено складовщиком",
+    comment: note || "Добавление на склад",
     text: cleanName,
     article: cleanArticle,
     items: [{
@@ -6149,7 +6149,7 @@ function createManualWarehouseRequest(area, name, qty, note, article = "", unit 
     }],
     price: "",
     warehouseUnitPrice: cleanPrice,
-    supplier: "????????? ????????????",
+    supplier: "Добавлено складовщиком",
     status: "waitingWarehouse",
     shopApproved: true,
     engineerApproved: true,
@@ -6185,8 +6185,8 @@ function warehouseOptions(selectedArea = "") {
   return WAREHOUSE_AREAS.map(area => `<option value="${area}" ${area === selectedArea ? "selected" : ""}>${area}</option>`).join("");
 }
 
-function inventoryUnitOptions(selected = "??") {
-  const units = ["??", "??", "?", "?", "????????", "????????", "?????"];
+function inventoryUnitOptions(selected = "шт") {
+  const units = ["шт", "кг", "м", "л", "комплект", "упаковка", "рулон"];
   return units.map(unit => `<option value="${unit}" ${unit === selected ? "selected" : ""}>${unit}</option>`).join("");
 }
 
@@ -6194,7 +6194,7 @@ function warehouseRecipientOptions(selectedRole = "mechanic", selectedPhone = ""
   const users = loadUsers()
     .filter(user => user.approved !== false && user.pendingApproval !== true && canReceiveWarehouseIssue(user.role))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
-  return `<option value="">???????? ??????????</option>${users.map(user => `<option value="${escapeHtml(user.phone || user.id || user.employeeId || user.name || "")}" data-role="${escapeHtml(user.role || selectedRole)}" data-name="${escapeHtml(user.name || "")}" data-phone="${escapeHtml(user.phone || "")}" ${(selectedPhone && String(user.phone || "") === String(selectedPhone)) ? "selected" : ""}>${escapeHtml(user.name || "??? ?????")} ? ${escapeHtml(requestRoleLabel(user.role))}${user.area ? ` ? ${escapeHtml(user.area)}` : ""}</option>`).join("")}`;
+  return `<option value="">Выберите сотрудника</option>${users.map(user => `<option value="${escapeHtml(user.phone || user.id || user.employeeId || user.name || "")}" data-role="${escapeHtml(user.role || selectedRole)}" data-name="${escapeHtml(user.name || "")}" data-phone="${escapeHtml(user.phone || "")}" ${(selectedPhone && String(user.phone || "") === String(selectedPhone)) ? "selected" : ""}>${escapeHtml(user.name || "Без имени")} · ${escapeHtml(requestRoleLabel(user.role))}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</option>`).join("")}`;
 }
 
 function requestMatchesWarehouseSearch(req, query) {
@@ -6454,41 +6454,41 @@ function requestWaitingForWarehouse(req) {
 }
 
 function statusText(status) {
-  if (status === "stock") return "? ??????";
+  if (status === "stock") return "В запасе";
   return {
-    created: "???????",
-    manual: "?????? ?????",
-    shop: "??????? ?????????? ????",
-    engineer: "??????? ????????",
-    financePre: "?????? ????????????",
-    supply: "?????? ????????????",
-    finance: "?????? ????????????",
-    financeApproved: "?????? ????????????",
-    cash: "?????? ????????????",
-    cashApproved: "?????? ????????????",
-    waitingWarehouse: "???????? ???????????",
-    warehouse: "? ???????????",
-    issued: "?????? ??????????",
-    waitingShopDone: "???? ????????????? ?????????",
-    productionDirector: "???? ????????? ????????????",
-    accounting: "???? ??????????????",
-    stockOut: "????? ??????????",
-    rejected: "?????????",
-    done: "?????????"
+    created: "Создана",
+    manual: "Ручной обход",
+    shop: "Ожидает начальника цеха",
+    engineer: "Ожидает инженера",
+    financePre: "Ручное согласование",
+    supply: "Ручное согласование",
+    finance: "Ручное согласование",
+    financeApproved: "Ручное согласование",
+    cash: "Ручное согласование",
+    cashApproved: "Ручное согласование",
+    waitingWarehouse: "Передано складовщику",
+    warehouse: "У складовщика",
+    issued: "Выдано сотруднику",
+    waitingShopDone: "Ждёт подтверждения установки",
+    productionDirector: "Ждёт директора производства",
+    accounting: "Ждёт ответственного",
+    stockOut: "Запас закончился",
+    rejected: "Отклонено",
+    done: "Выполнено"
   }[status] || status;
 }
 
 function requestRouteLabel(route) {
-  if (MANUAL_REQUEST_WORKFLOW) return "?????? ??????";
-  return route === "stock" ? "?? ??????" : "???????";
+  if (MANUAL_REQUEST_WORKFLOW) return "Ручная заявка";
+  return route === "stock" ? "Со склада" : "Закупка";
 }
 
 function requestPriorityLabel(priority) {
   return {
-    normal: "???????",
-    urgent: "???????",
-    emergency: "?????????"
-  }[priority] || "???????";
+    normal: "Обычная",
+    urgent: "Срочная",
+    emergency: "Аварийная"
+  }[priority] || "Обычная";
 }
 
 function requestIsOverdue(req) {
@@ -6498,32 +6498,32 @@ function requestIsOverdue(req) {
 function requestStageItems(req) {
   if (MANUAL_REQUEST_WORKFLOW) {
     return [
-      { key: "created", label: "???????", done: true, current: false },
-      { key: "print", label: "??????", done: false, current: false },
-      { key: "manual", label: "?????? ?????", done: false, current: !req.done && !req.stock }
+      { key: "created", label: "Создана", done: true, current: false },
+      { key: "print", label: "Печать", done: false, current: false },
+      { key: "manual", label: "Ручной обход", done: false, current: !req.done && !req.stock }
     ];
   }
   const purchase = [
-    ["shop", "????????? ????"],
-    ["engineer", "???????"],
-    ["productionDirectorRequest", "???????? ????????????"],
-    ["financePre", "?????? ????????????"],
-    ["supply", "?????? ????????????"],
-    ["finance", "?????? ????????????"],
-    ["cash", "?????? ????????????"],
-    ["warehouse", "??????????"],
-    ["recipient", "??????????"],
-    ["install", "?????????"],
-    ["productionDirector", "?????????????"],
-    ["accounting", "?????????????"]
+    ["shop", "Начальник цеха"],
+    ["engineer", "Инженер"],
+    ["productionDirectorRequest", "Директор производства"],
+    ["financePre", "Ручное согласование"],
+    ["supply", "Ручное согласование"],
+    ["finance", "Ручное согласование"],
+    ["cash", "Ручное согласование"],
+    ["warehouse", "Складовщик"],
+    ["recipient", "Получатель"],
+    ["install", "Установка"],
+    ["productionDirector", "Подтверждение"],
+    ["accounting", "Ответственный"]
   ];
   const stock = [
-    ["shop", "????????? ????"],
-    ["warehouse", "??????????"],
-    ["recipient", "??????????"],
-    ["install", "?????????"],
-    ["productionDirector", "?????????????"],
-    ["accounting", "?????????????"]
+    ["shop", "Начальник цеха"],
+    ["warehouse", "Складовщик"],
+    ["recipient", "Получатель"],
+    ["install", "Установка"],
+    ["productionDirector", "Подтверждение"],
+    ["accounting", "Ответственный"]
   ];
   const done = {
     shop: Boolean(req.shopApproved),
@@ -6556,8 +6556,8 @@ function requestStageItems(req) {
 }
 
 function requestStageHtml(req) {
-  return `<div class="request-stage-line" aria-label="????? ??????">${requestStageItems(req).map(stage =>
-    `<span class="${[stage.done ? "done" : "", stage.current ? "current" : ""].filter(Boolean).join(" ")}">${stage.done ? "? " : ""}${stage.label}</span>`
+  return `<div class="request-stage-line" aria-label="Этапы заявки">${requestStageItems(req).map(stage =>
+    `<span class="${[stage.done ? "done" : "", stage.current ? "current" : ""].filter(Boolean).join(" ")}">${stage.done ? "✓ " : ""}${stage.label}</span>`
   ).join("")}</div>`;
 }
 
@@ -6570,12 +6570,12 @@ function requestQuantityHtml(req) {
   const balance = Math.max(accepted - issued, 0);
   return `
     <div class="request-qty-grid">
-      <span><small>?????????</small><strong>${requested}</strong></span>
-      <span><small>?????????</small><strong>${purchased}</strong></span>
-      <span><small>???????</small><strong>${accepted}</strong></span>
-      <span><small>??????</small><strong>${issued}</strong></span>
-      <span><small>???????????</small><strong>${installed}</strong></span>
-      <span><small>???????</small><strong>${balance}</strong></span>
+      <span><small>Запрошено</small><strong>${requested}</strong></span>
+      <span><small>Закуплено</small><strong>${purchased}</strong></span>
+      <span><small>Принято</small><strong>${accepted}</strong></span>
+      <span><small>Выдано</small><strong>${issued}</strong></span>
+      <span><small>Установлено</small><strong>${installed}</strong></span>
+      <span><small>Остаток</small><strong>${balance}</strong></span>
     </div>
   `;
 }
@@ -6584,11 +6584,11 @@ function requestHistoryHtml(req) {
   const history = Array.isArray(req.history) ? req.history.slice().reverse() : [];
   return `
     <details class="request-history">
-      <summary>??????? ???????? (${history.length})</summary>
+      <summary>История действий (${history.length})</summary>
       <ol>${history.map(entry => `
         <li>
-          <strong>${escapeHtml(entry.action || "?????????")}</strong>
-          ${entry.name || entry.role ? ` ? ${escapeHtml(entry.name || requestRoleLabel(entry.role))}` : ""}
+          <strong>${escapeHtml(entry.action || "Изменение")}</strong>
+          ${entry.name || entry.role ? ` — ${escapeHtml(entry.name || requestRoleLabel(entry.role))}` : ""}
           <time>${dateTimeHuman(entry.at)}</time>
           ${entry.details ? `<div>${escapeHtml(entry.details)}</div>` : ""}
         </li>
@@ -6602,26 +6602,26 @@ function requestRecordApproval(req, key, label) {
   req.approvals[key] = {
     label,
     at: new Date().toISOString(),
-    name: profile?.name || "?????????",
+    name: profile?.name || "Сотрудник",
     role: profile?.role || ""
   };
-  requestAddHistory(req, label, `??????????: ${profile?.name || requestRoleLabel(profile?.role || "")}`);
+  requestAddHistory(req, label, `Подтвердил: ${profile?.name || requestRoleLabel(profile?.role || "")}`);
 }
 
 function requestApprovalsHtml(req) {
   const definitions = [
-    ["shop", "???????????? ??????????? ????", "??????? ????????"],
-    ["engineer", "???????????? ?????????", "??????? ????????? ????????????"],
-    ["productionDirectorRequest", "?????? ???????????? ?????????? ????????????", "?????? ????????????"],
-    ["financePre", "?????? ????????????", "?????? ????????????"],
-    ["supply", "?????? ????????????", "?????? ????????????"],
-    ["finance", "?????? ????????????", "?????? ????????????"],
-    ["cash", "?????? ????????????", "?????? ????????????"],
-    ["warehouse", "?????? ????????????", "?????? ??????????"],
-    ["install", "????????? ?????????", "???? ????????????? ?????????"],
-    ["installApproval", "????????? ????????????", "???? ????????? ????????????"],
-    ["productionDirector", "???????????? ?????????? ????????????", "???? ??????????????"],
-    ["accounting", "???????", "?????????"]
+    ["shop", "Подтверждено начальником цеха", "Ожидает инженера"],
+    ["engineer", "Подтверждено инженером", "Ожидает директора производства"],
+    ["productionDirectorRequest", "Заявка подтверждена директором производства", "Ручное согласование"],
+    ["financePre", "Ручное согласование", "Ручное согласование"],
+    ["supply", "Ручное согласование", "Ручное согласование"],
+    ["finance", "Ручное согласование", "Ручное согласование"],
+    ["cash", "Ручное согласование", "Ручное согласование"],
+    ["warehouse", "Выдано складовщиком", "Выдано сотруднику"],
+    ["install", "Установка выполнена", "Ждёт подтверждения установки"],
+    ["installApproval", "Установка подтверждена", "Ждёт директора производства"],
+    ["productionDirector", "Подтверждено директором производства", "Ждёт ответственного"],
+    ["accounting", "Списано", "Выполнено"]
   ];
   const approvals = req.approvals && typeof req.approvals === "object" ? req.approvals : {};
   const history = Array.isArray(req.history) ? req.history : [];
@@ -6633,10 +6633,10 @@ function requestApprovalsHtml(req) {
   if (!entries.length) return "";
   return `
     <div class="request-approvals">
-      <strong>??? ??????????</strong>
+      <strong>Кто подтвердил</strong>
       <div>${entries.map(entry => `
         <span>
-          <b>? ${escapeHtml(entry.label || "????????????")}</b>
+          <b>✓ ${escapeHtml(entry.label || "Подтверждено")}</b>
           ${escapeHtml(entry.name || requestRoleLabel(entry.role || ""))}
           <time>${dateTimeHuman(entry.at)}</time>
         </span>
@@ -6681,7 +6681,7 @@ function cloneRequestForFinanceItems(req, selectedItems) {
     updatedAt: now,
     history: [...(Array.isArray(req.history) ? req.history : []), {
       at: now,
-      action: "??????? ??????? ? ??????",
+      action: "Выбраны позиции к оплате",
       details: requestItemsText(selectedItems),
       status: "cash",
       role: profile?.role || "",
@@ -6690,9 +6690,9 @@ function cloneRequestForFinanceItems(req, selectedItems) {
     approvals: {
       ...(req.approvals || {}),
       finance: {
-        label: "???????????? ???????",
+        label: "Подтверждено вручную",
         at: now,
-        name: profile?.name || "?????????????",
+        name: profile?.name || "Ответственный",
         role: profile?.role || "finance"
       }
     }
@@ -6704,7 +6704,7 @@ function cloneRequestForFinanceItems(req, selectedItems) {
 function approveFinanceItems(req, selectedIndexes) {
   const items = requestItems(req);
   const selected = [...new Set(selectedIndexes)].filter(index => index >= 0 && index < items.length);
-  if (!selected.length) return { ok: false, message: "???????? ???? ?? ???? ??????? ??? ??????." };
+  if (!selected.length) return { ok: false, message: "Выберите хотя бы одну позицию для оплаты." };
   const selectedItems = items.filter((_, index) => selected.includes(index));
   const remainingItems = items.filter((_, index) => !selected.includes(index));
   const now = new Date().toISOString();
@@ -6713,8 +6713,8 @@ function approveFinanceItems(req, selectedIndexes) {
     req.status = "cash";
     req.qtyReceived = requestItemsTotal(selectedItems) || req.qtyReceived || req.requestedQty || 1;
     req.qtyPurchased = req.qtyReceived;
-    requestRecordApproval(req, "finance", "???????????? ???????");
-    requestAddHistory(req, "??????? ? ?????? ??? ???????", requestItemsText(selectedItems));
+    requestRecordApproval(req, "finance", "Подтверждено вручную");
+    requestAddHistory(req, "Выбраны к оплате все позиции", requestItemsText(selectedItems));
     clearRequestReturn(req);
     syncRequestToRecord(req);
     saveState();
@@ -6730,7 +6730,7 @@ function approveFinanceItems(req, selectedIndexes) {
   req.history ||= [];
   req.history.push({
     at: now,
-    action: "????? ??????? ?????????? ?? ??????",
+    action: "Часть позиций отправлена на оплату",
     details: requestItemsText(selectedItems),
     status: "finance",
     role: profile?.role || "",
@@ -6772,7 +6772,7 @@ function returnRequestTo(req, targetRole, reason) {
   req.returnReason = cleanReason;
   req.status = targetRole;
   clearApprovalResponsibilityDeclines(req);
-  requestAddHistory(req, `??????????: ${requestRoleLabel(targetRole)}`, cleanReason);
+  requestAddHistory(req, `Возвращено: ${requestRoleLabel(targetRole)}`, cleanReason);
   syncRequestToRecord(req);
   saveState();
   return true;
@@ -6780,8 +6780,8 @@ function returnRequestTo(req, targetRole, reason) {
 
 function appendReturnAction(actions, req, targetRole) {
   if (!actions || !targetRole || req.done || req.stock || req.cashApproved) return;
-  const button = actionButton(`???????: ${requestRoleLabel(targetRole)}`, () => {
-    const reason = window.prompt("??????? ??????? ????????. ??? ??????? ?????? ?? ????? ??????????:");
+  const button = actionButton(`Вернуть: ${requestRoleLabel(targetRole)}`, () => {
+    const reason = window.prompt("Укажите причину возврата. Без причины заявка не будет возвращена:");
     if (!String(reason || "").trim()) return;
     if (returnRequestTo(req, targetRole, reason)) renderRequests();
   });
@@ -6794,22 +6794,22 @@ function appendFinanceSelectionAction(actions, req) {
   const panel = document.createElement("div");
   panel.className = "finance-selection-panel";
   panel.innerHTML = `
-    <strong>???????? ???????, ??????? ????? ????????</strong>
+    <strong>Выберите позиции, которые можно оплатить</strong>
     <div class="finance-selection-list">
       ${items.map((item, index) => `
         <label>
           <input type="checkbox" data-finance-item-index="${index}" ${items.length === 1 ? "checked" : ""}>
           <span>
-            <b>${escapeHtml(item.name || `??????? ${index + 1}`)}</b>
-            <small>${escapeHtml(item.article || "??? ????????")} ? ${Number(item.requiredQty || item.requestedQty || 0)} ${escapeHtml(item.unit || "??")}${item.price ? ` ? ????: ${escapeHtml(item.price)}` : ""}${item.supplier ? ` ? ${escapeHtml(item.supplier)}` : ""}${item.supplyNote ? ` ? ${escapeHtml(item.supplyNote)}` : ""}${item.note ? ` ? ${escapeHtml(item.note)}` : ""}</small>
+            <b>${escapeHtml(item.name || `Позиция ${index + 1}`)}</b>
+            <small>${escapeHtml(item.article || "без артикула")} · ${Number(item.requiredQty || item.requestedQty || 0)} ${escapeHtml(item.unit || "шт")}${item.price ? ` · Цена: ${escapeHtml(item.price)}` : ""}${item.supplier ? ` · ${escapeHtml(item.supplier)}` : ""}${item.supplyNote ? ` · ${escapeHtml(item.supplyNote)}` : ""}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</small>
           </span>
         </label>
       `).join("")}
     </div>
-    <div class="readonly-note">????????? ??????? ???????? ??? ??????? ??????.</div>
+    <div class="readonly-note">Выбранные позиции отмечены для ручного обхода.</div>
   `;
   actions.append(panel);
-  actions.append(actionButton("??????????? ?????????", () => {
+  actions.append(actionButton("Подтвердить выбранное", () => {
     const selectedIndexes = [...panel.querySelectorAll("[data-finance-item-index]:checked")]
       .map(input => Number(input.dataset.financeItemIndex));
     const result = approveFinanceItems(req, selectedIndexes);
@@ -6836,21 +6836,21 @@ function appendSupplyItemsEditor(actions, req) {
   const panel = document.createElement("div");
   panel.className = "supply-items-panel";
   panel.innerHTML = `
-    <strong>???? ? ????????? ?? ????????</strong>
+    <strong>Цена и поставщик по позициям</strong>
     <div class="supply-items-table-wrap">
       <table class="supply-items-table">
         <thead>
-          <tr><th>?</th><th>???????</th><th>???-??</th><th>????</th><th>?????????</th><th>??????????</th></tr>
+          <tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Цена</th><th>Поставщик</th><th>Примечание</th></tr>
         </thead>
         <tbody>
           ${items.map((item, index) => `
             <tr data-supply-item-row="${index}">
               <td>${index + 1}</td>
-              <td><b>${escapeHtml(item.name || "")}</b><small>${escapeHtml(item.article || "??? ????????")}</small></td>
-              <td>${Number(item.requiredQty || item.requestedQty || 0)} ${escapeHtml(item.unit || "??")}</td>
-              <td><input data-supply-item-price type="text" inputmode="decimal" value="${escapeHtml(item.price || req.price || "")}" placeholder="????"></td>
-              <td><input data-supply-item-supplier type="text" value="${escapeHtml(item.supplier || req.supplier || "")}" placeholder="?????????"></td>
-              <td><textarea data-supply-item-note rows="2" placeholder="??????????">${escapeHtml(item.supplyNote || "")}</textarea></td>
+              <td><b>${escapeHtml(item.name || "")}</b><small>${escapeHtml(item.article || "без артикула")}</small></td>
+              <td>${Number(item.requiredQty || item.requestedQty || 0)} ${escapeHtml(item.unit || "шт")}</td>
+              <td><input data-supply-item-price type="text" inputmode="decimal" value="${escapeHtml(item.price || req.price || "")}" placeholder="Цена"></td>
+              <td><input data-supply-item-supplier type="text" value="${escapeHtml(item.supplier || req.supplier || "")}" placeholder="Поставщик"></td>
+              <td><textarea data-supply-item-note rows="2" placeholder="Примечание">${escapeHtml(item.supplyNote || "")}</textarea></td>
             </tr>
           `).join("")}
         </tbody>
@@ -6927,17 +6927,17 @@ function readInlineQuantityItems(actions, req) {
 function appendInlineFinanceSelectionAction(actions, req) {
   const note = document.createElement("div");
   note.className = "readonly-note";
-  note.textContent = "???????? ??????? ????? ? ??????? ?????? ??? ??????? ??????.";
+  note.textContent = "Отметьте позиции прямо в таблице заявки для ручного обхода.";
   actions.append(note);
-  actions.append(actionButton("??????????? ?????????", () => {
+  actions.append(actionButton("Подтвердить выбранное", () => {
     const card = actions.closest(".request-card");
     const selectedIndexes = [...(card?.querySelectorAll("[data-finance-item-index]:checked") || [])]
       .map(input => Number(input.dataset.financeItemIndex));
     if (!selectedIndexes.length) {
-      note.textContent = "???????? ???? ?? ???? ??????? ??? ??????.";
+      note.textContent = "Выберите хотя бы одну позицию для оплаты.";
       return;
     }
-    if (!window.confirm(`????? ??????????? ????????? ???????? ??????????: ${selectedIndexes.length}.`)) return;
+    if (!window.confirm(`Точно подтвердить выбранные позиции? Количество: ${selectedIndexes.length}.`)) return;
     const result = approveFinanceItems(req, selectedIndexes);
     if (!result.ok) {
       note.textContent = result.message;
@@ -6957,7 +6957,7 @@ function returnInstallResponsibility(req, reason) {
   req.returnedTo = targetRole;
   req.returnReason = reason;
   req.status = targetRole;
-  requestAddHistory(req, `?????????? ????? ?????? ???????? ? ????????? ????????????: ${requestRoleLabel(targetRole)}`, reason);
+  requestAddHistory(req, `Возвращено после отказа инженера и директора производства: ${requestRoleLabel(targetRole)}`, reason);
   clearInstallResponsibilityDeclines(req);
   syncRequestToRecord(req);
   saveState();
@@ -6967,8 +6967,8 @@ function appendInstallResponsibilityAction(actions, req, role) {
   if (!actions || !["engineer", "productionDirector"].includes(role) || !requestWaitingForInstallApproval(req)) return;
   if (installResponsibilityDeclined(req, role)) return;
   const otherRole = role === "engineer" ? "productionDirector" : "engineer";
-  const button = actionButton("?? ??? ???? ???????????????", () => {
-    const reason = window.prompt("??????? ???????. ???? ?????? ???? ???? ?????????, ?????? ???????? ?????:")?.trim();
+  const button = actionButton("Не моя зона ответственности", () => {
+    const reason = window.prompt("Укажите причину. Если вторая роль тоже откажется, заявка вернётся назад:")?.trim();
     if (!reason) return;
     const declines = installResponsibilityDeclines(req);
     declines[role] = {
@@ -6976,7 +6976,7 @@ function appendInstallResponsibilityAction(actions, req, role) {
       name: profile?.name || "",
       reason
     };
-    requestAddHistory(req, `?? ??? ???? ???????????????: ${requestRoleLabel(role)}`, reason);
+    requestAddHistory(req, `Не моя зона ответственности: ${requestRoleLabel(role)}`, reason);
     if (declines.engineer && declines.productionDirector) {
       returnInstallResponsibility(req, `${declines.engineer.reason || ""}${declines.productionDirector.reason ? ` / ${declines.productionDirector.reason}` : ""}`);
     } else {
@@ -7002,7 +7002,7 @@ function returnApprovalResponsibility(req, reason) {
   req.returnedTo = targetRole;
   req.returnReason = reason;
   req.status = targetRole;
-  requestAddHistory(req, `?????????? ????? ?????? ???????? ? ????????? ????????????: ${requestRoleLabel(targetRole)}`, reason);
+  requestAddHistory(req, `Возвращено после отказа инженера и директора производства: ${requestRoleLabel(targetRole)}`, reason);
   clearApprovalResponsibilityDeclines(req);
   syncRequestToRecord(req);
   saveState();
@@ -7013,8 +7013,8 @@ function appendApprovalResponsibilityAction(actions, req, role) {
   if (!req.shopApproved || req.supplyPrepared || req.done || req.stock) return;
   if (approvalResponsibilityDeclined(req, role)) return;
   const otherRole = role === "engineer" ? "productionDirector" : "engineer";
-  const button = actionButton("?? ??? ???? ???????????????", () => {
-    const reason = window.prompt("??????? ???????. ???? ?????? ???? ???? ?????????, ?????? ???????? ?????:")?.trim();
+  const button = actionButton("Не моя зона ответственности", () => {
+    const reason = window.prompt("Укажите причину. Если вторая роль тоже откажется, заявка вернётся назад:")?.trim();
     if (!reason) return;
     const declines = approvalResponsibilityDeclines(req);
     declines[role] = {
@@ -7022,7 +7022,7 @@ function appendApprovalResponsibilityAction(actions, req, role) {
       name: profile?.name || "",
       reason
     };
-    requestAddHistory(req, `?? ??? ???? ???????????????: ${requestRoleLabel(role)}`, reason);
+    requestAddHistory(req, `Не моя зона ответственности: ${requestRoleLabel(role)}`, reason);
     if (declines.engineer && declines.productionDirector) {
       returnApprovalResponsibility(req, `${declines.engineer.reason || ""}${declines.productionDirector.reason ? ` / ${declines.productionDirector.reason}` : ""}`);
     } else {
@@ -7038,8 +7038,8 @@ function appendApprovalResponsibilityAction(actions, req, role) {
 
 function appendRejectAction(actions, req) {
   if (!actions || req.done || req.stock || req.rejected || req.cashApproved) return;
-  const button = actionButton("????????? ??????", () => {
-    const reason = window.prompt("??????? ??????? ??????????. ??? ??????? ?????? ?? ????? ?????????:");
+  const button = actionButton("Отклонить заявку", () => {
+    const reason = window.prompt("Укажите причину отклонения. Без причины заявка не будет отклонена:");
     const cleanReason = String(reason || "").trim();
     if (!cleanReason) return;
     req.sourceRole ||= req.createdByRole || "mechanic";
@@ -7053,7 +7053,7 @@ function appendRejectAction(actions, req) {
     req.returnReason = cleanReason;
     req.done = false;
     req.status = req.sourceRole;
-    requestAddHistory(req, `????????? ? ?????????? ??????: ${req.sourceName || requestRoleLabel(req.sourceRole)}`, cleanReason);
+    requestAddHistory(req, `Отклонено и возвращено автору: ${req.sourceName || requestRoleLabel(req.sourceRole)}`, cleanReason);
     syncRequestToRecord(req);
     saveState();
     renderRequests();
@@ -7066,7 +7066,7 @@ function resubmitRejectedRequest(req, correctionText, correctionPhoto = "") {
   if (!req?.rejected || !isRequestSource(req)) return false;
   const cleanText = String(correctionText || "").trim();
   if (cleanText) {
-    const correction = `?????????? ????? ?????????? (${profile?.name || "?????"}): ${cleanText}`;
+    const correction = `Дополнение после отклонения (${profile?.name || "автор"}): ${cleanText}`;
     req.comment = [String(req.comment || "").trim(), correction].filter(Boolean).join("\n");
   }
   if (correctionPhoto) {
@@ -7094,7 +7094,7 @@ function resubmitRejectedRequest(req, correctionText, correctionPhoto = "") {
   req.requestStatus = "shop";
   req.approvals = {};
   req.updatedAt = new Date().toISOString();
-  requestAddHistory(req, "?????? ?????????? ? ?????????? ????????", cleanText || (correctionPhoto ? "????????? ????? ????" : ""));
+  requestAddHistory(req, "Заявка исправлена и отправлена повторно", cleanText || (correctionPhoto ? "Добавлено новое фото" : ""));
   syncRequestToRecord(req);
   saveState();
   return true;
@@ -7125,7 +7125,7 @@ function deleteRejectedRequest(req, reason = "") {
     deletedAt,
     updatedAt: deletedAt
   };
-  recordAudit("?????? ??????", req.requestNumber || req.text || req.id, reason, req.equipment || req.area || "");
+  recordAudit("Удалил заявку", req.requestNumber || req.text || req.id, reason, req.equipment || req.area || "");
   saveState();
 }
 
@@ -7135,17 +7135,17 @@ function equipmentById(id) {
 
 function statusForRecord(rec, date = current.date) {
   const completion = nodeWalkCompletion(rec, date);
-  if (completion.complete) return "??";
-  if (completion.partial) return "??";
+  if (completion.complete) return "ТО";
+  if (completion.partial) return "ТО";
   return "";
 }
 
 function plannedStatus(day) {
-  return "??";
+  return "ТО";
 }
 
 function isPlannedDone(rec, planned, date = current.date) {
-  if (planned === "??") return nodeWalkCompletion(rec, date).complete;
+  if (planned === "ТО") return nodeWalkCompletion(rec, date).complete;
   return true;
 }
 
@@ -7327,7 +7327,7 @@ function aggregateJournalItems(area) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
-        kind: "?????????",
+        kind: "Замечание",
         equipmentId,
         nodeIndex,
         date,
@@ -7350,7 +7350,7 @@ function aggregateJournalItems(area) {
     if (item.area !== area || item.type === "production") return;
     items.push({
       id: item.id,
-      kind: "???????",
+      kind: "Поломка",
       equipmentId: item.equipmentId,
       nodeIndex: item.nodeIndex,
       date: String(item.startedAt || "").slice(0, 10),
@@ -7567,11 +7567,11 @@ function overdueDaysText(days) {
   const mod10 = value % 10;
   const mod100 = value % 100;
   const word = mod10 === 1 && mod100 !== 11
-    ? "????"
+    ? "день"
     : [2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)
-      ? "???"
-      : "????";
-  return `?????????? ${value} ${word}`;
+      ? "дня"
+      : "дней";
+  return `Просрочено ${value} ${word}`;
 }
 
 function compressorJournalIncompleteDays(area = COMPRESSOR_JOURNAL_AREA) {
@@ -7600,7 +7600,7 @@ function compressorJournalHasIncompleteDueDays(area = COMPRESSOR_JOURNAL_AREA) {
 
 function compressorJournalButtonStatus(area = COMPRESSOR_JOURNAL_AREA) {
   const overdueDays = compressorJournalIncompleteDays(area);
-  return overdueDays > 0 ? overdueDaysText(overdueDays) : "?????????";
+  return overdueDays > 0 ? overdueDaysText(overdueDays) : "выполнено";
 }
 
 function localTimeNow() {
@@ -7662,8 +7662,8 @@ function updateCompressorJournalRow(rowId, field, value) {
 }
 
 
-const GAS_JOURNAL_AREA = "??????? ?????????";
-const GAS_ROUTE_LIST = ["??? - ???? ?1", "??? - ???? ?2", "??? - ???? ?3", "??? - ???? ?4", "??? - ???? ?5", "??? - ???? ?6", "??? - ???? ?7", "??? - ???? ?8", "??? - ???? ?9", "??? - ???? ?10", "??? - ???? ?11"];
+const GAS_JOURNAL_AREA = "Газовое хозяйство";
+const GAS_ROUTE_LIST = ["ГРП - Печь №1", "ГРП - Печь №2", "ГРП - Печь №3", "ГРП - Печь №4", "ГРП - Печь №5", "ГРП - Печь №6", "ГРП - Печь №7", "ГРП - Печь №8", "ГРП - Печь №9", "ГРП - Печь №10", "ГРП - Печь №11"];
 const GAS_JOURNAL_DAYS_PER_SHEET_A = 16;
 const GAS_JOURNAL_DAYS_PER_SHEET_B = 5;
 
@@ -7764,7 +7764,7 @@ function gasJournalIncompleteDays() {
 
 function gasJournalButtonStatus() {
   const overdueDays = gasJournalIncompleteDays();
-  return overdueDays > 0 ? overdueDaysText(overdueDays) : "?????????";
+  return overdueDays > 0 ? overdueDaysText(overdueDays) : "выполнено";
 }
 
 function gasJournalFilledCount() {
@@ -7798,7 +7798,7 @@ function clearGasJournalSheet(section, reason = "") {
   const sheetNo = gasJournalSheetIndex(section) + 1;
   state.gasJournal ||= {};
   gasJournalSheetDates(section).forEach(date => delete state.gasJournal[gasJournalKey(section, date)]);
-  recordAudit("?????? ???? ???????", `???? ?????? ${section}, ???? ${sheetNo}`, reason);
+  recordAudit("Удалил лист журнала", `ШГРП раздел ${section}, лист ${sheetNo}`, reason);
   saveState();
   renderGasJournal();
   renderEquipment();
@@ -7807,7 +7807,7 @@ function clearGasJournalSheet(section, reason = "") {
 function printGasJournalSheet(section) {
   document.body.classList.remove("print-gas-A", "print-gas-B");
   document.body.classList.add(`print-gas-${section}`);
-  printCurrentDocument(`??? - ??????? ?????? - ?????? ${section}`);
+  printCurrentDocument(`ППР - Газовый журнал - раздел ${section}`);
   setTimeout(() => document.body.classList.remove("print-gas-A", "print-gas-B"), 500);
 }
 
@@ -7823,20 +7823,20 @@ function gasInputHtml(section, date, field, value) {
 }
 
 function gasSheetActionsHtml(section, complete) {
-  const label = section === "A" ? "?" : "?";
+  const label = section === "A" ? "А" : "Б";
   const sheetNo = gasJournalSheetIndex(section) + 1;
   return `<div class="gas-sheet-actions">
-    <button type="button" data-gas-sheet-prev="${section}">? ?????????? ????</button>
-    <button type="button" data-gas-sheet-today="${section}">???????</button>
-    <button type="button" data-gas-sheet-next="${section}">????????? ???? ?</button>
-    ${complete ? `<button type="button" data-gas-print="${section}">${printActionLabel(`?????? ????? ${label} ?${sheetNo}`, `PDF ????? ${label} ?${sheetNo}`)}</button><button type="button" class="danger" data-gas-clear="${section}">??????? ???? ${label} ?${sheetNo}</button>` : `<span class="gas-sheet-note">?????? ? ???????? ???????? ????? ?????????? ???? ?? ????? ???? ?? ???? ?????.</span>`}
+    <button type="button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
+    <button type="button" data-gas-sheet-today="${section}">Сегодня</button>
+    <button type="button" data-gas-sheet-next="${section}">Следующий лист ›</button>
+    ${complete ? `<button type="button" data-gas-print="${section}">${printActionLabel(`Печать листа ${label} №${sheetNo}`, `PDF листа ${label} №${sheetNo}`)}</button><button type="button" class="danger" data-gas-clear="${section}">Удалить лист ${label} №${sheetNo}</button>` : `<span class="gas-sheet-note">Печать и удаление появятся после заполнения хотя бы одной даты на этом листе.</span>`}
   </div>`;
 }
 
 function renderGasJournal() {
   state.gasJournal ||= {};
-  ui.aggregateJournalTitle.textContent = "?????????? ?????? ???? / ??? / ???";
-  ui.aggregateJournalMeta.textContent = `${gasJournalFilledCount()} ??????????? ?????. ?? ????? ????? ????????? ???; ???? ???? ?? ??????????? ?? ?????? ????.`;
+  ui.aggregateJournalTitle.textContent = "Агрегатный журнал ШГРП / ГРП / ГРУ";
+  ui.aggregateJournalMeta.textContent = `${gasJournalFilledCount()} заполненных строк. На одном листе несколько дат; одна дата не переносится на второй лист.`;
   const datesA = gasJournalSheetDates("A");
   const datesB = gasJournalSheetDates("B");
   const completeA = gasJournalSheetHasFilledDay("A");
@@ -7846,10 +7846,10 @@ function renderGasJournal() {
 
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
-      <div class="aggregate-sheet-head"><strong>?????? ?. ???????????? ? ?? ??? (???)</strong><span>???? ??????? ? ? ${sheetNoA}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span>Лист раздела А № ${sheetNoA}</span></div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-a-table">
-          <thead><tr><th>????</th><th>?????</th><th>???????? ???????<br>???</th><th>???????? ????????<br>???</th><th>??????????? ???????<br>?C</th><th>??????????? ????????<br>?C</th><th>??????? ????????<br>???</th><th>??????????? ????????????</th><th>????????????<br>???</th><th>??????????? ????????????</th><th>?????????</th><th>???????</th></tr></thead>
+          <thead><tr><th>Дата</th><th>Время</th><th>Давление входное<br>МПа</th><th>Давление выходное<br>МПа</th><th>Температура входная<br>°C</th><th>Температура выходная<br>°C</th><th>Перепад давления<br>МПа</th><th>Исправность оборудования</th><th>Срабатывание<br>ПСК</th><th>Техническое обслуживание</th><th>Замечания</th><th>Подпись</th></tr></thead>
           <tbody>
             ${datesA.map(date => {
               const row = gasJournalRecord("A", date);
@@ -7861,9 +7861,9 @@ function renderGasJournal() {
                 <td>${gasInputHtml("A", date, "tempInC", row.tempInC ?? row.tempC)}</td>
                 <td>${gasInputHtml("A", date, "tempOutC", row.tempOutC)}</td>
                 <td>${gasInputHtml("A", date, "pressureDeltaMpa", row.pressureDeltaMpa ?? row.filterDelta)}</td>
-                <td>${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["????????", "??????????"])}</td>
-                <td>${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["???", "????"])}</td>
-                <td>${gasSelectHtml("A", date, "maintenance", row.maintenance, ["?? ?????????", "?????????"])}</td>
+                <td>${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["Исправно", "Неисправно"])}</td>
+                <td>${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
+                <td>${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
                 <td>${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
                 <td>${escapeHtml(row.checkedBy || "")}</td>
               </tr>`;
@@ -7875,10 +7875,10 @@ function renderGasJournal() {
     </div>
 
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-b ${datesB.includes(todayISO()) && !gasJournalRowCompleteB(todayISO()) ? "gas-missing-today" : ""}" data-print-section="B">
-      <div class="aggregate-sheet-head"><strong>?????? ?. ????? ?????????? ???????????</strong><span>???? ??????? ? ? ${sheetNoB}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span>Лист раздела Б № ${sheetNoB}</span></div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-b-table">
-          <thead><tr><th>????</th><th>?????</th><th>???????</th><th>??????????? ???????????<br>? ???????</th><th>????? ????</th><th>???????? ????</th><th>?????????</th><th>???????? ????</th><th>???????</th></tr></thead>
+          <thead><tr><th>Дата</th><th>Время</th><th>Участок</th><th>Контрольный трубопровод<br>и колодцы</th><th>Запах газа</th><th>Охранная зона</th><th>Замечания</th><th>Принятые меры</th><th>Подпись</th></tr></thead>
           <tbody>
             ${datesB.map(date => {
               const row = gasJournalRecord("B", date);
@@ -7887,11 +7887,11 @@ function renderGasJournal() {
                 <td>${dateHuman(date)}</td>
                 <td>${escapeHtml(row.time || "")}</td>
                 <td class="gas-route-cell">${escapeHtml(route).replace(/\n/g, "<br>")}</td>
-                <td>${gasSelectHtml("B", date, "wells", row.wells, ["????????", "??????????"])}</td>
-                <td>${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["???", "????"])}</td>
-                <td>${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["??? ?????????", "?????????"])}</td>
+                <td>${gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"])}</td>
+                <td>${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Нет", "Есть"])}</td>
+                <td>${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"])}</td>
                 <td>${gasInputHtml("B", date, "remarks", row.remarks)}</td>
-                <td>${gasSelectHtml("B", date, "actions", row.actions, ["?? ?????????", "?????????"])}</td>
+                <td>${gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"])}</td>
                 <td>${escapeHtml(row.checkedBy || "")}</td>
               </tr>`;
             }).join("")}
@@ -7915,8 +7915,8 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-clear]").forEach(btn => btn.addEventListener("click", () => {
     const section = btn.dataset.gasClear;
     const sheetNo = gasJournalSheetIndex(section) + 1;
-    if (!confirm(`??????? ???? ??????? ${section} ?${sheetNo}?`)) return;
-    const reason = prompt("??????? ??????? ???????? ?????:")?.trim();
+    if (!confirm(`Удалить лист раздела ${section} №${sheetNo}?`)) return;
+    const reason = prompt("Укажите причину удаления листа:")?.trim();
     if (!reason) return;
     clearGasJournalSheet(section, reason);
   }));
@@ -7942,8 +7942,8 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
         <strong>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f</strong>
-        <span>${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} ? ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} ? \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</span>
-        <button class="compressor-sheet-print" type="button" data-print-compressor-sheet="${activeSheetIndex}" ${compressorJournalSheetComplete(sheetRows) ? "" : "disabled"}>${printActionLabel(`?????? ????? ?${activeSheetIndex + 1}`, `PDF ????? ?${activeSheetIndex + 1}`)}</button>
+        <span>${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</span>
+        <button class="compressor-sheet-print" type="button" data-print-compressor-sheet="${activeSheetIndex}" ${compressorJournalSheetComplete(sheetRows) ? "" : "disabled"}>${printActionLabel(`Печать листа №${activeSheetIndex + 1}`, `PDF листа №${activeSheetIndex + 1}`)}</button>
       </div>
       <div class="aggregate-journal-table-wrap">
         <table class="aggregate-journal-table compressor-journal-table">
@@ -8009,7 +8009,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       document.body.classList.add("print-compressor-single");
       sheet.classList.add("print-selected");
       window.addEventListener("afterprint", cleanup);
-      printCurrentDocument(`??? - ????????????? - ???? ${Number(sheetIndex) + 1}`);
+      printCurrentDocument(`ППР - Компрессорная - лист ${Number(sheetIndex) + 1}`);
       window.setTimeout(cleanup, 1000);
     });
   });
@@ -8042,34 +8042,34 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 }
 
 function renderEquipment() {
-  ui.subtitle.textContent = "????????????";
+  ui.subtitle.textContent = "Оборудование";
   const editorSchedule = false;
   const today = new Date();
   current.month = today.getMonth();
   current.year = today.getFullYear();
   const count = openCommentCount();
   updateRoleBadges();
-  ui.alertCounter.innerHTML = `<span>?????????</span><strong>${count}</strong>`;
+  ui.alertCounter.innerHTML = `<span>Замечания</span><strong>${count}</strong>`;
   ui.alertCounter.classList.toggle("request-alert", count > 0);
   ui.alertCounter.classList.toggle("clickable", count > 0);
-  ui.alertCounter.title = count > 0 ? "??????? ?????? ?????????" : "???????? ????????? ???";
+  ui.alertCounter.title = count > 0 ? "Открыть первое замечание" : "Открытых замечаний нет";
   ui.equipmentList.innerHTML = "";
   const equipment = visibleEquipment();
   if (!equipment.length) {
-    ui.equipmentList.innerHTML = `<div class="empty-state">??? ????? ???? ?????? ???????????? ??????. ???????? ?????? ??????.</div>`;
+    ui.equipmentList.innerHTML = `<div class="empty-state">Для вашей роли список оборудования закрыт. Откройте раздел заявок.</div>`;
     return;
   }
   const monthBar = document.createElement("div");
   monthBar.className = "equipment-month-bar";
   monthBar.innerHTML = `
     <div>
-      <strong>?????? ????????????</strong>
-      <span>${editorSchedule ? "??????? ???? ???????? ????????????" : `???????: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
+      <strong>График оборудования</strong>
+      <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
-      ${editorSchedule ? `<button type="button" data-equipment-month="prev">?</button>` : ""}
+      ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
-      ${editorSchedule ? `<button type="button" data-equipment-month="next">?</button>` : ""}
+      ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
@@ -8100,7 +8100,7 @@ function renderEquipment() {
   table.innerHTML = `
     <thead>
       <tr>
-        <th class="node-head equipment-head">?????????? ??????</th>
+        <th class="node-head equipment-head">Агрегатный журнал</th>
         ${days.map(day => `<th>${day}</th>`).join("")}
       </tr>
     </thead>
@@ -8126,12 +8126,12 @@ function renderEquipment() {
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" data-aggregate-area="${escapeHtml(eq.area)}" class="equipment-journal-button ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
-              <span class="journal-button-title">??????</span>
+              <span class="journal-button-title">Журнал</span>
               <strong>${escapeHtml(eq.name)}</strong>
-              <span>${eq.nodes.length} ????? ? ${escapeHtml(eq.area)}</span>
-              <small>${eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area)} ???????`}</small>
+              <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
+              <small>${eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area)} записей`}</small>
             </button>
-            ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR ???? ?????<br><small>${eq.nodes.length} ?? ? A4 ?? 4</small></button>` : ""}
+            ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
         </th>
       `;
@@ -8153,8 +8153,8 @@ function renderEquipment() {
         const baseClass = summary.done === summary.total ? "completed-day" : "to";
         td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.textContent = summary.done === summary.total ? "?" : `${summary.done}/${summary.total}`;
-        td.title = downtimeOpen ? `${eq.name} ? ???? ???????` : summary.open ? `${eq.name} ? ???? ???????????` : `${eq.name} ? ${dateHuman(date)} ? ????????? ${summary.done} ?? ${summary.total}`;
+        td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
+        td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
           if (!canOpenEquipmentDate(date)) return;
           current.equipmentId = eq.id;
@@ -8204,9 +8204,9 @@ function renderNodes() {
   const eq = equipmentById(current.equipmentId);
   ui.subtitle.textContent = eq.name;
   ui.equipmentTitle.textContent = eq.name;
-  ui.equipmentMeta.textContent = `${eq.area} ? ${eq.nodes.length} ?????`;
+  ui.equipmentMeta.textContent = `${eq.area} · ${eq.nodes.length} узлов`;
   const alert = hasOpenCommentEquipment(eq.id);
-  ui.equipmentAlertBadge.textContent = alert ? "???? ?????????" : "?????";
+  ui.equipmentAlertBadge.textContent = alert ? "Есть замечания" : "Норма";
   ui.equipmentAlertBadge.classList.toggle("alert", alert);
   ui.nodeList.innerHTML = "";
   eq.nodes.forEach((node, index) => {
@@ -8218,8 +8218,8 @@ function renderNodes() {
     button.type = "button";
     button.className = "node-card";
     button.innerHTML = `
-      <div><strong>${node}</strong><span>?????? ? ???-?????</span></div>
-      <div class="small-status ${nodeAlert ? "alert" : ""}">${nodeAlert ? "?????????" : "???????"}</div>
+      <div><strong>${node}</strong><span>График и чек-листы</span></div>
+      <div class="small-status ${nodeAlert ? "alert" : ""}">${nodeAlert ? "Замечание" : "Открыть"}</div>
     `;
     button.addEventListener("click", () => {
       current.nodeIndex = index;
@@ -8231,17 +8231,17 @@ function renderNodes() {
 
 function renderSchedule() {
   const eq = equipmentById(current.equipmentId);
-  ui.subtitle.textContent = "?????? ???";
-  ui.nodeTitle.textContent = `?????? ??? - ${eq.name}`;
-  ui.nodeMeta.textContent = `${eq.area} ? ??????? ?? ????, ????????? ????? ?? ?????`;
+  ui.subtitle.textContent = "График ППР";
+  ui.nodeTitle.textContent = `ГРАФИК ППР - ${eq.name}`;
+  ui.nodeMeta.textContent = `${eq.area} · нажмите на день, откроется обход по узлам`;
   ui.monthLabel.textContent = new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   ui.scheduleGrid.innerHTML = "";
   const days = 31;
   const hint = document.createElement("div");
   hint.className = "schedule-hint";
   hint.innerHTML = `
-    <span>?????? ??????: ?????? ???? ?? ????? ????????????.</span>
-    <span class="legend overdue">?????? = ???? ?????????, ????? ???? ?? ????????</span>
+    <span>График обхода: каждый день по узлам оборудования.</span>
+    <span class="legend overdue">Мигает = дата наступила, обход узла не выполнен</span>
   `;
   ui.scheduleGrid.append(hint);
   const wrap = document.createElement("div");
@@ -8250,7 +8250,7 @@ function renderSchedule() {
   table.className = "schedule-table";
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  headRow.innerHTML = `<th class="node-head">????</th>${Array.from({ length: days }, (_, i) => `<th>${i + 1}</th>`).join("")}`;
+  headRow.innerHTML = `<th class="node-head">Узлы</th>${Array.from({ length: days }, (_, i) => `<th>${i + 1}</th>`).join("")}`;
   thead.append(headRow);
   table.append(thead);
   const tbody = document.createElement("tbody");
@@ -8279,8 +8279,8 @@ function renderSchedule() {
       const baseClass = isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
       td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeBlink ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
       if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-      td.textContent = completion.complete ? "??" : completion.partial ? `${completion.done}/${completion.total}` : status;
-      td.title = downtimeOpen ? "???? ??????? ?? ????? ????" : open ? "???? ??????????? ?? ????" : overdue ? `${plan} ?? ????????????? ??????? ?? ?????????` : `${status} ????????? ??? ??? ?????????`;
+      td.textContent = completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
+      td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
         if (!canOpenEquipmentDate(date)) return;
         current.nodeIndex = nodeIndex;
@@ -8301,7 +8301,7 @@ function renderSchedule() {
 }
 
 function statusClass(status) {
-  if (status === "??") return "to";
+  if (status === "ТО") return "to";
   return "";
 }
 
@@ -8311,7 +8311,7 @@ function renderChecklist() {
   const node = eq.nodes[current.nodeIndex];
   const rec = record();
   const kind = rec[current.kind];
-  ui.subtitle.textContent = "???-????";
+  ui.subtitle.textContent = "Чек-лист";
   if (current.kind === "to") {
     renderNodeWalkthrough(eq);
     return;
@@ -8319,15 +8319,15 @@ function renderChecklist() {
   document.querySelector(".tabs[role='tablist']")?.removeAttribute("hidden");
   ui.commentPanel.hidden = false;
   ui.checklistTitle.textContent = node;
-  ui.checklistMeta.textContent = `${eq.name} ? ${dateHuman(current.date)}`;
+  ui.checklistMeta.textContent = `${eq.name} · ${dateHuman(current.date)}`;
   const status = statusForRecord(rec);
-  ui.dayStatus.textContent = status || "?????";
-  ui.dayStatus.style.background = status === "??" ? "var(--to)" : "var(--nav-soft)";
+  ui.dayStatus.textContent = status || "Пусто";
+  ui.dayStatus.style.background = status === "ТО" ? "var(--to)" : "var(--nav-soft)";
   document.querySelectorAll(".tab[data-kind]").forEach(tab => tab.classList.toggle("active", tab.dataset.kind === current.kind));
   ui.taskList.innerHTML = "";
   const table = document.createElement("table");
   table.className = `checklist-table ${current.kind}`;
-  const title = "?????????? ?????? (??)";
+  const title = "Ежедневный осмотр (ТО)";
   table.innerHTML = `
     <thead>
       <tr class="section-title">
@@ -8361,11 +8361,11 @@ function renderChecklist() {
   const done = kind.tasks.every(Boolean);
   const statusRow = document.createElement("tr");
   statusRow.className = "status-row";
-  statusRow.innerHTML = `<td></td><td>?????? ??:</td><td>${done ? "?????????" : ""}</td>`;
+  statusRow.innerHTML = `<td></td><td>Статус ТО:</td><td>${done ? "Выполнено" : ""}</td>`;
   tbody.append(statusRow);
   table.append(tbody);
   ui.taskList.append(table);
-  ui.commentLabel.textContent = "??????????? ??";
+  ui.commentLabel.textContent = "Комментарий ТО";
   const canEditThisComment = canEditComment(kind);
   ui.commentInput.value = kind.comment;
   renderPhotoPreview(ui.commentPhotoPreview, kind.commentPhoto, "comment");
@@ -8386,7 +8386,7 @@ function renderChecklist() {
 
 function renderNodeWalkthrough(eq) {
   const activeShift = visibleWalkShiftForDate(current.date);
-  ui.subtitle.textContent = "????? ?? ?????";
+  ui.subtitle.textContent = "Обход по узлам";
   const forcedDetailIndex = current.scrollToDowntimeNode ?? current.scrollToCommentNode;
   if (forcedDetailIndex !== null && forcedDetailIndex !== undefined) {
     current.nodeDetailIndex = forcedDetailIndex;
@@ -8395,14 +8395,14 @@ function renderNodeWalkthrough(eq) {
   const selectedNodeIndex = Number.isInteger(current.nodeDetailIndex) && current.nodeDetailIndex >= 0 && current.nodeDetailIndex < eq.nodes.length
     ? current.nodeDetailIndex
     : null;
-  ui.checklistTitle.textContent = selectedNodeIndex === null ? `???? - ${eq.name}` : eq.nodes[selectedNodeIndex];
-  ui.checklistMeta.textContent = `${eq.area} ? ${dateHuman(current.date)} ? ${activeShift.label} ${activeShift.range}`;
+  ui.checklistTitle.textContent = selectedNodeIndex === null ? `Узлы - ${eq.name}` : eq.nodes[selectedNodeIndex];
+  ui.checklistMeta.textContent = `${eq.area} · ${dateHuman(current.date)} · ${activeShift.label} ${activeShift.range}`;
   document.querySelector(".tabs[role='tablist']")?.setAttribute("hidden", "");
   ui.commentPanel.hidden = true;
   ui.taskList.innerHTML = "";
 
   const doneCount = eq.nodes.filter((_, index) => isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key)).length;
-  ui.dayStatus.textContent = `${doneCount}/${eq.nodes.length} ? ${activeShift.label}`;
+  ui.dayStatus.textContent = `${doneCount}/${eq.nodes.length} · ${activeShift.label}`;
   ui.dayStatus.style.background = doneCount === eq.nodes.length ? "var(--to)" : "var(--nav-soft)";
 
   const list = document.createElement("div");
@@ -8410,7 +8410,7 @@ function renderNodeWalkthrough(eq) {
   if (selectedNodeIndex === null) {
     const backRow = document.createElement("div");
     backRow.className = "node-list-back-row";
-    backRow.innerHTML = `<button type="button" data-node-screen-back>? ?????</button>`;
+    backRow.innerHTML = `<button type="button" data-node-screen-back>‹ Назад</button>`;
     backRow.querySelector("[data-node-screen-back]")?.addEventListener("click", goBack);
     list.append(backRow);
   }
@@ -8418,8 +8418,8 @@ function renderNodeWalkthrough(eq) {
     const adminPanel = document.createElement("form");
     adminPanel.className = "node-catalog-admin";
     adminPanel.innerHTML = `
-      <input type="text" data-add-node-name placeholder="???????? ?????? ????">
-      <button type="submit">???????? ????</button>
+      <input type="text" data-add-node-name placeholder="Название нового узла">
+      <button type="submit">Добавить узел</button>
     `;
     adminPanel.addEventListener("submit", event => {
       event.preventDefault();
@@ -8443,20 +8443,20 @@ function renderNodeWalkthrough(eq) {
       row.className = `node-walk-row node-walk-list-item ${hasUnresolvedRemark ? "open-comment" : ""}`;
       row.dataset.nodeWalkIndex = String(index);
       const statusText = activeStop
-        ? `???????: ${durationText(downtimeDurationMs(activeStop))}`
+        ? `Простой: ${durationText(downtimeDurationMs(activeStop))}`
         : nodeWalkStatusText(item);
       row.innerHTML = `
         <button type="button" class="node-open-button" data-open-node-detail="${index}">
           <span class="node-open-main">
             <strong>${escapeHtml(nodeName)}</strong>
-            <small>${escapeHtml(nodeWalkShiftStatusText(getRecord(eq.id, index, current.date), current.date))} ? ${escapeHtml(statusText)}</small>
+            <small>${escapeHtml(nodeWalkShiftStatusText(getRecord(eq.id, index, current.date), current.date))} · ${escapeHtml(statusText)}</small>
           </span>
-          <span class="node-open-arrow">?</span>
+          <span class="node-open-arrow">›</span>
         </button>
         ${canEditCatalog() ? `
           <div class="node-admin-actions">
             <input class="node-name-editor" data-node-name-list="${index}" type="text" value="${escapeHtml(nodeName)}">
-            <button type="button" data-delete-node="${index}">???????</button>
+            <button type="button" data-delete-node="${index}">Удалить</button>
           </div>
         ` : ""}
       `;
@@ -8472,13 +8472,13 @@ function renderNodeWalkthrough(eq) {
       });
       row.querySelector("[data-delete-node]")?.addEventListener("click", event => {
         if (!canEditCatalog()) return;
-        if (!window.confirm(`??????? ???? "${nodeName}"?`)) return;
+        if (!window.confirm(`Удалить узел "${nodeName}"?`)) return;
         if (deleteNodeName(eq.id, index)) {
           current.nodeDetailIndex = null;
           current.nodeIndex = 0;
           renderNodeWalkthrough(equipmentById(eq.id));
         } else {
-          window.alert("?????? ??????? ????????? ????.");
+          window.alert("Нельзя удалить последний узел.");
         }
       });
       list.append(row);
@@ -8497,30 +8497,30 @@ function renderNodeWalkthrough(eq) {
     const resolvedByText = item.resolvedByName ? `${item.resolvedByName}${resolvedRole ? ` (${resolvedRole})` : ""}` : resolvedRole;
     const resolutionBlock = item.resolvedAt ? `
       <div class="comment-resolution-detail">
-        <strong>????????: ${escapeHtml(resolvedByText || "?????????")}</strong>
+        <strong>Устранил: ${escapeHtml(resolvedByText || "Сотрудник")}</strong>
         ${resolutionText ? `<span>${escapeHtml(resolutionText)}</span>` : ""}
         ${item.resolvedComment ? `<p>${escapeHtml(item.resolvedComment)}</p>` : ""}
-        ${item.resolvedPhoto ? `<img src="${item.resolvedPhoto}" alt="???? ??????????">` : ""}
+        ${item.resolvedPhoto ? `<img src="${item.resolvedPhoto}" alt="Фото устранения">` : ""}
       </div>
     ` : "";
     const currentAuthorText = profile?.name
-      ? `${profile.name} (${ROLE_ACCESS[profile?.role]?.label || profile?.role || "?????????"})`
-      : ROLE_ACCESS[profile?.role]?.label || "?????????";
+      ? `${profile.name} (${ROLE_ACCESS[profile?.role]?.label || profile?.role || "Сотрудник"})`
+      : ROLE_ACCESS[profile?.role]?.label || "Сотрудник";
     const commentHistory = commentEntries.length ? `
       <div class="comment-history">
-        <strong class="comment-history-title">?????????? ?????????</strong>
+        <strong class="comment-history-title">Устранение замечаний</strong>
         ${commentEntries.map((entry, entryIndex) => `
           <div class="comment-entry" ${entryIndex === 0 ? `data-node-first-comment="${index}" tabindex="-1"` : ""}>
             <strong>${escapeHtml(commentEntryAuthor(entry))}</strong>
             <p>${escapeHtml(entry.text)}</p>
-            ${entry.photo ? `<img src="${entry.photo}" alt="???? ???????????">` : ""}
+            ${entry.photo ? `<img src="${entry.photo}" alt="Фото комментария">` : ""}
           </div>
         `).join("")}
       </div>
     ` : "";
     const downtimeCommentHistory = downtimeCommentEntries.length ? `
       <div class="comment-history downtime-comment-history">
-        <strong class="comment-history-title">???? / ????</strong>
+        <strong class="comment-history-title">Пуск / Стоп</strong>
         ${downtimeCommentEntries.map(entry => `
           <div class="comment-entry downtime-comment-entry">
             <strong>${escapeHtml(commentEntryAuthor(entry))}</strong>
@@ -8530,16 +8530,16 @@ function renderNodeWalkthrough(eq) {
       </div>
     ` : "";
     const productionStopActive = activeStop?.type === "production";
-    const fixedButtonLabel = productionStopActive ? "?????????" : waitingShopFix && canConfirmInstallation() ? "??????????? ??????????" : "?????????";
+    const fixedButtonLabel = productionStopActive ? "Устранить" : waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
     const fixedButtonDisabled = !canEditChecklist() || (!hasUnresolvedRemark && !productionStopActive) || (waitingShopFix && !canConfirmInstallation());
     const submitRemarkDisabled = !canEditThisComment || hasUnresolvedRemark;
-    const submitRemarkLabel = hasUnresolvedRemark ? "???? ??????????" : "?????????";
+    const submitRemarkLabel = hasUnresolvedRemark ? "Ждёт устранения" : "Отправить";
     const downtimeActiveBlock = activeStop ? `
       <div class="downtime-active" data-node-downtime="${index}" tabindex="-1">
-        <strong>??????? ????: ${durationText(downtimeDurationMs(activeStop))}</strong>
-        <span>???: ${escapeHtml(downtimeTypeLabel(activeStop.type))}</span>
-        <span>???????: ${escapeHtml(activeStop.comment || "??? ???????????")}</span>
-        <span>???????: ${escapeHtml(activeStop.authorName || "?????????")}</span>
+        <strong>Простой идет: ${durationText(downtimeDurationMs(activeStop))}</strong>
+        <span>Тип: ${escapeHtml(downtimeTypeLabel(activeStop.type))}</span>
+        <span>Причина: ${escapeHtml(activeStop.comment || "без комментария")}</span>
+        <span>Записал: ${escapeHtml(activeStop.authorName || "сотрудник")}</span>
       </div>
     ` : "";
     const row = document.createElement("div");
@@ -8547,14 +8547,14 @@ function renderNodeWalkthrough(eq) {
     row.dataset.nodeWalkIndex = String(index);
     row.innerHTML = `
       <div class="node-detail-toolbar">
-        <button type="button" data-back-node-list>? ? ?????? ?????</button>
+        <button type="button" data-back-node-list>‹ К списку узлов</button>
       </div>
       <div class="node-walk-field">
-        <small class="comment-owner">${escapeHtml(sameCommentAuthor(item) && ownerText ? ownerText : `????? ???????????: ${currentAuthorText}`)}</small>
-        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "???????? ????????? ?? ????" : "????? ????????? ?? ????"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(item.nodeDraftText || commentInputValue(item))}</textarea>
+        <small class="comment-owner">${escapeHtml(sameCommentAuthor(item) && ownerText ? ownerText : `Новый комментарий: ${currentAuthorText}`)}</small>
+        <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Напишите замечание по узлу" : "Новое замечание по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(item.nodeDraftText || commentInputValue(item))}</textarea>
         <input data-node-comment-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditThisComment ? "" : "disabled"}>
         <div class="photo-preview node-photo-preview" data-node-comment-preview="${index}">
-          ${item.commentPhoto && sameCommentAuthor(item) ? `<img src="${item.commentPhoto}" alt="???? ???????????">${canEditThisComment ? `<button type="button" data-clear-node-photo="comment" data-node-index="${index}">??????? ????</button>` : ""}` : ""}
+          ${item.commentPhoto && sameCommentAuthor(item) ? `<img src="${item.commentPhoto}" alt="Фото комментария">${canEditThisComment ? `<button type="button" data-clear-node-photo="comment" data-node-index="${index}">Удалить фото</button>` : ""}` : ""}
         </div>
         <div class="node-walk-actions node-comment-actions">
           <button type="button" data-node-submit-comment="${index}" ${submitRemarkDisabled ? "disabled" : ""}>${submitRemarkLabel}</button>
@@ -8567,10 +8567,10 @@ function renderNodeWalkthrough(eq) {
       <label class="node-walk-check">
         ${downtimeActiveBlock}
         <details class="node-reminder">
-          <summary>???????</summary>
+          <summary>Памятка</summary>
           ${canEditCatalog() ? `
             <textarea data-node-reminder="${index}" rows="6">${escapeHtml(reminderItems.join("\n"))}</textarea>
-            <button type="button" data-save-reminder="${index}">????????? ???????</button>
+            <button type="button" data-save-reminder="${index}">Сохранить памятку</button>
           ` : `
             <ol>
               ${reminderItems.map(text => `<li>${escapeHtml(text)}</li>`).join("")}
@@ -8604,7 +8604,7 @@ function renderNodeWalkthrough(eq) {
       const submitButton = row.querySelector(`[data-node-submit-comment="${index}"]`);
       if (submitButton && !hasAnyComment(liveItem) && !liveItem.resolved) {
         submitButton.disabled = false;
-        submitButton.textContent = "?????????";
+        submitButton.textContent = "Отправить";
       }
     });
     const submitNodeText = async (button, sendChoice) => {
@@ -8628,7 +8628,7 @@ function renderNodeWalkthrough(eq) {
         return;
       }
       if (button.disabled) return;
-      setButtonBusy(button, true, "????????...");
+      setButtonBusy(button, true, "Отправка...");
       try {
         if (sendChoice.downtimeType !== "production") appendCommentEntry(liveItem, text, liveItem.commentPhoto);
         if (sendChoice.downtime) openDowntimeFromRemark(eq.id, index, text, sendChoice.downtimeType);
@@ -8742,7 +8742,7 @@ function renderNodeWalkthrough(eq) {
         saveState();
       }
       renderNodeWalkthrough(equipmentById(eq.id));
-    }, "???????????..."));
+    }, "Публикуется..."));
     row.querySelector("[data-node-comment-photo]").addEventListener("change", event => {
       const liveItem = record(eq.id, index, current.date).to;
       if (!canEditComment(liveItem)) return;
@@ -8757,7 +8757,7 @@ function renderNodeWalkthrough(eq) {
       const fixedButton = row.querySelector(`[data-node-fixed="${index}"]`);
       if (submitButton) {
         submitButton.disabled = true;
-        submitButton.textContent = "???????? ????...";
+        submitButton.textContent = "Загрузка фото...";
       }
       if (fixedButton) fixedButton.disabled = true;
       nodePhotoProcessing = (async () => {
@@ -8768,7 +8768,7 @@ function renderNodeWalkthrough(eq) {
           liveItem.updatedAt = liveItem.commentUpdatedAt;
           saveState({ remote: false });
         } catch {
-          window.alert("?? ??????? ?????????? ????. ???????? ??? ??? ???.");
+          window.alert("Не удалось обработать фото. Выберите его ещё раз.");
         }
         renderNodeWalkthrough(eq);
       })();
@@ -8782,7 +8782,7 @@ function renderNodeWalkthrough(eq) {
         if (type === "comment") liveItem.commentPhoto = "";
         if (type === "request") liveItem.requestPhoto = "";
         saveState();
-        // ???????? ???? ?????? ???? ?? ?????? ?????????/????????? ??????.
+        // Удаление фото заявки тоже не должно создавать/обновлять заявку.
         renderNodeWalkthrough(eq);
       });
     });
@@ -8815,68 +8815,68 @@ function renderNodeWalkthrough(eq) {
 }
 
 function nodeWalkStatusText(item) {
-  if (item.productionDirectorApproved && !item.accountingWrittenOff && !item.done) return "???????????? ?????????? ????????????. ???? ??????????????";
-  if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "????????? ????????????. ???? ????????? ????????????";
-  if (item.mechanicFixed && !item.resolved) return "?????????. ???? ????????????? ?????????? ????/????????";
-  if (item.resolved) return commentResolutionText(item) || "????????? ???????";
-  if (String(item.nodeDraftText || "").trim() || item.commentPhoto) return "???????? ????????. ??????? ???????????";
-  if (hasAnyComment(item)) return "???? ?????????. ???? ??????????";
-  return "????????? ???";
+  if (item.productionDirectorApproved && !item.accountingWrittenOff && !item.done) return "Подтверждено директором производства. Ждёт ответственного";
+  if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "Установка подтверждена. Ждёт директора производства";
+  if (item.mechanicFixed && !item.resolved) return "Устранено. Ждёт подтверждения начальника цеха/инженера";
+  if (item.resolved) return commentResolutionText(item) || "Замечание закрыто";
+  if (String(item.nodeDraftText || "").trim() || item.commentPhoto) return "Черновик сохранён. Нажмите «Отправить»";
+  if (hasAnyComment(item)) return "Есть замечание. Ждёт устранения";
+  return "Замечаний нет";
 }
 
 function nodeReminderItems(nodeName) {
   const name = String(nodeName || "").toLowerCase();
-  if (/????|????|??????|???????|???|??????|?????|??????|????????|?????/.test(name)) {
+  if (/гидр|масл|клапан|цилиндр|бак|фильтр|пневм|воздух|компресс|насос/.test(name)) {
     return [
-      "????????? ??????, ??????????, ?????? ? ?????? ?? ??????.",
-      "????????? ??????? ?????, ????????? ???????? ? ??????????? ?????? ????.",
-      "????????? ??????: ??? ?? ????, ????????, ??????, ?????????.",
-      "????????? ????????/?????????, ???? ?? ???? ???? ???????? ??? ??????.",
-      "??????? ?????? ??????????????? ?????, ???? ??? ???? ?? ???? ????."
+      "Осмотреть корпус, соединения, шланги и трубки на утечки.",
+      "Проверить уровень масла, состояние фильтров и загрязнение вокруг узла.",
+      "Послушать работу: нет ли шума, вибрации, рывков, перегрева.",
+      "Проверить давление/индикацию, если на узле есть манометр или датчик.",
+      "Смазать только предусмотренные точки, если они есть на этом узле."
     ];
   }
-  if (/?????|????|plc|??????|??????|?????|?????|???|?????|??????/.test(name)) {
+  if (/элект|шкаф|plc|датчик|кабель|клемм|освещ|щит|розет|сигнал/.test(name)) {
     return [
-      "????????? ????, ??????, ???????, ??????? ? ?????????.",
-      "????????? ?????????, ??????, ?????????, ?????????? ? ????????? ?????????.",
-      "?????????, ??? ??? ?????? ????, ???????, ???????? ? ??????????? ????????.",
-      "????????? ??????? ????? ? ?????????? ????????/??????????? ????????.",
-      "?????? ?? ?????????, ???? ??? ????? ???? ??? ????????? ????? ??????."
+      "Осмотреть шкаф, кабели, разъемы, датчики и крепления.",
+      "Проверить индикацию, кнопки, концевики, блокировки и аварийную остановку.",
+      "Убедиться, что нет запаха гари, нагрева, искрения и повреждения изоляции.",
+      "Проверить чистоту шкафа и отсутствие открытых/болтающихся проводов.",
+      "Смазку не выполнять, если для этого узла нет отдельной точки смазки."
     ];
   }
-  if (/????|??????|???|?????|??????|??????|????|???|????|??????|????????|??????|??????|?????|????/.test(name)) {
+  if (/стан|направ|вал|ролик|пуллер|трансп|стол|нож|пила|привод|редуктор|подшип|колонн|плита|шток/.test(name)) {
     return [
-      "????????? ?????????, ?????, ????????????, ????, ?????? ? ??????? ???????????.",
-      "????????? ????, ??????, ???????, ??????????? ??? ? ????????.",
-      "????????? ??????? ????: ??? ?? ???????, ?????, ??????????? ?????????.",
-      "??????? ????? ??????, ???????????? ??? ??????????, ???? ??? ???? ?? ?????.",
-      "????? ??????? ?????????, ??? ???????? ?????? ? ?????????? ?? ?????."
+      "Осмотреть крепления, болты, направляющие, валы, ролики и рабочие поверхности.",
+      "Проверить люфт, биение, перекос, посторонний шум и вибрацию.",
+      "Проверить чистоту зоны: нет ли стружки, грязи, посторонних предметов.",
+      "Смазать точки смазки, направляющие или подшипники, если они есть по месту.",
+      "После осмотра убедиться, что защитные кожухи и ограждения на месте."
     ];
   }
-  if (/???|??????|??????|??????|????????/.test(name)) {
+  if (/печ|нагрев|охлажд|вентил|температ/.test(name)) {
     return [
-      "????????? ???????????, ?????????, ???????????, ??????????? ? ??????????.",
-      "????????? ??????, ?????????????, ?????? ? ?????????.",
-      "????????? ??????????? ?????, ????????, ??? ? ????????????? ??????.",
-      "???????? ??????? ??????????? ?????? ????, ???? ??? ?????????.",
-      "?????? ????????? ?????? ?? ??????????????? ??????, ???? ??? ????."
+      "Проверить температуру, индикацию, нагреватели, вентиляторы и охлаждение.",
+      "Осмотреть корпус, теплоизоляцию, кабели и крепления.",
+      "Проверить посторонний запах, перегрев, шум и неравномерную работу.",
+      "Очистить видимые загрязнения вокруг узла, если это безопасно.",
+      "Смазку выполнять только по предусмотренным точкам, если они есть."
     ];
   }
   return [
-    "????????? ???? ???????: ???????, ?????????, ???????????, ??????????? ????????.",
-    "????????? ???, ????????, ????????, ?????, ?????? ? ??????? ??????????.",
-    "????????? ??????, ??????????, ??????????? ??????? ? ???????????? ????.",
-    "??????? ??????????????? ????? ??????, ???? ??? ???? ?? ???? ????.",
-    "???? ???? ?????????, ???????? ??????????? ? ??????? ????."
+    "Осмотреть узел снаружи: чистота, крепления, повреждения, посторонние предметы.",
+    "Проверить шум, вибрацию, перегрев, запах, утечки и видимые отклонения.",
+    "Проверить защиту, ограждения, доступность прохода и безопасность зоны.",
+    "Смазать предусмотренные точки смазки, если они есть на этом узле.",
+    "Если есть замечание, записать комментарий и сделать фото."
   ];
 }
 
 function renderRequests() {
-  ui.subtitle.textContent = "??????";
+  ui.subtitle.textContent = "Заявки";
   if (!canOpenRequestRole(current.requestRole)) current.requestRole = defaultRequestRole();
   const list = document.querySelector("#requestList");
   if (current.requestRole === "warehouse") {
-    ui.requestsMeta.textContent = "?????: ??????, ??????? ? ??????.";
+    ui.requestsMeta.textContent = "Склад: приход, остатки и выдача.";
     if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
     updateTmcRequestButtonLabels();
     renderEngineerIncomingBanner();
@@ -8893,9 +8893,9 @@ function renderRequests() {
   const waitingHere = visible.filter(req => requestNeedsRole(req, current.requestRole)).length;
   ui.requestsMeta.textContent = MANUAL_REQUEST_WORKFLOW
     ? current.requestRole === "warehouse"
-      ? `?????: ??????, ??????? ? ??????.`
-      : `????? ??????: ${visible.length}`
-    : `????? ????????: ${visible.length} ? ??????? ?????? ????????: ${waitingHere}`;
+      ? `Склад: приход, остатки и выдача.`
+      : `Всего заявок: ${visible.length}`
+    : `Всего доступно: ${visible.length} · Требуют вашего действия: ${waitingHere}`;
   if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
   renderWarehousePanel();
   let rows = all.filter(req => requestVisibleForRole(req, current.requestRole));
@@ -8918,7 +8918,7 @@ function renderRequests() {
     if (!current.warehouseSearch.trim()) rows = rows.slice(0, 40);
   }
   list.innerHTML = "";
-  if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">${current.requestRole === "warehouse" ? `? ?????? "${escapeHtml(warehouseFolderArea())}" ??? ??????` : "??? ?????? ??? ????? ???????"}</div>`);
+  if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">${current.requestRole === "warehouse" ? `В складе "${escapeHtml(warehouseFolderArea())}" нет заявок` : "Нет заявок для этого раздела"}</div>`);
   rows.forEach(req => list.append(requestCard(req)));
   if (current.requestRole === "accounting") {
     list.insertAdjacentHTML("beforeend", renderAccountingWrittenOffList());
@@ -8986,7 +8986,7 @@ function directorRecommendedMaintenance(eq, date = todayISO()) {
 }
 
 function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
-  const activeEquipment = equipment.filter(eq => eq.area !== "??????");
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const rows = [];
   for (let dayOffset = 0; dayOffset < days; dayOffset += 1) {
     const date = addDaysISO(todayISO(), dayOffset);
@@ -9011,7 +9011,7 @@ function recommendedMaintenanceForDate(eq, date) {
 }
 
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
-  const activeEquipment = equipment.filter(eq => eq.area !== "??????");
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const itemsByDate = {};
   for (let day = 1; day <= daysInMonth; day += 1) {
@@ -9033,11 +9033,11 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
 
 function pprCalendarShortName(name) {
   return String(name || "")
-    .replace(/????????????/gi, "????.")
-    .replace(/????????????????/gi, "???????.")
-    .replace(/?????????????????/gi, "??????????")
-    .replace(/??????? ?????????/gi, "?????????")
-    .replace(/?????????/gi, "???.")
+    .replace(/оборудование/gi, "обор.")
+    .replace(/инструментальный/gi, "инструм.")
+    .replace(/электроподстанции/gi, "подстанции")
+    .replace(/уличное освещение/gi, "освещение")
+    .replace(/помещение/gi, "пом.")
     .trim();
 }
 
@@ -9144,15 +9144,15 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const canPlan = canPlanPprSheet() && !locked;
   const canMark = canMarkPprSheet() && !locked;
   const scheduleNames = [...new Set(scheduledItems.map(item =>
-    [item.equipment, item.node].filter(Boolean).join(" ? ")
+    [item.equipment, item.node].filter(Boolean).join(" — ")
   ).filter(Boolean))];
   const statusText = completion.complete
-    ? `??? ?????? ????????? ? ???? ????????? ?? ${dateHuman(date)}`
+    ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
     : completion.awaitingApproval
-      ? "??? ?????? ???????? ? ????????? ????? ? ??????? ?????????"
+      ? "Все работы отмечены · ожидается обход и приёмка инженером"
     : completion.active
-      ? `????????? ???????: ${completion.marked} ?? ${completion.active}`
-      : "??????? ?????? ????????? ???????? ?????";
+      ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
+      : "Инженер должен заполнить перечень работ";
   const rowHtml = rows.map((row, index) => {
     const scheduled = scheduledItems[index] || (scheduledItems.length === 1 ? scheduledItems[0] : null);
     const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
@@ -9163,15 +9163,15 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="??????? ?????????? ??????" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
       <td class="ppr-sheet-mark">
-        <div class="ppr-sheet-mark-buttons" role="group" aria-label="??????? ?? ?????? ${index + 1}">
-          <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="?????????">?</button>
-          <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="?? ?????????">?</button>
+        <div class="ppr-sheet-mark-buttons" role="group" aria-label="Отметка по строке ${index + 1}">
+          <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Выполнено">✓</button>
+          <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Не требуется">−</button>
         </div>
-        ${row.markedByName ? `<small class="ppr-row-author">${escapeHtml(row.markedByName)} ? ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")}</small>` : ""}
-        <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "?" : row.mark === "na" ? "?" : ""}</strong>
+        ${row.markedByName ? `<small class="ppr-row-author">${escapeHtml(row.markedByName)} · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")}</small>` : ""}
+        <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
       </td>
     </tr>
   `;
@@ -9180,16 +9180,16 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}">
       <header class="ppr-sheet-header">
         <div>
-          <span>???? ????????? ????????????</span>
-          <h3>??? ? ${dateHuman(date)}</h3>
+          <span>Лист планового обслуживания</span>
+          <h3>ППР · ${dateHuman(date)}</h3>
         </div>
-        <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">??? ??????</button>
+        <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
-      ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>?? ???????:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
+      ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
       <div class="ppr-sheet-table-wrap">
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">?</th><th rowspan="2">???????? ?????</th><th>???? ????????????</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
             <tr><th>A</th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
@@ -9197,14 +9197,14 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       </div>
       <footer class="ppr-sheet-footer">
         <div class="ppr-sheet-state ${completion.complete ? "done" : completion.partial ? "partial" : "empty"}">
-          <strong>${completion.complete ? "?" : completion.partial ? "!" : "?"}</strong>
+          <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
           <span>${escapeHtml(statusText)}</span>
         </div>
-        ${sheet.plannedByName || sheet.updatedByName ? `<small>???? ????????: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedAt || sheet.updatedAt ? ` ? ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
-        ${sheet.approvedByName ? `<small>??????: ${escapeHtml(sheet.approvedByName)} ? ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
-        ${!sheet.updatedByName ? `<small>???? ????? ???????? ?? ???? ????? ? ????????? ???????? ? ?????????.</small>` : ""}
-        ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ ???????? ??????</button>` : ""}
-        ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">??????? ??????????? ??????</button>` : ""}
+        ${sheet.plannedByName || sheet.updatedByName ? `<small>План составил: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
+        ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
+        ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
+        ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
+        ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
       </footer>
     </section>
   `;
@@ -9214,7 +9214,7 @@ function printPprMaintenanceSheet(date) {
   const sheet = document.querySelector(`[data-ppr-sheet-date="${date}"]`);
   if (!sheet) return;
   const oldTitle = document.title;
-  document.title = `???? ??? ${date}`;
+  document.title = `Лист ППР ${date}`;
   document.body.classList.add("printing-ppr-sheet");
   const cleanup = () => {
     document.title = oldTitle;
@@ -9324,20 +9324,20 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     const dayMissed = date < todayISO() && !sheetStatus.awaitingApproval && (usesSheet ? !sheetStatus.complete : activeIncomplete);
     const dayWarning = date >= todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
     const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
-    const statusIcon = dayDone ? "?" : sheetStatus.awaitingApproval ? "!" : dayMissed ? "?" : dayPartial || dayWarning ? "!" : "";
+    const statusIcon = dayDone ? "✓" : sheetStatus.awaitingApproval ? "!" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
     const statusText = dayDone
-      ? "??? ?????? ?????????"
+      ? "ППР принят инженером"
       : sheetStatus.awaitingApproval
-        ? "?????? ????????? ? ??????? ??????? ?????????"
+        ? "Работы выполнены · ожидают приёмки инженером"
         : dayMissed
-          ? "??? ?? ????????"
+          ? "ППР не выполнен"
           : dayPartial
-            ? "??? ???????? ????????"
+            ? "ППР выполнен частично"
             : dayWarning
-              ? "???????????? ???? ???"
-              : items.length ? "???????? ??????" : "????? ???";
+              ? "Приближается срок ППР"
+              : items.length ? "Архивный график" : "Работ нет";
     cells.push(`
-      <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} ? ${statusText}`)}">
+      <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} · ${statusText}`)}">
         <time datetime="${date}">${day}</time>
         ${statusIcon ? `<span class="ppr-day-status" aria-label="${escapeHtml(statusText)}">${statusIcon}</span>` : ""}
         ${items.length > 1 ? `<small class="ppr-day-count">${items.length}</small>` : ""}
@@ -9349,20 +9349,20 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     <div class="ppr-calendar-toolbar">
       <strong>${escapeHtml(monthLabel)}</strong>
       <div>
-        <button type="button" data-ppr-calendar-shift="-1" aria-label="?????????? ?????">?</button>
-        <button type="button" data-ppr-calendar-shift="1" aria-label="????????? ?????">?</button>
+        <button type="button" data-ppr-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button>
+        <button type="button" data-ppr-calendar-shift="1" aria-label="Следующий месяц">›</button>
       </div>
     </div>
-    <div class="ppr-calendar-legend" aria-label="??????????? ?????????">
-      <span class="done">? ???????</span><span class="missed">? ?? ???????</span><span class="warning">! ????????</span>
+    <div class="ppr-calendar-legend" aria-label="Обозначения календаря">
+      <span class="done">✓ Сделано</span><span class="missed">× Не сделано</span><span class="warning">! Внимание</span>
     </div>
     <div class="ppr-calendar-weekdays">
-      ${["??", "??", "??", "??", "??", "??", "??"].map(day => `<span>${day}</span>`).join("")}
+      ${["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => `<span>${day}</span>`).join("")}
     </div>
     <div class="ppr-calendar-grid">${cells.join("")}</div>
     <section class="ppr-selected-day">
-      <div><span>????????? ????</span><strong>${dateHuman(selectedDate)}</strong></div>
-      <div class="ppr-calendar-tasks">${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : `<p>?? ???? ???? ????? ??? ???</p>`}</div>
+      <div><span>Выбранный день</span><strong>${dateHuman(selectedDate)}</strong></div>
+      <div class="ppr-calendar-tasks">${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : `<p>На этот день работ ППР нет</p>`}</div>
     </section>
   `;
 }
@@ -9497,16 +9497,16 @@ function bindPprCalendarControls(container, rerender) {
 }
 
 function directorCalendarItems(equipment = allEquipment()) {
-  const activeEquipment = equipment.filter(eq => eq.area !== "??????");
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const maintenance = activeEquipment
     .map(eq => ({ eq, plan: directorRecommendedMaintenance(eq) }))
     .filter(item => item.plan.daysUntil === 0)
     .map(({ eq, plan }) => ({
       type: "maintenance",
-      icon: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "?" : "?",
+      icon: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "✅" : "⏰",
       color: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "green" : "yellow",
-      title: `??: ${plan.node}`,
-      text: pprJournalCompletion(eq, todayISO(), plan.node).complete ? `${eq.name} ? ????????? ?? ???????` : `${eq.name} ? ??????? ?????????? ???????`
+      title: `ТО: ${plan.node}`,
+      text: pprJournalCompletion(eq, todayISO(), plan.node).complete ? `${eq.name} · выполнено по журналу` : `${eq.name} · ожидает заполнения журнала`
     }));
   return maintenance;
 }
@@ -9518,19 +9518,19 @@ function directorReminderItems(equipment = allEquipment()) {
   );
   overdueRequests.forEach(req => items.push({
     level: "red",
-    icon: "??",
-    title: `?????????? ?????? ${req.requestNumber || ""}`.trim(),
-    text: req.equipment || req.area || req.text || "????????? ?????????"
+    icon: "📋",
+    title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
+    text: req.equipment || req.area || req.text || "Требуется обработка"
   }));
-  equipment.filter(eq => eq.area !== "??????").forEach(eq => {
+  equipment.filter(eq => eq.area !== "Резерв").forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
     const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
     if (plan.daysUntil <= 2 && !journalComplete) {
       items.push({
         level: plan.daysUntil === 0 ? "red" : "yellow",
-        icon: "?",
-        title: plan.daysUntil === 0 ? `??????? ??: ${plan.node}` : `???????? ???? ??: ${plan.node}`,
-        text: `${eq.name} ? ${plan.daysUntil === 0 ? "???????" : dateHuman(plan.dueDate)}`
+        icon: "⏰",
+        title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
+        text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
       });
     }
   });
@@ -9538,7 +9538,7 @@ function directorReminderItems(equipment = allEquipment()) {
 }
 
 function globalControlEquipment() {
-  return visibleEquipment().filter(eq => eq.area !== "??????");
+  return visibleEquipment().filter(eq => eq.area !== "Резерв");
 }
 
 function globalReminderItems(equipment = globalControlEquipment()) {
@@ -9551,9 +9551,9 @@ function globalReminderItems(equipment = globalControlEquipment()) {
       .sort()
       .forEach(date => items.push({
         level: "yellow",
-        icon: "?",
-        title: "??? ??????? ??????? ?????????",
-        text: `${dateHuman(date)} ? ??????????? ?????? ????? ????????? ???????`,
+        icon: "✅",
+        title: "ППР ожидает приёмки инженером",
+        text: `${dateHuman(date)} · выполненные работы нужно проверить обходом`,
         pprApprovalDate: date
       }));
   }
@@ -9565,9 +9565,9 @@ function globalReminderItems(equipment = globalControlEquipment()) {
     )
     .forEach(req => items.push({
       level: "red",
-      icon: "??",
-      title: `?????????? ?????? ${req.requestNumber || ""}`.trim(),
-      text: req.equipment || req.area || req.text || "????????? ?????????"
+      icon: "📋",
+      title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
+      text: req.equipment || req.area || req.text || "Требуется обработка"
     }));
   equipment.forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
@@ -9575,9 +9575,9 @@ function globalReminderItems(equipment = globalControlEquipment()) {
     if (plan.daysUntil <= 2 && !journalComplete) {
       items.push({
         level: plan.daysUntil === 0 ? "red" : "yellow",
-        icon: "?",
-        title: plan.daysUntil === 0 ? `??????? ??: ${plan.node}` : `???????? ???? ??: ${plan.node}`,
-        text: `${eq.name} ? ${plan.daysUntil === 0 ? "???????" : dateHuman(plan.dueDate)}`
+        icon: "⏰",
+        title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
+        text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
       });
     }
   });
@@ -9609,20 +9609,20 @@ function renderGlobalReminderPanel() {
     </div>
   `).join("");
   ui.globalReminderContent.innerHTML = `
-    <div class="global-control-date">??????? ? ${dateHuman(todayISO())}</div>
+    <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
     <div class="global-control-grid">
       <section>
-        <div class="director-section-head"><div><span>??</span><h2>???????????</h2></div><strong>${reminders.length}</strong></div>
-        <div class="director-reminder-list">${reminderRows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>??? ?????????, ??????? ??????????? ???</strong></div>`}</div>
+        <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
+        <div class="director-reminder-list">${reminderRows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Всё выполнено, срочных напоминаний нет</strong></div>`}</div>
       </section>
       <section>
-        <div class="director-section-head"><div><span>??</span><h2>????????? ???</h2></div><small>???????</small></div>
-        <div class="director-calendar-list">${calendarRows || `<div class="director-empty-ok"><strong>?? ??????? ????? ???</strong></div>`}</div>
-        <p class="director-safe-note">? ?????????? ???????????????? ??????????? ??????? ????????????? ???????????? ?????????? ??.</p>
+        <div class="director-section-head"><div><span>📅</span><h2>Календарь ППР</h2></div><small>Сегодня</small></div>
+        <div class="director-calendar-list">${calendarRows || `<div class="director-empty-ok"><strong>На сегодня работ нет</strong></div>`}</div>
+        <p class="director-safe-note">✅ Заполнение соответствующего агрегатного журнала автоматически подтверждает выполнение ТО.</p>
       </section>
     </div>
     <section class="global-ppr-month-card">
-      <div class="director-section-head"><div><span>???</span><h2>????? ?????? ??? ??????</h2></div><small>???????? ????</small></div>
+      <div class="director-section-head"><div><span>🗓️</span><h2>Общий график ППР завода</h2></div><small>Доступен всем</small></div>
       ${monthCalendar}
     </section>
   `;
@@ -9732,20 +9732,20 @@ function directorJournalState(eq) {
     const overdue = compressorJournalIncompleteDays(eq.area);
     return {
       color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
-      text: overdue ? overdueDaysText(overdue) : "?????????"
+      text: overdue ? overdueDaysText(overdue) : "Выполнено"
     };
   }
   if (eq.area === GAS_JOURNAL_AREA) {
     const overdue = gasJournalIncompleteDays();
     return {
       color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
-      text: overdue ? overdueDaysText(overdue) : "?????????"
+      text: overdue ? overdueDaysText(overdue) : "Выполнено"
     };
   }
   const walk = directorTodayWalk(eq);
   return {
     color: directorTraffic(walk.done, walk.total),
-    text: walk.done === walk.total ? "?????????" : walk.done ? `${walk.done}/${walk.total} ?????` : "?? ?????????"
+    text: walk.done === walk.total ? "Выполнено" : walk.done ? `${walk.done}/${walk.total} узлов` : "Не заполнено"
   };
 }
 
@@ -9767,7 +9767,7 @@ function directorActiveRequests() {
 }
 
 function directorRequestDetailRows(requests = directorActiveRequests(), archiveMode = false) {
-  if (!requests.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>${archiveMode ? "? ?????? ?????? ???" : "?????? ?? ????????? 24 ???? ???"}</strong></div>`;
+  if (!requests.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>${archiveMode ? "В архиве заявок нет" : "Заявок за последние 24 часа нет"}</strong></div>`;
   return requests.map(req => {
     const role = waitingRole(req);
     const holder = requestRoleLabel(role);
@@ -9776,20 +9776,20 @@ function directorRequestDetailRows(requests = directorActiveRequests(), archiveM
       <div class="director-info-row ${overdue ? "red" : ""}">
         <span class="traffic-dot"></span>
         <div>
-          <strong>${escapeHtml(req.requestNumber || "??????")}${req.equipment ? ` ? ${escapeHtml(req.equipment)}` : ""}</strong>
-          <p>${escapeHtml(req.text || "???????? ???????????")}</p>
-          <small>${escapeHtml(req.area || "")}${req.node ? ` ? ${escapeHtml(req.node)}` : ""}${req.dueDate ? ` ? ???? ${dateHuman(req.dueDate)}` : ""}</small>
+          <strong>${escapeHtml(req.requestNumber || "Заявка")}${req.equipment ? ` · ${escapeHtml(req.equipment)}` : ""}</strong>
+          <p>${escapeHtml(req.text || "Описание отсутствует")}</p>
+          <small>${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}${req.dueDate ? ` · Срок ${dateHuman(req.dueDate)}` : ""}</small>
         </div>
         <div class="director-info-owner">
-          <b>${overdue ? "??????????" : statusText(req.status || req.requestStatus || "")}</b>
-          <span>?????? ?: ${escapeHtml(holder)}</span>
+          <b>${overdue ? "Просрочено" : statusText(req.status || req.requestStatus || "")}</b>
+          <span>Сейчас у: ${escapeHtml(holder)}</span>
         </div>
       </div>`;
   }).join("");
 }
 
 function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
-  if (!remarks.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>???????? ????????? ???</strong></div>`;
+  if (!remarks.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Открытых замечаний нет</strong></div>`;
   return remarks.map(remark => {
     const entry = firstRemarkEntry(remark.item);
     const overdue = directorRemarkOverdue(remark);
@@ -9798,13 +9798,13 @@ function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
       <div class="director-info-row ${overdue ? "red" : "yellow"}">
         <span class="traffic-dot"></span>
         <div>
-          <strong>${escapeHtml(remark.equipment)}${remark.node ? ` ? ${escapeHtml(remark.node)}` : ""}</strong>
-          <p>${escapeHtml(entry?.text || remark.item?.comment || "????? ????????? ???????????")}</p>
-          <small>${dateHuman(remark.date)}${author ? ` ? ???????: ${escapeHtml(author)}` : ""}</small>
+          <strong>${escapeHtml(remark.equipment)}${remark.node ? ` · ${escapeHtml(remark.node)}` : ""}</strong>
+          <p>${escapeHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
+          <small>${dateHuman(remark.date)}${author ? ` · Записал: ${escapeHtml(author)}` : ""}</small>
         </div>
         <div class="director-info-owner">
-          <b>${overdue ? "??????????" : "???????"}</b>
-          <span>${overdue ? "??????? ????????" : "??????? ??????????"}</span>
+          <b>${overdue ? "Просрочено" : "Открыто"}</b>
+          <span>${overdue ? "Требует внимания" : "Ожидает устранения"}</span>
         </div>
       </div>`;
   }).join("");
@@ -9961,7 +9961,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
     months[created.month].downtimeMs += downtimeDurationMs(item);
   });
   const today = todayISO();
-  const activeEquipment = allEquipment().filter(eq => eq.area !== "??????");
+  const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв");
   for (let month = 0; month < 12; month += 1) {
     const days = new Date(year, month + 1, 0).getDate();
     for (let day = 1; day <= days; day += 1) {
@@ -10040,8 +10040,8 @@ function directorAnnualStats(year = directorAnnualYear()) {
 
 function trendText(currentValue, previousValue, unit = "") {
   const diff = Number(currentValue || 0) - Number(previousValue || 0);
-  if (!diff) return "??? ?????????";
-  return `${diff > 0 ? "????" : "???????"} ${Math.abs(diff)}${unit}`;
+  if (!diff) return "без изменений";
+  return `${diff > 0 ? "рост" : "падение"} ${Math.abs(diff)}${unit}`;
 }
 
 function annualBarHeight(value, maxValue) {
@@ -10058,15 +10058,15 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
   const workerCards = stats.workers.map(worker => `
     <div class="annual-role-card ${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <div><strong>${escapeHtml(worker.name)}</strong><span>${escapeHtml(worker.roleLabel)}</span></div>
-      <b>${worker.kpd === null ? "??? ??????" : `${worker.kpd}%`}</b>
-      <small>???????: ${worker.closed} ? ?????????: ${worker.installs} ? ???????: ${worker.downtimeClosed} ? ??????????: ${worker.overdueOpen}${worker.avgMs ? ` ? ??????? ?????: ${durationText(worker.avgMs)}` : ""}</small>
+      <b>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</b>
+      <small>Закрыто: ${worker.closed} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
     </div>
   `).join("");
   const workerRows = stats.workers.map((worker, index) => `
     <tr class="${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <td>${index + 1}</td>
       <td><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.roleLabel)}</small></td>
-      <td>${worker.kpd === null ? "??? ??????" : `${worker.kpd}%`}</td>
+      <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</td>
       <td>${worker.closed}</td>
       <td>${worker.installs}</td>
       <td>${worker.downtimeClosed}</td>
@@ -10075,10 +10075,10 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     </tr>
   `).join("");
   const monthBars = stats.months.map((month, index) => {
-    const repairTrend = index ? trendText(month.repairsClosed, stats.months[index - 1].repairsClosed) : "????? ????";
+    const repairTrend = index ? trendText(month.repairsClosed, stats.months[index - 1].repairsClosed) : "старт года";
     return `
       <div class="annual-month">
-        <div class="annual-bars" title="${escapeHtml(month.label)}: ??????? ${month.repairsCreated}, ??????? ${month.repairsClosed}, ??????? ${durationText(month.downtimeMs)}">
+        <div class="annual-bars" title="${escapeHtml(month.label)}: создано ${month.repairsCreated}, закрыто ${month.repairsClosed}, простои ${durationText(month.downtimeMs)}">
           <i class="created" style="height:${annualBarHeight(month.repairsCreated, maxRepairs)}%"></i>
           <i class="closed" style="height:${annualBarHeight(month.repairsClosed, maxRepairs)}%"></i>
         </div>
@@ -10092,15 +10092,15 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     const diff = month.downtimeMs - previous;
     const diffText = index
       ? diff === 0
-        ? "??? ?????????"
-        : `${diff > 0 ? "????" : "???????"} ${durationText(Math.abs(diff))}`
-      : "????? ????";
+        ? "без изменений"
+        : `${diff > 0 ? "рост" : "падение"} ${durationText(Math.abs(diff))}`
+      : "старт года";
     const hours = Math.round(month.downtimeMs / 3600000 * 10) / 10;
     return `
       <div class="downtime-year-month ${!month.downtimeMs ? "empty" : diff > 0 ? "up" : diff < 0 ? "down" : ""}">
         <div class="downtime-year-bar" style="height:${month.downtimeMs ? annualBarHeight(month.downtimeMs, maxDowntime) : 0}%"></div>
         <strong>${escapeHtml(month.label)}</strong>
-        <span>${hours ? `${hours} ?` : "0"}</span>
+        <span>${hours ? `${hours} ч` : "0"}</span>
         <small>${escapeHtml(diffText)}</small>
       </div>
     `;
@@ -10108,37 +10108,37 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
   return `
     <section class="director-annual-card">
       <div class="director-section-head">
-        <div><span>??</span><h2>??????? ?????????? ${stats.year}</h2></div>
-        <small>???, ???????, ?????????, ????/??????? ?? ???????</small>
+        <div><span>📈</span><h2>Годовая статистика ${stats.year}</h2></div>
+        <small>КПД, ремонты, остановки, рост/падение по месяцам</small>
       </div>
       <div class="annual-summary-grid">
-        <div><strong>${stats.totals.repairsCreated}</strong><span>????????/????????? ???????</span></div>
-        <div><strong>${stats.totals.repairsClosed}</strong><span>??????? ?????</span></div>
-        <div><strong>${stats.totals.stops}</strong><span>?????????</span></div>
-        <div><strong>${durationText(stats.totals.downtimeMs)}</strong><span>??????? ?? ???</span></div>
+        <div><strong>${stats.totals.repairsCreated}</strong><span>ремонтов/замечаний создано</span></div>
+        <div><strong>${stats.totals.repairsClosed}</strong><span>закрыто работ</span></div>
+        <div><strong>${stats.totals.stops}</strong><span>остановок</span></div>
+        <div><strong>${durationText(stats.totals.downtimeMs)}</strong><span>простоя за год</span></div>
       </div>
-      <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>??? ???????????</strong><span>???????? ????????? ? ?????????? ? ?????????????</span></div><b>??? ??????</b></div>`}</div>
+      <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте механиков и электриков в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
-          <thead><tr><th>?</th><th>?????????</th><th>???</th><th>???????</th><th>?????????</th><th>???????</th><th>??????????</th><th>??????? ?????</th></tr></thead>
-          <tbody>${workerRows || `<tr><td colspan="8">???? ??? ?????? ?? ????????? ? ??????????</td></tr>`}</tbody>
+          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
+          <tbody>${workerRows || `<tr><td colspan="8">Пока нет данных по механикам и электрикам</td></tr>`}</tbody>
         </table>
       </div>
       <div class="annual-trend-note">
-        <b>??????? ?????:</b>
-        ???????? ?????? - ${escapeHtml(trendText(currentMonth.repairsClosed, previousMonth.repairsClosed))};
-        ????????? - ${escapeHtml(trendText(currentMonth.stops, previousMonth.stops))};
-        ??????? - ${escapeHtml(currentMonth.downtimeMs === previousMonth.downtimeMs ? "??? ?????????" : `${currentMonth.downtimeMs > previousMonth.downtimeMs ? "????" : "???????"} ${durationText(Math.abs(currentMonth.downtimeMs - previousMonth.downtimeMs))}`)}.
+        <b>Текущий месяц:</b>
+        закрытые работы - ${escapeHtml(trendText(currentMonth.repairsClosed, previousMonth.repairsClosed))};
+        остановки - ${escapeHtml(trendText(currentMonth.stops, previousMonth.stops))};
+        простой - ${escapeHtml(currentMonth.downtimeMs === previousMonth.downtimeMs ? "без изменений" : `${currentMonth.downtimeMs > previousMonth.downtimeMs ? "рост" : "падение"} ${durationText(Math.abs(currentMonth.downtimeMs - previousMonth.downtimeMs))}`)}.
       </div>
       <div class="downtime-year-chart">
         <div class="director-section-head">
-          <div><span>?</span><h2>??????? ?? ???????</h2></div>
-          <small>??????? ??????? - ???? ???????. ??????? ?????????? ???? ??? ??????? ? ???????? ??????.</small>
+          <div><span>⏱</span><h2>Простой по месяцам</h2></div>
+          <small>Красная колонка - часы простоя. Подпись показывает рост или падение к прошлому месяцу.</small>
         </div>
         <div class="downtime-year-months">${downtimeBars}</div>
       </div>
       <div class="annual-chart">
-        <div class="annual-chart-legend"><span class="created"></span>??????? <span class="closed"></span>???????</div>
+        <div class="annual-chart-legend"><span class="created"></span>Создано <span class="closed"></span>Закрыто</div>
         <div class="annual-months">${monthBars}</div>
       </div>
     </section>
@@ -10270,11 +10270,11 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
       + (avgRepairMs ? Math.max(0, 10 - Math.min(avgRepairMs / 3600000 / 24 * 10, 10)) : 0)
     ));
     const achievements = [];
-    if (worker.breakdownClosed >= 3) achievements.push("????????? ??????");
-    if (worker.qrDone >= 50) achievements.push("??? ??????????");
-    if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("??? ?????????");
-    if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("??????? ??????");
-    if (worker.installs >= 5) achievements.push("?????????");
+    if (worker.breakdownClosed >= 3) achievements.push("Аварийный мастер");
+    if (worker.qrDone >= 50) achievements.push("ППР дисциплина");
+    if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("Без просрочек");
+    if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("Быстрый ремонт");
+    if (worker.installs >= 5) achievements.push("Монтажник");
     return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, pprPercent, points, efficiency, achievements };
   });
 
@@ -10336,11 +10336,11 @@ function workerRatingHtml(stats = workerRatingStats()) {
   const monthName = new Date(stats.year, stats.monthIndex, 1).toLocaleDateString("ru-RU", { month: "long" });
   const winner = stats.bestOverall;
   const winnerFull = winner ? stats.workers.find(worker => worker.role === winner.role && worker.name === winner.name) : null;
-  const winnerName = winner ? winner.name : "???? ??? ??????????";
-  const winnerRole = winner ? winner.roleLabel : "??? ???????? ?????";
-  const winnerKpi = winnerFull ? ` ? ??? ${winnerFull.efficiency}%` : "";
-  const bestMechanic = stats.bestMechanic ? `${stats.bestMechanic.name} ? ${stats.bestMechanic.points} ??????` : "??? ??????";
-  const bestElectrician = stats.bestElectrician ? `${stats.bestElectrician.name} ? ${stats.bestElectrician.points} ??????` : "??? ??????";
+  const winnerName = winner ? winner.name : "Пока нет победителя";
+  const winnerRole = winner ? winner.roleLabel : "Нет закрытых работ";
+  const winnerKpi = winnerFull ? ` · КПД ${winnerFull.efficiency}%` : "";
+  const bestMechanic = stats.bestMechanic ? `${stats.bestMechanic.name} · ${stats.bestMechanic.points} баллов` : "нет данных";
+  const bestElectrician = stats.bestElectrician ? `${stats.bestElectrician.name} · ${stats.bestElectrician.points} баллов` : "нет данных";
   const maxPoints = Math.max(...stats.workers.map(worker => worker.points), 1);
   const graph = stats.workers.map(worker => {
     const height = Math.max(8, Math.round(worker.points / maxPoints * 100));
@@ -10353,33 +10353,33 @@ function workerRatingHtml(stats = workerRatingStats()) {
           <div class="worker-graph-bar" style="height:${height}%"><strong>${worker.place}</strong></div>
         </div>
         <b>${escapeHtml(worker.name)}</b>
-        <span>${worker.points} ??????</span>
-        <small>${worker.place === 1 ? "???? ????" : `${worker.place} ?????`}</small>
+        <span>${worker.points} баллов</span>
+        <small>${worker.place === 1 ? "выше всех" : `${worker.place} место`}</small>
       </div>
     `;
   }).join("");
   const rows = stats.workers.map(worker => `
     <article class="worker-rating-row ${workerRatingBand(worker)}">
-      <div class="worker-place">${worker.place === 1 ? "??" : worker.place}</div>
+      <div class="worker-place">${worker.place === 1 ? "🏆" : worker.place}</div>
       <div class="worker-main">
         <strong>${escapeHtml(worker.name)}</strong>
-        <span>${escapeHtml(worker.roleLabel)} ? ${worker.points} ?????? ? ??? ${worker.efficiency}%</span>
+        <span>${escapeHtml(worker.roleLabel)} · ${worker.points} баллов · КПД ${worker.efficiency}%</span>
         <div class="worker-achievements">
-          ${worker.achievements.length ? worker.achievements.map(item => `<b>${escapeHtml(item)}</b>`).join("") : "<small>?????????? ???????? ????? ??????????? ?????</small>"}
+          ${worker.achievements.length ? worker.achievements.map(item => `<b>${escapeHtml(item)}</b>`).join("") : "<small>Достижения появятся после выполненных работ</small>"}
         </div>
       </div>
       <div class="worker-metrics">
-        <span><b>${worker.closed}</b> ?????</span>
-        <span><b>${worker.breakdownClosed}</b> ??????</span>
-        <span><b>${worker.qrDone}</b> QR-???</span>
-        <span><b>${worker.planPercent}%</b> ????</span>
-        <span><b>${worker.emergencyPercent}%</b> ??????</span>
-        <span><b>${worker.pprPercent}%</b> ???</span>
+        <span><b>${worker.closed}</b> работ</span>
+        <span><b>${worker.breakdownClosed}</b> аварий</span>
+        <span><b>${worker.qrDone}</b> QR-ППР</span>
+        <span><b>${worker.planPercent}%</b> план</span>
+        <span><b>${worker.emergencyPercent}%</b> аварии</span>
+        <span><b>${worker.pprPercent}%</b> ППР</span>
       </div>
       <div class="worker-time">
-        <span>???????: ${worker.avgReactionMs ? durationText(worker.avgReactionMs) : "-"}</span>
-        <span>??????: ${worker.avgRepairMs ? durationText(worker.avgRepairMs) : "-"}</span>
-        <span>?????: ???? ${worker.shifts.day}, ???? ${worker.shifts.night}</span>
+        <span>Реакция: ${worker.avgReactionMs ? durationText(worker.avgReactionMs) : "-"}</span>
+        <span>Ремонт: ${worker.avgRepairMs ? durationText(worker.avgRepairMs) : "-"}</span>
+        <span>Смены: день ${worker.shifts.day}, ночь ${worker.shifts.night}</span>
       </div>
     </article>
   `).join("");
@@ -10387,62 +10387,62 @@ function workerRatingHtml(stats = workerRatingStats()) {
     return `
       <section class="worker-rating-hero simple">
         <div>
-          <span>?????? ?? ????? ? ${escapeHtml(monthName)}</span>
+          <span>Лучший за месяц · ${escapeHtml(monthName)}</span>
           <h2>${escapeHtml(winnerName)}</h2>
-          <p>${escapeHtml(winnerRole)}${winner ? ` ? ${winner.points} ??????` : ""}</p>
+          <p>${escapeHtml(winnerRole)}${winner ? ` · ${winner.points} баллов` : ""}</p>
         </div>
-        <div class="worker-trophy">??</div>
+        <div class="worker-trophy">🏆</div>
       </section>
       <section class="worker-rating-graph simple">
         <div class="worker-rating-graph-head">
           <div>
-            <strong>??????? ???????????</strong>
-            <span>????? ??????? ??????? - ?????? ?????. ???? ????? ???????? ??????.</span>
+            <strong>Рейтинг сотрудников</strong>
+            <span>Самая высокая колонка - первое место. Твоё место выделено рамкой.</span>
           </div>
         </div>
-        <div class="worker-graph-grid simple">${graph || `<div class="empty-state">???? ??? ?????? ????????</div>`}</div>
+        <div class="worker-graph-grid simple">${graph || `<div class="empty-state">Пока нет данных рейтинга</div>`}</div>
       </section>
     `;
   }
   return `
     <section class="worker-rating-hero">
       <div>
-        <span>?????????? ?????? ? ${escapeHtml(monthName)}</span>
+        <span>Победитель месяца · ${escapeHtml(monthName)}</span>
         <h2>${escapeHtml(winnerName)}</h2>
-        <p>${escapeHtml(winnerRole)}${winner ? ` ? ${winner.points} ??????${winnerKpi}` : ""}</p>
+        <p>${escapeHtml(winnerRole)}${winner ? ` · ${winner.points} баллов${winnerKpi}` : ""}</p>
       </div>
-      <div class="worker-trophy">??</div>
+      <div class="worker-trophy">🏆</div>
     </section>
     <section class="worker-rating-summary">
-      <div><strong>${stats.totals.points}</strong><span>?????? ?????</span></div>
-      <div><strong>${stats.totals.closed}</strong><span>????????? ?????</span></div>
-      <div><strong>${stats.totals.breakdownClosed}</strong><span>?????? ?????????</span></div>
-      <div><strong>${stats.totals.qrDone}</strong><span>QR-??? ???????</span></div>
-      <div><strong>${stats.totals.overdueOpen}</strong><span>??????????</span></div>
+      <div><strong>${stats.totals.points}</strong><span>баллов всего</span></div>
+      <div><strong>${stats.totals.closed}</strong><span>выполнено работ</span></div>
+      <div><strong>${stats.totals.breakdownClosed}</strong><span>аварий устранено</span></div>
+      <div><strong>${stats.totals.qrDone}</strong><span>QR-ППР обходов</span></div>
+      <div><strong>${stats.totals.overdueOpen}</strong><span>просрочено</span></div>
     </section>
     <section class="worker-month-winners">
-      <div><span>?????? ??????? ??????</span><strong>${escapeHtml(bestMechanic)}</strong></div>
-      <div><span>?????? ???????? ??????</span><strong>${escapeHtml(bestElectrician)}</strong></div>
-      <div><span>${detailed ? "??? ?????????" : "???? ????"}</span><strong>${detailed ? "?????? + ?????? + QR-??? - ?????????" : "????????? ???? ? ???????"}</strong></div>
+      <div><span>Лучший механик месяца</span><strong>${escapeHtml(bestMechanic)}</strong></div>
+      <div><span>Лучший электрик месяца</span><strong>${escapeHtml(bestElectrician)}</strong></div>
+      <div><span>${detailed ? "Как считается" : "Твоя цель"}</span><strong>${detailed ? "работы + аварии + QR-ППР - просрочки" : "подняться выше в графике"}</strong></div>
     </section>
     <section class="worker-rating-graph">
       <div class="worker-rating-graph-head">
         <div>
-          <strong>?????? ????????</strong>
-          <span>??? ???? ???????, ??? ???? ????? ??????????</span>
+          <strong>График рейтинга</strong>
+          <span>Чем выше колонка, тем выше место сотрудника</span>
         </div>
       </div>
-      <div class="worker-graph-grid">${graph || `<div class="empty-state">???? ??? ????????? ? ?????????? ? ?????? ???????????</div>`}</div>
+      <div class="worker-graph-grid">${graph || `<div class="empty-state">Пока нет механиков и электриков в списке сотрудников</div>`}</div>
     </section>
     ${detailed ? `
       <section class="worker-rating-explain">
-        <strong>??? ???????? ???????:</strong>
-        <span>????? ???? ?? ??????????? ??????, ??????????? ??????, ????????? ? QR-??????.</span>
-        <span>??? ????????? ?????????? ?????, ?????????? ?????, ??? ? ???????? ????????.</span>
-        <span>??? ?????? ????????? ? ??????? ??????, ??? ???? ?????.</span>
+        <strong>Как понимать рейтинг:</strong>
+        <span>Баллы дают за выполненные работы, устранённые аварии, установки и QR-обходы.</span>
+        <span>КПД учитывает выполнение плана, количество работ, ППР и скорость закрытия.</span>
+        <span>Чем меньше просрочек и быстрее ремонт, тем выше место.</span>
       </section>
       <section class="worker-rating-list">
-        ${rows || `<div class="empty-state">???? ??? ????????? ? ?????????? ? ?????? ???????????</div>`}
+        ${rows || `<div class="empty-state">Пока нет механиков и электриков в списке сотрудников</div>`}
       </section>
     ` : ""}
   `;
@@ -10477,8 +10477,8 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
           <div class="factory-score-bar" style="height:${score}%"><strong>${score}</strong></div>
         </div>
         <b>${escapeHtml(month.label)}</b>
-        <span class="${diff > 0 ? "up" : diff < 0 ? "down" : ""}">${index ? diff === 0 ? "=" : `${diff > 0 ? "+" : ""}${diff}` : "?????"}</span>
-        <small>${downtimeHours ? `${downtimeHours}?` : "0?"} ? QR ${qrPercent}% ? ${month.repairsClosed}/${month.repairsCreated}</small>
+        <span class="${diff > 0 ? "up" : diff < 0 ? "down" : ""}">${index ? diff === 0 ? "=" : `${diff > 0 ? "+" : ""}${diff}` : "старт"}</span>
+        <small>${downtimeHours ? `${downtimeHours}ч` : "0ч"} · QR ${qrPercent}% · ${month.repairsClosed}/${month.repairsCreated}</small>
       </div>
     `;
   }).join("");
@@ -10487,34 +10487,34 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
     <section class="factory-analytics-card">
       <div class="factory-analytics-head">
         <div>
-          <span>??????? ??????</span>
-          <h2>?????? ?????????? ?????? ${stats.year}</h2>
-          <p>???? ?????????? ????????? QR-??????, ???????, ?????????, ??????? ? ?????????? ??????. ??? ???? ???????, ??? ????? ?????.</p>
+          <span>ГЛАВНЫЙ ГРАФИК</span>
+          <h2>Индекс надежности завода ${stats.year}</h2>
+          <p>Один показатель учитывает QR-обходы, простои, остановки, ремонты и незакрытые работы. Чем выше колонка, тем лучше месяц.</p>
         </div>
         <div class="factory-current-score ${reliabilityBand(currentScore)}">
           <strong>${currentScore}</strong>
-          <span>${scoreDiff === 0 ? "??? ?????????" : scoreDiff > 0 ? `???? +${scoreDiff}` : `??????? ${scoreDiff}`}</span>
+          <span>${scoreDiff === 0 ? "без изменений" : scoreDiff > 0 ? `рост +${scoreDiff}` : `падение ${scoreDiff}`}</span>
         </div>
       </div>
       <div class="factory-graph">${bars}</div>
       <div class="factory-graph-help">
-        <strong>??? ?????? ??????:</strong>
-        <span>??????? ??????? - ????? ?????? ??????.</span>
-        <span>??????? - ?????, ?????? - ????????, ??????? - ????.</span>
-        <span>+ / - ??? ??????? ?????????? ???? ??? ??????? ? ???????? ??????.</span>
-        <span>?????? ??????: ???? ??????? ? ??????? QR-?????? ? ???????/??????? ?????.</span>
+        <strong>Как читать график:</strong>
+        <span>Высокая колонка - месяц прошёл хорошо.</span>
+        <span>Зелёный - норма, жёлтый - внимание, красный - риск.</span>
+        <span>+ / - под месяцем показывает рост или падение к прошлому месяцу.</span>
+        <span>Нижняя строка: часы простоя · процент QR-обхода · закрыто/создано работ.</span>
       </div>
       <div class="factory-graph-legend">
-        <span class="green"></span>85-100 ??????
-        <span class="yellow"></span>65-84 ????????
-        <span class="red"></span>0-64 ????
+        <span class="green"></span>85-100 хорошо
+        <span class="yellow"></span>65-84 внимание
+        <span class="red"></span>0-64 риск
       </div>
       <div class="factory-summary-strip">
-        <div><strong>${durationText(stats.totals.downtimeMs)}</strong><span>??????? ?? ???</span></div>
-        <div><strong>${stats.totals.stops}</strong><span>?????????</span></div>
-        <div><strong>${stats.totals.repairsClosed}/${stats.totals.repairsCreated}</strong><span>??????? / ???????</span></div>
-        <div><strong>${totalOpen}</strong><span>?????????? ?????</span></div>
-        <div><strong>${totalQrPercent}%</strong><span>QR-?????? ?? ???</span></div>
+        <div><strong>${durationText(stats.totals.downtimeMs)}</strong><span>простой за год</span></div>
+        <div><strong>${stats.totals.stops}</strong><span>остановок</span></div>
+        <div><strong>${stats.totals.repairsClosed}/${stats.totals.repairsCreated}</strong><span>закрыто / создано</span></div>
+        <div><strong>${totalOpen}</strong><span>незакрытых работ</span></div>
+        <div><strong>${totalQrPercent}%</strong><span>QR-обходы за год</span></div>
       </div>
     </section>
   `;
@@ -10540,7 +10540,7 @@ function parseMoneyAmount(value) {
     .map(match => Number(match[0].replace(/\s/g, "").replace(",", ".")))
     .filter(Number.isFinite);
   if (!numbers.length) return 0;
-  const hasRange = /[-??]/.test(text) && numbers.length >= 2;
+  const hasRange = /[-–—]/.test(text) && numbers.length >= 2;
   return hasRange ? (numbers[0] + numbers[1]) / 2 : numbers[0];
 }
 
@@ -10560,7 +10560,7 @@ const priceLookupMemory = new Map();
 function clearPriceLookupClientQuery(name = "") {
   const cleanName = String(name || "").trim();
   const words = cleanName.split(/\s+/).filter(word => word.length >= 3);
-  const generic = /^(????|?????|?????|???????|??????|?????|?????|?????|?????|??????|?????????)$/i.test(cleanName);
+  const generic = /^(болт|гайка|шайба|профиль|кабель|масло|труба|лента|насос|датчик|подшипник)$/i.test(cleanName);
   return words.length >= 2 && cleanName.length >= 8 && !generic;
 }
 
@@ -10586,7 +10586,7 @@ async function autoFillInternetPriceInput(input, name = "", article = "", onAppl
   const result = await lookupInternetPriceClient(name);
   if (!result?.price || parseMoneyAmount(input.value) > 0) return false;
   input.value = priceTextFromAmount(result.price);
-  input.title = `????????????? ??????? ?? ????????? (${result.confidence || "??????"})`;
+  input.title = `Автоматически найдено из интернета (${result.confidence || "оценка"})`;
   input.classList.add("internet-price-filled");
   if (typeof onApply === "function") onApply(result.price);
   return true;
@@ -10621,7 +10621,7 @@ async function runWarehouseStockPriceLookupQueue() {
       const input = ui.warehousePanel?.querySelector(`[data-stock-price="${CSS.escape(id)}"]`);
       if (input && parseMoneyAmount(input.value) <= 0) {
         input.value = priceTextFromAmount(result.price);
-        input.title = `????????????? ??????? ?? ????????? (${result.confidence || "??????"})`;
+        input.title = `Автоматически найдено из интернета (${result.confidence || "оценка"})`;
         input.classList.add("internet-price-filled");
       }
       saveState();
@@ -10697,9 +10697,9 @@ function annualServiceCostEntries(year) {
       area: item.area || "",
       equipment: item.equipment || "",
       node: item.node || "",
-      name: "?????? / ??????",
+      name: "Услуга / работа",
       qty: 1,
-      unit: "???.",
+      unit: "усл.",
       unitPrice: Number(item.amount || 0),
       total: Number(item.amount || 0),
       supplier: item.comment || ""
@@ -10721,14 +10721,14 @@ function annualRequestCostEntries(year) {
     entries.push({
       date: costDate,
       area: item.area || "",
-      equipment: item.source || item.area || "?????",
+      equipment: item.source || item.area || "Склад",
       node: item.location || "",
       name: item.name || "",
       qty,
-      unit: item.unit || "??",
+      unit: item.unit || "шт",
       unitPrice,
       total: unitPrice * qty,
-      supplier: "?????"
+      supplier: "Склад"
     });
   });
   return entries;
@@ -10782,7 +10782,7 @@ function engineerAnnualAnalysis(year) {
     const key = `${entry.area || ""}|${entry.equipment || ""}`;
     const item = equipmentCostMap.get(key) || {
       area: entry.area || "",
-      equipment: entry.equipment || "??? ????????????",
+      equipment: entry.equipment || "Без оборудования",
       total: 0,
       count: 0,
       lastItem: ""
@@ -10953,7 +10953,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
     .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
   const serviceRows = engineerReportRows(
     serviceItemsMonth,
-    "?? ????????? ????? ?????? ?? ????????",
+    "За выбранный месяц услуги не записаны",
     item => `
       <tr>
         <td>${escapeHtml(item.date ? dateHuman(item.date) : dateTimeHuman(item.createdAt))}</td>
@@ -10967,15 +10967,15 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   const pprRows = engineerReportRows(
     stats.pprSheets,
-    "?? ????????? ????? ????? ??? ?? ???????????",
+    "За выбранный месяц листы ППР не заполнялись",
     item => `
       <tr>
         <td>${escapeHtml(dateHuman(item.date))}</td>
-        <td>${item.completion.complete ? "??????? ?????????" : item.completion.awaitingApproval ? "??????? ???????" : "? ??????"}</td>
+        <td>${item.completion.complete ? "Принято инженером" : item.completion.awaitingApproval ? "Ожидает приёмки" : "В работе"}</td>
         <td>${item.works.length}</td>
-        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "?" : work.mark === "na" ? "?" : "?"} ${work.equipment || "????????????"}${work.node ? ` / ${work.node}` : ""}: ${work.work}${work.markedByName ? ` ? ${work.markedByName}` : ""}`).join("; "))}</td>
+        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.equipment || "Оборудование"}${work.node ? ` / ${work.node}` : ""}: ${work.work}${work.markedByName ? ` — ${work.markedByName}` : ""}`).join("; "))}</td>
         <td>${escapeHtml(item.sheet?.plannedByName || item.sheet?.updatedByName || "-")}</td>
-        <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} ? ${dateTimeHuman(item.sheet.approvedAt)}` : "-")}</td>
+        <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} · ${dateTimeHuman(item.sheet.approvedAt)}` : "-")}</td>
       </tr>
     `
   );
@@ -10985,7 +10985,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       area: item.area,
       equipment: item.equipment,
       node: item.node,
-      marker: `???????: ${durationText(item.monthMs)}`,
+      marker: `Простой: ${durationText(item.monthMs)}`,
       text: item.comment || downtimeTypeLabel(item.type)
     })),
     ...stats.createdRemarks.map(item => ({
@@ -10993,13 +10993,13 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       area: item.area,
       equipment: item.equipment,
       node: item.node,
-      marker: "?????????",
+      marker: "Замечание",
       text: item.text
     }))
   ].sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
   const happenedRows = engineerReportRows(
     happenedItems.slice(0, printable ? 80 : 18),
-    "?? ????????? ????? ???????? ? ????? ????????? ?? ?????????????",
+    "За выбранный месяц простоев и новых замечаний не зафиксировано",
     item => `
       <tr>
         <td>${escapeHtml(dateTimeHuman(item.at))}</td>
@@ -11013,7 +11013,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   const closedRows = engineerReportRows(
     [...stats.closedRemarks, ...stats.doneRequests].slice(0, printable ? 60 : 14),
-    "???????? ????? ?? ????????? ????? ???",
+    "Закрытых работ за выбранный месяц нет",
     item => {
       if (item.number) {
         return `
@@ -11023,7 +11023,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
             <td>${escapeHtml(item.equipment || "-")}</td>
             <td>${escapeHtml(item.node || "-")}</td>
             <td>${escapeHtml(item.worker || requestRoleLabel(item.workerRole) || "-")}</td>
-            <td>${escapeHtml(item.name || "?????? ?????????")}</td>
+            <td>${escapeHtml(item.name || "Заявка выполнена")}</td>
           </tr>
         `;
       }
@@ -11034,14 +11034,14 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
           <td>${escapeHtml(item.equipment || "-")}</td>
           <td>${escapeHtml(item.node || "-")}</td>
           <td>${escapeHtml(item.resolvedBy || requestRoleLabel(item.resolvedByRole) || "-")}</td>
-          <td>${escapeHtml(item.resolvedComment || item.text || "????????? ?????????")}</td>
+          <td>${escapeHtml(item.resolvedComment || item.text || "Замечание устранено")}</td>
         </tr>
       `;
     }
   );
   const openRows = engineerReportRows(
     stats.openRemarks.slice(0, printable ? 60 : 12),
-    "???????? ????????? ???",
+    "Открытых замечаний нет",
     item => `
       <tr>
         <td>${escapeHtml(dateTimeHuman(item.createdAt))}</td>
@@ -11055,7 +11055,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   const problemRows = engineerReportRows(
     stats.topProblems,
-    "?????????? ???? ?? ????????",
+    "Проблемные узлы не выявлены",
     item => `
       <tr>
         <td>${escapeHtml(item.area || "-")}</td>
@@ -11063,13 +11063,13 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(item.node || "-")}</td>
         <td>${item.count}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
-        <td>${item.downtimeMs ? "? ?????? ??????? ????????? ??????? ???????" : "???????? ????????? ?????????"}</td>
+        <td>${item.downtimeMs ? "В первую очередь проверить причину простоя" : "Контроль повторных замечаний"}</td>
       </tr>
     `
   );
   const repeatRows = engineerReportRows(
     annual.repeatedBreakdowns,
-    "????????? ??????? ? ????????? ????????? ?? ??? ?? ????????",
+    "Повторных поломок и повторных замечаний за год не выявлено",
     item => `
       <tr>
         <td>${escapeHtml(item.area || "-")}</td>
@@ -11077,13 +11077,13 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(item.node || "-")}</td>
         <td>${item.count}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
-        <td>${escapeHtml(item.texts[0] || "????????? ??????? ??????????")}</td>
+        <td>${escapeHtml(item.texts[0] || "Проверить причину повторения")}</td>
       </tr>
     `
   );
   const employeeRows = engineerReportRows(
     annual.employeeRating,
-    "?? ??? ???? ??? ???????? ????? ?? ???????????",
+    "За год пока нет закрытых работ по сотрудникам",
     (worker, index) => `
       <tr>
         <td>${index + 1}</td>
@@ -11091,13 +11091,13 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(worker.roleLabel)}</td>
         <td>${worker.closed}</td>
         <td>${worker.installs}</td>
-        <td>${worker.kpd === null ? "??? ??????" : `${worker.kpd}%`}${worker.avgMs ? ` ? ${escapeHtml(durationText(worker.avgMs))}` : ""}</td>
+        <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}${worker.avgMs ? ` · ${escapeHtml(durationText(worker.avgMs))}` : ""}</td>
       </tr>
     `
   );
   const costRows = engineerReportRows(
     annual.equipmentCosts,
-    "?? ??? ??? ????????? ??????? ? ????????? ?????",
+    "За год нет складских позиций с указанной ценой",
     item => `
       <tr>
         <td>${escapeHtml(item.area || "-")}</td>
@@ -11105,7 +11105,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${item.count}</td>
         <td>${formatMoney(item.total)}</td>
         <td>${escapeHtml(item.lastItem || "-")}</td>
-        <td>${item.total ? "???????? ?????? ?? ????????????" : "-"}</td>
+        <td>${item.total ? "Контроль затрат по оборудованию" : "-"}</td>
       </tr>
     `
   );
@@ -11114,34 +11114,34 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       ${printable ? "" : `<div class="engineer-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`}
       <div class="engineer-report-title">
         <div>
-          <span>???????? ?????</span>
-          <h2>????? ???????? ?? ${escapeHtml(stats.label)}</h2>
-          <p>?????? ?????????? ????????? ????????????, ???????, ??????????? ??????, QR-?????? ? ?????????? ?????????.</p>
+          <span>Месячный отчёт</span>
+          <h2>Отчёт инженера за ${escapeHtml(stats.label)}</h2>
+          <p>Кратко показывает состояние оборудования, простои, выполненные работы, QR-обходы и нерешённые замечания.</p>
         </div>
         <div class="factory-current-score ${band}">
           <strong>${stats.reliabilityScore}</strong>
-          <span>?????? ??????</span>
+          <span>индекс месяца</span>
         </div>
       </div>
       <div class="engineer-report-summary">
-        <div><strong>${durationText(stats.downtimeMs)}</strong><span>??????? ?? ?????</span></div>
-        <div><strong>${stats.downtimeItems.length}</strong><span>????????? ?????</span></div>
-        <div><strong>${stats.createdRemarks.length}</strong><span>????? ?????????</span></div>
-        <div><strong>${stats.closedRemarks.length + stats.doneRequests.length}</strong><span>??????? ?????</span></div>
-        <div><strong>${stats.openRemarks.length}</strong><span>??????? ??????</span></div>
-        <div><strong>${stats.qrPercent}%</strong><span>QR-?????? ${stats.monthStats.qrDone}/${stats.monthStats.qrPlan}</span></div>
-        <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>?????? ??? ?????????</span></div>
+        <div><strong>${durationText(stats.downtimeMs)}</strong><span>простой за месяц</span></div>
+        <div><strong>${stats.downtimeItems.length}</strong><span>остановок всего</span></div>
+        <div><strong>${stats.createdRemarks.length}</strong><span>новых замечаний</span></div>
+        <div><strong>${stats.closedRemarks.length + stats.doneRequests.length}</strong><span>закрыто работ</span></div>
+        <div><strong>${stats.openRemarks.length}</strong><span>открыто сейчас</span></div>
+        <div><strong>${stats.qrPercent}%</strong><span>QR-обходы ${stats.monthStats.qrDone}/${stats.monthStats.qrPlan}</span></div>
+        <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
       </div>
       <div class="engineer-report-year-strip">
-        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>????????? ??????? ?? ${annual.year}</span></div>
-        <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "??? ??????"}</strong><span>????? ?? ??????????? ???????${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
-        <div><strong>${formatMoney(annual.totalCost)}</strong><span>??????? ?????: ????? ${formatMoney(annual.warehouseCost)} ? ?????? ${formatMoney(annual.serviceCost)}</span></div>
+        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за ${annual.year}</span></div>
+        <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер по выполненным работам${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
+        <div><strong>${formatMoney(annual.totalCost)}</strong><span>затраты всего: склад ${formatMoney(annual.warehouseCost)} · услуги ${formatMoney(annual.serviceCost)}</span></div>
       </div>
       ${!printable && ["engineer", "editor"].includes(profile?.role) ? `
         <section class="engineer-service-form">
           <div>
-            <strong>?????? / ?????? ?? ???????</strong>
-            <span>???? ??????? ????? ?? ????, ?????? ????????? ?? ?????.</span>
+            <strong>Услуги / работы за сегодня</strong>
+            <span>Если сегодня услуг не было, ничего заполнять не нужно.</span>
           </div>
           <div class="engineer-service-grid">
             <select id="serviceCostArea">
@@ -11153,56 +11153,56 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
             <select id="serviceCostNode">
               ${(selectedServiceEquipment?.nodes || []).map((node, index) => `<option value="${index}" ${String(index) === String(current.serviceCostNodeIndex) ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}
             </select>
-            <input id="serviceCostAmount" type="text" inputmode="decimal" placeholder="???? ??????">
-            <input id="serviceCostComment" type="text" placeholder="??????????? ?? ?????? / ??????">
-            <button type="button" id="addServiceCostButton">???????? ??????</button>
+            <input id="serviceCostAmount" type="text" inputmode="decimal" placeholder="Цена услуги">
+            <input id="serviceCostComment" type="text" placeholder="Комментарий по работе / услуге">
+            <button type="button" id="addServiceCostButton">Добавить услугу</button>
           </div>
         </section>
       ` : ""}
       <section class="engineer-report-note">
-        <strong>??? ????????? ?????????:</strong>
-        <span>???? ?????? ??????? ? ??????? ?????? - ???????????? ??? ?????????. ???? ?????? ??????, ??????? ???????, ???????? ????????? ? ????????? ???????. ?????? ????????? ?? ????? ?????? ? ?????????? ????????? ???????.</span>
+        <strong>Как объяснить директору:</strong>
+        <span>Если индекс высокий и простои падают - оборудование под контролем. Если индекс падает, смотрим простои, открытые замечания и повторные поломки. Деньги считаются по ценам склада и записанным инженером услугам.</span>
       </section>
       <section class="engineer-report-block">
-        <h3>1. ??? ????????? ?? ?????</h3>
-        <table><thead><tr><th>????</th><th>???????</th><th>????????????</th><th>????</th><th>??? / ?????</th><th>???????</th></tr></thead><tbody>${happenedRows}</tbody></table>
+        <h3>1. Что произошло за месяц</h3>
+        <table><thead><tr><th>Дата</th><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Тип / время</th><th>Причина</th></tr></thead><tbody>${happenedRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>2. ??? ??????? ? ???????</h3>
-        <table><thead><tr><th>????</th><th>???????</th><th>????????????</th><th>????</th><th>???????????</th><th>??????</th></tr></thead><tbody>${closedRows}</tbody></table>
+        <h3>2. Что сделали и закрыли</h3>
+        <table><thead><tr><th>Дата</th><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Исполнитель</th><th>Работа</th></tr></thead><tbody>${closedRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>????? ????????? ???????????? ???</h3>
-        <table><thead><tr><th>????</th><th>??????</th><th>?????</th><th>?????? ? ???????????</th><th>???? ????????</th><th>?????? ???????</th></tr></thead><tbody>${pprRows}</tbody></table>
+        <h3>Листы планового обслуживания ППР</h3>
+        <table><thead><tr><th>Дата</th><th>Статус</th><th>Работ</th><th>Работы и исполнители</th><th>План составил</th><th>Принял инженер</th></tr></thead><tbody>${pprRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>3. ??? ???????? ? ??????</h3>
-        <table><thead><tr><th>????</th><th>???????</th><th>????????????</th><th>????</th><th>?????</th><th>?????????</th></tr></thead><tbody>${openRows}</tbody></table>
+        <h3>3. Что осталось в работе</h3>
+        <table><thead><tr><th>Дата</th><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Автор</th><th>Замечание</th></tr></thead><tbody>${openRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>4. ?????????? ???? ??? ????????</h3>
-        <table><thead><tr><th>???????</th><th>????????????</th><th>????</th><th>???????</th><th>???????</th><th>?????</th></tr></thead><tbody>${problemRows}</tbody></table>
+        <h3>4. Проблемные узлы для контроля</h3>
+        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Событий</th><th>Простой</th><th>Вывод</th></tr></thead><tbody>${problemRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>5. ?????? ????????? ??????? ?? ${annual.year}</h3>
-        <table><thead><tr><th>???????</th><th>????????????</th><th>????</th><th>????????</th><th>???????</th><th>???????????</th></tr></thead><tbody>${repeatRows}</tbody></table>
+        <h3>5. Анализ повторных поломок за ${annual.year}</h3>
+        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Повторов</th><th>Простой</th><th>Комментарий</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>6. ??????? ??????????? ?? ??????????? ??????? ?? ${annual.year}</h3>
-        <table><thead><tr><th>?</th><th>?????????</th><th>?????????</th><th>?????????</th><th>?????????</th><th>??? / ??????? ?????</th></tr></thead><tbody>${employeeRows}</tbody></table>
+        <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
+        <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>7. ??????? ?? ?????? ?? ${annual.year}</h3>
-        <table><thead><tr><th>???????</th><th>????????????</th><th>???????</th><th>?????</th><th>????????? ???????</th><th>?????</th></tr></thead><tbody>${costRows}</tbody></table>
+        <h3>7. Затраты по складу за ${annual.year}</h3>
+        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Позиций</th><th>Сумма</th><th>Последняя позиция</th><th>Вывод</th></tr></thead><tbody>${costRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>8. ?????? ? ?????? ???????? ?? ????????? ?????</h3>
-        <table><thead><tr><th>????</th><th>???</th><th>????????????</th><th>????</th><th>?????</th><th>???????????</th></tr></thead><tbody>${serviceRows}</tbody></table>
+        <h3>8. Услуги и работы инженера за выбранный месяц</h3>
+        <table><thead><tr><th>Дата</th><th>Цех</th><th>Оборудование</th><th>Узел</th><th>Сумма</th><th>Комментарий</th></tr></thead><tbody>${serviceRows}</tbody></table>
       </section>
       <div class="engineer-report-signatures">
-        <div>???????: ____________________</div>
-        <div>????????: ____________________</div>
-        <div>????: ____________________</div>
+        <div>Инженер: ____________________</div>
+        <div>Директор: ____________________</div>
+        <div>Дата: ____________________</div>
       </div>
     </article>
   `;
@@ -11238,7 +11238,7 @@ function renderEngineerReport() {
       comment
     });
     if (!item) {
-      window.alert("????????? ???? ?????? ? ???????????.");
+      window.alert("Заполните цену услуги и комментарий.");
       return;
     }
     saveState();
@@ -11253,7 +11253,7 @@ function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
     window.print();
     return;
   }
-  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>????? ???????? ${escapeHtml(monthDisplayName(monthKey))}</title><style>
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт инженера ${escapeHtml(monthDisplayName(monthKey))}</title><style>
     body{font-family:Arial,sans-serif;margin:18px;color:#111827;background:#fff}
     .engineer-report-title{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:12px}
     .engineer-report-title span{text-transform:uppercase;font-size:11px;font-weight:800;color:#475569}
@@ -11274,22 +11274,22 @@ function directorDowntimeDetail(stats) {
     <div class="director-downtime-row ${item.endedAt ? "closed" : "active"}">
       <span class="director-downtime-signal"></span>
       <div>
-        <strong>${escapeHtml(item.equipment || item.area || "????????????")}</strong>
-        <small>${escapeHtml(item.node || "")}${item.area ? ` ? ${escapeHtml(item.area)}` : ""}</small>
-        <p>${escapeHtml(item.comment || "??????? ?? ???????")}</p>
+        <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
+        <small>${escapeHtml(item.node || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</small>
+        <p>${escapeHtml(item.comment || "Причина не указана")}</p>
       </div>
       <div class="director-downtime-time">
-        <b>${item.endedAt ? "????????" : "???? ??????"}</b>
+        <b>${item.endedAt ? "Завершён" : "Идёт сейчас"}</b>
         <span>${durationText(item.endedAt ? downtimeDurationMs(item) : downtimeDurationMs(item, Date.now()))}</span>
-        <small>${dateTimeHuman(item.startedAt)}${item.endedAt ? ` ? ${dateTimeHuman(item.endedAt)}` : ""}</small>
+        <small>${dateTimeHuman(item.startedAt)}${item.endedAt ? ` → ${dateTimeHuman(item.endedAt)}` : ""}</small>
       </div>
     </div>
   `).join("");
   return `<div class="director-downtime-detail">
     <div class="director-downtime-detail-head">
-      <div><h2>??????? ?? ???????</h2><p>???????, ????????????, ????? ?????? ? ????????????</p></div>
+      <div><h2>Простои за сегодня</h2><p>Причина, оборудование, время начала и длительность</p></div>
     </div>
-    ${rows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>???????? ??????? ???</strong></div>`}
+    ${rows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Простоев сегодня нет</strong></div>`}
   </div>`;
 }
 
@@ -11319,7 +11319,7 @@ function directorControlTotals() {
     downtime: directorTodayDowntimeStats(),
     calendar: directorCalendarItems(equipment),
     reminders: directorReminderItems(equipment),
-    health: equipment.filter(eq => eq.area !== "??????").map(eq => ({ eq, ...directorEquipmentHealth(eq) })),
+    health: equipment.filter(eq => eq.area !== "Резерв").map(eq => ({ eq, ...directorEquipmentHealth(eq) })),
     recommendedSchedule: directorRecommendedSchedule(equipment)
   };
 }
@@ -11332,28 +11332,28 @@ function directorEquipmentDetail(eq) {
     const item = rec?.to || {};
     const checker = item.updatedByName || item.commentOwnerName || item.checkedBy || "";
     const time = item.updatedAt || item.commentUpdatedAt || "";
-    return `<li class="${done ? "done" : "missing"}"><span>${done ? "?" : "?"}</span><div><strong>${escapeHtml(node)}</strong><small>${checker ? `${escapeHtml(checker)}${time ? ` ? ${dateTimeHuman(time)}` : ""}` : "?? ?????????"}</small></div></li>`;
+    return `<li class="${done ? "done" : "missing"}"><span>${done ? "✓" : "×"}</span><div><strong>${escapeHtml(node)}</strong><small>${checker ? `${escapeHtml(checker)}${time ? ` · ${dateTimeHuman(time)}` : ""}` : "Не проверено"}</small></div></li>`;
   }).join("");
   let special = "";
   if (eq.area === COMPRESSOR_JOURNAL_AREA) {
     special = `<div class="director-special-list">${compressorJournalDateRows(eq.area, todayISO()).map(row => `
       <div class="${compressorJournalRowComplete(row) ? "green" : "red"}">
-        <span class="traffic-dot"></span><strong>${escapeHtml(row.compressor)}</strong><small>${compressorJournalRowComplete(row) ? "?????????" : "?? ?????????"}</small>
+        <span class="traffic-dot"></span><strong>${escapeHtml(row.compressor)}</strong><small>${compressorJournalRowComplete(row) ? "Заполнено" : "Не заполнено"}</small>
       </div>`).join("")}</div>`;
   }
   if (eq.area === GAS_JOURNAL_AREA) {
     special = `<div class="director-special-list">
-      <div class="${gasJournalRowCompleteA(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>???? / ??? / ???</strong><small>${gasJournalRowCompleteA(todayISO()) ? "?????????" : "?? ?????????"}</small></div>
-      <div class="${gasJournalRowCompleteB(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>????????? ??????????</strong><small>${gasJournalRowCompleteB(todayISO()) ? "?????????" : "?? ?????????"}</small></div>
+      <div class="${gasJournalRowCompleteA(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>ШГРП / ГРП / ГРУ</strong><small>${gasJournalRowCompleteA(todayISO()) ? "Заполнено" : "Не заполнено"}</small></div>
+      <div class="${gasJournalRowCompleteB(todayISO()) ? "green" : "red"}"><span class="traffic-dot"></span><strong>Подземный газопровод</strong><small>${gasJournalRowCompleteB(todayISO()) ? "Заполнено" : "Не заполнено"}</small></div>
     </div>`;
   }
   return `
     <div class="director-detail">
-      <button type="button" class="director-detail-close" data-director-detail-close>?</button>
+      <button type="button" class="director-detail-close" data-director-detail-close>×</button>
       <h2>${escapeHtml(eq.name)}</h2>
-      <p>${escapeHtml(eq.area)} ? ${walk.shift.label}: ????????? ${walk.done}/${walk.total}</p>
+      <p>${escapeHtml(eq.area)} · ${walk.shift.label}: проверено ${walk.done}/${walk.total}</p>
       ${special}
-      <h3>????? ?? ?????</h3>
+      <h3>Обход по узлам</h3>
       <ul class="director-node-list">${nodeRows}</ul>
     </div>`;
 }
@@ -11361,10 +11361,10 @@ function directorEquipmentDetail(eq) {
 function renderDirectorControl() {
   if (!ui.directorControlPanel || !["director", "editor"].includes(profile?.role)) return;
   const directorAnalyticsOnly = profile?.role === "director";
-  ui.subtitle.textContent = directorAnalyticsOnly ? "??????????" : "????? ????????";
+  ui.subtitle.textContent = directorAnalyticsOnly ? "Статистика" : "Общий контроль";
   const totals = directorControlTotals();
   const detailEq = current.directorControlEquipmentId ? equipmentById(current.directorControlEquipmentId) : null;
-  const controlRows = totals.equipment.filter(eq => eq.area !== "??????").map(eq => {
+  const controlRows = totals.equipment.filter(eq => eq.area !== "Резерв").map(eq => {
     const stateInfo = directorJournalState(eq);
     const walk = directorTodayWalk(eq);
     const color = stateInfo.color === "red" || walk.done === 0
@@ -11375,7 +11375,7 @@ function renderDirectorControl() {
     return `<button type="button" class="director-status-row ${color}" data-director-equipment="${eq.id}">
       <span class="traffic-dot"></span>
       <strong>${escapeHtml(eq.name)}</strong>
-      <small>??????: ${escapeHtml(stateInfo.text)} ? ?????: ${walk.done}/${walk.total}</small>
+      <small>Журнал: ${escapeHtml(stateInfo.text)} · Обход: ${walk.done}/${walk.total}</small>
     </button>`;
   }).join("");
   const healthRows = totals.health
@@ -11383,13 +11383,13 @@ function renderDirectorControl() {
     .map(item => `
       <button type="button" class="director-health-row ${item.color}" data-director-equipment="${item.eq.id}">
         <span class="traffic-dot"></span>
-        <div><strong>${escapeHtml(item.eq.name)}</strong><small>????????? ${item.remarks} ? ????????? ${item.overdueDays} ? ????????? ${item.emergencyRequests} ? ??????? ?? 30 ???? ${item.repairs}</small></div>
+        <div><strong>${escapeHtml(item.eq.name)}</strong><small>Замечания ${item.remarks} · Просрочки ${item.overdueDays} · Аварийные ${item.emergencyRequests} · Ремонты за 30 дней ${item.repairs}</small></div>
         <b>${item.score}%</b>
       </button>
     `).join("");
   const monthCalendar = renderPprMonthCalendar(totals.equipment);
   const todayMaintenance = totals.equipment
-    .filter(eq => eq.area !== "??????")
+    .filter(eq => eq.area !== "Резерв")
     .map(eq => ({ eq, plan: directorRecommendedMaintenance(eq) }))
     .filter(item => item.plan.daysUntil === 0);
   const pendingTodayMaintenance = todayMaintenance.filter(item =>
@@ -11397,23 +11397,23 @@ function renderDirectorControl() {
   ).length;
   const kpiDetails = current.directorKpiOpen === "requests"
     ? `<section class="director-kpi-details">
-        <div class="director-section-head"><div><span>??</span><h2>${current.directorArchiveOpen === "requests" ? "????? ??????" : "?????? ?? ????????? 24 ????"}</h2></div><small>${current.directorArchiveOpen === "requests" ? "?????? ?????" : "???? ? ?????????????"}</small></div>
-        <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="requests">${current.directorArchiveOpen === "requests" ? "???????? ????????? 24 ????" : `????? (${totals.requests.archive || 0})`}</button></div>
+        <div class="director-section-head"><div><span>📋</span><h2>${current.directorArchiveOpen === "requests" ? "Архив заявок" : "Заявки за последние 24 часа"}</h2></div><small>${current.directorArchiveOpen === "requests" ? "Старше суток" : "Этап и ответственный"}</small></div>
+        <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="requests">${current.directorArchiveOpen === "requests" ? "Показать последние 24 часа" : `Архив (${totals.requests.archive || 0})`}</button></div>
         <div class="director-info-list">${current.directorArchiveOpen === "requests" ? directorRequestDetailRows(directorArchivedRequests(), true) : directorRequestDetailRows(directorRecentRequests(), false)}</div>
       </section>`
     : current.directorKpiOpen === "remarks"
       ? `<section class="director-kpi-details">
-          <div class="director-section-head"><div><span>?</span><h2>${current.directorArchiveOpen === "remarks" ? "????? ?????????" : "????????? ?? ????????? 24 ????"}</h2></div><small>${current.directorArchiveOpen === "remarks" ? "?????? ?????" : "???????????? ? ????????"}</small></div>
-          <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="remarks">${current.directorArchiveOpen === "remarks" ? "???????? ????????? 24 ????" : `????? (${totals.archivedRemarks.length})`}</button></div>
+          <div class="director-section-head"><div><span>⚠</span><h2>${current.directorArchiveOpen === "remarks" ? "Архив замечаний" : "Замечания за последние 24 часа"}</h2></div><small>${current.directorArchiveOpen === "remarks" ? "Старше суток" : "Оборудование и описание"}</small></div>
+          <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="remarks">${current.directorArchiveOpen === "remarks" ? "Показать последние 24 часа" : `Архив (${totals.archivedRemarks.length})`}</button></div>
           <div class="director-info-list">${current.directorArchiveOpen === "remarks" ? directorRemarkDetailRows(totals.archivedRemarks) : directorRemarkDetailRows(totals.remarks)}</div>
         </section>`
       : current.directorKpiOpen === "downtime"
         ? directorDowntimeDetail(totals.downtime)
         : current.directorKpiOpen === "calendar"
           ? `<section class="director-kpi-details director-calendar-details">
-              <div class="director-section-head"><div><span>???</span><h2>????????? ???</h2></div><small>????????? ????</small></div>
+              <div class="director-section-head"><div><span>🗓️</span><h2>Календарь ППР</h2></div><small>Расчётный план</small></div>
               ${monthCalendar}
-              <p class="director-safe-note">????????????? ? ??????? ????????? ? ?????? 7 ????, ????????? ???????????? ? ?????? 14 ????. ?????????? ?????????????? ????????????? ????? ?????????? ??????? ?? ??????????? ????.</p>
+              <p class="director-safe-note">Компрессорная и газовое хозяйство — каждые 7 дней, остальное оборудование — каждые 14 дней. Выполнение подтверждается автоматически после заполнения журнала за назначенную дату.</p>
             </section>`
         : "";
   const compactHealthRows = totals.health
@@ -11422,15 +11422,15 @@ function renderDirectorControl() {
     .map(item => `
       <div class="director-health-row ${item.color}">
         <span class="traffic-dot"></span>
-        <div><strong>${escapeHtml(item.eq.name)}</strong><small>????????? ${item.remarks} ? ????????? ${item.overdueDays} ? ??????? ${item.repairs}</small></div>
+        <div><strong>${escapeHtml(item.eq.name)}</strong><small>Замечания ${item.remarks} · Просрочки ${item.overdueDays} · Ремонты ${item.repairs}</small></div>
         <b>${item.score}%</b>
       </div>
     `).join("");
   const directorAnalyticsHtml = `
     <div class="director-control-head director-analytics-head director-analytics-only-head">
-      <div><span>?????????? ???????????</span><h1>??????? ?????? ??????</h1><p>???????: ${dateHuman(todayISO())}</p></div>
+      <div><span>СТАТИСТИКА ПРЕДПРИЯТИЯ</span><h1>Главный график завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
       <div class="director-control-actions">
-        <button type="button" data-refresh-director-control>????????</button>
+        <button type="button" data-refresh-director-control>Обновить</button>
       </div>
     </div>
     <div class="director-main-graph-only">${directorFactoryAnalyticsGraphHtml()}</div>
@@ -11441,48 +11441,48 @@ function renderDirectorControl() {
       await runButtonOperation(event.currentTarget, async () => {
         await loadRemoteState();
         await loadRemoteUsers();
-      }, "?????????...");
+      }, "Обновляем...");
     });
     return;
   }
   ui.directorControlPanel.innerHTML = `
     <div class="director-control-head">
-      <div><span>???????? ???????????</span><h1>????? ????????? ??????</h1><p>???????: ${dateHuman(todayISO())}</p></div>
+      <div><span>КОНТРОЛЬ ПРЕДПРИЯТИЯ</span><h1>Общее состояние завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
       <div class="director-control-actions">
-        ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>? ??????? ?????</button>` : ""}
-        <button type="button" class="director-reminder-button ${totals.reminders.length ? "has-alerts" : ""}" data-open-global-reminders>?? ??????????? <strong>${totals.reminders.length}</strong></button>
-        <button type="button" data-refresh-director-control>????? ????????? ??????</button>
-        <button type="button" data-open-director-messages>????????????</button>
-        <button type="button" data-toggle-audit-history>??????? ?????????</button>
+        ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>← Главный экран</button>` : ""}
+        <button type="button" class="director-reminder-button ${totals.reminders.length ? "has-alerts" : ""}" data-open-global-reminders>🔔 Напоминания <strong>${totals.reminders.length}</strong></button>
+        <button type="button" data-refresh-director-control>Общее состояние завода</button>
+        <button type="button" data-open-director-messages>Директорская</button>
+        <button type="button" data-toggle-audit-history>История изменений</button>
       </div>
     </div>
     <button type="button" class="director-progress-card director-progress-toggle ${current.directorProgressOpen ? "open" : ""}" data-toggle-director-progress aria-expanded="${current.directorProgressOpen}">
-      <div><strong>${totals.percent}%</strong><span>?????? ?? ?????</span><b>${current.directorProgressOpen ? "?????? ?????? ?" : "???????? ?????? ?"}</b></div>
+      <div><strong>${totals.percent}%</strong><span>Обходы по узлам</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
       <div class="director-progress"><i style="width:${totals.percent}%"></i></div>
-      <small>${totals.done} ?? ${totals.total} ?????</small>
+      <small>${totals.done} из ${totals.total} узлов</small>
     </button>
     <section class="director-progress-details ${current.directorProgressOpen ? "open" : ""}" ${current.directorProgressOpen ? "" : "hidden"}>
-      <div class="director-section-head"><div><span>??</span><h2>?????? ?? ????? ? ???????</h2></div><small>?????? ? ??????????? ????</small></div>
+      <div class="director-section-head"><div><span>🏭</span><h2>Обходы по узлам — сегодня</h2></div><small>Журнал и проверенные узлы</small></div>
       <div class="director-status-list director-progress-status-list">${controlRows}</div>
     </section>
     <div class="director-kpi-grid">
-      <button type="button" class="director-kpi-button ${totals.requests.open ? "has-alerts" : ""} ${current.directorKpiOpen === "requests" ? "selected" : ""}" data-toggle-director-kpi="requests" aria-expanded="${current.directorKpiOpen === "requests"}"><span>?? ??????</span><strong>${totals.requests.open}</strong><small>????????? 24 ???? ? ????? ${totals.requests.archive || 0} ? ?????????? ${totals.requests.overdue} ? ${current.directorKpiOpen === "requests" ? "?????? ?" : "????????? ?"}</small></button>
-      <button type="button" class="director-kpi-button ${totals.remarks.length ? "has-alerts" : ""} ${totals.overdueRemarks ? "danger" : ""} ${current.directorKpiOpen === "remarks" ? "selected" : ""}" data-toggle-director-kpi="remarks" aria-expanded="${current.directorKpiOpen === "remarks"}"><span>? ?????????</span><strong>${totals.remarks.length}</strong><small>????????? 24 ???? ? ????? ${totals.archivedRemarks.length} ? ????????? ??????? ${totals.resolvedToday} ? ${current.directorKpiOpen === "remarks" ? "?????? ?" : "????????? ?"}</small></button>
+      <button type="button" class="director-kpi-button ${totals.requests.open ? "has-alerts" : ""} ${current.directorKpiOpen === "requests" ? "selected" : ""}" data-toggle-director-kpi="requests" aria-expanded="${current.directorKpiOpen === "requests"}"><span>📋 Заявки</span><strong>${totals.requests.open}</strong><small>Последние 24 часа · Архив ${totals.requests.archive || 0} · Просрочено ${totals.requests.overdue} · ${current.directorKpiOpen === "requests" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
+      <button type="button" class="director-kpi-button ${totals.remarks.length ? "has-alerts" : ""} ${totals.overdueRemarks ? "danger" : ""} ${current.directorKpiOpen === "remarks" ? "selected" : ""}" data-toggle-director-kpi="remarks" aria-expanded="${current.directorKpiOpen === "remarks"}"><span>⚠ Замечания</span><strong>${totals.remarks.length}</strong><small>Последние 24 часа · Архив ${totals.archivedRemarks.length} · Устранено сегодня ${totals.resolvedToday} · ${current.directorKpiOpen === "remarks" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
       <button type="button" class="director-kpi-button director-downtime-kpi ${totals.downtime.active.length ? "has-alerts danger" : totals.downtime.items.length ? "warning" : "ok"} ${current.directorKpiOpen === "downtime" ? "selected" : ""}" data-toggle-director-kpi="downtime" aria-expanded="${current.directorKpiOpen === "downtime"}">
-        <span>? ???????</span><strong>${totals.downtime.active.length}</strong>
-        <small>?????? ? ?? ??????? ${totals.downtime.items.length} ? ????? ${durationText(totals.downtime.totalMs)} ? ${current.directorKpiOpen === "downtime" ? "?????? ?" : "????????? ?"}</small>
+        <span>⏱ Простои</span><strong>${totals.downtime.active.length}</strong>
+        <small>Сейчас · За сегодня ${totals.downtime.items.length} · Всего ${durationText(totals.downtime.totalMs)} · ${current.directorKpiOpen === "downtime" ? "Скрыть ▲" : "Подробнее ▼"}</small>
       </button>
-      <button type="button" class="director-kpi-button ${pendingTodayMaintenance ? "has-alerts" : ""} ${current.directorKpiOpen === "calendar" ? "selected" : ""}" data-toggle-director-kpi="calendar" aria-expanded="${current.directorKpiOpen === "calendar"}"><span>?? ????????? ???</span><strong>${pendingTodayMaintenance}</strong><small>????????????? ????? ??????? ? ${current.directorKpiOpen === "calendar" ? "?????? ????????? ?" : "??????? ????????? ?"}</small></button>
+      <button type="button" class="director-kpi-button ${pendingTodayMaintenance ? "has-alerts" : ""} ${current.directorKpiOpen === "calendar" ? "selected" : ""}" data-toggle-director-kpi="calendar" aria-expanded="${current.directorKpiOpen === "calendar"}"><span>📅 Календарь ППР</span><strong>${pendingTodayMaintenance}</strong><small>Невыполненных работ сегодня · ${current.directorKpiOpen === "calendar" ? "Скрыть календарь ▲" : "Открыть календарь ▼"}</small></button>
     </div>
     ${kpiDetails}
     <section class="audit-history-panel" ${current.directorAuditOpen ? "" : "hidden"}>
-      <div class="director-section-head"><div><span>??</span><h2>??????? ?????????</h2></div><small>????????? 100 ????????</small></div>
+      <div class="director-section-head"><div><span>🕘</span><h2>История изменений</h2></div><small>Последние 100 действий</small></div>
       <div class="audit-history-list">${auditHistoryRows()}</div>
     </section>
     ${directorAnnualStatsHtml()}
     <section class="director-health-card">
-      <div class="director-section-head"><div><span>??</span><h2>?????? ????????? ????????????</h2></div><small>?????????????? ??????</small></div>
-      <div class="director-health-legend"><span class="green">90?100 ???????</span><span class="yellow">70?89 ?????????</span><span class="orange">50?69 ????????</span><span class="red">????? 50 ??????? ????</span></div>
+      <div class="director-section-head"><div><span>📊</span><h2>Индекс состояния оборудования</h2></div><small>Автоматический расчёт</small></div>
+      <div class="director-health-legend"><span class="green">90–100 отлично</span><span class="yellow">70–89 замечания</span><span class="orange">50–69 внимание</span><span class="red">менее 50 высокий риск</span></div>
       <div class="director-health-list">${healthRows}</div>
     </section>
     ${detailEq ? directorEquipmentDetail(detailEq) : ""}
@@ -11491,7 +11491,7 @@ function renderDirectorControl() {
     await runButtonOperation(event.currentTarget, async () => {
       await loadRemoteState();
       await loadRemoteUsers();
-    }, "?????????...");
+    }, "Обновляем...");
   });
   ui.directorControlPanel.querySelector("[data-open-director-messages]")?.addEventListener("click", () => show("director"));
   ui.directorControlPanel.querySelector("[data-toggle-audit-history]")?.addEventListener("click", () => {
@@ -11544,8 +11544,8 @@ function renderDirectorControl() {
 
 function renderDirector() {
   const isEditor = isEditorSession();
-  ui.subtitle.textContent = isEditor ? "????? ? ???????????" : "????????????";
-  if (ui.directorTitle) ui.directorTitle.textContent = isEditor ? "????????????? ???????????" : "????????????";
+  ui.subtitle.textContent = isEditor ? "Админ · Регистрации" : "Директорская";
+  if (ui.directorTitle) ui.directorTitle.textContent = isEditor ? "Подтверждение сотрудников" : "Директорская";
   if (!ui.directorPanel) return;
   state.directorMessages ||= [];
   const isDirector = directorCanAnswer();
@@ -11570,15 +11570,15 @@ function renderDirector() {
   updateDirectorBadge();
 
   ui.directorMeta.textContent = isEditor
-    ? `??????? ?????????????: ${pendingUserApprovalCount()}. ????? ???????????: ${loadUsers().length}`
+    ? `Ожидают подтверждения: ${pendingUserApprovalCount()}. Всего сотрудников: ${loadUsers().length}`
     : isDirector
-      ? `?????????: ${messages.length}`
-      : "???? ????????? ?????? ?????? ?? ? ????????";
+      ? `Обращений: ${messages.length}`
+      : "Ваши сообщения видите только вы и директор";
 
   ui.directorPanel.innerHTML = `
     ${isEditor ? renderDirectorUsers() : isDirector ? "" : renderDirectorSendForm()}
     ${isEditor ? "" : `<div class="director-messages">
-      ${messages.length ? "" : `<div class="empty-state">${isDirector ? "????? ????????? ???" : "?? ??? ?? ?????? ?????????"}</div>`}
+      ${messages.length ? "" : `<div class="empty-state">${isDirector ? "Новых обращений нет" : "Вы еще не писали директору"}</div>`}
     </div>`}
   `;
 
@@ -11602,24 +11602,24 @@ function renderDirector() {
 
   ui.directorPanel.querySelectorAll("[data-whatsapp-user]").forEach(link => {
     link.addEventListener("click", event => {
-      if (!window.confirm("??????? WhatsApp ????? ???????????")) event.preventDefault();
+      if (!window.confirm("Открыть WhatsApp этому сотруднику?")) event.preventDefault();
     });
   });
   ui.directorPanel.querySelector("[data-refresh-users]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     await loadRemoteUsers();
     renderDirector();
-  }, "?????????..."));
+  }, "Обновляем..."));
   ui.directorPanel.querySelectorAll("[data-approve-user]").forEach(button => {
     button.addEventListener("click", event => {
       const userKey = event.currentTarget.dataset.approveUser || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
-      if (!user || !window.confirm(`??????????? ???????????: ${user.name || user.phone || ""}?`)) return;
+      if (!user || !window.confirm(`Подтвердить регистрацию: ${user.name || user.phone || ""}?`)) return;
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
       if (!role) {
-        window.alert("??????? ????????? ????????? ??????????.");
+        window.alert("Сначала назначьте должность сотрудника.");
         return;
       }
       user.approved = true;
@@ -11628,7 +11628,7 @@ function renderDirector() {
       user.status = "approved";
       user.role = role;
       if (needsArea(role) && !area) {
-        window.alert("??? ???? ????????? ??????? ???????? ???????.");
+        window.alert("Для этой должности сначала выберите участок.");
         return;
       }
       user.area = needsArea(role) ? area : "";
@@ -11653,10 +11653,10 @@ function renderDirector() {
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
       if (!user) return;
-      const newPassword = window.prompt(`????? ????????? ?????? ??? ${user.name || user.phone}:`);
+      const newPassword = window.prompt(`Новый временный пароль для ${user.name || user.phone}:`);
       if (!newPassword) return;
       if (newPassword.length < 6) {
-        window.alert("?????? ?????? ????????? ??????? 6 ????????.");
+        window.alert("Пароль должен содержать минимум 6 символов.");
         return;
       }
       await runButtonOperation(event.currentTarget, async () => {
@@ -11672,7 +11672,7 @@ function renderDirector() {
         });
         await loadRemoteUsers();
         renderDirector();
-      }, "?????????...");
+      }, "Сохраняем...");
     });
   });
   ui.directorPanel.querySelectorAll("[data-delete-user]").forEach(button => {
@@ -11680,10 +11680,10 @@ function renderDirector() {
       const userKey = event.currentTarget.dataset.deleteUser || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
-      if (!user || !window.confirm(`??????? ??????????: ${user.name || user.phone || ""}?`)) return;
-      const reason = window.prompt("??????? ??????? ???????? ??????????:")?.trim();
+      if (!user || !window.confirm(`Удалить сотрудника: ${user.name || user.phone || ""}?`)) return;
+      const reason = window.prompt("Укажите причину удаления сотрудника:")?.trim();
       if (!reason) return;
-      recordAudit("?????? ??????????", user.name || user.phone || userKey, reason);
+      recordAudit("Удалил сотрудника", user.name || user.phone || userKey, reason);
       saveState();
       const nextUsers = users.filter(item => (item.id || item.employeeId || item.phone || item.name || "") !== userKey);
       localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
@@ -11710,20 +11710,20 @@ function renderDirector() {
     card.className = `director-card ${msg.reply && !msg.userRead && !isDirector ? "request-alert" : ""}`;
     card.innerHTML = `
       <div class="director-card-main">
-        <strong>${msg.fromName || "?????????"}</strong>
-        <span>${msg.fromRole || ""}${msg.fromArea ? ` ? ${msg.fromArea}` : ""}${msg.fromPhone ? ` ? ${msg.fromPhone}` : ""}</span>
+        <strong>${msg.fromName || "Сотрудник"}</strong>
+        <span>${msg.fromRole || ""}${msg.fromArea ? ` · ${msg.fromArea}` : ""}${msg.fromPhone ? ` · ${msg.fromPhone}` : ""}</span>
         <pre class="director-memo-view full-memo-view">${escapeHtml(msg.memoFullText || msg.text)}</pre>
-        ${msg.reply ? `<div class="director-reply"><b>????? ?????????:</b><p>${escapeHtml(msg.reply)}</p></div>` : `<div class="readonly-note">?????? ????????? ???? ???</div>`}
+        ${msg.reply ? `<div class="director-reply"><b>Ответ директора:</b><p>${escapeHtml(msg.reply)}</p></div>` : `<div class="readonly-note">Ответа директора пока нет</div>`}
       </div>
       ${isDirector ? `
         <div class="director-reply-form">
-          <textarea data-director-reply="${msg.id}" rows="3" placeholder="????? ??????????">${escapeHtml(msg.reply || "")}</textarea>
+          <textarea data-director-reply="${msg.id}" rows="3" placeholder="Ответ сотруднику">${escapeHtml(msg.reply || "")}</textarea>
           <div class="director-reply-actions">
-            <button type="button" data-save-director-reply="${msg.id}">????????</button>
-            <button type="button" data-print-director-memo="${msg.id}">${printActionLabel("??????", "PDF")}</button>
+            <button type="button" data-save-director-reply="${msg.id}">Ответить</button>
+            <button type="button" data-print-director-memo="${msg.id}">${printActionLabel("Печать", "PDF")}</button>
           </div>
         </div>
-      ` : `<div class="director-reply-form"><div class="director-reply-actions"><button type="button" data-print-director-memo="${msg.id}">${printActionLabel("??????", "PDF")}</button></div></div>`}
+      ` : `<div class="director-reply-form"><div class="director-reply-actions"><button type="button" data-print-director-memo="${msg.id}">${printActionLabel("Печать", "PDF")}</button></div></div>`}
     `;
     card.querySelector("[data-save-director-reply]")?.addEventListener("click", async event => {
       const text = card.querySelector(`[data-director-reply="${msg.id}"]`)?.value.trim() || "";
@@ -11743,14 +11743,14 @@ function renderDirector() {
 }
 
 function renderDowntime() {
-  ui.subtitle.textContent = "???????";
+  ui.subtitle.textContent = "Простои";
   if (!ui.downtimeChart || !ui.downtimeDetails) return;
   const monthDate = new Date(current.downtimeYear, current.downtimeMonth, 1);
   ui.downtimeMonthLabel.textContent = monthDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   const stats = downtimeChartAreas().map(area => downtimeAreaStats(area));
   const activeCount = downtimes().filter(item => !item.endedAt).length;
   const monthCount = downtimeMonthItems().length;
-  ui.downtimeMeta.textContent = `???????? ?? ?????: ${monthCount}. ???????? ?????????: ${activeCount}. ????? ???????: 125 ????? ?? ??? ?? ?????.`;
+  ui.downtimeMeta.textContent = `Простоев за месяц: ${monthCount}. Активных остановок: ${activeCount}. Лимит простоя: 125 часов на цех за месяц.`;
   ui.downtimeChart.innerHTML = downtimePieChart(stats);
   ui.downtimeChart.querySelectorAll("[data-downtime-area]").forEach(button => {
     button.addEventListener("click", () => {
@@ -11768,17 +11768,17 @@ function renderDowntime() {
   ui.downtimeDetails.innerHTML = `
     <div class="downtime-detail-head">
       <strong>${escapeHtml(selectedArea)}</strong>
-      <span>${selectedItems.length ? `${selectedItems.length} ??????? ???????` : "?? ????? ???????? ???"}</span>
+      <span>${selectedItems.length ? `${selectedItems.length} записей простоя` : "За месяц простоев нет"}</span>
     </div>
     ${selectedItems.length ? selectedItems.map(item => `
       <button type="button" class="downtime-entry ${item.endedAt ? "" : "active"}" data-open-downtime-comment="${escapeHtml(item.id)}">
-        <strong>${escapeHtml(item.equipment)} ? ${escapeHtml(item.node)}</strong>
-        <span>${downtimeTypeLabel(item.type)} ? ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "???? ??????"} ? ${durationText(downtimeDurationMs(item))}</span>
-        <p>${escapeHtml(item.comment || "??? ???????????")}</p>
-        ${item.closeComment ? `<p>????: ${escapeHtml(item.closeComment)}</p>` : ""}
-        <small>${escapeHtml(item.authorName || "?????????")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
+        <strong>${escapeHtml(item.equipment)} · ${escapeHtml(item.node)}</strong>
+        <span>${downtimeTypeLabel(item.type)} · ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "идет сейчас"} · ${durationText(downtimeDurationMs(item))}</span>
+        <p>${escapeHtml(item.comment || "Без комментария")}</p>
+        ${item.closeComment ? `<p>Пуск: ${escapeHtml(item.closeComment)}</p>` : ""}
+        <small>${escapeHtml(item.authorName || "Сотрудник")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
       </button>
-    `).join("") : `<div class="empty-state">?? ????? ???? ?? ????????? ????? ??? ???????????? ????????</div>`}
+    `).join("") : `<div class="empty-state">По этому цеху за выбранный месяц нет комментариев простоев</div>`}
   `;
   ui.downtimeDetails.querySelectorAll("[data-open-downtime-comment]").forEach(button => {
     button.addEventListener("click", () => {
@@ -11792,7 +11792,7 @@ function renderAggregateJournal() {
   const areas = aggregateJournalAreas();
   const selectedArea = current.selectedAggregateArea || areas[0] || "";
   current.selectedAggregateArea = selectedArea;
-  ui.subtitle.textContent = "?????????? ??????";
+  ui.subtitle.textContent = "Агрегатный журнал";
   if (!ui.aggregateJournalList) return;
   if (selectedArea === GAS_JOURNAL_AREA) {
     renderGasJournal();
@@ -11802,10 +11802,10 @@ function renderAggregateJournal() {
     renderCompressorJournal(selectedArea);
     return;
   }
-  ui.aggregateJournalTitle.textContent = selectedArea ? `?????????? ??????: ${selectedArea}` : "?????????? ??????";
+  ui.aggregateJournalTitle.textContent = selectedArea ? `Агрегатный журнал: ${selectedArea}` : "Агрегатный журнал";
   const items = selectedArea ? aggregateJournalItems(selectedArea) : [];
   const openCount = items.filter(item => !item.resolved).length;
-  ui.aggregateJournalMeta.textContent = `${items.length} ???????. ????????: ${openCount}. ????? ???????? ????????? ? ??????? ???? ???????? ?? ??????? ???????.`;
+  ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки цеха отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
     sheets.push(items.slice(i, i + AGGREGATE_JOURNAL_ROWS_PER_SHEET));
@@ -11813,32 +11813,32 @@ function renderAggregateJournal() {
   }
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions">
-      <button type="button" data-print-aggregate-journal>${printActionLabel("?????? ? ????????? ????", "PDF ? ????????? ????")}</button>
+      <button type="button" data-print-aggregate-journal>${printActionLabel("Печать в альбомном виде", "PDF в альбомном виде")}</button>
     </div>
     ${sheets.map((sheetItems, sheetIndex) => `
       <div class="aggregate-journal-sheet">
         <div class="aggregate-sheet-head">
-          <strong>?????????? ??????: ${escapeHtml(selectedArea)}</strong>
-          <span>???? ? ${sheetIndex + 1}</span>
+          <strong>Агрегатный журнал: ${escapeHtml(selectedArea)}</strong>
+          <span>Лист № ${sheetIndex + 1}</span>
         </div>
         <div class="aggregate-journal-table-wrap">
           <table class="aggregate-journal-table">
         <thead>
           <tr>
-            <th rowspan="2">? ?/?</th>
-            <th rowspan="2">???????????? ????, ? ??????? ????????? ??????</th>
-            <th rowspan="2">???? ??????? ??? ???????</th>
-            <th rowspan="2">??????? ?????????????? ???????</th>
-            <th rowspan="2">??????? ????, ?????????????? ??????</th>
-            <th rowspan="2">???? ???????</th>
-            <th rowspan="2">???????? ?????, ??????????? ??? ?????????? ????????</th>
-            <th colspan="4">???? ? ??????, ?????????? ??? ???????</th>
+            <th rowspan="2">№ п/п</th>
+            <th rowspan="2">Наименование узла, в котором обнаружен дефект</th>
+            <th rowspan="2">Дата осмотра или ревизии</th>
+            <th rowspan="2">Краткая характеристика дефекта</th>
+            <th rowspan="2">Подпись лица, производившего осмотр</th>
+            <th rowspan="2">Дата ремонта</th>
+            <th rowspan="2">Перечень работ, выполненных для устранения дефектов</th>
+            <th colspan="4">Узлы и детали, замененные при ремонте</th>
           </tr>
           <tr>
-            <th>????????????</th>
-            <th>??????????, ??.</th>
-            <th>????? ?????????? ?????????</th>
-            <th>?.?.?. ? ??????? ???????? ????</th>
+            <th>Наименование</th>
+            <th>Количество, шт.</th>
+            <th>Время устранения замечания</th>
+            <th>Ф.И.О. и подпись механика цеха</th>
           </tr>
         </thead>
         <tbody>
@@ -11847,7 +11847,7 @@ function renderAggregateJournal() {
             const author = commentEntryAuthor({ name: item.authorName, role: item.authorRole });
             const resolverRole = ROLE_ACCESS[item.resolvedByRole]?.label || item.resolvedByRole || "";
             const resolver = item.resolvedByName ? `${item.resolvedByName}${resolverRole ? ` (${resolverRole})` : ""}` : resolverRole;
-            const parts = item.kind === "?????????" ? installedPartsForRemark(remarkLinkKey(item.equipmentId, item.nodeIndex, item.date)) : [];
+            const parts = item.kind === "Замечание" ? installedPartsForRemark(remarkLinkKey(item.equipmentId, item.nodeIndex, item.date)) : [];
             const partNames = parts.map(part => part.name).join("\n");
             const partQty = parts.map(part => `${part.qty}`).join("\n");
             const partComments = parts.map(part => part.comment).filter(Boolean).join("\n");
@@ -11856,10 +11856,10 @@ function renderAggregateJournal() {
                 <td>${rowNumber}</td>
                 <td>${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
                 <td>${dateTimeHuman(item.at)}</td>
-                <td>${escapeHtml(`${item.kind}: ${item.text || "??? ???????????"}`)}</td>
+                <td>${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}</td>
                 <td>${escapeHtml(author)}</td>
                 <td>${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
-                <td>${escapeHtml(partComments || item.resolvedComment || (item.resolved ? "?????????" : ""))}</td>
+                <td>${escapeHtml(partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}</td>
                 <td>${escapeHtml(partNames || "")}</td>
                 <td>${escapeHtml(partQty || "")}</td>
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
@@ -11868,7 +11868,7 @@ function renderAggregateJournal() {
             `;
           }).join("") : `
             <tr>
-              <td colspan="11">? ???? ???? ???? ??? ??????? ??????????? ???????</td>
+              <td colspan="11">В этом цехе пока нет записей агрегатного журнала</td>
             </tr>
           `}
         </tbody>
@@ -11877,7 +11877,7 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
-  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printCurrentDocument(`??? - ?????????? ?????? - ${selectedArea}`));
+  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printCurrentDocument(`ППР - Агрегатный журнал - ${selectedArea}`));
 }
 
 function printDirectorMemo(msg) {
@@ -11888,7 +11888,7 @@ function printDirectorMemo(msg) {
     <html lang="ru">
       <head>
         <meta charset="utf-8">
-        <title>????????? ???????</title>
+        <title>Служебная записка</title>
         <style>
           body { font-family: "Times New Roman", serif; padding: 28mm 20mm; color: #111; }
           pre { white-space: pre-wrap; font: inherit; font-size: 14pt; line-height: 1.45; margin: 0; }
@@ -11912,36 +11912,36 @@ function renderDirectorSendForm() {
   const name = profile?.name || "";
   const position = ROLE_ACCESS[profile?.role]?.label || "";
   const department = profile?.area || "";
-  const template = `?????????
+  const template = `УТВЕРЖДАЮ
 ____________________
 
-                                                                        ?-?? ??????? ?.
-                                                                        ????????? ??? ?Aluminium of Kazakhstan?
+                                                                        Г-ну Азизову Б.
+                                                                        Директору ТОО «Aluminium of Kazakhstan»
 
-                                                                        ?? ${name}
-                                                                        ????????? ${position}
-                                                                        ????????????? ${department}
+                                                                        от ${name}
+                                                                        должность ${position}
+                                                                        подразделение ${department}
 
-                         ????????? ???????
+                         СЛУЖЕБНАЯ ЗАПИСКА
 
-? ${memoNumber}                           ?${day}? ${month} ${year} ?.
+№ ${memoNumber}                           «${day}» ${month} ${year} г.
 
-????: 
+Тема: 
 
-????????? ?????? ?.!
-
-
+Уважаемый Азизов Б.!
 
 
 
 
-? ?????????        ${name}`;
+
+
+С уважением        ${name}`;
   return `
     <form class="director-send director-memo-form" id="directorSendForm">
       <div class="memo-paper">
         <textarea id="directorMemoFullText" class="memo-full-editor" rows="18">${escapeHtml(template)}</textarea>
       </div>
-      <button type="submit">????????? ?????????</button>
+      <button type="submit">Отправить директору</button>
     </form>
   `;
 }
@@ -11955,36 +11955,36 @@ function renderDirectorUsers() {
     const digits = cleanPhone(phone);
     return digits ? `https://wa.me/${digits}` : "";
   };
-  const roleOptions = selected => `<option value="">???????? ?????????</option>${Object.entries(ROLE_ACCESS)
+  const roleOptions = selected => `<option value="">Выберите должность</option>${Object.entries(ROLE_ACCESS)
     .map(([role, access]) => `<option value="${role}" ${selected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
     .join("")}`;
-  const areaOptions = selected => `<option value="">??? ???????</option>${AREAS
+  const areaOptions = selected => `<option value="">Без участка</option>${AREAS
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `
     <div class="director-users">
       <div class="director-users-head">
-        <strong>?????????????????? ??????????</strong>
-        <button type="button" class="mini-action" data-refresh-users>???????? ??????</button>
+        <strong>Зарегистрированные сотрудники</strong>
+        <button type="button" class="mini-action" data-refresh-users>Обновить список</button>
       </div>
-      <div class="empty-state">?????? ?? ????????????. ???????? ????? ?????? ?????????? ????? ????????? ??????.</div>
-      ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">????? ??????????? ???? ?????????????: ${pendingCount}</div>` : ""}
+      <div class="empty-state">Пароли не отображаются. Директор может выдать сотруднику новый временный пароль.</div>
+      ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">Новые регистрации ждут подтверждения: ${pendingCount}</div>` : ""}
       ${users.length ? users.map(user => `
         <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}">
           <span>${escapeHtml(user.name || "")}</span>
-          <span>???. ? ${escapeHtml(user.employeeId || "?? ?????")}</span>
+          <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
           ${user.approved === false || user.pendingApproval ? `
-            <label class="user-access-field"><span>?????????</span><select data-user-role>${roleOptions(user.role || "")}</select></label>
-            <label class="user-access-field"><span>???????</span><select data-user-area>${areaOptions(user.area || "")}</select></label>
-          ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` ? ${escapeHtml(user.area)}` : ""}</span>`}
-          <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "???? ?????????????" : "???????????"}</span>
+            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(user.role || "")}</select></label>
+            <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(user.area || "")}</select></label>
+          ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
+          <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
-          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">???????????</button>` : ""}
-          ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">????? ??????</button>` : ""}
-          ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">???????</button>` : ""}
+          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить</button>` : ""}
+          ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
+          ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
-      `).join("") : `<div class="empty-state">?????? ??????????? ???? ????</div>`}
+      `).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
     </div>
   `;
 }
@@ -12014,51 +12014,51 @@ function renderWarehousePanel() {
   ui.warehousePanel.innerHTML = `
     <div class="warehouse-head">
       <div>
-        <strong>?????? ?? ?????</strong>
-        <span>${query ? `???????: ????? ${foundStock.length} ? ?????? ${foundRequests.length}` : "???????? ????? ?????? ??? ??????? ????????"}</span>
+        <strong>Склады по цехам</strong>
+        <span>${query ? `Найдено: запас ${foundStock.length} · заявки ${foundRequests.length}` : "Выберите папку склада или найдите запчасть"}</span>
       </div>
-      <div class="stock-action-line"><button type="button" class="warehouse-archive-button ${current.warehouseInstalledArchiveOpen ? "active" : ""}" data-toggle-warehouse-installed>${current.warehouseInstalledArchiveOpen ? "??????? ????? ????????? ?" : "??????? ????? ????????? ?"}</button><button type="button" class="warehouse-archive-button ${current.warehouseZeroArchiveOpen ? "active" : ""}" data-toggle-warehouse-zero>${current.warehouseZeroArchiveOpen ? "??????? ??????? ??????? ?" : `??????? ??????? ??????? (${zeroInventoryItems().length}) ?`}</button></div>
+      <div class="stock-action-line"><button type="button" class="warehouse-archive-button ${current.warehouseInstalledArchiveOpen ? "active" : ""}" data-toggle-warehouse-installed>${current.warehouseInstalledArchiveOpen ? "Закрыть архив установок ▲" : "Открыть архив установок ▼"}</button><button type="button" class="warehouse-archive-button ${current.warehouseZeroArchiveOpen ? "active" : ""}" data-toggle-warehouse-zero>${current.warehouseZeroArchiveOpen ? "Закрыть нулевые остатки ▲" : `Открыть нулевые остатки (${zeroInventoryItems().length}) ▼`}</button></div>
     </div>
     ${renderWarehouseFolders(folderArea, warehouseData)}
     <form class="warehouse-search" id="warehouseSearchForm">
-      <span>????? ?? ??????</span>
+      <span>Поиск по складу</span>
       <div class="warehouse-search-row">
-        <input id="warehouseSearchInput" type="search" placeholder="????????, ???, ?????" value="${current.warehouseSearch}">
-        <button type="submit">??????</button>
-        <button type="button" id="warehouseSearchClear">?????</button>
+        <input id="warehouseSearchInput" type="search" placeholder="Запчасть, цех, полка" value="${current.warehouseSearch}">
+        <button type="submit">Искать</button>
+        <button type="button" id="warehouseSearchClear">Сброс</button>
       </div>
     </form>
     ${canManageWarehouse ? `
       <form class="warehouse-form" id="manualInventoryForm">
         <select id="manualInventoryArea">${warehouseOptions(folderArea)}</select>
-        <input id="manualInventoryName" type="text" placeholder="???????????? ????????">
-        <input id="manualInventoryArticle" type="text" placeholder="??????? (????)">
-        <select id="manualInventoryUnit" aria-label="??????? ?????????">${inventoryUnitOptions("??")}</select>
-        <input id="manualInventoryQty" type="number" min="0.001" step="0.001" placeholder="??????????">
-        <input id="manualInventoryPrice" type="text" inputmode="decimal" placeholder="???? ?? 1 ??. ???.">
-        <button type="button" id="manualInventoryPriceLookup">????? ????</button>
-        <input id="manualInventoryNote" type="text" placeholder="????? / ????? / ??????????">
-        <button type="submit">??????? ??????</button>
+        <input id="manualInventoryName" type="text" placeholder="Наименование запчасти">
+        <input id="manualInventoryArticle" type="text" placeholder="Артикул (авто)">
+        <select id="manualInventoryUnit" aria-label="Единица измерения">${inventoryUnitOptions("шт")}</select>
+        <input id="manualInventoryQty" type="number" min="0.001" step="0.001" placeholder="Количество">
+        <input id="manualInventoryPrice" type="text" inputmode="decimal" placeholder="Цена за 1 ед. изм.">
+        <button type="button" id="manualInventoryPriceLookup">Найти цену</button>
+        <input id="manualInventoryNote" type="text" placeholder="Место / полка / примечание">
+        <button type="submit">Создать приход</button>
       </form>
-    ` : `<div class="readonly-note">??????? ???????? ?????? ??? ?????????. ????????? ? ???????????? ??????????.</div>`}
+    ` : `<div class="readonly-note">Остатки доступны только для просмотра. Добавляет и распределяет складовщик.</div>`}
     ${pendingAsks.length ? `<div class="warehouse-pending warehouse-asks">
       <div class="warehouse-stock-head">
-        <strong>??????? ??????????? ?? ??????</strong>
-        <span>${pendingAsks.length} ???? ??????</span>
+        <strong>Запросы сотрудников на выдачу</strong>
+        <span>${pendingAsks.length} ждёт выдачи</span>
       </div>
       <div class="warehouse-pending-list" id="warehouseAskList"></div>
     </div>` : ""}
     ${pendingReceipts.length ? `<div class="warehouse-pending">
       <div class="warehouse-stock-head">
-        <strong>????? ??????</strong>
-        <span>${pendingReceipts.length} ???? ?????????????</span>
+        <strong>Новый приход</strong>
+        <span>${pendingReceipts.length} ждёт распределения</span>
       </div>
       <div class="warehouse-pending-list" id="warehousePendingList"></div>
     </div>` : ""}
     ${current.warehouseInstalledArchiveOpen ? warehouseInstalledPartsHtml() : ""}
     ${current.warehouseZeroArchiveOpen ? warehouseZeroArchiveHtml() : ""}
     ${renderWarehouseInventory(folderArea, canManageWarehouse, warehouseData)}
-    ${query ? `<div class="empty-state">${foundStock.length || foundRequests.length ? "????????? ??????? ??????????. ???? ??? ???? ? ?????? ?????, ????? ?????? ?????????????." : "????? ?????? ?? ?????"}</div>` : ""}
+    ${query ? `<div class="empty-state">${foundStock.length || foundRequests.length ? "Найденная позиция подсвечена. Если она была в другой папке, склад открыт автоматически." : "Поиск ничего не нашёл"}</div>` : ""}
   `;
   const form = ui.warehousePanel.querySelector("#manualInventoryForm");
   ui.warehousePanel.querySelector("[data-toggle-warehouse-installed]")?.addEventListener("click", () => {
@@ -12083,12 +12083,12 @@ function renderWarehousePanel() {
   const searchForm = ui.warehousePanel.querySelector("#warehouseSearchForm");
   const askList = ui.warehousePanel.querySelector("#warehouseAskList");
   if (askList) {
-    askList.innerHTML = pendingAsks.length ? "" : `<div class="empty-state">???????? ??????????? ?? ?????? ???</div>`;
+    askList.innerHTML = pendingAsks.length ? "" : `<div class="empty-state">Запросов сотрудников на выдачу нет</div>`;
     pendingAsks.forEach(req => askList.append(requestCard(req)));
   }
   const pendingList = ui.warehousePanel.querySelector("#warehousePendingList");
   if (pendingList) {
-    pendingList.innerHTML = pendingReceipts.length ? "" : `<div class="empty-state">????? ?????? ?? ????? ?????? ???????????</div>`;
+    pendingList.innerHTML = pendingReceipts.length ? "" : `<div class="empty-state">Новый приход по этому складу отсутствует</div>`;
     pendingReceipts.forEach(req => pendingList.append(requestCard(req)));
   }
   ui.warehousePanel.querySelectorAll("[data-warehouse-folder]").forEach(button => {
@@ -12144,14 +12144,14 @@ function renderWarehousePanel() {
       const item = state.inventory?.[input.dataset.stockUnit || ""];
       const unit = String(input.value || "").trim();
       if (!item || !unit) {
-        if (item) input.value = item.unit || "??";
+        if (item) input.value = item.unit || "шт";
         return;
       }
       item.unit = unit;
       item.updatedAt = new Date().toISOString();
       saveState();
       renderWarehousePanel();
-      showAppToast(`??????? ????????? ?????????: ${unit}`);
+      showAppToast(`Единица измерения сохранена: ${unit}`);
     });
   });
   ui.warehousePanel.querySelectorAll("[data-stock-price-lookup]").forEach(button => {
@@ -12168,10 +12168,10 @@ function renderWarehousePanel() {
       if (found) {
         saveState();
       } else {
-        window.alert("???? ????????????? ?? ???????. ??????? ???? ???????.");
+        window.alert("Цена автоматически не найдена. Введите цену вручную.");
         input.focus();
       }
-    }, "???..."));
+    }, "Ищу..."));
   });
   ui.warehousePanel.querySelectorAll("[data-stock-move]").forEach(button => {
     button.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
@@ -12182,10 +12182,10 @@ function renderWarehousePanel() {
       const priceInput = ui.warehousePanel.querySelector(`[data-stock-price="${CSS.escape(id)}"]`);
       const targetArea = ui.warehousePanel.querySelector(`[data-stock-target="${CSS.escape(id)}"]`)?.value || item?.area || COMMON_WAREHOUSE;
       if (!item || qty <= 0 || targetArea === item.area) return;
-      if (!ensureInventoryPriceForOperation(item, priceInput, "????? ????????? ??????? ???? ?? 1 ??????? ?????????.")) return;
+      if (!ensureInventoryPriceForOperation(item, priceInput, "Перед переносом укажите цену за 1 единицу измерения.")) return;
       const moved = Math.min(qty, Number(item.qty || 0));
       if (removeInventory(item.area, item.name, moved, false, item.article)) {
-        addInventory(targetArea, item.name, moved, item.source || `??????? ?? ?????? ${item.area}`, {
+        addInventory(targetArea, item.name, moved, item.source || `Перенос со склада ${item.area}`, {
           article: item.article,
           unit: item.unit,
           note: item.note,
@@ -12213,11 +12213,11 @@ function renderWarehousePanel() {
       const priceInput = ui.warehousePanel.querySelector(`[data-stock-price="${CSS.escape(id)}"]`);
       if (!item || qty <= 0) return;
       if (!targetName) {
-        window.alert("???????? ??????????? ??????????, ???????? ???????? ????????.");
+        window.alert("Выберите конкретного сотрудника, которому выдаётся запчасть.");
         recipient?.focus();
         return;
       }
-      const unitPrice = ensureInventoryPriceForOperation(item, priceInput, "????? ??????? ??????? ???? ?? 1 ??????? ?????????.");
+      const unitPrice = ensureInventoryPriceForOperation(item, priceInput, "Перед выдачей укажите цену за 1 единицу измерения.");
       if (!unitPrice) return;
       try {
         const result = await apiJson("/api/warehouse/issue", {
@@ -12240,12 +12240,12 @@ function renderWarehousePanel() {
         if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
         persistStateLocally(state);
         current.requestRole = "warehouse";
-        showAppToast(`??????: ${targetName}. ???????: ${Number(result.available || 0)} ${item.unit || "??"}`);
+        showAppToast(`Выдано: ${targetName}. Остаток: ${Number(result.available || 0)} ${item.unit || "шт"}`);
         renderRequests();
       } catch (error) {
         if (error?.message === "warehouse_insufficient_stock") {
           await syncRemoteChanges();
-          window.alert(`?????? ????????: ?? ?????? ???????? ?????? ${Number(error.data?.available || 0)} ${item.unit || "??"}.`);
+          window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${item.unit || "шт"}.`);
           renderRequests();
           return;
         }
@@ -12274,10 +12274,10 @@ function renderWarehousePanel() {
       manualPrice.dataset.priceLookupDone = "";
       const found = await autoFillInternetPriceInput(manualPrice, manualName?.value || "", manualArticle?.value || "");
       if (!found) {
-        window.alert("???? ????????????? ?? ???????. ??????? ???? ???????.");
+        window.alert("Цена автоматически не найдена. Введите цену вручную.");
         manualPrice.focus();
       }
-    }, "???..."));
+    }, "Ищу..."));
     form.addEventListener("submit", event => {
       event.preventDefault();
       runButtonOperation(form.querySelector("button[type='submit']"), () => {
@@ -12289,7 +12289,7 @@ function renderWarehousePanel() {
         const price = ui.warehousePanel.querySelector("#manualInventoryPrice").value;
         const note = ui.warehousePanel.querySelector("#manualInventoryNote").value;
         if (parseMoneyAmount(price) <= 0) {
-          window.alert("??????? ???? ?? 1 ??????? ?????????. ??? ???? ?????? ?? ????? ????????.");
+          window.alert("Укажите цену за 1 единицу измерения. Без цены приход на склад запрещён.");
           ui.warehousePanel.querySelector("#manualInventoryPrice")?.focus();
           return;
         }
@@ -12326,7 +12326,7 @@ function accountingWrittenOffItems() {
 function printAccountingWrittenOffReport() {
   const items = accountingWrittenOffItems();
   if (!items.length) {
-    window.alert("??? ????????? ??????? ??? ??????.");
+    window.alert("Нет списанных деталей для печати.");
     return;
   }
   const totalQty = items.reduce((sum, req) => sum + Number(req.qtyIssued || req.qtyInstalled || 0), 0);
@@ -12341,25 +12341,25 @@ function printAccountingWrittenOffReport() {
           <strong>${escapeHtml(partNameFromRequest(req))}</strong>
           <small>${escapeHtml(req.requestNumber || "")}</small>
         </td>
-        <td>${escapeHtml(req.equipment || "?")}<small>${escapeHtml(req.node || "")}</small></td>
-        <td>${escapeHtml(req.stockArea || req.area || "?")}</td>
+        <td>${escapeHtml(req.equipment || "—")}<small>${escapeHtml(req.node || "")}</small></td>
+        <td>${escapeHtml(req.stockArea || req.area || "—")}</td>
         <td>${escapeHtml(requestRoleLabel(warehouseIssueTargetRole(req)))}<small>${escapeHtml(req.issueTargetName || "")}</small></td>
         <td class="qty">${Number(req.qtyIssued || req.qtyInstalled || 0)}</td>
-        <td>${escapeHtml(installApproval.name || "?")}<small>${escapeHtml(dateTimeHuman(installApproval.at || ""))}</small></td>
-        <td>${escapeHtml(accountingApproval.name || "?")}<small>${escapeHtml(dateTimeHuman(accountingApproval.at || req.updatedAt || ""))}</small></td>
+        <td>${escapeHtml(installApproval.name || "—")}<small>${escapeHtml(dateTimeHuman(installApproval.at || ""))}</small></td>
+        <td>${escapeHtml(accountingApproval.name || "—")}<small>${escapeHtml(dateTimeHuman(accountingApproval.at || req.updatedAt || ""))}</small></td>
       </tr>
     `;
   }).join("");
   const win = window.open("", "_blank", "width=1200,height=820");
   if (!win) {
-    window.alert("????????? ??????????? ???? ??? ?????? ??????.");
+    window.alert("Разрешите всплывающие окна для печати отчёта.");
     return;
   }
   win.document.write(`<!doctype html>
     <html lang="ru">
       <head>
         <meta charset="utf-8">
-        <title>?????? ????????? ???????</title>
+        <title>Список списанных деталей</title>
         <style>
           * { box-sizing: border-box; }
           @page { size: A4 landscape; margin: 12mm; }
@@ -12392,19 +12392,19 @@ function printAccountingWrittenOffReport() {
       <body>
         <main class="sheet">
           <header>
-            <div class="brand"><div class="mark">???</div><div><h1>?????? ????????? ???????</h1><p>????? ?? ????????????? ? ????????? ???????</p></div></div>
-            <div class="meta"><strong>??? ????????</strong><br>${escapeHtml(reportDate)}</div>
+            <div class="brand"><div class="mark">ППР</div><div><h1>Список списанных деталей</h1><p>Отчёт по установленным и списанным запасам</p></div></div>
+            <div class="meta"><strong>ППР Контроль</strong><br>${escapeHtml(reportDate)}</div>
           </header>
           <section class="summary">
-            <div><strong>${items.length}</strong><span>???????? ????????</span></div>
-            <div><strong>${totalQty}</strong><span>??????? ???????</span></div>
+            <div><strong>${items.length}</strong><span>операций списания</span></div>
+            <div><strong>${totalQty}</strong><span>деталей списано</span></div>
           </section>
           <table>
-            <thead><tr><th>?</th><th>?????? / ??????</th><th>????????????</th><th>?????</th><th>??????????</th><th>???-??</th><th>??????????</th><th>??????</th></tr></thead>
+            <thead><tr><th>№</th><th>Деталь / заявка</th><th>Оборудование</th><th>Склад</th><th>Получатель</th><th>Кол-во</th><th>Подтвердил</th><th>Списал</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <footer><span>???????????? ????????????? ???????? ???? ?????????</span><span>?????????????: ____________________</span></footer>
-          <div class="actions"><button onclick="window.print()">???????? / ????????? PDF</button></div>
+          <footer><span>Сформировано автоматически системой «ППР Контроль»</span><span>Ответственный: ____________________</span></footer>
+          <div class="actions"><button onclick="window.print()">Печатать / сохранить PDF</button></div>
         </main>
       </body>
     </html>`);
@@ -12419,23 +12419,23 @@ function requestItemsHtml(req, mode = "") {
   const quantityMode = mode === "quantity";
   return `
     <div class="request-items-summary">
-      <strong>??????? ??????</strong>
+      <strong>Позиции заявки</strong>
       <table>
-        <thead><tr>${financeMode ? "<th>??????</th>" : ""}<th>?</th><th>????????????</th><th>???????</th><th>???????</th><th>??.</th><th>?????????</th><th>???????????</th><th>????</th><th>?????????</th><th>??????????</th></tr></thead>
+        <thead><tr>${financeMode ? "<th>Оплата</th>" : ""}<th>№</th><th>Наименование</th><th>Артикул</th><th>Остаток</th><th>Ед.</th><th>Заявочное</th><th>Необходимое</th><th>Цена</th><th>Поставщик</th><th>Примечание</th></tr></thead>
         <tbody>
           ${items.map((item, index) => `
             <tr ${supplyMode ? `data-supply-item-row="${index}"` : ""}>
-              ${financeMode ? `<td class="request-item-check"><input type="checkbox" data-finance-item-index="${index}" ${items.length === 1 ? "checked" : ""} aria-label="???????? ??????? ${index + 1}"></td>` : ""}
+              ${financeMode ? `<td class="request-item-check"><input type="checkbox" data-finance-item-index="${index}" ${items.length === 1 ? "checked" : ""} aria-label="Оплатить позицию ${index + 1}"></td>` : ""}
               <td>${index + 1}</td>
               <td><span class="manual-text">${escapeHtml(item.name || "")}</span></td>
               <td><span class="manual-text">${escapeHtml(item.article || "")}</span></td>
               <td><span class="manual-text">${escapeHtml(item.stockRemainder || "")}</span></td>
-              <td><span class="manual-text">${escapeHtml(item.unit || "??")}</span></td>
+              <td><span class="manual-text">${escapeHtml(item.unit || "шт")}</span></td>
               <td>${quantityMode ? `<input class="request-inline-input request-inline-number" data-request-item-requested type="number" min="0" step="1" value="${Number(item.requestedQty || 0)}">` : Number(item.requestedQty || 0)}</td>
               <td>${quantityMode ? `<input class="request-inline-input request-inline-number" data-request-item-required type="number" min="0" step="1" value="${Number(item.requiredQty || item.requestedQty || 0)}">` : Number(item.requiredQty || item.requestedQty || 0)}</td>
-              <td>${supplyMode ? `<input class="request-inline-input" data-supply-item-price type="text" inputmode="decimal" value="${escapeHtml(item.price || req.price || "")}" placeholder="????">` : `<span class="manual-text">${escapeHtml(item.price || "")}</span>`}</td>
-              <td>${supplyMode ? `<input class="request-inline-input" data-supply-item-supplier type="text" value="${escapeHtml(item.supplier || req.supplier || "")}" placeholder="?????????">` : `<span class="manual-text">${escapeHtml(item.supplier || "")}</span>`}</td>
-              <td>${supplyMode ? `<textarea class="request-inline-note" data-supply-item-note rows="2" placeholder="??????????">${escapeHtml(item.supplyNote || "")}</textarea>${item.note ? `<small class="request-item-note manual-text">${escapeHtml(item.note)}</small>` : ""}` : `<span class="manual-text">${escapeHtml([item.note, item.supplyNote].filter(Boolean).join(" ? "))}</span>`}${item.photo ? `<img class="request-item-photo" src="${item.photo}" alt="???? ??????? ${index + 1}">` : ""}</td>
+              <td>${supplyMode ? `<input class="request-inline-input" data-supply-item-price type="text" inputmode="decimal" value="${escapeHtml(item.price || req.price || "")}" placeholder="Цена">` : `<span class="manual-text">${escapeHtml(item.price || "")}</span>`}</td>
+              <td>${supplyMode ? `<input class="request-inline-input" data-supply-item-supplier type="text" value="${escapeHtml(item.supplier || req.supplier || "")}" placeholder="Поставщик">` : `<span class="manual-text">${escapeHtml(item.supplier || "")}</span>`}</td>
+              <td>${supplyMode ? `<textarea class="request-inline-note" data-supply-item-note rows="2" placeholder="Примечание">${escapeHtml(item.supplyNote || "")}</textarea>${item.note ? `<small class="request-item-note manual-text">${escapeHtml(item.note)}</small>` : ""}` : `<span class="manual-text">${escapeHtml([item.note, item.supplyNote].filter(Boolean).join(" · "))}</span>`}${item.photo ? `<img class="request-item-photo" src="${item.photo}" alt="Фото позиции ${index + 1}">` : ""}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -12447,23 +12447,23 @@ function requestItemsHtml(req, mode = "") {
 function requestApprovalCell(req, role, fallback = "") {
   const approval = req.approvals?.[role] || {};
   const name = approval.name || fallback || "";
-  const status = approval.at ? "????????????" : req.rejectedByRole === role ? "?????" : "";
+  const status = approval.at ? "Подтверждено" : req.rejectedByRole === role ? "Отказ" : "";
   return `
     <strong>${escapeHtml(name || "________________________")}</strong>
-    <span>${escapeHtml(status)}${approval.at ? ` ? ${escapeHtml(dateTimeHuman(approval.at))}` : ""}</span>
+    <span>${escapeHtml(status)}${approval.at ? ` · ${escapeHtml(dateTimeHuman(approval.at))}` : ""}</span>
   `;
 }
 
 function requestPrintColumns(items) {
   return [
-    { key: "number", label: "?", className: "num", show: true, value: (item, index) => index + 1 },
-    { key: "name", label: "???????????? ?????????? ??? ? ?????", className: "name", show: true, value: item => item.name || "" },
-    { key: "article", label: "???????", className: "article", show: true, value: item => item.article || "" },
-    { key: "stock", label: "??????? ?? ??????", className: "stock", show: true, value: item => item.stockRemainder || 0 },
-    { key: "unit", label: "??. ?????????", className: "unit", show: true, value: item => item.unit || "" },
-    { key: "requested", label: "????????? ??????????", className: "qty", show: true, value: item => Number(item.requestedQty || 0) || "" },
-    { key: "required", label: "???????????", className: "qty", show: true, value: item => Number(item.requiredQty || item.requestedQty || 0) || "" },
-    { key: "note", label: "??????????", className: "note", show: true, value: item => [item.note, item.supplyNote].filter(Boolean).join(" ? ") }
+    { key: "number", label: "№", className: "num", show: true, value: (item, index) => index + 1 },
+    { key: "name", label: "Наименование закупаемой ТМЦ и услуг", className: "name", show: true, value: item => item.name || "" },
+    { key: "article", label: "Артикул", className: "article", show: true, value: item => item.article || "" },
+    { key: "stock", label: "Остаток на складе", className: "stock", show: true, value: item => item.stockRemainder || 0 },
+    { key: "unit", label: "Ед. измерения", className: "unit", show: true, value: item => item.unit || "" },
+    { key: "requested", label: "Заявочное количество", className: "qty", show: true, value: item => Number(item.requestedQty || 0) || "" },
+    { key: "required", label: "Необходимое", className: "qty", show: true, value: item => Number(item.requiredQty || item.requestedQty || 0) || "" },
+    { key: "note", label: "Примечание", className: "note", show: true, value: item => [item.note, item.supplyNote].filter(Boolean).join(" · ") }
   ];
 }
 
@@ -12488,12 +12488,12 @@ function requestPrintTable(columns, rows, startIndex = 0, minRows = 0) {
 function requestPrintSignatures(req, sourceRole) {
   return `
     <section class="excel-signatures">
-      <div>????????? <strong>${escapeHtml(req.sourceName || "________________________")}</strong></div>
-      <div>????????? ???? ??? <strong>________________________</strong></div>
-      <div>????????? <strong>________________________</strong></div>
-      <div>??????? ??????? <strong>________________________</strong></div>
-      <div>???. ????????? <strong>________________________</strong></div>
-      <div class="delivery-line">???? ???????? <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "_____ ????"}</strong> ? ????????? <strong>________________________</strong></div>
+      <div>Заявитель <strong>${escapeHtml(req.sourceName || "________________________")}</strong></div>
+      <div>Начальник цеха РКС <strong>________________________</strong></div>
+      <div>Финансист <strong>________________________</strong></div>
+      <div>Главный инженер <strong>________________________</strong></div>
+      <div>Зам. директора <strong>________________________</strong></div>
+      <div class="delivery-line">Срок доставки <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "_____ дней"}</strong> · Снабженец <strong>________________________</strong></div>
     </section>
   `;
 }
@@ -12515,7 +12515,7 @@ function printRequestSheet(req, options = {}) {
     ? { document: { write(value) { printableHtml += String(value || ""); }, close() {} } }
     : window.open("", "_blank", "width=1280,height=820");
   if (!win) {
-    window.alert("????????? ??????????? ???? ??? ?????? ??????.");
+    window.alert("Разрешите всплывающие окна для печати заявки.");
     return;
   }
   const sourceRole = ROLE_ACCESS[req.sourceRole]?.label || req.sourceRole || "";
@@ -12530,7 +12530,7 @@ function printRequestSheet(req, options = {}) {
     const isLastPage = index === continuationChunks.length - 1;
     return `
       <main class="sheet continuation-sheet">
-        <div class="page-label">???? ${pageNo}</div>
+        <div class="page-label">Лист ${pageNo}</div>
         ${requestPrintTable(columns, chunk, startIndex, 0)}
         ${isLastPage ? signaturesHtml : ""}
       </main>
@@ -12540,7 +12540,7 @@ function printRequestSheet(req, options = {}) {
     <html lang="ru">
       <head>
         <meta charset="utf-8">
-        <title>${escapeHtml(req.requestNumber || "??????")}</title>
+        <title>${escapeHtml(req.requestNumber || "Заявка")}</title>
         <style>
           * { box-sizing: border-box; }
           @page { size: A4 landscape; margin: 10mm; }
@@ -12610,21 +12610,21 @@ function printRequestSheet(req, options = {}) {
       <body>
         <main class="sheet">
           <header class="excel-header">
-            <div class="excel-title-block"><h1>?????? ?? ???????????? ??? ? ?????</h1><p>?___? __________ 20___ ????</p></div>
-            <div class="excel-logo-block"><img class="excel-logo" src="${escapeHtml(logoUrl)}" alt="Hoffmann Aluminium"><div class="excel-approval">???. ????????? __________________</div></div>
+            <div class="excel-title-block"><h1>Заявка на приобретение ТМЦ и услуг</h1><p>«___» __________ 20___ года</p></div>
+            <div class="excel-logo-block"><img class="excel-logo" src="${escapeHtml(logoUrl)}" alt="Hoffmann Aluminium"><div class="excel-approval">Зам. директора __________________</div></div>
           </header>
-          <div class="excel-request-line">?????? ? ${escapeHtml(req.requestNumber || "_______")} ? ???: ${escapeHtml(req.area || "________________")}</div>
-          <div class="excel-date-line">???? ????????????: ${escapeHtml(createdDate)}</div>
+          <div class="excel-request-line">Заявка № ${escapeHtml(req.requestNumber || "_______")} · Цех: ${escapeHtml(req.area || "________________")}</div>
+          <div class="excel-date-line">Дата формирования: ${escapeHtml(createdDate)}</div>
           ${requestPrintTable(columns, firstPageItems, 0, 0)}
           ${continuationChunks.length ? "" : signaturesHtml}
         </main>
         ${continuationHtml}
-        <div class="actions"><button onclick="window.print()">???????? / ????????? PDF</button></div>
+        <div class="actions"><button onclick="window.print()">Печатать / сохранить PDF</button></div>
       </body>
     </html>`);
   win.document.close();
   if (options.asFile) {
-    const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Z?-??-?0-9_-]+/g, "-");
+    const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
     return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
   }
 }
@@ -12634,22 +12634,22 @@ function renderAccountingWrittenOffList() {
   return `
     <div class="warehouse-pending accounting-written-off">
       <div class="warehouse-stock-head">
-        <div><strong>????????? ??????</strong><span>${items.length ? `${items.length} ???????` : "???????? ???"}</span></div>
-        ${items.length ? `<button type="button" class="accounting-print-button" data-print-accounting>??????</button>` : ""}
+        <div><strong>Списанные запасы</strong><span>${items.length ? `${items.length} записей` : "Списаний нет"}</span></div>
+        ${items.length ? `<button type="button" class="accounting-print-button" data-print-accounting>Печать</button>` : ""}
       </div>
       ${items.length ? items.map(req => `
         <div class="request-card">
           <div class="request-main">
             <strong>${escapeHtml(partNameFromRequest(req))}</strong>
-            <span>${escapeHtml(req.equipment || "")} ? ${escapeHtml(req.node || "")}</span>
-            <div class="request-quantity">????????: ${Number(req.qtyReceived || 0)} ??. ? ???????????: ${Number(req.qtyIssued || 0)} ??. ? ??????? ?? ??????: ${inventoryRemainderForRequest(req)} ??.</div>
-            <div class="request-waiting">??? ????: ${requestRoleLabel(warehouseIssueTargetRole(req))}${req.issueTargetName ? ` ? ${escapeHtml(req.issueTargetName)}` : ""}</div>
-            <div class="request-waiting">???? ?????????: ${escapeHtml(req.equipment || "")}${req.node ? ` ? ${escapeHtml(req.node)}` : ""}</div>
-            ${req.installComment ? `<div class="request-no-invoice">??????????? ?????????: ${escapeHtml(req.installComment)}</div>` : ""}
-            <div class="request-status">???????</div>
+            <span>${escapeHtml(req.equipment || "")} · ${escapeHtml(req.node || "")}</span>
+            <div class="request-quantity">Получено: ${Number(req.qtyReceived || 0)} шт. · Установлено: ${Number(req.qtyIssued || 0)} шт. · Остаток на складе: ${inventoryRemainderForRequest(req)} шт.</div>
+            <div class="request-waiting">Кто взял: ${requestRoleLabel(warehouseIssueTargetRole(req))}${req.issueTargetName ? ` · ${escapeHtml(req.issueTargetName)}` : ""}</div>
+            <div class="request-waiting">Куда установил: ${escapeHtml(req.equipment || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}</div>
+            ${req.installComment ? `<div class="request-no-invoice">Комментарий установки: ${escapeHtml(req.installComment)}</div>` : ""}
+            <div class="request-status">Списано</div>
           </div>
         </div>
-      `).join("") : `<div class="empty-state">????????? ??????? ???? ???</div>`}
+      `).join("") : `<div class="empty-state">Списанных запасов пока нет</div>`}
     </div>
   `;
 }
@@ -12671,52 +12671,52 @@ function requestCard(req) {
       <div class="request-card-head">
         <div>
           <strong class="request-number">${escapeHtml(req.requestNumber)}</strong>
-          <b class="manual-text">${escapeHtml(req.equipment || "??? ????????????")}</b>
-          <span><span class="manual-text">${escapeHtml(req.area || "")}${req.node ? ` ? ${escapeHtml(req.node)}` : ""}</span> ? ${dateHuman(req.date)}</span>
-          ${req.kind === "journal-batch" ? `<span>??????? ?????? ?? ???????</span>` : ""}
+          <b class="manual-text">${escapeHtml(req.equipment || "Без оборудования")}</b>
+          <span><span class="manual-text">${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}</span> · ${dateHuman(req.date)}</span>
+          ${req.kind === "journal-batch" ? `<span>Сборная заявка из журнала</span>` : ""}
         </div>
         <div class="request-badges">
           <span class="request-route">${requestRouteLabel(req.route)}</span>
           <span class="request-priority ${req.priority}">${requestPriorityLabel(req.priority)}</span>
-          ${req.dueDate ? `<span class="${requestIsOverdue(req) ? "request-overdue" : "request-due"}">${requestIsOverdue(req) ? "??????????: " : "????: "}${dateHuman(req.dueDate)}</span>` : ""}
+          ${req.dueDate ? `<span class="${requestIsOverdue(req) ? "request-overdue" : "request-due"}">${requestIsOverdue(req) ? "Просрочено: " : "Срок: "}${dateHuman(req.dueDate)}</span>` : ""}
         </div>
       </div>
       ${requestAuthorHtml(req)}
       ${requestStageHtml(req)}
-      ${req.stockOut && !req.stockOutAcknowledged ? `<div class="request-returned request-rejected-source"><strong>????? ??????????</strong><span class="manual-text">${escapeHtml(req.stockOutReason || "????? ?? ????? ?????? ??????????? ???????.")}</span><small>?????????: ${Number(req.stockOutRequestedQty || req.qtyIssued || req.qtyReceived || 0)} ??. ? ????????: ${Number(req.stockOutAvailableQty || 0)} ??.${req.stockOutRecipientMissing ? " ? ????? ?? ??????, ??????????? ???????? ??????????? ?? ????." : ""}</small></div>` : ""}
-      ${req.returnedTo ? `<div class="request-returned"><strong>??????????: ${requestRoleLabel(req.returnedTo)}</strong><span class="manual-text">${escapeHtml(req.returnReason || "")}</span></div>` : ""}
-      ${req.rejected ? `<div class="request-returned request-rejected-source"><strong>?????? ?????????? ?????? ?? ???????????</strong><span class="manual-text">${escapeHtml(req.rejectionReason || "")}</span>${req.rejectedByName ? `<small>????????: <span class="manual-text">${escapeHtml(req.rejectedByName)}</span> (${escapeHtml(requestRoleLabel(req.rejectedByRole))})</small>` : ""}</div>` : ""}
+      ${req.stockOut && !req.stockOutAcknowledged ? `<div class="request-returned request-rejected-source"><strong>Запас закончился</strong><span class="manual-text">${escapeHtml(req.stockOutReason || "Склад не может выдать запрошенную позицию.")}</span><small>Запрошено: ${Number(req.stockOutRequestedQty || req.qtyIssued || req.qtyReceived || 0)} шт. · Доступно: ${Number(req.stockOutAvailableQty || 0)} шт.${req.stockOutRecipientMissing ? " · Автор не найден, уведомление показано замещающему по роли." : ""}</small></div>` : ""}
+      ${req.returnedTo ? `<div class="request-returned"><strong>Возвращено: ${requestRoleLabel(req.returnedTo)}</strong><span class="manual-text">${escapeHtml(req.returnReason || "")}</span></div>` : ""}
+      ${req.rejected ? `<div class="request-returned request-rejected-source"><strong>Заявка возвращена автору на исправление</strong><span class="manual-text">${escapeHtml(req.rejectionReason || "")}</span>${req.rejectedByName ? `<small>Отклонил: <span class="manual-text">${escapeHtml(req.rejectedByName)}</span> (${escapeHtml(requestRoleLabel(req.rejectedByRole))})</small>` : ""}</div>` : ""}
       ${req.comment ? `<p class="manual-text">${escapeHtml(req.comment)}</p>` : ""}
-      ${req.commentPhoto ? `<img class="request-photo" src="${req.commentPhoto}" alt="???? ?????????">` : ""}
+      ${req.commentPhoto ? `<img class="request-photo" src="${req.commentPhoto}" alt="Фото замечания">` : ""}
       <p class="request-text manual-text">${escapeHtml(req.text)}</p>
       ${requestItemsHtml(req, actionRole === "supply" && canActAsRole(actionRole) && requestWaitingForSupplyPrepare(req) && !requestFinanciallyLocked(req) ? "supply" : actionRole === "finance" && canActAsRole(actionRole) && req.supplyPrepared && !req.financeApproved && !req.done && !req.stock ? "finance" : ["shop", "engineer"].includes(actionRole) && canActAsRole(actionRole) && !requestFinanciallyLocked(req) && (requestWaitingForShopInitial(req) || requestWaitingForEngineerInitial(req)) ? "quantity" : "")}
-      ${req.requestPhoto ? `<img class="request-photo" src="${req.requestPhoto}" alt="???? ??????">` : ""}
-      ${(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []).map((photo, index) => `<img class="request-photo" src="${photo}" alt="?????????????? ???? ?????? ${index + 1}">`).join("")}
-      <div class="request-current-stage">??????? ????: ${requestRoleLabel(waitingRole(req))}</div>
-      ${req.requestedTargetRole && !req.issueTargetRole ? `<div class="request-recipient">??????????????? ????: ${escapeHtml(requestRoleLabel(req.requestedTargetRole))}</div>` : ""}
-      ${req.issueTargetRole && req.issued && !req.mechanicInstalled ? `<div class="request-recipient">??????????: ${requestRoleLabel(req.issueTargetRole)}${req.issueTargetName ? ` ? <span class="manual-text">${escapeHtml(req.issueTargetName)}</span>` : ""}</div>` : ""}
+      ${req.requestPhoto ? `<img class="request-photo" src="${req.requestPhoto}" alt="Фото заявки">` : ""}
+      ${(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []).map((photo, index) => `<img class="request-photo" src="${photo}" alt="Дополнительное фото заявки ${index + 1}">`).join("")}
+      <div class="request-current-stage">Текущий этап: ${requestRoleLabel(waitingRole(req))}</div>
+      ${req.requestedTargetRole && !req.issueTargetRole ? `<div class="request-recipient">Рекомендованная роль: ${escapeHtml(requestRoleLabel(req.requestedTargetRole))}</div>` : ""}
+      ${req.issueTargetRole && req.issued && !req.mechanicInstalled ? `<div class="request-recipient">Получатель: ${requestRoleLabel(req.issueTargetRole)}${req.issueTargetName ? ` · <span class="manual-text">${escapeHtml(req.issueTargetName)}</span>` : ""}</div>` : ""}
       ${requestHistoryHtml(req)}
       ${MANUAL_REQUEST_WORKFLOW ? "" : `<div class="request-finance">${financeInfoText(req)}</div>`}
-      ${req.approvalResponsibilityDeclines?.engineer && !req.approvalResponsibilityDeclines?.productionDirector ? `<div class="request-no-invoice">??????? ??????? ?? ??????: ?? ??? ???? ???????????????. ???? ????????? ????????????.</div>` : ""}
-      ${req.approvalResponsibilityDeclines?.productionDirector && !req.approvalResponsibilityDeclines?.engineer ? `<div class="request-no-invoice">???????? ???????????? ??????? ?? ??????: ?? ??? ???? ???????????????. ???? ????????.</div>` : ""}
-      ${req.installComment ? `<div class="request-no-invoice">??????????? ?????????: <span class="manual-text">${escapeHtml(req.installComment)}</span></div>` : ""}
-      ${req.installResponsibilityDeclines?.engineer && !req.installResponsibilityDeclines?.productionDirector ? `<div class="request-no-invoice">??????? ???????: ?? ??? ???? ???????????????. ???? ????????? ????????????.</div>` : ""}
-      ${req.installResponsibilityDeclines?.productionDirector && !req.installResponsibilityDeclines?.engineer ? `<div class="request-no-invoice">???????? ???????????? ???????: ?? ??? ???? ???????????????. ???? ????????.</div>` : ""}
+      ${req.approvalResponsibilityDeclines?.engineer && !req.approvalResponsibilityDeclines?.productionDirector ? `<div class="request-no-invoice">Инженер отметил по заявке: не моя зона ответственности. Ждёт директора производства.</div>` : ""}
+      ${req.approvalResponsibilityDeclines?.productionDirector && !req.approvalResponsibilityDeclines?.engineer ? `<div class="request-no-invoice">Директор производства отметил по заявке: не моя зона ответственности. Ждёт инженера.</div>` : ""}
+      ${req.installComment ? `<div class="request-no-invoice">Комментарий установки: <span class="manual-text">${escapeHtml(req.installComment)}</span></div>` : ""}
+      ${req.installResponsibilityDeclines?.engineer && !req.installResponsibilityDeclines?.productionDirector ? `<div class="request-no-invoice">Инженер отметил: не моя зона ответственности. Ждёт директора производства.</div>` : ""}
+      ${req.installResponsibilityDeclines?.productionDirector && !req.installResponsibilityDeclines?.engineer ? `<div class="request-no-invoice">Директор производства отметил: не моя зона ответственности. Ждёт инженера.</div>` : ""}
       ${MANUAL_REQUEST_WORKFLOW ? "" : requestApprovalsHtml(req)}
     </div>
     <div class="request-actions"></div>
   `;
   const actions = card.querySelector(".request-actions");
   const canAct = canActAsRole(actionRole);
-  actions.append(actionButton("???????? ??????", () => printRequestSheet(req)));
+  actions.append(actionButton("Печатать заявку", () => printRequestSheet(req)));
 
   if (stockOutVisibleToProfile(req, actionRole)) {
-    actions.append(actionButton("???????", () => {
+    actions.append(actionButton("Понятно", () => {
       req.stockOutAcknowledged = true;
       req.done = true;
       req.status = "done";
       req.updatedAt = new Date().toISOString();
-      requestAddHistory(req, "??????????? ? ????????????? ?????? ?????????", profile?.name || "");
+      requestAddHistory(req, "Уведомление о закончившемся запасе прочитано", profile?.name || "");
       syncRequestToRecord(req);
       saveState();
       renderRequests();
@@ -12725,7 +12725,7 @@ function requestCard(req) {
   }
 
   if (MANUAL_REQUEST_WORKFLOW && actionRole !== "warehouse" && !issuedWarehouseItemVisibleToProfile(req, actionRole)) {
-    actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">??????????? ??????? ????????. ???????????? ?????? ? ???????? ???????.</div>`);
+    actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">Электронный маршрут отключён. Распечатайте заявку и обходите вручную.</div>`);
     return card;
   }
 
@@ -12733,22 +12733,22 @@ function requestCard(req) {
     const setup = document.createElement("div");
     setup.className = "request-setup";
     setup.innerHTML = `
-      <label><span>???????</span><select data-request-route>
-        <option value="purchase" ${req.route === "purchase" ? "selected" : ""}>???????</option>
-        <option value="stock" ${req.route === "stock" ? "selected" : ""}>?? ??????</option>
+      <label><span>Маршрут</span><select data-request-route>
+        <option value="purchase" ${req.route === "purchase" ? "selected" : ""}>Закупка</option>
+        <option value="stock" ${req.route === "stock" ? "selected" : ""}>Со склада</option>
       </select></label>
-      <label><span>?????????</span><select data-request-priority>
-        <option value="normal" ${req.priority === "normal" ? "selected" : ""}>???????</option>
-        <option value="urgent" ${req.priority === "urgent" ? "selected" : ""}>???????</option>
-        <option value="emergency" ${req.priority === "emergency" ? "selected" : ""}>?????????</option>
+      <label><span>Срочность</span><select data-request-priority>
+        <option value="normal" ${req.priority === "normal" ? "selected" : ""}>Обычная</option>
+        <option value="urgent" ${req.priority === "urgent" ? "selected" : ""}>Срочная</option>
+        <option value="emergency" ${req.priority === "emergency" ? "selected" : ""}>Аварийная</option>
       </select></label>
-      <label><span>???? ??????????</span><input data-request-due type="date" value="${escapeHtml(req.dueDate || "")}"></label>
+      <label><span>Срок исполнения</span><input data-request-due type="date" value="${escapeHtml(req.dueDate || "")}"></label>
     `;
     actions.append(setup);
   }
 
   if (!canAct) {
-    actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">?????? ????????. ?????? ???????????? ??????????.</div>`);
+    actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">Только просмотр. Выдачу подтверждает складовщик.</div>`);
   }
 
   if (canAct && canConfirmIssuedInstall(req, actionRole)) {
@@ -12758,10 +12758,10 @@ function requestCard(req) {
       const options = aggregateRemarkOptions();
       remarkSelect = document.createElement("select");
       remarkSelect.innerHTML = `
-        <option value="">???????? ????????? ??? ?????????</option>
+        <option value="">Выберите замечание для установки</option>
         ${options.map(option => `
           <option value="${escapeHtml(option.key)}">
-            ${escapeHtml(`${option.area} ? ${option.equipment} ? ${option.node} ? ${dateHuman(option.date)} ? ${option.text}`)}
+            ${escapeHtml(`${option.area} · ${option.equipment} · ${option.node} · ${dateHuman(option.date)} · ${option.text}`)}
           </option>
         `).join("")}
       `;
@@ -12781,7 +12781,7 @@ function requestCard(req) {
     }
     const installComment = document.createElement("textarea");
     installComment.rows = 3;
-    installComment.placeholder = "??????????? ?????????";
+    installComment.placeholder = "Комментарий установки";
     installComment.value = req.installComment || "";
     installComment.addEventListener("change", () => {
       req.installComment = installComment.value.trim();
@@ -12789,7 +12789,7 @@ function requestCard(req) {
       saveState();
     });
     actions.append(installComment);
-    actions.append(actionButton("??????????? ?????????", () => {
+    actions.append(actionButton("Подтвердить установку", () => {
       if (remarkSelect?.value) {
         const option = aggregateRemarkOptions().find(item => item.key === remarkSelect.value);
         if (option) {
@@ -12814,7 +12814,7 @@ function requestCard(req) {
       req.accountingWrittenOff = false;
       clearInstallResponsibilityDeclines(req);
       req.status = "waitingShopDone";
-      requestRecordApproval(req, "install", "????????? ?????????");
+      requestRecordApproval(req, "install", "Установка выполнена");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -12823,7 +12823,7 @@ function requestCard(req) {
   }
 
   if (actionRole === "shop" && canAct && requestWaitingForShopInitial(req)) {
-    actions.append(actionButton("??????????? ???????????", () => {
+    actions.append(actionButton("Подтвердить начальником", () => {
       readInlineQuantityItems(actions, req);
       const route = actions.querySelector("[data-request-route]");
       const priority = actions.querySelector("[data-request-priority]");
@@ -12833,12 +12833,12 @@ function requestCard(req) {
       req.dueDate = dueDate?.value || "";
       req.requestedQty = requestItemsTotal(req.items);
       if (!req.dueDate || req.requestedQty <= 0) {
-        window.alert("????????? ???? ?????????? ? ??????????.");
+        window.alert("Заполните срок исполнения и количество.");
         return;
       }
       req.shopApproved = true;
       req.status = req.route === "stock" ? "warehouse" : "engineer";
-      requestRecordApproval(req, "shop", "???????????? ??????????? ????");
+      requestRecordApproval(req, "shop", "Подтверждено начальником цеха");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -12847,21 +12847,21 @@ function requestCard(req) {
   }
   if (actionRole === "engineer" && canAct && (requestWaitingForEngineerInitial(req) || requestWaitingForInstallApproval(req))) {
     const isInstallApproval = requestWaitingForInstallApproval(req);
-    actions.append(actionButton(isInstallApproval ? "??????????? ?????????" : "??????????? ?????????", () => {
+    actions.append(actionButton(isInstallApproval ? "Подтвердить установку" : "Подтвердить инженером", () => {
       if (isInstallApproval) {
         req.shopInstallApproved = true;
         req.productionDirectorApproved = false;
         req.done = false;
         req.status = "accounting";
         clearInstallResponsibilityDeclines(req);
-        requestRecordApproval(req, "installApproval", "????????? ????????????");
+        requestRecordApproval(req, "installApproval", "Установка подтверждена");
       } else {
         readInlineQuantityItems(actions, req);
         req.engineerApproved = true;
         req.productionDirectorRequestApproved = false;
         req.financePreApproved = false;
         req.status = "productionDirector";
-        requestRecordApproval(req, "engineer", "???????????? ?????????");
+        requestRecordApproval(req, "engineer", "Подтверждено инженером");
       }
       clearApprovalResponsibilityDeclines(req);
       clearRequestReturn(req);
@@ -12873,11 +12873,11 @@ function requestCard(req) {
     else appendApprovalResponsibilityAction(actions, req, "engineer");
   }
   if (actionRole === "productionDirector" && canAct && requestWaitingForProductionDirectorInitial(req)) {
-    actions.append(actionButton("??????????? ?????????? ????????????", () => {
+    actions.append(actionButton("Подтвердить директором производства", () => {
       req.productionDirectorRequestApproved = true;
       req.financePreApproved = false;
       req.status = "financePre";
-      requestRecordApproval(req, "productionDirectorRequest", "?????? ???????????? ?????????? ????????????");
+      requestRecordApproval(req, "productionDirectorRequest", "Заявка подтверждена директором производства");
       clearApprovalResponsibilityDeclines(req);
       clearRequestReturn(req);
       syncRequestToRecord(req);
@@ -12891,19 +12891,19 @@ function requestCard(req) {
     if (requestWaitingForSupplyPrepare(req)) {
       const statusNote = document.createElement("div");
       statusNote.className = "readonly-note";
-      statusNote.textContent = "????????? ????, ??????????/?????????? ? ?????????? ??? ??????? ??????.";
+      statusNote.textContent = "Заполните цену, поставщика/примечание и количество для ручного обхода.";
       actions.append(statusNote);
-      actions.append(actionButton("??????????? ???????", () => {
+      actions.append(actionButton("Подтвердить вручную", () => {
         const items = readSupplyItems();
         if (!supplyItemsPrepared(items)) {
-          statusNote.textContent = "????? ????????? ???? ? ?????????? ?? ?????? ???????.";
+          statusNote.textContent = "Нужно заполнить цену и поставщика по каждой позиции.";
           return;
         }
         req.supplyPrepared = true;
         req.status = "finance";
         req.qtyReceived = supplyItemsTotal(items);
         req.qtyPurchased = req.qtyReceived;
-        requestRecordApproval(req, "supply", "???????????? ???????");
+        requestRecordApproval(req, "supply", "Подготовлено вручную");
         clearRequestReturn(req);
         syncRequestToRecord(req);
         saveState();
@@ -12911,7 +12911,7 @@ function requestCard(req) {
       }));
     }
     if (requestWaitingForSupplyWarehouse(req)) {
-      actions.append(actionButton("???????? ?? ?????", () => {
+      actions.append(actionButton("Передать на склад", () => {
         req.transferredToWarehouse = true;
         req.stockArea = req.area || req.stockArea || COMMON_WAREHOUSE;
         req.qtyReceived = supplyItemsTotal(requestItems(req)) || Number(req.qtyReceived || 0);
@@ -12925,10 +12925,10 @@ function requestCard(req) {
     }
   }
   if (actionRole === "finance" && canAct && requestWaitingForFinancePreApproval(req)) {
-    actions.append(actionButton("?????????????? ???????????", () => {
+    actions.append(actionButton("Предварительно подтвердить", () => {
       req.financePreApproved = true;
       req.status = "supply";
-      requestRecordApproval(req, "financePre", "???????????? ???????");
+      requestRecordApproval(req, "financePre", "Подтверждено вручную");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -12939,11 +12939,11 @@ function requestCard(req) {
     appendInlineFinanceSelectionAction(actions, req);
   }
   if (actionRole === "cash" && canAct && req.financeApproved && !req.cashApproved && !req.done && !req.stock) {
-    actions.append(actionButton("????????", () => {
-      if (!window.confirm("????? ??????????? ???????")) return;
+    actions.append(actionButton("Оплатить", () => {
+      if (!window.confirm("Точно подтвердить оплату?")) return;
       req.cashApproved = true;
       req.status = "cashApproved";
-      requestRecordApproval(req, "cash", "????????");
+      requestRecordApproval(req, "cash", "Оплачено");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -12955,13 +12955,13 @@ function requestCard(req) {
     const availableQty = inventoryRemainderForRequest(req);
     const issueNote = document.createElement("div");
     issueNote.className = "readonly-note";
-    issueNote.textContent = `????????: ${requestRoleLabel(warehouseIssueTargetRole(req))}${req.issueTargetName ? ` ? ${req.issueTargetName}` : ""}. ?????????: ${requestedQty} ??. ????????: ${availableQty} ??.`;
+    issueNote.textContent = `Запросил: ${requestRoleLabel(warehouseIssueTargetRole(req))}${req.issueTargetName ? ` · ${req.issueTargetName}` : ""}. Запрошено: ${requestedQty} шт. Доступно: ${availableQty} шт.`;
     actions.append(issueNote);
     const requestStockItem = state.inventory?.[inventoryKey(req.stockArea || req.area || COMMON_WAREHOUSE, partNameFromRequest(req), partArticleFromRequest(req))];
     const issuePrice = document.createElement("input");
     issuePrice.type = "text";
     issuePrice.inputMode = "decimal";
-    issuePrice.placeholder = "???? ?? 1 ??. ???. ????? ???????";
+    issuePrice.placeholder = "Цена за 1 ед. изм. перед выдачей";
     issuePrice.value = priceTextFromAmount(parseMoneyAmount(requestStockItem?.unitPrice || requestStockItem?.price || requestStockItem?.lastPrice || ""));
     actions.append(issuePrice);
     if (parseMoneyAmount(issuePrice.value) <= 0) {
@@ -12971,10 +12971,10 @@ function requestCard(req) {
         saveState();
       });
     }
-    actions.append(actionButton("??????", async () => {
+    actions.append(actionButton("Выдать", async () => {
       const targetArea = req.stockArea || req.area || COMMON_WAREHOUSE;
       const stockItem = state.inventory?.[inventoryKey(targetArea, partNameFromRequest(req), partArticleFromRequest(req))];
-      const unitPrice = ensureInventoryPriceForOperation(stockItem, issuePrice, "????? ??????? ??????? ???? ?? 1 ??????? ?????????.");
+      const unitPrice = ensureInventoryPriceForOperation(stockItem, issuePrice, "Перед выдачей укажите цену за 1 единицу измерения.");
       if (!unitPrice || !stockItem) return;
       try {
         const result = await apiJson("/api/warehouse/issue", {
@@ -12990,14 +12990,14 @@ function requestCard(req) {
         if (result?.state) mergeRealtimePatch(result.state);
         if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
         persistStateLocally(state);
-        showAppToast(`??????: ${req.issueTargetName}. ???????: ${Number(result.available || 0)} ${stockItem.unit || "??"}`);
+        showAppToast(`Выдано: ${req.issueTargetName}. Остаток: ${Number(result.available || 0)} ${stockItem.unit || "шт"}`);
       } catch (error) {
         if (error?.message === "warehouse_insufficient_stock") {
           await syncRemoteChanges();
-          window.alert(`?????? ????????: ?? ?????? ???????? ?????? ${Number(error.data?.available || 0)} ${stockItem.unit || "??"}.`);
+          window.alert(`Выдача отменена: на складе осталось только ${Number(error.data?.available || 0)} ${stockItem.unit || "шт"}.`);
         } else if (error?.message === "warehouse_request_already_processed") {
           await syncRemoteChanges();
-          showAppToast("??? ?????? ??? ?????????? ?????? ????????????.", "error");
+          showAppToast("Эта заявка уже обработана другим складовщиком.", "error");
         } else {
           throw error;
         }
@@ -13019,7 +13019,7 @@ function requestCard(req) {
     const qtyReceived = document.createElement("input");
     qtyReceived.type = "number";
     qtyReceived.min = "0";
-    qtyReceived.placeholder = "????????, ??";
+    qtyReceived.placeholder = "Получено, шт";
     qtyReceived.value = req.qtyReceived || "";
     qtyReceived.addEventListener("change", () => {
       req.qtyReceived = Number(qtyReceived.value || 0);
@@ -13033,7 +13033,7 @@ function requestCard(req) {
     const warehousePrice = document.createElement("input");
     warehousePrice.type = "text";
     warehousePrice.inputMode = "decimal";
-    warehousePrice.placeholder = "???? ?? 1 ??. ???. ?? ?????";
+    warehousePrice.placeholder = "Цена за 1 ед. изм. на склад";
     warehousePrice.value = req.warehouseUnitPrice || "";
     warehousePrice.addEventListener("change", () => {
       req.warehouseUnitPrice = priceTextFromAmount(parseMoneyAmount(warehousePrice.value));
@@ -13049,12 +13049,12 @@ function requestCard(req) {
       });
     }
 
-    actions.append(actionButton("? ?????", () => {
+    actions.append(actionButton("В запас", () => {
       const targetArea = stockArea.value || req.area || COMMON_WAREHOUSE;
       const received = Number(req.qtyReceived || qtyReceived.value || 1);
       req.warehouseUnitPrice = priceTextFromAmount(parseMoneyAmount(warehousePrice.value || req.warehouseUnitPrice || ""));
       if (parseMoneyAmount(req.warehouseUnitPrice) <= 0) {
-        window.alert("??????? ???? ?? 1 ??????? ?????????. ??? ???? ?????? ?????? ????????? ? ?????.");
+        window.alert("Укажите цену за 1 единицу измерения. Без цены приход нельзя поставить в запас.");
         warehousePrice.focus();
         return;
       }
@@ -13077,12 +13077,12 @@ function requestCard(req) {
     }));
   }
   if (actionRole === "productionDirector" && canAct && requestWaitingForInstallApproval(req)) {
-    actions.append(actionButton("??????????? ?????????", () => {
+    actions.append(actionButton("Подтвердить установку", () => {
       req.productionDirectorApproved = true;
       req.done = false;
       req.status = "accounting";
       clearInstallResponsibilityDeclines(req);
-      requestRecordApproval(req, "productionDirector", "????????? ???????????? ?????????? ????????????");
+      requestRecordApproval(req, "productionDirector", "Установка подтверждена директором производства");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -13091,11 +13091,11 @@ function requestCard(req) {
     appendInstallResponsibilityAction(actions, req, "productionDirector");
   }
   if (actionRole === "accounting" && canAct && requestReadyForAccounting(req) && !req.accountingWrittenOff) {
-    actions.append(actionButton("??????? ??????", () => {
+    actions.append(actionButton("Списать деталь", () => {
       req.accountingWrittenOff = true;
       req.done = true;
       req.status = "done";
-      requestRecordApproval(req, "accounting", "???????");
+      requestRecordApproval(req, "accounting", "Списано");
       clearRequestReturn(req);
       syncRequestToRecord(req);
       saveState();
@@ -13126,31 +13126,31 @@ function requestCard(req) {
     actions.innerHTML = "";
     const correctionNote = document.createElement("div");
     correctionNote.className = "readonly-note request-alert";
-    correctionNote.textContent = "?????? ?????????? ???. ???????? ????????? ??? ????? ???? ? ????????? ????????.";
+    correctionNote.textContent = "Заявка возвращена вам. Добавьте пояснение или новое фото и отправьте повторно.";
     actions.append(correctionNote);
     const correctionText = document.createElement("textarea");
     correctionText.rows = 3;
-    correctionText.placeholder = "??? ?????????? ??? ????????";
+    correctionText.placeholder = "Что исправлено или уточнено";
     actions.append(correctionText);
     let correctionPhoto = "";
     const correctionFile = document.createElement("label");
     correctionFile.className = "request-file-row";
-    correctionFile.innerHTML = `<span>????? ???? ? ??????</span><input type="file" accept="image/*" capture="environment">`;
+    correctionFile.innerHTML = `<span>Новое фото к заявке</span><input type="file" accept="image/*" capture="environment">`;
     correctionFile.querySelector("input").addEventListener("change", async event => {
       correctionPhoto = await readPhotoFile(event.target.files?.[0]);
-      correctionFile.querySelector("span").textContent = correctionPhoto ? "????? ???? ???????????" : "????? ???? ? ??????";
+      correctionFile.querySelector("span").textContent = correctionPhoto ? "Новое фото прикреплено" : "Новое фото к заявке";
     });
     actions.append(correctionFile);
-    actions.append(actionButton("????????? ????????", () => {
+    actions.append(actionButton("Отправить повторно", () => {
       if (!correctionText.value.trim() && !correctionPhoto) {
-        window.alert("???????? ??????????? ??? ????? ????.");
+        window.alert("Добавьте комментарий или новое фото.");
         return;
       }
       if (resubmitRejectedRequest(req, correctionText.value, correctionPhoto)) renderRequests();
     }));
-    const deleteButton = actionButton("??????? ??????", () => {
-      if (!window.confirm("????? ??????? ??????????? ??????? ???????????? ?? ????? ??????.")) return;
-      const reason = window.prompt("??????? ??????? ???????? ??????:")?.trim();
+    const deleteButton = actionButton("Удалить заявку", () => {
+      if (!window.confirm("Точно удалить отклонённую заявку? Восстановить её будет нельзя.")) return;
+      const reason = window.prompt("Укажите причину удаления заявки:")?.trim();
       if (!reason) return;
       deleteRejectedRequest(req, reason);
       renderRequests();
@@ -13168,7 +13168,7 @@ function requestCard(req) {
     });
     const note = document.createElement("div");
     note.className = "request-sync-pending";
-    note.textContent = "? ???????? ????????????? ? ???? ?????????????...";
+    note.textContent = "В ожидании синхронизации у всех пользователей...";
     actions.prepend(note);
   }
   return card;
@@ -13203,14 +13203,14 @@ ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
 
 ui.qrWalkButton?.addEventListener("click", async () => {
   if (!isProfileReady()) {
-    window.alert("??????? ??????? ? ???.");
+    window.alert("Сначала войдите в ППР.");
     return;
   }
   if (!canEditChecklist()) {
-    window.alert("??? ?????? ????? ????, ??????? ????????? ???????? ????.");
+    window.alert("Для обхода нужна роль, которой разрешено отмечать узлы.");
     return;
   }
-  setButtonBusy(ui.qrWalkButton, true, "????????? ??????...");
+  setButtonBusy(ui.qrWalkButton, true, "Открываем камеру...");
   try {
     while (true) {
       const parsed = await scanNodeQrCode(null, null, null);
@@ -13227,7 +13227,7 @@ ui.qrWalkButton?.addEventListener("click", async () => {
           ui.commentInput?.scrollIntoView({ behavior: "smooth", block: "center" });
           if (canEditChecklist()) ui.commentInput?.focus();
         }, 180);
-        showAppToast("???? ??? ??????? ? ?????? ??????????? ????.");
+        showAppToast("Узел уже обойден — открыт комментарий узла.");
         break;
       }
       const action = await promptQrWalkDecision(parsed);
@@ -13474,8 +13474,8 @@ ui.tmcRequestRows?.addEventListener("change", async event => {
   event.target.value = "";
   const preview = row.querySelector(".tmc-row-photo-preview");
   if (preview) preview.innerHTML = photo ? `
-    <img src="${photo}" alt="???? ???????">
-    <button type="button" data-clear-tmc-row-photo>???????</button>
+    <img src="${photo}" alt="Фото позиции">
+    <button type="button" data-clear-tmc-row-photo>Удалить</button>
   ` : "";
 });
 
@@ -13510,7 +13510,7 @@ ui.engineerIncomingTmcPanel?.addEventListener("click", event => {
   const req = state.requests?.[row?.dataset.engineerReqRow || ""];
   const index = Number(row?.dataset.engineerItemIndex);
   if (!req || !Number.isFinite(index)) return;
-  if (!window.confirm("??????? ??? ?????? ?? ??????????? ???????")) return;
+  if (!window.confirm("Удалить эту строку из накопленной заявки?")) return;
   if (deleteEngineerIncomingTmcRow(req, index)) {
     saveState();
     renderRequestCreate();
@@ -13522,13 +13522,13 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
   event.preventDefault();
   if (tmcRequestSubmitting) return;
   tmcRequestSubmitting = true;
-  setButtonBusy(ui.submitTmcRequest, true, "??????????...");
+  setButtonBusy(ui.submitTmcRequest, true, "Отправляем...");
   try {
     restoreTranslatedPage(ui.requestCreateScreen || document.body);
     if (mobileShareMode()) {
       const draft = buildMobileTmcRequestDraft();
       if (!draft) {
-        ui.tmcRequestStatus.textContent = "????????? ???? ?? ???? ?????? ? ?????????????";
+        ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
         ui.tmcRequestStatus.classList.add("error");
         return;
       }
@@ -13539,12 +13539,12 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
       await publishStateNow();
       await shareRequestPrintFile(draft);
       resetTmcRequestForm();
-      ui.tmcRequestStatus.textContent = "?????? ????????? ? ??????? ??? ? ???????? ??? ???????? ? WhatsApp";
+      ui.tmcRequestStatus.textContent = "Заявка сохранена в отчётах ППР и передана для отправки в WhatsApp";
       return;
     }
     const req = createStandaloneTmcRequest();
     if (!req) {
-      ui.tmcRequestStatus.textContent = "????????? ???? ?? ???? ?????? ? ?????????????";
+      ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
       ui.tmcRequestStatus.classList.add("error");
       applyLanguage();
       queueTranslateVisiblePage(true);
@@ -13552,10 +13552,10 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
     }
     ui.tmcRequestStatus.classList.remove("error");
     ui.tmcRequestStatus.textContent = workerSendsTmcRequestToEngineer()
-      ? "?????????? ????????"
+      ? "Отправлено инженеру"
       : current.tmcRequestMerged
-        ? `????????? ? ??????? ??????: ${req.requestNumber}`
-        : `?????? ???????: ${req.requestNumber}`;
+        ? `Добавлено в дневную заявку: ${req.requestNumber}`
+        : `Заявка создана: ${req.requestNumber}`;
     resetTmcRequestForm();
     publishStateNow().catch(scheduleRemoteRetry);
     if (canOpenRequestRole("shop")) {
@@ -13566,7 +13566,7 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
     queueTranslateVisiblePage(true);
   } catch (error) {
     console.error("TMC request submit failed", error);
-    ui.tmcRequestStatus.textContent = "?? ??????? ??????? ??????. ?????????? ??? ???.";
+    ui.tmcRequestStatus.textContent = "Не удалось создать заявку. Попробуйте ещё раз.";
     ui.tmcRequestStatus.classList.add("error");
   } finally {
     tmcRequestSubmitting = false;

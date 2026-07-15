@@ -54,7 +54,7 @@ self.addEventListener("fetch", event => {
           const index = await caches.match("./index.html") || await caches.match("./");
           if (index) return index;
         }
-        return new Response("??? ???????? ??????????. ????????? ???? ? ???????? ????????.", {
+        return new Response("ППР временно недоступен. Проверьте сеть и обновите страницу.", {
           status: 503,
           headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
         });
