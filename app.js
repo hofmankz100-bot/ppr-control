@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v158";
+const APP_VERSION = "v159";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -241,6 +241,7 @@ let realtimeEventSource = null;
 let realtimeReconnectTimer = null;
 let realtimePollTimer = null;
 let lastRealtimeMessageAt = 0;
+let lastRemoteUsersPollAt = 0;
 const REALTIME_VERSION_KEY = "ppr-realtime-state-version-v1";
 let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
@@ -1196,6 +1197,7 @@ function handleRealtimeMessage(data) {
     const msg = typeof data === "string" ? JSON.parse(data || "{}") : data || {};
     if (msg.type === "pong" || msg.type === "ping") return;
     if (msg.type === "ready") {
+      pollRemoteUsers(true);
       const serverVersion = String(msg.stateVersion || "");
       if (serverVersion && serverVersion !== realtimeStateVersion) {
         loadRemoteState().then(loaded => {
@@ -1243,6 +1245,7 @@ function connectRealtimeEvents() {
   realtimeEventSource.onmessage = event => handleRealtimeMessage(event.data);
   realtimeEventSource.onopen = () => {
     lastRealtimeMessageAt = Date.now();
+    pollRemoteUsers(true);
     if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
   };
   realtimeEventSource.onerror = () => {
@@ -1262,6 +1265,7 @@ function connectRealtimeSocket() {
   realtimeSocket.onmessage = event => handleRealtimeMessage(event.data);
   realtimeSocket.onopen = () => {
     lastRealtimeMessageAt = Date.now();
+    pollRemoteUsers(true);
     if (realtimeEventSource) {
       realtimeEventSource.close();
       realtimeEventSource = null;
@@ -1288,6 +1292,7 @@ function startRealtimePoll() {
   clearInterval(realtimePollTimer);
   realtimePollTimer = window.setInterval(() => {
     if (document.visibilityState === "hidden") return;
+    pollRemoteUsers();
     const socketAlive = realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN;
     const eventsAlive = realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN;
     if (eventsAlive || socketAlive) {
@@ -1298,7 +1303,7 @@ function startRealtimePoll() {
       return;
     }
     loadRemoteState();
-    if (isEditorSession() || isProfileWaitingApproval()) loadRemoteUsers();
+    pollRemoteUsers();
   }, 1000);
 }
 
@@ -1379,6 +1384,14 @@ async function loadRemoteUsers() {
   } catch {
     // Static/offline mode keeps using local registered users.
   }
+}
+
+function pollRemoteUsers(force = false) {
+  if (!isEditorSession() && !isProfileWaitingApproval()) return;
+  const now = Date.now();
+  if (!force && now - lastRemoteUsersPollAt < 4000) return;
+  lastRemoteUsersPollAt = now;
+  loadRemoteUsers();
 }
 
 function flushPendingWork() {
@@ -13558,17 +13571,24 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
 window.addEventListener("online", () => {
   flushPendingWork();
   loadRemoteState();
-  loadRemoteUsers();
+  pollRemoteUsers(true);
 });
 
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     flushPendingWork();
     loadRemoteState();
+    pollRemoteUsers(true);
   }
 });
 
 if ("serviceWorker" in navigator) {
+  let serviceWorkerReloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (serviceWorkerReloading) return;
+    serviceWorkerReloading = true;
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
     navigator.serviceWorker.register("/sw.js")
