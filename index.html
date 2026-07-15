@@ -12,7 +12,7 @@
   <title>ППР Контроль</title>
   <link rel="icon" href="icon.svg?v=145" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=151">
+  <link rel="stylesheet" href="styles.css?v=152">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -50,12 +50,13 @@
       <div class="form-error" id="loginError"></div>
       <button id="authSubmitButton" type="submit">Войти</button>
       <p id="authHint">Введите табельный номер или телефон и пароль.</p>
-      <div class="login-footer"><span>HOFFMANN CONTROL</span><span>v151</span></div>
+      <div class="login-footer"><span>HOFFMANN CONTROL</span><span>v152</span></div>
     </form>
   </div>
 
   <div class="app-shell">
     <header class="topbar">
+      <button class="icon-button" id="backButton" type="button" aria-label="Назад" title="Назад">‹</button>
       <div class="title-block">
         <div class="title-copy">
           <div class="app-title">ППР Контроль</div>
@@ -235,9 +236,9 @@
     </main>
 
     <nav class="mobile-nav" aria-label="Основная навигация">
-      <button type="button" data-mobile-view="home" class="active" aria-label="Домой">
+      <button type="button" data-mobile-view="home" class="active" aria-label="Назад">
         <span class="iphone-home-button" aria-hidden="true"><i></i></span>
-        <small>Домой</small>
+        <small>Назад</small>
       </button>
       <button type="button" data-mobile-view="requestCreate">
         <span aria-hidden="true">+</span>
@@ -261,7 +262,7 @@
   <script src="modules/requests.js?v=288-print-request-pages"></script>
   <script src="modules/comments.js?v=288-print-request-pages"></script>
   <script src="modules/director.js?v=288-print-request-pages"></script>
-  <script src="app.js?v=151"></script>
+  <script src="app.js?v=152"></script>
 </body>
 </html>
 

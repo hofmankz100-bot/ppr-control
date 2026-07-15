@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v151";
+const APP_VERSION = "v152";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -444,14 +444,14 @@ ensureDowntimeUi();
 
 function ensureEngineerReportUi() {
   if (!ui.engineerReportButton) {
-    const quickNav = document.querySelector(".quick-nav");
-    if (quickNav) {
+    const topbarActions = document.querySelector(".topbar-actions");
+    if (topbarActions) {
       const button = document.createElement("button");
       button.type = "button";
       button.id = "engineerReportButton";
+      button.className = "topbar-overview-button topbar-factory-button";
       button.innerHTML = `<span>Состояние завода</span><strong>🏭</strong>`;
-      const createButton = document.querySelector("#createTmcRequestButton");
-      quickNav.insertBefore(button, createButton || null);
+      topbarActions.append(button);
       ui.engineerReportButton = button;
     }
   }
@@ -488,14 +488,19 @@ function ensureWorkerRatingUi() {
     const quickNav = document.querySelector(".quick-nav");
     const topbarActions = document.querySelector(".topbar-actions");
     if (quickNav && topbarActions) {
+      if (ui.factoryStatusButton) {
+        ui.factoryStatusButton.classList.add("topbar-overview-button", "topbar-factory-button");
+        topbarActions.append(ui.factoryStatusButton);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.id = "workerRatingButton";
-      button.className = "topbar-overview-button";
-      button.innerHTML = `<span>Рейтинг и состояние завода</span><strong aria-hidden="true">🏭</strong>`;
-      topbarActions.append(button);
-      const reportButton = document.querySelector("#engineerReportButton");
-      if (ui.globalReminderButton) quickNav.insertBefore(ui.globalReminderButton, reportButton || null);
+      button.className = "topbar-overview-button topbar-rating-button";
+      button.innerHTML = `<span>Рейтинг</span><strong aria-hidden="true">★</strong>`;
+      const firstFactoryButton = topbarActions.querySelector(".topbar-factory-button");
+      topbarActions.insertBefore(button, firstFactoryButton || null);
+      const createButton = document.querySelector("#createTmcRequestButton");
+      if (ui.globalReminderButton) quickNav.insertBefore(ui.globalReminderButton, createButton || null);
       ui.workerRatingButton = button;
     }
   }
@@ -13120,14 +13125,7 @@ document.querySelectorAll("[data-mobile-view]").forEach(button => {
     if (!canShowMobileView(target)) return;
     if (target === "home") {
       document.body.classList.remove("mobile-profile-focus");
-      nav.length = 0;
-      if (isEditorSession() && profile?.role !== "editor") {
-        localStorage.setItem(EDITOR_PREVIEW_ROLE_KEY, "editor");
-        localStorage.removeItem(EDITOR_PREVIEW_AREA_KEY);
-        profile = activeProfileFromSession(authenticatedProfile);
-        current.requestRole = defaultRequestRole(profile?.role);
-      }
-      show(homeViewForProfile(profile?.role), false);
+      if (current.view !== homeViewForProfile(profile?.role)) goBack();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }

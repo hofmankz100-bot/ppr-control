@@ -3248,10 +3248,11 @@ body.director-control-profile:not(.editor-preview-profile) .mobile-nav {
   display: none !important;
 }
 
-/* The persistent Home button replaces the removed top-left Back button. */
+/* Desktop has Back in the header; phones use the bottom navigation as Back. */
 .topbar {
-  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto !important;
 }
+.topbar > #backButton { display:inline-grid;place-items:center; }
 
 body.director-control-profile .screen {
   padding-bottom: 24px;
@@ -8985,12 +8986,15 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 }
 @media (max-width:620px) {
   body { background:linear-gradient(180deg,#eaf2f6,#f7f9fa 240px); }
-  .topbar { min-height:62px;padding:8px 10px; }
-  .topbar-actions { max-width:120px; }
-  .topbar-overview-button { width:116px;min-height:40px;padding:5px 6px;font-size:9.5px; }
-  .topbar-overview-button strong { font-size:15px; }
-  .title-block { gap:7px; }
-  .topbar-brand-logo { width:78px;height:30px; }
+  .topbar { min-height:62px;padding:8px 8px;grid-template-columns:minmax(0,1fr) auto !important; }
+  .topbar > #backButton { display:none; }
+  .topbar-actions { max-width:130px;gap:4px; }
+  .topbar-overview-button { width:auto;min-height:40px;padding:5px 5px;font-size:9px; }
+  .topbar-rating-button { flex:0 0 54px; }
+  .topbar-factory-button { flex:0 0 70px; }
+  .topbar-overview-button strong { font-size:13px; }
+  .title-block { gap:5px; }
+  .topbar-brand-logo { width:58px;height:27px; }
   .screen { padding:10px 9px 88px; }
   .profile-bar { border-radius:15px;padding:11px; }
   .equipment-card,.node-card,.request-card,.warehouse-panel,.factory-analytics-card,.director-annual-card { border-radius:16px;box-shadow:0 8px 22px rgba(20,50,74,.08); }
