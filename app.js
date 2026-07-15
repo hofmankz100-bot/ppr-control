@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v161";
+const APP_VERSION = "v162";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1064,6 +1064,9 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
   const map = new Map();
   for (const entry of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
     if (!entry || typeof entry !== "object") continue;
+    const brokenText = /^\?{3,}$/.test(String(entry.text || "").trim());
+    const brokenName = /^[?\s]{3,}$/.test(String(entry.name || "").trim());
+    if (brokenText && brokenName) continue;
     const entryKey = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     map.set(entryKey, entry);
   }
