@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v167";
+const APP_VERSION = "v168";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -9929,12 +9929,14 @@ function annualRepairEvents(year = directorAnnualYear()) {
       if (created?.year === year || resolved?.year === year) {
         events.push({
           type: "remark",
+          resolutionKey: `remark:${recordKey}`,
           equipment: eq.name || "",
           area: eq.area || "",
           node: eq.nodes[Number(nodeIndexRaw)] || "",
           createdAt,
           resolvedAt: item.resolvedAt || "",
           authorRole: entry.role || item.commentOwnerRole || "",
+          authorName: entry.name || item.commentOwnerName || "",
           resolvedByRole: item.resolvedByRole || "",
           resolvedByName: item.resolvedByName || "",
           durationMs: Number(item.resolvedDurationMs || 0),
@@ -10222,6 +10224,8 @@ function emptyWorkerRating(role, name) {
     closed: 0,
     breakdownClosed: 0,
     plannedDone: 0,
+    remarksFound: 0,
+    remarksResolved: 0,
     installs: 0,
     overdueOpen: 0,
     qrDone: 0,
@@ -10251,19 +10255,39 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     .filter(user => ["mechanic", "electrician"].includes(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
 
+  const resolvedRemarkKeys = new Set();
+  const overdueRemarkKeys = new Set();
   annualRepairEvents(year).forEach(event => {
+    const created = dateYearMonth(event.createdAt || "");
+    const resolved = dateYearMonth(event.resolvedAt || "");
+    if (event.type === "remark" && created?.year === year) {
+      const author = ensureWorker(event.authorRole, event.authorName);
+      if (author) author.remarksFound += 1;
+    }
+    let countResolution = Boolean(event.resolvedAt && resolved?.year === year);
+    if (event.type === "remark" && event.resolutionKey) {
+      if (resolvedRemarkKeys.has(event.resolutionKey)) countResolution = false;
+      else if (countResolution) resolvedRemarkKeys.add(event.resolutionKey);
+    }
     const worker = ensureWorker(event.resolvedByRole, event.resolvedByName);
-    if (worker && event.resolvedAt) {
+    if (worker && countResolution) {
       worker.closed += 1;
       if (event.type === "breakdown") worker.breakdownClosed += 1;
       if (event.type === "install") worker.installs += 1;
-      if (event.type === "remark") worker.plannedDone += 1;
+      if (event.type === "remark") {
+        worker.plannedDone += 1;
+        worker.remarksResolved += 1;
+      }
       if (event.durationMs > 0) {
         worker.reactionDurations.push(event.durationMs);
         if (event.type !== "install") worker.repairDurations.push(event.durationMs);
       }
     }
     if (event.open && ["mechanic", "electrician"].includes(event.authorRole)) {
+      if (event.type === "remark" && event.resolutionKey) {
+        if (overdueRemarkKeys.has(event.resolutionKey)) return;
+        overdueRemarkKeys.add(event.resolutionKey);
+      }
       const started = Date.parse(event.createdAt || "");
       if (Number.isFinite(started) && Date.now() - started >= 3 * 86400000) {
         const openWorker = ensureWorker(event.authorRole, event.authorName || event.resolvedByName);
@@ -10305,6 +10329,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
       + worker.installs * 6
       + worker.qrDone * 2
       + worker.plannedDone * 5
+      + worker.remarksFound * 3
       + speedBonus
       - worker.overdueOpen * 8
     );
@@ -10316,6 +10341,8 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     ));
     const achievements = [];
     if (worker.breakdownClosed >= 3) achievements.push("Аварийный мастер");
+    if (worker.remarksFound >= 5) achievements.push("Внимательный обход");
+    if (worker.remarksResolved >= 5) achievements.push("Устраняет замечания");
     if (worker.qrDone >= 50) achievements.push("ППР дисциплина");
     if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("Без просрочек");
     if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("Быстрый ремонт");
@@ -10332,16 +10359,30 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     if (!["mechanic", "electrician"].includes(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     const key = workerRatingKey(role, cleanName);
-    if (!monthWorkers.has(key)) monthWorkers.set(key, { role, name: cleanName, roleLabel: requestRoleLabel(role), points: 0, closed: 0, qrDone: 0, breakdownClosed: 0 });
+    if (!monthWorkers.has(key)) monthWorkers.set(key, { role, name: cleanName, roleLabel: requestRoleLabel(role), points: 0, closed: 0, qrDone: 0, breakdownClosed: 0, remarksFound: 0, remarksResolved: 0 });
     return monthWorkers.get(key);
   };
+  const monthResolvedRemarkKeys = new Set();
   annualRepairEvents(year).forEach(event => {
+    const created = dateYearMonth(event.createdAt || "");
+    if (event.type === "remark" && created?.year === year && created.month === monthIndex) {
+      const author = ensureMonthWorker(event.authorRole, event.authorName);
+      if (author) {
+        author.remarksFound += 1;
+        author.points += 3;
+      }
+    }
     const resolved = dateYearMonth(event.resolvedAt || "");
     if (resolved?.year !== year || resolved.month !== monthIndex) return;
+    if (event.type === "remark" && event.resolutionKey) {
+      if (monthResolvedRemarkKeys.has(event.resolutionKey)) return;
+      monthResolvedRemarkKeys.add(event.resolutionKey);
+    }
     const worker = ensureMonthWorker(event.resolvedByRole, event.resolvedByName);
     if (!worker) return;
     worker.closed += 1;
     if (event.type === "breakdown") worker.breakdownClosed += 1;
+    if (event.type === "remark") worker.remarksResolved += 1;
     worker.points += event.type === "breakdown" ? 22 : event.type === "install" ? 16 : 15;
   });
   Object.values(state.checks || {}).forEach(rec => {
@@ -10364,6 +10405,8 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     closed: list.reduce((sum, worker) => sum + worker.closed, 0),
     qrDone: list.reduce((sum, worker) => sum + worker.qrDone, 0),
     breakdownClosed: list.reduce((sum, worker) => sum + worker.breakdownClosed, 0),
+    remarksFound: list.reduce((sum, worker) => sum + worker.remarksFound, 0),
+    remarksResolved: list.reduce((sum, worker) => sum + worker.remarksResolved, 0),
     overdueOpen: list.reduce((sum, worker) => sum + worker.overdueOpen, 0)
   };
   return { year, monthIndex, workers: list, bestOverall, bestMechanic, bestElectrician, totals };
@@ -10399,7 +10442,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         </div>
         <b>${escapeHtml(worker.name)}</b>
         <span>${worker.points} баллов</span>
-        <small>${worker.place === 1 ? "выше всех" : `${worker.place} место`}</small>
+        <small>⚠ ${worker.remarksFound} · ✓ ${worker.remarksResolved}</small>
       </div>
     `;
   }).join("");
@@ -10414,6 +10457,8 @@ function workerRatingHtml(stats = workerRatingStats()) {
         </div>
       </div>
       <div class="worker-metrics">
+        <span class="worker-metric-found"><b>${worker.remarksFound}</b> нашёл / написал</span>
+        <span class="worker-metric-resolved"><b>${worker.remarksResolved}</b> устранил</span>
         <span><b>${worker.closed}</b> работ</span>
         <span><b>${worker.breakdownClosed}</b> аварий</span>
         <span><b>${worker.qrDone}</b> QR-ППР</span>
@@ -10446,6 +10491,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
           </div>
         </div>
         <div class="worker-graph-grid simple">${graph || `<div class="empty-state">Пока нет данных рейтинга</div>`}</div>
+        <div class="worker-rating-key"><span>⚠ — нашёл или написал предупреждение</span><span>✓ — устранил замечание</span></div>
       </section>
     `;
   }
@@ -10462,6 +10508,8 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div><strong>${stats.totals.points}</strong><span>баллов всего</span></div>
       <div><strong>${stats.totals.closed}</strong><span>выполнено работ</span></div>
       <div><strong>${stats.totals.breakdownClosed}</strong><span>аварий устранено</span></div>
+      <div><strong>${stats.totals.remarksFound}</strong><span>замечаний найдено / написано</span></div>
+      <div><strong>${stats.totals.remarksResolved}</strong><span>замечаний устранено</span></div>
       <div><strong>${stats.totals.qrDone}</strong><span>QR-ППР обходов</span></div>
       <div><strong>${stats.totals.overdueOpen}</strong><span>просрочено</span></div>
     </section>
@@ -10482,7 +10530,8 @@ function workerRatingHtml(stats = workerRatingStats()) {
     ${detailed ? `
       <section class="worker-rating-explain">
         <strong>Как понимать рейтинг:</strong>
-        <span>Баллы дают за выполненные работы, устранённые аварии, установки и QR-обходы.</span>
+        <span>Предупреждение считается его автору отдельно, устранение — сотруднику, который закрыл замечание.</span>
+        <span>За найденное или написанное предупреждение начисляется 3 балла; устранение входит в выполненные работы и считается только один раз.</span>
         <span>КПД учитывает выполнение плана, количество работ, ППР и скорость закрытия.</span>
         <span>Чем меньше просрочек и быстрее ремонт, тем выше место.</span>
       </section>

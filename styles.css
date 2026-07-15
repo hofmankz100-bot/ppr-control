@@ -2706,12 +2706,31 @@ html[data-theme="dark"] td { border-color:var(--line); }
 .worker-rating-summary,
 .worker-month-winners {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
 .worker-month-winners {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.worker-rating-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: #60717b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.worker-metric-found {
+  border-color: #f59e0b !important;
+  background: #fff7e6 !important;
+}
+
+.worker-metric-resolved {
+  border-color: #16a34a !important;
+  background: #ecfdf3 !important;
 }
 
 .worker-rating-summary div,
@@ -2963,6 +2982,7 @@ html[data-theme="dark"] td { border-color:var(--line); }
 .worker-metrics span {
   min-width: 0;
   padding: 7px;
+  border: 1px solid transparent;
   border-radius: 7px;
   background: #f3f7f9;
   color: #60717b;
