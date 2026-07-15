@@ -63,6 +63,24 @@ const contentTypes = {
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".mobileconfig": "application/x-apple-aspen-config"
 };
+const publicRootFiles = new Set([
+  "index.html",
+  "styles.css",
+  "app.js",
+  "manifest.json",
+  "icon.svg",
+  "hoffmann-logo.png",
+  "phone-fix.html",
+  "cache-clear.html",
+  "ppr-ios-profile.mobileconfig"
+]);
+
+function isPublicStaticPath(relativePath = "") {
+  const normalized = String(relativePath).split(path.sep).join("/");
+  if (publicRootFiles.has(normalized)) return true;
+  if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
+  return normalized === "node_modules/jsqr/dist/jsQR.js";
+}
 
 function emptyDb() {
   return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
@@ -1968,7 +1986,7 @@ function serveStatic(req, res, pathname) {
   const relative = path.relative(root, file);
   const isInsideRoot = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
   const isDataFile = relative.split(path.sep).includes("data");
-  if (!isInsideRoot || isDataFile) {
+  if (!isInsideRoot || isDataFile || !isPublicStaticPath(relative)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
