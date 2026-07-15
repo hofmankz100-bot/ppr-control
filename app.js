@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v159";
+const APP_VERSION = "v160";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -1123,7 +1123,9 @@ function mergeRemoteState(remote = {}, options = {}) {
     : mergeObjectByFreshnessLocal(state.requests, remote.requests);
   Object.assign(state.inventory, remote.inventory || {});
   state.catalog ||= { equipment: {} };
-  Object.assign(state.catalog.equipment, remote.catalog?.equipment || {});
+  state.catalog.equipment = isEditorSession()
+    ? { ...(state.catalog.equipment || {}), ...(remote.catalog?.equipment || {}) }
+    : { ...(remote.catalog?.equipment || {}) };
   state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
@@ -1423,6 +1425,10 @@ function changedRemoteStateSections() {
   REMOTE_STATE_FIELDS.forEach(field => {
     const value = state[field];
     const fingerprint = JSON.stringify(value);
+    if (field === "catalog" && !isEditorSession()) {
+      remoteSectionFingerprints.set(field, fingerprint);
+      return;
+    }
     if (remoteSectionFingerprints.get(field) === fingerprint) return;
     payload[field] = value;
     fingerprints.set(field, fingerprint);

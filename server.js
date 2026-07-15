@@ -1512,9 +1512,9 @@ async function handleApi(req, res, pathname, url) {
       const authenticatedRole = String(body.user?.authenticatedRole || body.user?.role || "");
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
-      const mergedCatalog = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
-      const catalogChanged = JSON.stringify(mergedCatalog) !== JSON.stringify(db.catalog.equipment);
-      if ((body.clearRecordedData === true || catalogChanged) && authenticatedRole !== "editor") {
+      const incomingCatalog = authenticatedRole === "editor" ? body.catalog?.equipment : undefined;
+      const mergedCatalog = mergeObjectRecords(db.catalog.equipment, incomingCatalog);
+      if (body.clearRecordedData === true && authenticatedRole !== "editor") {
         return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "admin_required" };
       }
       if (body.clearRecordedData === true) {
