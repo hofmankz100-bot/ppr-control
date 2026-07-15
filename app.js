@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v154";
+const APP_VERSION = "v155";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -229,6 +229,12 @@ let remoteSaveTimer = null;
 let remoteSaveInFlight = false;
 let remoteSavePending = false;
 let remoteSavePromise = null;
+const REMOTE_STATE_FIELDS = [
+  "checks", "requests", "inventory", "catalog", "directorMessages", "serviceCosts",
+  "downtimes", "compressorJournal", "gasJournal", "pprSheets", "journalDueSince",
+  "auditHistory", "operationalResetAt", "walkShiftCleanupVersion"
+];
+const remoteSectionFingerprints = new Map();
 let remoteRetryTimer = null;
 let realtimeSocket = null;
 let realtimeEventSource = null;
@@ -743,23 +749,45 @@ function loadState() {
 }
 
 function persistStateLocally(snapshot = state) {
-  persistStateToDevice(snapshot).catch(error => console.warn("Device database save failed", error));
+  scheduleDeviceStatePersist(snapshot);
+  const lightweight = {
+    ...snapshot,
+    inventory: {},
+    auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-100) : []
+  };
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
+    // Large warehouse catalogs belong in IndexedDB. Keeping them out of synchronous
+    // localStorage prevents visible freezes on every comment or button press.
+    localStorage.setItem(STORE_KEY, JSON.stringify(lightweight));
     return true;
   } catch (error) {
-    const lightweight = {
-      ...snapshot,
-      inventory: {},
-      auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-100) : []
-    };
     try {
       localStorage.removeItem(STORE_KEY);
-      localStorage.setItem(STORE_KEY, JSON.stringify(lightweight));
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        checks: lightweight.checks || {},
+        requests: lightweight.requests || {},
+        catalog: lightweight.catalog || { equipment: {} },
+        operationalResetAt: lightweight.operationalResetAt || "",
+        walkShiftCleanupVersion: lightweight.walkShiftCleanupVersion || ""
+      }));
     } catch {}
-    console.warn("Local state was reduced because browser storage is full", error);
+    console.warn("Local fallback state was reduced because browser storage is full", error);
     return false;
   }
+}
+
+let devicePersistTimer = null;
+let pendingDeviceSnapshot = null;
+
+function scheduleDeviceStatePersist(snapshot = state) {
+  pendingDeviceSnapshot = snapshot;
+  clearTimeout(devicePersistTimer);
+  devicePersistTimer = window.setTimeout(() => {
+    devicePersistTimer = null;
+    const nextSnapshot = pendingDeviceSnapshot;
+    pendingDeviceSnapshot = null;
+    persistStateToDevice(nextSnapshot).catch(error => console.warn("Device database save failed", error));
+  }, 180);
 }
 
 function openDeviceDatabase() {
@@ -825,7 +853,6 @@ async function refreshStaleAssetCache() {
 function saveState(options = {}) {
   stateDataVersion += 1;
   state.checks = compactCheckRecords(state.checks);
-  migrateInventoryArticles(state);
   persistStateLocally(state);
   if (options.remote === false) {
     window.queueMicrotask(updateGlobalReminderBadge);
@@ -1280,6 +1307,7 @@ async function loadRemoteState() {
   remoteStateLoadPromise = (async () => {
     try {
       const remote = await apiJson("/api/state");
+      rememberRemoteStateBaseline(remote);
       mergeRemoteState(remote, { preferRemote: true });
       render();
       return true;
@@ -1305,7 +1333,12 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
       body: JSON.stringify({
         actionId: nextActionId(),
         clientId: CLIENT_ID,
-        user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null,
+        user: profile ? {
+          name: profile.name || "",
+          role: profile.role || "",
+          phone: profile.phone || "",
+          authenticatedRole: authenticatedProfile?.role || profile.role || ""
+        } : null,
         key: recordKey,
         record: localRecord,
         downtimes: state.downtimes || []
@@ -1359,6 +1392,31 @@ function queueRemoteStateSave() {
   remoteSaveTimer = setTimeout(saveRemoteState, 300);
 }
 
+function rememberRemoteStateBaseline(snapshot = {}, fingerprints = null) {
+  REMOTE_STATE_FIELDS.forEach(field => {
+    if (fingerprints?.has(field)) {
+      remoteSectionFingerprints.set(field, fingerprints.get(field));
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      remoteSectionFingerprints.set(field, JSON.stringify(snapshot[field]));
+    }
+  });
+}
+
+function changedRemoteStateSections() {
+  const payload = {};
+  const fingerprints = new Map();
+  REMOTE_STATE_FIELDS.forEach(field => {
+    const value = state[field];
+    const fingerprint = JSON.stringify(value);
+    if (remoteSectionFingerprints.get(field) === fingerprint) return;
+    payload[field] = value;
+    fingerprints.set(field, fingerprint);
+  });
+  return { payload, fingerprints };
+}
+
 async function saveRemoteState() {
   if (remoteSaveInFlight) {
     remoteSavePending = true;
@@ -1368,6 +1426,7 @@ async function saveRemoteState() {
   remoteSavePending = false;
   remoteSavePromise = (async () => {
   try {
+    const changedSections = changedRemoteStateSections();
     const result = await apiJson("/api/state", {
       method: "PUT",
       timeout: 60000,
@@ -1376,23 +1435,16 @@ async function saveRemoteState() {
         clientId: CLIENT_ID,
         clearRecordedData: localStorage.getItem(`${STORE_KEY}-clear-recorded`) === "1",
         clearConfirm: localStorage.getItem(`${STORE_KEY}-clear-confirm`) || "",
-        user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null,
-        checks: state.checks,
-        requests: state.requests,
-        inventory: state.inventory,
-        catalog: state.catalog,
-        directorMessages: state.directorMessages,
-        serviceCosts: state.serviceCosts || [],
-        downtimes: state.downtimes || [],
-        compressorJournal: state.compressorJournal || {},
-        gasJournal: state.gasJournal || {},
-        pprSheets: state.pprSheets || {},
-        journalDueSince: state.journalDueSince || {},
-        auditHistory: state.auditHistory || [],
-        operationalResetAt: state.operationalResetAt || "",
-        walkShiftCleanupVersion: state.walkShiftCleanupVersion || ""
+        user: profile ? {
+          name: profile.name || "",
+          role: profile.role || "",
+          phone: profile.phone || "",
+          authenticatedRole: authenticatedProfile?.role || profile.role || ""
+        } : null,
+        ...changedSections.payload
       })
     });
+    rememberRemoteStateBaseline({}, changedSections.fingerprints);
     const hasNewLocalChanges = remoteSavePending;
     if (!hasNewLocalChanges) localStorage.removeItem(`${STORE_KEY}-pending`);
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
@@ -1989,20 +2041,25 @@ function allEquipment() {
 }
 
 function saveEquipmentCatalog(equipmentId, patch) {
+  if (!canEditCatalog()) return false;
   const item = equipmentOverride(equipmentId);
   Object.assign(item, patch);
   saveState();
+  return true;
 }
 
 function saveNodeName(equipmentId, nodeIndex, value) {
+  if (!canEditCatalog()) return false;
   const eq = equipmentById(equipmentId);
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes[nodeIndex] = value.trim() || eq.nodes[nodeIndex];
   saveState();
+  return true;
 }
 
 function addNodeName(equipmentId, value) {
+  if (!canEditCatalog()) return false;
   const clean = String(value || "").trim();
   if (!clean) return false;
   const eq = equipmentById(equipmentId);
@@ -2013,6 +2070,7 @@ function addNodeName(equipmentId, value) {
 }
 
 function deleteNodeName(equipmentId, nodeIndex) {
+  if (!canEditCatalog()) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   if (eq.nodes.length <= 1) return false;
@@ -11521,7 +11579,12 @@ function renderDirector() {
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
       apiJson("/api/users", {
         method: "POST",
-        body: JSON.stringify({ ...user, actionId: nextActionId(), clientId: CLIENT_ID })
+        body: JSON.stringify({
+          ...user,
+          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+          actionId: nextActionId(),
+          clientId: CLIENT_ID
+        })
       }).then(loadRemoteUsers).catch(() => {});
       renderDirector();
     });
@@ -11541,7 +11604,13 @@ function renderDirector() {
       await runButtonOperation(event.currentTarget, async () => {
         await apiJson("/api/users", {
           method: "POST",
-          body: JSON.stringify({ ...user, newPassword, actionId: nextActionId(), clientId: CLIENT_ID })
+          body: JSON.stringify({
+            ...user,
+            newPassword,
+            actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+            actionId: nextActionId(),
+            clientId: CLIENT_ID
+          })
         });
         await loadRemoteUsers();
         renderDirector();
@@ -11562,7 +11631,16 @@ function renderDirector() {
       localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
       apiJson("/api/users", {
         method: "POST",
-        body: JSON.stringify({ action: "delete", id: user.id || "", employeeId: user.employeeId || "", phone: user.phone || "", name: user.name || "", actionId: nextActionId(), clientId: CLIENT_ID })
+        body: JSON.stringify({
+          action: "delete",
+          id: user.id || "",
+          employeeId: user.employeeId || "",
+          phone: user.phone || "",
+          name: user.name || "",
+          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+          actionId: nextActionId(),
+          clientId: CLIENT_ID
+        })
       }).then(loadRemoteUsers).catch(() => {});
       renderDirector();
     });

@@ -675,6 +675,32 @@ function sendJson(res, status, value) {
   res.end(data);
 }
 
+let publicStateResponseCache = { version: "", data: null, gzip: null };
+
+function sendPublicState(res, db) {
+  const version = realtimeStateVersion();
+  if (publicStateResponseCache.version !== version || !publicStateResponseCache.data) {
+    const data = Buffer.from(JSON.stringify(publicState(db)));
+    publicStateResponseCache = {
+      version,
+      data,
+      gzip: data.length >= 1024 ? zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED }) : null
+    };
+  }
+  const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(res.req?.headers?.["accept-encoding"] || ""));
+  const data = acceptsGzip && publicStateResponseCache.gzip
+    ? publicStateResponseCache.gzip
+    : publicStateResponseCache.data;
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Content-Length": data.length,
+    "Vary": "Accept-Encoding",
+    ...(acceptsGzip && publicStateResponseCache.gzip ? { "Content-Encoding": "gzip" } : {})
+  });
+  res.end(data);
+}
+
 const TRANSLATE_LANGS = new Set(["ru", "kk", "uz", "en"]);
 
 function normalizeTranslateText(value) {
@@ -1420,7 +1446,7 @@ async function handleApi(req, res, pathname, url) {
     await stateWriteQueue.catch(() => {});
     const db = readDb();
     if (externalizePhotosInValue(db)) writeDb(db, { action: "externalize_photos_get" });
-    sendJson(res, 200, publicState(db));
+    sendPublicState(res, db);
     return true;
   }
 
@@ -1483,6 +1509,14 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const beforeState = JSON.stringify(publicState(db));
+      const authenticatedRole = String(body.user?.authenticatedRole || body.user?.role || "");
+      db.catalog ||= { equipment: {} };
+      db.catalog.equipment ||= {};
+      const mergedCatalog = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
+      const catalogChanged = JSON.stringify(mergedCatalog) !== JSON.stringify(db.catalog.equipment);
+      if ((body.clearRecordedData === true || catalogChanged) && authenticatedRole !== "editor") {
+        return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "admin_required" };
+      }
       if (body.clearRecordedData === true) {
         if (String(body.clearConfirm || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
           return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "clear_requires_confirmation" };
@@ -1511,8 +1545,7 @@ async function handleApi(req, res, pathname, url) {
         removeJournalRequestsServer(db);
       }
       db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
-      db.catalog = db.catalog || { equipment: {} };
-      db.catalog.equipment = mergeObjectRecords(db.catalog.equipment, body.catalog?.equipment);
+      db.catalog.equipment = mergedCatalog;
       if (acceptOperational) {
         db.directorMessages = mergeArrayById(db.directorMessages, body.directorMessages);
         db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
@@ -1533,7 +1566,7 @@ async function handleApi(req, res, pathname, url) {
       return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true };
     });
     if (result.error) {
-      sendJson(res, 400, { ok: false, error: result.error, actionId: result.actionId });
+      sendJson(res, result.error === "admin_required" ? 403 : 400, { ok: false, error: result.error, actionId: result.actionId });
       return true;
     }
     const stateVersion = result.changed
@@ -1608,6 +1641,10 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/warehouse/issue" && req.method === "POST") {
     const body = await readBody(req);
+    if (!new Set(["warehouse", "editor"]).has(String(body.user?.role || ""))) {
+      sendJson(res, 403, { ok: false, error: "warehouse_role_required" });
+      return true;
+    }
     const inventoryId = String(body.inventoryId || "").trim();
     const quantity = Number(body.quantity || 0);
     const targetRole = String(body.targetRole || "").trim();
@@ -1775,6 +1812,10 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/users" && req.method === "POST") {
     const user = await readBody(req);
+    if (String(user.actor?.role || "") !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const phone = String(user.phone || "").trim();
@@ -1796,7 +1837,15 @@ async function handleApi(req, res, pathname, url) {
         return { actionId, origin: user.clientId || "user" };
       }
       db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
-      const { passwordHash: ignoredPasswordHash, ...safeUser } = user;
+      const {
+        passwordHash: ignoredPasswordHash,
+        newPassword: ignoredNewPassword,
+        actor: ignoredActor,
+        action: ignoredAction,
+        actionId: ignoredActionId,
+        clientId: ignoredClientId,
+        ...safeUser
+      } = user;
       if (existing?.role === "editor" && safeUser.role && safeUser.role !== "editor") {
         safeUser.role = "editor";
       }
