@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v148";
+const APP_VERSION = "v149";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -9309,13 +9309,25 @@ function bindPprCalendarControls(container, rerender) {
       const sheet = pprSheetRecord(date, true);
       const row = sheet.rows.find(item => item.id === button.dataset.pprRowMark);
       if (!row) return;
+      const workInput = button.closest("tr")?.querySelector("[data-ppr-work-input]");
+      row.equipmentId = workInput?.dataset.pprEquipmentId || row.equipmentId || "";
+      row.equipment = workInput?.dataset.pprEquipment || row.equipment || "";
+      row.node = workInput?.dataset.pprNode || row.node || "";
+      row.area = workInput?.dataset.pprArea || row.area || "";
       row.mark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
       row.markedByName = row.mark ? profile?.name || "" : "";
       row.markedByRole = row.mark ? profile?.role || "" : "";
       row.markedAt = row.mark ? new Date().toISOString() : "";
       touchPprSheet(sheet, false);
       try {
-        await publishPprSheetAction(date, "mark", { rowId: row.id, mark: row.mark });
+        await publishPprSheetAction(date, "mark", {
+          rowId: row.id,
+          mark: row.mark,
+          equipmentId: row.equipmentId,
+          equipment: row.equipment,
+          node: row.node,
+          area: row.area
+        });
       } catch {
         saveState();
       }

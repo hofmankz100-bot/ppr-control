@@ -1576,6 +1576,10 @@ async function handleApi(req, res, pathname, url) {
         row.markedByName = mark ? name : "";
         row.markedByRole = mark ? role : "";
         row.markedAt = mark ? now : "";
+        row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
+        row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
+        row.node = String(body.node || row.node || "").slice(0, 300);
+        row.area = String(body.area || row.area || "").slice(0, 300);
       } else if (action === "add-row") {
         sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
       } else if (action === "approve") {
