@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v155";
+const APP_VERSION = "v156";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -2370,7 +2370,7 @@ function directorUnreadCount() {
 
 function updateDirectorBadge() {
   if (!ui.directorOpenButton || !ui.directorBadge) return;
-  ui.directorOpenButton.hidden = isFieldWorkerRole();
+  ui.directorOpenButton.hidden = profile?.role === "warehouse";
   if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = profile?.role === "editor" ? "Админ" : "Директорская";
   const count = directorUnreadCount();
   ui.directorBadge.textContent = count;

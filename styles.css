@@ -8022,8 +8022,7 @@ textarea:disabled {
   }
 
   .quick-nav [data-open-role]:not([data-open-role="warehouse"]),
-  .quick-nav #createTmcRequestButton,
-  .quick-nav #directorOpenButton {
+  .quick-nav #createTmcRequestButton {
     display: none !important;
   }
 
