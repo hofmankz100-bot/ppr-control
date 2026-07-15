@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v146";
+const APP_VERSION = "v147";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -8954,41 +8954,87 @@ function pprSheetCompletion(date) {
   const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
   // Empty reserve rows never block completion, even if a mark was tapped accidentally.
   const activeRows = rows.filter(row => String(row?.work || "").trim());
-  const complete = activeRows.length > 0 && activeRows.every(row =>
+  const workersComplete = activeRows.length > 0 && activeRows.every(row =>
     ["done", "na"].includes(row?.mark)
   );
+  const approved = Boolean(sheet.approvedAt && sheet.approvedByName);
+  const complete = workersComplete && approved;
   const marked = activeRows.filter(row => ["done", "na"].includes(row?.mark)).length;
-  return { complete, partial: activeRows.length > 0 && !complete, active: activeRows.length, marked };
+  return {
+    complete,
+    partial: activeRows.length > 0 && !complete,
+    workersComplete,
+    awaitingApproval: workersComplete && !approved,
+    approved,
+    active: activeRows.length,
+    marked
+  };
 }
 
-function touchPprSheet(sheet) {
+function canPlanPprSheet() {
+  return ["engineer", "editor"].includes(profile?.role);
+}
+
+function canMarkPprSheet() {
+  return ["mechanic", "electrician", "editor"].includes(profile?.role);
+}
+
+function canApprovePprSheet() {
+  return ["engineer", "editor"].includes(profile?.role);
+}
+
+function touchPprSheet(sheet, remote = true) {
   sheet.updatedAt = new Date().toISOString();
   sheet.updatedByName = profile?.name || sheet.updatedByName || "";
-  saveState();
+  if (remote) saveState();
+  else persistStateLocally(state);
+}
+
+async function publishPprSheetAction(date, action, details = {}) {
+  const result = await apiJson("/api/ppr-sheet/action", {
+    method: "POST",
+    timeout: 15000,
+    body: JSON.stringify({
+      date,
+      action,
+      ...details,
+      actionId: nextActionId(),
+      clientId: CLIENT_ID,
+      user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null
+    })
+  });
+  if (result?.state) mergeRealtimePatch(result.state);
+  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  return result;
 }
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const sheet = pprSheetRecord(date);
   const rows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
   const completion = pprSheetCompletion(date);
-  const editable = canEditChecklist();
+  const locked = Boolean(sheet.approvedAt);
+  const canPlan = canPlanPprSheet() && !locked;
+  const canMark = canMarkPprSheet() && !locked;
   const equipmentNames = [...new Set(scheduledItems.map(item => item.equipment).filter(Boolean))];
   const statusText = completion.complete
-    ? "ППР выполнен · лист сохранён в архиве календаря"
+    ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
+    : completion.awaitingApproval
+      ? "Все работы отмечены · ожидается обход и приёмка инженером"
     : completion.active
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
-      : "Запишите план работ вручную";
+      : "Инженер должен заполнить перечень работ";
   const rowHtml = rows.map((row, index) => `
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" rows="2" placeholder="Запишите работу" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
       <td class="ppr-sheet-mark">
         <div class="ppr-sheet-mark-buttons" role="group" aria-label="Отметка по строке ${index + 1}">
-          <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${editable ? "" : "disabled"} aria-label="Выполнено">✓</button>
-          <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${editable ? "" : "disabled"} aria-label="Не требуется">−</button>
+          <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Выполнено">✓</button>
+          <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Не требуется">−</button>
         </div>
+        ${row.markedByName ? `<small class="ppr-row-author">${escapeHtml(row.markedByName)} · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")}</small>` : ""}
         <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
       </td>
     </tr>
@@ -9017,9 +9063,11 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
           <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
           <span>${escapeHtml(statusText)}</span>
         </div>
-        ${sheet.updatedByName ? `<small>Заполнил: ${escapeHtml(sheet.updatedByName)}${sheet.updatedAt ? ` · ${dateTimeHuman(sheet.updatedAt)}` : ""}</small>` : ""}
+        ${sheet.plannedByName || sheet.updatedByName ? `<small>План составил: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
+        ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
-        ${editable ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
+        ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
+        ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
       </footer>
     </section>
   `;
@@ -9136,11 +9184,21 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     const dayDone = items.length && (usesSheet ? sheetStatus.complete : itemStatuses.every(item => item.complete));
     const dayPartial = usesSheet ? sheetStatus.partial : itemStatuses.some(item => item.partial && !item.complete);
     const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored);
-    const dayMissed = date < todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
+    const dayMissed = date < todayISO() && !sheetStatus.awaitingApproval && (usesSheet ? !sheetStatus.complete : activeIncomplete);
     const dayWarning = date >= todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
-    const stateClass = dayDone ? "completed" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
-    const statusIcon = dayDone ? "✓" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
-    const statusText = dayDone ? "ППР выполнен" : dayMissed ? "ППР не выполнен" : dayPartial ? "ППР выполнен частично" : dayWarning ? "Приближается срок ППР" : items.length ? "Архивный график" : "Работ нет";
+    const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
+    const statusIcon = dayDone ? "✓" : sheetStatus.awaitingApproval ? "!" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
+    const statusText = dayDone
+      ? "ППР принят инженером"
+      : sheetStatus.awaitingApproval
+        ? "Работы выполнены · ожидают приёмки инженером"
+        : dayMissed
+          ? "ППР не выполнен"
+          : dayPartial
+            ? "ППР выполнен частично"
+            : dayWarning
+              ? "Приближается срок ППР"
+              : items.length ? "Архивный график" : "Работ нет";
     cells.push(`
       <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} · ${statusText}`)}">
         <time datetime="${date}">${day}</time>
@@ -9209,33 +9267,76 @@ function bindPprCalendarControls(container, rerender) {
       const sheet = pprSheetRecord(date, true);
       const row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
       if (!row) return;
+      if (row.work !== input.value && row.mark) {
+        row.mark = "";
+        row.markedByName = "";
+        row.markedByRole = "";
+        row.markedAt = "";
+      }
       row.work = input.value;
+      sheet.plannedByName = profile?.name || sheet.plannedByName || "";
+      sheet.plannedByRole = profile?.role || sheet.plannedByRole || "";
+      sheet.plannedAt ||= new Date().toISOString();
       touchPprSheet(sheet);
     });
   });
   container?.querySelectorAll("[data-ppr-row-mark]").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const date = button.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
       if (!date) return;
       const sheet = pprSheetRecord(date, true);
       const row = sheet.rows.find(item => item.id === button.dataset.pprRowMark);
       if (!row) return;
       row.mark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
-      touchPprSheet(sheet);
+      row.markedByName = row.mark ? profile?.name || "" : "";
+      row.markedByRole = row.mark ? profile?.role || "" : "";
+      row.markedAt = row.mark ? new Date().toISOString() : "";
+      touchPprSheet(sheet, false);
+      try {
+        await publishPprSheetAction(date, "mark", { rowId: row.id, mark: row.mark });
+      } catch {
+        saveState();
+      }
       rerender();
     });
   });
   container?.querySelectorAll("[data-add-ppr-row]").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const date = button.dataset.addPprRow;
       const sheet = pprSheetRecord(date, true);
-      sheet.rows.push({ id: `${date}-work-${Date.now()}`, work: "", mark: "" });
-      touchPprSheet(sheet);
+      const row = { id: `${date}-work-${Date.now()}`, work: "", mark: "" };
+      sheet.rows.push(row);
+      touchPprSheet(sheet, false);
+      try {
+        await publishPprSheetAction(date, "add-row", { rowId: row.id });
+      } catch {
+        saveState();
+      }
       rerender();
     });
   });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
     button.addEventListener("click", () => printPprMaintenanceSheet(button.dataset.printPprSheet));
+  });
+  container?.querySelectorAll("[data-approve-ppr-sheet]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!canApprovePprSheet()) return;
+      const date = button.dataset.approvePprSheet;
+      const sheet = pprSheetRecord(date, true);
+      const completion = pprSheetCompletion(date);
+      if (!completion.workersComplete) return;
+      sheet.approvedAt = new Date().toISOString();
+      sheet.approvedByName = profile?.name || "";
+      sheet.approvedByRole = profile?.role || "engineer";
+      sheet.lockedAt = sheet.approvedAt;
+      touchPprSheet(sheet, false);
+      try {
+        await publishPprSheetAction(date, "approve");
+      } catch {
+        saveState();
+      }
+      rerender();
+    });
   });
 }
 
@@ -9288,6 +9389,18 @@ function globalReminderItems(equipment = globalControlEquipment()) {
   const equipmentIds = new Set(equipment.map(eq => Number(eq.id)));
   const areas = new Set(equipment.map(eq => eq.area));
   const items = [];
+  if (["engineer", "editor"].includes(profile?.role)) {
+    Object.keys(state.pprSheets || {})
+      .filter(date => pprSheetCompletion(date).awaitingApproval)
+      .sort()
+      .forEach(date => items.push({
+        level: "yellow",
+        icon: "✅",
+        title: "ППР ожидает приёмки инженером",
+        text: `${dateHuman(date)} · выполненные работы нужно проверить обходом`,
+        pprApprovalDate: date
+      }));
+  }
   allRequests()
     .filter(req =>
       !req.done && !req.stock && !req.rejected && !req.deleted &&
@@ -9334,7 +9447,7 @@ function renderGlobalReminderPanel() {
     </div>
   `).join("");
   const reminderRows = reminders.map(item => `
-    <div class="director-reminder-row ${item.level}">
+    <div class="director-reminder-row ${item.level}" ${item.pprApprovalDate ? `data-open-ppr-approval="${escapeHtml(item.pprApprovalDate)}" role="button" tabindex="0"` : ""}>
       <span>${item.icon}</span>
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
@@ -9358,6 +9471,20 @@ function renderGlobalReminderPanel() {
     </section>
   `;
   bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
+  ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
+    const openDate = () => {
+      const date = row.dataset.openPprApproval;
+      current.pprCalendarYear = Number(date.slice(0, 4));
+      current.pprCalendarMonth = Number(date.slice(5, 7)) - 1;
+      current.pprCalendarSelectedDate = date;
+      renderGlobalReminderPanel();
+      window.setTimeout(() => ui.globalReminderContent.querySelector(`[data-ppr-sheet-date="${date}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    };
+    row.addEventListener("click", openDate);
+    row.addEventListener("keydown", event => {
+      if (["Enter", " "].includes(event.key)) { event.preventDefault(); openDate(); }
+    });
+  });
 }
 
 function updateGlobalReminderBadge(knownReminders = null) {
@@ -10590,7 +10717,13 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     .map(([date, sheet]) => {
       const works = (Array.isArray(sheet?.rows) ? sheet.rows : [])
         .filter(row => String(row?.work || "").trim())
-        .map(row => ({ work: String(row.work).trim(), mark: row.mark || "" }));
+        .map(row => ({
+          work: String(row.work).trim(),
+          mark: row.mark || "",
+          markedByName: row.markedByName || "",
+          markedByRole: row.markedByRole || "",
+          markedAt: row.markedAt || ""
+        }));
       return { date, sheet, works, completion: pprSheetCompletion(date) };
     })
     .filter(item => item.works.length)
@@ -10677,11 +10810,11 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
     item => `
       <tr>
         <td>${escapeHtml(dateHuman(item.date))}</td>
-        <td>${item.completion.complete ? "Выполнено" : "Частично"}</td>
+        <td>${item.completion.complete ? "Принято инженером" : item.completion.awaitingApproval ? "Ожидает приёмки" : "В работе"}</td>
         <td>${item.works.length}</td>
-        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.work}`).join("; "))}</td>
-        <td>${escapeHtml(item.sheet?.updatedByName || "-")}</td>
-        <td>${escapeHtml(dateTimeHuman(item.sheet?.updatedAt || ""))}</td>
+        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.work}${work.markedByName ? ` — ${work.markedByName}` : ""}`).join("; "))}</td>
+        <td>${escapeHtml(item.sheet?.plannedByName || item.sheet?.updatedByName || "-")}</td>
+        <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} · ${dateTimeHuman(item.sheet.approvedAt)}` : "-")}</td>
       </tr>
     `
   );
@@ -10879,7 +11012,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </section>
       <section class="engineer-report-block">
         <h3>Листы планового обслуживания ППР</h3>
-        <table><thead><tr><th>Дата</th><th>Статус</th><th>Работ</th><th>Перечень выполненных работ</th><th>Заполнил</th><th>Обновлено</th></tr></thead><tbody>${pprRows}</tbody></table>
+        <table><thead><tr><th>Дата</th><th>Статус</th><th>Работ</th><th>Работы и исполнители</th><th>План составил</th><th>Принял инженер</th></tr></thead><tbody>${pprRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>3. Что осталось в работе</h3>

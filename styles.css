@@ -9091,6 +9091,9 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .ppr-sheet-mark-buttons button.done.active { border-color: #18864a; background: #18864a; color: #fff; }
 .ppr-sheet-mark-buttons button.na.active { border-color: #566874; background: #566874; color: #fff; }
 .ppr-sheet-print-mark { display: none; font-size: 22px; }
+.ppr-row-author { display:block;margin:0 4px 5px;color:#637985;font-size:9px;line-height:1.15; }
+.director-reminder-row[data-open-ppr-approval] { cursor:pointer;box-shadow:inset 0 0 0 1px rgba(217,145,0,.18); }
+.director-reminder-row[data-open-ppr-approval]:focus-visible { outline:3px solid rgba(22,130,170,.28);outline-offset:2px; }
 .ppr-sheet-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; padding: 12px 14px; background: #f5f8fa; }
 .ppr-sheet-footer > small { flex: 1 1 180px; color: #637985; }
 .ppr-sheet-footer > button { margin-left: auto; }

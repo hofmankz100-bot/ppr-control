@@ -456,8 +456,8 @@ function monthlyCsvRows(db, month) {
         "",
         row.mark === "done" ? "Выполнено" : row.mark === "na" ? "Не требуется" : "Без отметки",
         "",
-        sheet?.updatedByName || "",
-        row.work || ""
+        row.markedByName || sheet?.updatedByName || "",
+        `${row.work || ""}${row.markedAt ? ` · ${row.markedAt}` : ""}${sheet?.approvedByName ? ` · Принял инженер: ${sheet.approvedByName}` : ""}`
       ]);
     }
   }
@@ -1540,6 +1540,65 @@ async function handleApi(req, res, pathname, url) {
       ? broadcastState(result.origin, result.actionId, result.cleared ? result.fullState : result.patch, !result.cleared)
       : realtimeStateVersion();
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
+    return true;
+  }
+
+  if (pathname === "/api/ppr-sheet/action" && req.method === "POST") {
+    const body = await readBody(req);
+    const date = String(body.date || "").trim();
+    const action = String(body.action || "").trim();
+    const rowId = String(body.rowId || "").trim();
+    const role = String(body.user?.role || "").trim();
+    const name = String(body.user?.name || "").trim();
+    const allowedPlan = new Set(["engineer", "editor"]);
+    const allowedMark = new Set(["mechanic", "electrician", "editor"]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["mark", "add-row", "approve"].includes(action) || !name) {
+      sendJson(res, 400, { ok: false, error: "ppr_action_invalid" });
+      return true;
+    }
+    if ((action === "mark" && !allowedMark.has(role)) || (action !== "mark" && !allowedPlan.has(role))) {
+      sendJson(res, 403, { ok: false, error: "ppr_action_forbidden" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.pprSheets ||= {};
+      const sheet = db.pprSheets[date];
+      if (!sheet) return { error: "ppr_sheet_not_found" };
+      if (sheet.approvedAt) return { error: "ppr_sheet_locked" };
+      sheet.rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+      const now = new Date().toISOString();
+      if (action === "mark") {
+        const row = sheet.rows.find(item => String(item?.id || "") === rowId);
+        const mark = String(body.mark || "");
+        if (!row || !String(row.work || "").trim() || !["", "done", "na"].includes(mark)) return { error: "ppr_row_invalid" };
+        row.mark = mark;
+        row.markedByName = mark ? name : "";
+        row.markedByRole = mark ? role : "";
+        row.markedAt = mark ? now : "";
+      } else if (action === "add-row") {
+        sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
+      } else if (action === "approve") {
+        const activeRows = sheet.rows.filter(row => String(row?.work || "").trim());
+        if (!activeRows.length || !activeRows.every(row => ["done", "na"].includes(row.mark))) return { error: "ppr_sheet_not_ready" };
+        sheet.approvedAt = now;
+        sheet.approvedByName = name;
+        sheet.approvedByRole = role;
+        sheet.lockedAt = now;
+      }
+      sheet.updatedAt = now;
+      sheet.updatedByName = name;
+      const actionId = String(body.actionId || "");
+      writeDb(db, { action: `ppr_sheet_${action}`, actionId, clientId: String(body.clientId || ""), user: body.user || null, date, rowId });
+      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } } };
+    });
+    if (result.error) {
+      const status = result.error === "ppr_sheet_locked" ? 409 : result.error === "ppr_sheet_not_found" ? 404 : 400;
+      sendJson(res, status, { ok: false, error: result.error });
+      return true;
+    }
+    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
     return true;
   }
 
