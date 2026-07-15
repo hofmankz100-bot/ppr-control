@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v156";
+const CACHE_NAME = "ppr-v157";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=156",
+  "./styles.css?v=157",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=156",
+  "./app.js?v=157",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
   "./icon.svg"
@@ -54,7 +54,7 @@ self.addEventListener("fetch", event => {
           const index = await caches.match("./index.html") || await caches.match("./");
           if (index) return index;
         }
-        return new Response("ППР временно недоступен. Проверьте сеть и обновите страницу.", {
+        return new Response("??? ???????? ??????????. ????????? ???? ? ???????? ????????.", {
           status: 503,
           headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
         });
