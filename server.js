@@ -323,6 +323,7 @@ function monthlyExport(db, month) {
   db = normalizeDb(db);
   const checks = objectRecordsForMonth(db.checks, month);
   const requests = objectRecordsForMonth(db.requests, month);
+  const pprSheets = objectRecordsForMonth(db.pprSheets, month);
   const directorMessages = (db.directorMessages || []).filter(item => itemBelongsToMonth(item, month));
   const serviceCosts = (db.serviceCosts || []).filter(item => itemBelongsToMonth(item, month));
   const downtimes = (db.downtimes || []).filter(item => itemBelongsToMonth(item, month));
@@ -332,6 +333,7 @@ function monthlyExport(db, month) {
     summary: {
       checks: Object.keys(checks).length,
       requests: Object.keys(requests).length,
+      pprSheets: Object.keys(pprSheets).length,
       directorMessages: directorMessages.length,
       serviceCosts: serviceCosts.length,
       downtimes: downtimes.length,
@@ -339,6 +341,7 @@ function monthlyExport(db, month) {
     },
     checks,
     requests,
+    pprSheets,
     inventory: db.inventory || {},
     catalog: db.catalog || { equipment: {} },
     directorMessages,
@@ -440,6 +443,23 @@ function monthlyCsvRows(db, month) {
       value?.authorName || value?.requestAuthorName || "",
       value?.text || value?.comment || value?.description || JSON.stringify(value || {})
     ]);
+  }
+  for (const [date, sheet] of Object.entries(exported.pprSheets || {})) {
+    const sheetRows = (Array.isArray(sheet?.rows) ? sheet.rows : [])
+      .filter(row => String(row?.work || "").trim());
+    for (const row of sheetRows) {
+      rows.push([
+        "Лист ППР",
+        date,
+        "",
+        "Плановое обслуживание",
+        "",
+        row.mark === "done" ? "Выполнено" : row.mark === "na" ? "Не требуется" : "Без отметки",
+        "",
+        sheet?.updatedByName || "",
+        row.work || ""
+      ]);
+    }
   }
   for (const item of exported.downtimes || []) {
     rows.push([

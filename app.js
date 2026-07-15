@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v145";
+const APP_VERSION = "v146";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -8952,9 +8952,10 @@ function pprSheetRecord(date, create = false) {
 function pprSheetCompletion(date) {
   const sheet = pprSheetRecord(date);
   const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
-  const activeRows = rows.filter(row => String(row?.work || "").trim() || row?.mark);
+  // Empty reserve rows never block completion, even if a mark was tapped accidentally.
+  const activeRows = rows.filter(row => String(row?.work || "").trim());
   const complete = activeRows.length > 0 && activeRows.every(row =>
-    String(row?.work || "").trim() && ["done", "na"].includes(row?.mark)
+    ["done", "na"].includes(row?.mark)
   );
   const marked = activeRows.filter(row => ["done", "na"].includes(row?.mark)).length;
   return { complete, partial: activeRows.length > 0 && !complete, active: activeRows.length, marked };
@@ -10584,6 +10585,16 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
       workerRole: req.issueTargetRole || ""
     }))
     .sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
+  const pprSheets = Object.entries(state.pprSheets || {})
+    .filter(([date]) => String(date).slice(0, 7) === key)
+    .map(([date, sheet]) => {
+      const works = (Array.isArray(sheet?.rows) ? sheet.rows : [])
+        .filter(row => String(row?.work || "").trim())
+        .map(row => ({ work: String(row.work).trim(), mark: row.mark || "" }));
+      return { date, sheet, works, completion: pprSheetCompletion(date) };
+    })
+    .filter(item => item.works.length)
+    .sort((a, b) => b.date.localeCompare(a.date));
   const createdRemarks = remarkItems.filter(item => item.createdInMonth);
   const closedRemarks = remarkItems.filter(item => item.resolvedInMonth);
   const openRemarks = remarkItems
@@ -10623,6 +10634,7 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     closedRemarks,
     openRemarks,
     doneRequests,
+    pprSheets,
     topProblems,
     annualAnalysis
   };
@@ -10656,6 +10668,20 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(item.node || "-")}</td>
         <td>${formatMoney(item.amount)}</td>
         <td>${escapeHtml(item.comment || "-")}</td>
+      </tr>
+    `
+  );
+  const pprRows = engineerReportRows(
+    stats.pprSheets,
+    "За выбранный месяц листы ППР не заполнялись",
+    item => `
+      <tr>
+        <td>${escapeHtml(dateHuman(item.date))}</td>
+        <td>${item.completion.complete ? "Выполнено" : "Частично"}</td>
+        <td>${item.works.length}</td>
+        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.work}`).join("; "))}</td>
+        <td>${escapeHtml(item.sheet?.updatedByName || "-")}</td>
+        <td>${escapeHtml(dateTimeHuman(item.sheet?.updatedAt || ""))}</td>
       </tr>
     `
   );
@@ -10810,6 +10836,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <div><strong>${stats.closedRemarks.length + stats.doneRequests.length}</strong><span>закрыто работ</span></div>
         <div><strong>${stats.openRemarks.length}</strong><span>открыто сейчас</span></div>
         <div><strong>${stats.qrPercent}%</strong><span>QR-обходы ${stats.monthStats.qrDone}/${stats.monthStats.qrPlan}</span></div>
+        <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
       </div>
       <div class="engineer-report-year-strip">
         <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за ${annual.year}</span></div>
@@ -10849,6 +10876,10 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       <section class="engineer-report-block">
         <h3>2. Что сделали и закрыли</h3>
         <table><thead><tr><th>Дата</th><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Исполнитель</th><th>Работа</th></tr></thead><tbody>${closedRows}</tbody></table>
+      </section>
+      <section class="engineer-report-block">
+        <h3>Листы планового обслуживания ППР</h3>
+        <table><thead><tr><th>Дата</th><th>Статус</th><th>Работ</th><th>Перечень выполненных работ</th><th>Заполнил</th><th>Обновлено</th></tr></thead><tbody>${pprRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>3. Что осталось в работе</h3>
