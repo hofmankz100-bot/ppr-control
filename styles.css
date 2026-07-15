@@ -9060,9 +9060,6 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .ppr-sheet-table th { padding: 7px 5px; background: #e8f1f6 !important; color: #17394d; font-size: 12px; text-align: center; }
 .ppr-sheet-table th:first-child,
 .ppr-sheet-number { width: 38px; text-align: center; }
-.ppr-sheet-object { width: 25%; padding: 8px 9px !important; line-height: 1.25; }
-.ppr-sheet-object strong { display: block; color: #17394d; font-size: 12px; }
-.ppr-sheet-object span { display: block; margin-top: 4px; color: #607986; font-size: 11px; }
 .ppr-sheet-table th:last-child,
 .ppr-sheet-mark { width: 104px; text-align: center; }
 .ppr-sheet-table textarea {
@@ -9115,9 +9112,6 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   .ppr-sheet-header h3 { font-size: 16px; }
   .ppr-sheet-header button { padding: 7px 9px; font-size: 12px; }
   .ppr-sheet-equipment { padding: 8px 10px; }
-  .ppr-sheet-object { width: 27%; padding: 6px !important; }
-  .ppr-sheet-object strong { font-size: 11px; }
-  .ppr-sheet-object span { font-size: 10px; }
   .ppr-sheet-table th:last-child,
   .ppr-sheet-mark { width: 88px; }
   .ppr-sheet-table textarea { min-height: 62px; padding: 8px 7px !important; font-size: 14px; }

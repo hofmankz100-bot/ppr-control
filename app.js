@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v149";
+const APP_VERSION = "v150";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -9019,7 +9019,9 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const locked = Boolean(sheet.approvedAt);
   const canPlan = canPlanPprSheet() && !locked;
   const canMark = canMarkPprSheet() && !locked;
-  const equipmentNames = [...new Set(scheduledItems.map(item => item.equipment).filter(Boolean))];
+  const scheduleNames = [...new Set(scheduledItems.map(item =>
+    [item.equipment, item.node].filter(Boolean).join(" — ")
+  ).filter(Boolean))];
   const statusText = completion.complete
     ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
     : completion.awaitingApproval
@@ -9036,10 +9038,6 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     return `
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
-      <td class="ppr-sheet-object">
-        <strong>${escapeHtml(equipmentName || "Дополнительная работа")}</strong>
-        ${nodeName ? `<span>${escapeHtml(nodeName)}</span>` : ""}
-      </td>
       <td class="ppr-sheet-work">
         <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
@@ -9063,11 +9061,11 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </div>
         <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
-      ${equipmentNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(equipmentNames.join(", "))}</p>` : ""}
+      ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
       <div class="ppr-sheet-table-wrap">
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">№</th><th rowspan="2">Оборудование / узел по графику</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
             <tr><th>A</th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
