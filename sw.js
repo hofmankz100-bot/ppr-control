@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v168";
+const CACHE_NAME = "ppr-v169";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=165",
+  "./styles.css?v=169",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=165",
+  "./app.js?v=169",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
   "./icon.svg"
@@ -60,4 +60,21 @@ self.addEventListener("fetch", event => {
         });
       })
   );
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    try {
+      if ("clearAppBadge" in self.navigator) await self.navigator.clearAppBadge();
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const existing = windows[0];
+      if (existing) {
+        await existing.focus();
+        existing.postMessage({ type: "clear-app-badge" });
+        return;
+      }
+      await self.clients.openWindow(event.notification.data?.url || "/");
+    } catch {}
+  })());
 });

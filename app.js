@@ -75,8 +75,9 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v168";
+const APP_VERSION = "v169";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
+const APP_BADGE_KEY = "ppr-app-unread-badge-v1";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
@@ -247,6 +248,9 @@ let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
 let realtimeChangesLoadPromise = null;
 let remoteStateLoadPromise = null;
+let appNotificationKeys = new Set();
+let appNotificationTrackingReady = false;
+let notificationAudioContext = null;
 let requestSearchTimer = null;
 let renderTimer = null;
 let warehouseReconcileVersion = -1;
@@ -899,6 +903,148 @@ function showAppToast(message, type = "ok") {
   }, 2600);
 }
 
+function applyAppIconBadge(count) {
+  const unread = Math.max(0, Number(count) || 0);
+  try {
+    if (unread > 0 && typeof navigator.setAppBadge === "function") {
+      navigator.setAppBadge(unread).catch(() => {});
+    } else if (typeof navigator.clearAppBadge === "function") {
+      navigator.clearAppBadge().catch(() => {});
+    }
+  } catch {}
+}
+
+function appNotificationPermissionButton() {
+  if (!("Notification" in window)) return "";
+  if (Notification.permission === "granted") return "";
+  const denied = Notification.permission === "denied";
+  return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications" ${denied ? "disabled" : ""}>${denied ? "Уведомления запрещены в настройках" : "🔔 Включить уведомления"}</button>`;
+}
+
+async function requestAppNotificationPermission(button) {
+  if (!("Notification" in window)) {
+    showAppToast("Системные уведомления не поддерживаются на этом устройстве.", "error");
+    return;
+  }
+  if (Notification.permission === "denied") {
+    showAppToast("Разрешите уведомления для ALKZ в настройках iPhone.", "error");
+    return;
+  }
+  setButtonBusy(button, true, "Разрешение...");
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      applyAppIconBadge(Number(localStorage.getItem(APP_BADGE_KEY)) || 0);
+      showAppToast("Уведомления и счётчик на иконке ALKZ включены.");
+      renderProfile();
+    } else {
+      showAppToast("Без разрешения iPhone не покажет счётчик на иконке ALKZ.", "error");
+      renderProfile();
+    }
+  } catch {
+    showAppToast("Не удалось включить уведомления. Откройте ALKZ с домашнего экрана.", "error");
+  } finally {
+    if (button?.isConnected) setButtonBusy(button, false);
+  }
+}
+
+async function showBackgroundSystemNotification(count) {
+  if (document.visibilityState !== "hidden" || !("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    await registration?.showNotification("ALKZ", {
+      body: count === 1 ? "Поступило новое уведомление" : `Новых уведомлений: ${count}`,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      tag: "alkz-notifications",
+      renotify: true,
+      data: { url: "/" }
+    });
+  } catch {}
+}
+
+function resetAppNotificationsForOpen() {
+  localStorage.removeItem(APP_BADGE_KEY);
+  applyAppIconBadge(0);
+  // The first state received after opening becomes the new baseline and must
+  // not immediately restore the badge that the user has just cleared.
+  appNotificationTrackingReady = false;
+  appNotificationKeys = new Set();
+}
+
+function currentAppNotificationKeys() {
+  if (!profile) return new Set();
+  const keys = new Set();
+  downtimes().forEach(item => {
+    if (!item.endedAt) keys.add(`downtime|${item.id || item.key || item.startedAt}`);
+  });
+  const visibleEquipmentIds = new Set(visibleEquipment().map(eq => String(eq.id)));
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentId] = recordKey.split(":");
+    if (visibleEquipmentIds.has(equipmentId) && hasOpenCommentRecord(rec)) keys.add(`comment|${recordKey}`);
+  });
+  return keys;
+}
+
+function unlockNotificationAudio() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    notificationAudioContext ||= new AudioContextClass();
+    if (notificationAudioContext.state === "suspended") notificationAudioContext.resume().catch(() => {});
+  } catch {}
+}
+
+function playNotificationDingDong() {
+  try {
+    unlockNotificationAudio();
+    const context = notificationAudioContext;
+    if (!context || context.state !== "running") return;
+    const start = context.currentTime + 0.02;
+    [
+      { frequency: 880, offset: 0, duration: 0.42, volume: 0.16 },
+      { frequency: 659.25, offset: 0.46, duration: 0.55, volume: 0.14 }
+    ].forEach(note => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(note.frequency, start + note.offset);
+      gain.gain.setValueAtTime(0.0001, start + note.offset);
+      gain.gain.exponentialRampToValueAtTime(note.volume, start + note.offset + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + note.offset + note.duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(start + note.offset);
+      oscillator.stop(start + note.offset + note.duration + 0.03);
+    });
+  } catch {}
+}
+
+function registerNewAppNotifications(count) {
+  const added = Math.max(0, Number(count) || 0);
+  if (!added) return;
+  const unread = Math.max(0, Number(localStorage.getItem(APP_BADGE_KEY)) || 0) + added;
+  localStorage.setItem(APP_BADGE_KEY, String(unread));
+  applyAppIconBadge(unread);
+  playNotificationDingDong();
+  showBackgroundSystemNotification(unread);
+}
+
+function processAppNotificationChanges(beforeKeys = null) {
+  const afterKeys = currentAppNotificationKeys();
+  if (!profile || !appNotificationTrackingReady) {
+    appNotificationKeys = afterKeys;
+    appNotificationTrackingReady = Boolean(profile);
+    return;
+  }
+  const baseline = beforeKeys instanceof Set ? beforeKeys : appNotificationKeys;
+  let added = 0;
+  afterKeys.forEach(item => {
+    if (!baseline.has(item)) added += 1;
+  });
+  appNotificationKeys = afterKeys;
+  registerNewAppNotifications(added);
+}
+
 function showQrSavedNotice(message = "") {
   const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
   showAppToast(pending || !navigator.onLine
@@ -1213,8 +1359,14 @@ function handleRealtimeMessage(data) {
       return;
     }
     if (msg.type !== "state") return;
+    const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else mergeRemoteState(msg.state || {}, { preferRemote: true });
+    if (msg.origin === CLIENT_ID) {
+      appNotificationKeys = currentAppNotificationKeys();
+    } else {
+      processAppNotificationChanges(notificationKeysBeforeUpdate);
+    }
     if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
     loadRemoteUsers();
     scheduleRender();
@@ -1332,6 +1484,7 @@ async function loadRemoteState() {
   remoteStateLoadPromise = (async () => {
     try {
       const remote = await apiJson("/api/state");
+      const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
       if (remote?.stateVersion) setRealtimeStateVersion(remote.stateVersion);
       const localResetAtBeforeMerge = String(state.operationalResetAt || "");
       const remoteResetAt = String(remote.operationalResetAt || "");
@@ -1351,6 +1504,7 @@ async function loadRemoteState() {
           await publishRecoveredChecksNow(recoveredChecks, remoteResetAt);
         }
       }
+      processAppNotificationChanges(notificationKeysBeforeUpdate);
       render();
       return true;
     } catch {
@@ -1428,6 +1582,7 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
 
 async function loadRemoteUsers() {
   try {
+    const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     const users = await apiJson("/api/users");
     if (Array.isArray(users)) {
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -1443,6 +1598,7 @@ async function loadRemoteUsers() {
           return;
         }
     }
+    processAppNotificationChanges(notificationKeysBeforeUpdate);
     updateDirectorBadge();
     if (current.view === "directorControl") renderDirectorControl();
     }
@@ -2612,6 +2768,7 @@ function renderProfile() {
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
+    ${appNotificationPermissionButton()}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
@@ -2624,6 +2781,9 @@ function renderProfile() {
   });
   ui.profileBar.querySelector("#profileLanguageSelect")?.addEventListener("change", event => {
     saveProfileLanguage(event.currentTarget.value);
+  });
+  ui.profileBar.querySelector("#enableAppNotificationsButton")?.addEventListener("click", event => {
+    requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
@@ -13713,11 +13873,15 @@ window.addEventListener("online", () => {
 
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
+    resetAppNotificationsForOpen();
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
   }
 });
+
+window.addEventListener("pointerdown", unlockNotificationAudio, { once: true, passive: true });
+window.addEventListener("keydown", unlockNotificationAudio, { once: true });
 
 if ("serviceWorker" in navigator) {
   let serviceWorkerReloading = false;
@@ -13725,6 +13889,9 @@ if ("serviceWorker" in navigator) {
     if (serviceWorkerReloading) return;
     serviceWorkerReloading = true;
     window.location.reload();
+  });
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.type === "clear-app-badge") resetAppNotificationsForOpen();
   });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
@@ -13736,6 +13903,7 @@ if ("serviceWorker" in navigator) {
 
 setupTheme();
 setupLogin();
+resetAppNotificationsForOpen();
 (async () => {
   const deviceState = await loadStateFromDevice();
   if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);

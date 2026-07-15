@@ -1102,6 +1102,20 @@ html[data-theme="dark"] td { border-color:var(--line); }
   font-weight: 700;
 }
 
+.profile-bar .enable-app-notifications {
+  border-color: #16a34a;
+  background: #ecfdf3;
+  color: #166534;
+  font-weight: 800;
+}
+
+.profile-bar .enable-app-notifications:disabled {
+  border-color: #f3a8ae;
+  background: #fff1f2;
+  color: #b4232f;
+  opacity: 1;
+}
+
 #authSubmitButton {
   min-height: 52px;
   border-radius: 13px;
