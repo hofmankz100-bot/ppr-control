@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
@@ -9,10 +9,10 @@
       document.documentElement.dataset.theme = "light";
     })();
   </script>
-  <title>??? ????????</title>
+  <title>ППР Контроль</title>
   <link rel="icon" href="icon.svg?v=145" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=157">
+  <link rel="stylesheet" href="styles.css?v=158">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -20,53 +20,53 @@
       <div class="login-brand">
         <img src="hoffmann-logo.png" alt="Hoffmann Aluminium">
       </div>
-      <div class="login-kicker">???????? ???????? ???????????</div>
-      <h1 id="authTitle">???? ??????????</h1>
-      <p class="login-welcome">?????????? ???? ? ???, ????? ? ???????????????? ??????</p>
-      <div class="login-status"><span></span> ??????? ?????? ? ??????</div>
-      <div class="auth-mode" role="tablist" aria-label="???? ??? ???????????">
-        <button type="button" class="active" data-auth-mode="login">????</button>
-        <button type="button" data-auth-mode="register">???????????</button>
+      <div class="login-kicker">ЦИФРОВОЙ КОНТРОЛЬ ПРЕДПРИЯТИЯ</div>
+      <h1 id="authTitle">Вход сотрудника</h1>
+      <p class="login-welcome">Безопасный вход в ППР, склад и производственные отчёты</p>
+      <div class="login-status"><span></span> Система готова к работе</div>
+      <div class="auth-mode" role="tablist" aria-label="Вход или регистрация">
+        <button type="button" class="active" data-auth-mode="login">Вход</button>
+        <button type="button" data-auth-mode="register">Регистрация</button>
       </div>
       <label id="loginNameRow" hidden>
-        <span>???</span>
-        <input id="loginName" type="text" autocomplete="name" placeholder="??????? ?????? ???">
+        <span>ФИО</span>
+        <input id="loginName" type="text" autocomplete="name" placeholder="Введите полное имя">
       </label>
       <label>
-        <span id="loginIdentifierLabel">????????? ????? ??? ???????</span>
-        <input id="loginEmployeeId" type="text" autocomplete="username" required placeholder="????????? ????? ??? ???????">
+        <span id="loginIdentifierLabel">Табельный номер или телефон</span>
+        <input id="loginEmployeeId" type="text" autocomplete="username" required placeholder="Табельный номер или телефон">
       </label>
       <label id="loginPhoneRow" hidden>
-        <span>???????</span>
+        <span>Телефон</span>
         <input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7...">
       </label>
       <label>
-        <span>??????</span>
+        <span>Пароль</span>
         <div class="password-field">
-          <input id="loginPassword" type="password" autocomplete="current-password" required minlength="6" placeholder="?? ????? 6 ????????">
-          <button type="button" id="toggleLoginPassword" aria-label="???????? ??????" title="???????? ??????">??</button>
+          <input id="loginPassword" type="password" autocomplete="current-password" required minlength="6" placeholder="Не менее 6 символов">
+          <button type="button" id="toggleLoginPassword" aria-label="Показать пароль" title="Показать пароль">👁</button>
         </div>
       </label>
       <div class="form-error" id="loginError"></div>
-      <button id="authSubmitButton" type="submit">?????</button>
-      <p id="authHint">??????? ????????? ????? ??? ??????? ? ??????.</p>
-      <div class="login-footer"><span>HOFFMANN CONTROL</span><span>v157</span></div>
+      <button id="authSubmitButton" type="submit">Войти</button>
+      <p id="authHint">Введите табельный номер или телефон и пароль.</p>
+      <div class="login-footer"><span>HOFFMANN CONTROL</span><span>v158</span></div>
     </form>
   </div>
 
   <div class="app-shell">
     <header class="topbar">
-      <button class="icon-button" id="backButton" type="button" aria-label="?????" title="?????">?</button>
+      <button class="icon-button" id="backButton" type="button" aria-label="Назад" title="Назад">‹</button>
       <div class="title-block">
         <div class="title-copy">
-          <div class="app-title">??? ????????</div>
-          <div class="app-subtitle" id="screenSubtitle">????????????</div>
+          <div class="app-title">ППР Контроль</div>
+          <div class="app-subtitle" id="screenSubtitle">Оборудование</div>
         </div>
         <img class="topbar-brand-logo" src="hoffmann-logo.png" alt="Hoffmann Aluminium">
       </div>
       <div class="topbar-actions">
-        <button class="global-reminder-button" id="globalReminderButton" type="button" aria-label="?????? ??? ? ???????????" title="?????? ??? ? ???????????">
-          <span><span aria-hidden="true">??</span> ?????? ???</span><strong id="globalReminderBadge">0</strong>
+        <button class="global-reminder-button" id="globalReminderButton" type="button" aria-label="График ППР и напоминания" title="График ППР и напоминания">
+          <span><span aria-hidden="true">🔔</span> График ППР</span><strong id="globalReminderBadge">0</strong>
         </button>
       </div>
     </header>
@@ -74,8 +74,8 @@
     <div class="global-reminder-overlay" id="globalReminderOverlay" hidden>
       <section class="global-reminder-panel" role="dialog" aria-modal="true" aria-labelledby="globalReminderTitle">
         <div class="global-reminder-head">
-          <div><span>???????? ?? ???????</span><h2 id="globalReminderTitle">??????????? ? ????????? ???</h2></div>
-          <button type="button" id="globalReminderClose" aria-label="???????">?</button>
+          <div><span>КОНТРОЛЬ НА СЕГОДНЯ</span><h2 id="globalReminderTitle">Напоминания и календарь ППР</h2></div>
+          <button type="button" id="globalReminderClose" aria-label="Закрыть">×</button>
         </div>
         <div id="globalReminderContent"></div>
       </section>
@@ -86,18 +86,18 @@
 
       <section id="equipmentScreen" class="view active">
         <div class="quick-nav">
-          <button type="button" data-open-role="shop">????????? ????</button>
-          <button type="button" data-open-role="engineer">???????</button>
-          <button type="button" data-open-role="productionDirector">???????? ????????????</button>
-          <button type="button" data-open-role="warehouse">??????????</button>
-          <button type="button" data-open-role="mechanic">???????</button>
-          <button type="button" data-open-role="electrician">????????</button>
-          <button type="button" data-open-role="operator">????????</button>
-          <button type="button" id="factoryStatusButton" class="factory-status-button" hidden><span>????????? ??????</span><strong>??</strong></button>
-          <button type="button" id="qrWalkButton" class="qr-walk-button"><span>????? QR</span><strong>?</strong></button>
-          <button type="button" id="createTmcRequestButton" class="primary-nav-button"><span>??????? ??????</span><strong>+</strong></button>
-          <button type="button" id="alertCounter"><span>?????????</span><strong>0</strong></button>
-          <button type="button" id="directorOpenButton"><span id="directorOpenLabel">????????????</span> <strong id="directorBadge">0</strong></button>
+          <button type="button" data-open-role="shop">Начальник цеха</button>
+          <button type="button" data-open-role="engineer">Инженер</button>
+          <button type="button" data-open-role="productionDirector">Директор производства</button>
+          <button type="button" data-open-role="warehouse">Складовщик</button>
+          <button type="button" data-open-role="mechanic">Механик</button>
+          <button type="button" data-open-role="electrician">Электрик</button>
+          <button type="button" data-open-role="operator">Оператор</button>
+          <button type="button" id="factoryStatusButton" class="factory-status-button" hidden><span>Состояние завода</span><strong>🏭</strong></button>
+          <button type="button" id="qrWalkButton" class="qr-walk-button"><span>Обход QR</span><strong>▣</strong></button>
+          <button type="button" id="createTmcRequestButton" class="primary-nav-button"><span>Создать заявку</span><strong>+</strong></button>
+          <button type="button" id="alertCounter"><span>Замечания</span><strong>0</strong></button>
+          <button type="button" id="directorOpenButton"><span id="directorOpenLabel">Директорская</span> <strong id="directorBadge">0</strong></button>
         </div>
         <div id="equipmentList" class="equipment-list"></div>
       </section>
@@ -105,27 +105,27 @@
       <section id="requestCreateScreen" class="view">
         <div class="panel-head compact">
           <div>
-            <h1>????? ??????</h1>
-            <p id="requestCreateMeta">???????? ?????? ?? ???????????? ??? ? ?????</p>
+            <h1>Новая заявка</h1>
+            <p id="requestCreateMeta">Создание заявки на приобретение ТМЦ и услуг</p>
           </div>
         </div>
         <div id="engineerIncomingTmcPanel" class="engineer-incoming-panel" hidden></div>
         <form id="tmcRequestForm" class="tmc-request-form">
           <div class="tmc-request-header">
             <label>
-              <span>??? / ?????</span>
+              <span>Цех / склад</span>
               <select id="tmcRequestArea"></select>
             </label>
             <label>
-              <span>????????????</span>
+              <span>Оборудование</span>
               <select id="tmcRequestEquipment"></select>
             </label>
             <label>
-              <span>????</span>
+              <span>Узел</span>
               <select id="tmcRequestNode"></select>
             </label>
             <label>
-              <span>???? ????????</span>
+              <span>Срок доставки</span>
               <input id="tmcRequestDue" type="date">
             </label>
           </div>
@@ -133,14 +133,14 @@
             <table class="tmc-request-table">
               <thead>
                 <tr>
-                  <th>?</th>
-                  <th>???????????? ?????????? ??? ? ?????</th>
-                  <th>???????</th>
-                  <th>??.</th>
-                  <th>?????????</th>
-                  <th>???????????</th>
-                  <th>????</th>
-                  <th>??????????</th>
+                  <th>№</th>
+                  <th>Наименование закупаемой ТМЦ и услуг</th>
+                  <th>Остаток</th>
+                  <th>Ед.</th>
+                  <th>Заявочное</th>
+                  <th>Необходимое</th>
+                  <th>Фото</th>
+                  <th>Примечание</th>
                 </tr>
               </thead>
               <tbody id="tmcRequestRows"></tbody>
@@ -148,8 +148,8 @@
           </div>
           <div class="tmc-request-footer">
             <div class="tmc-request-actions">
-              <button type="button" id="addTmcRequestRow">???????? ??????</button>
-              <button type="submit" id="submitTmcRequest">??????? ??????</button>
+              <button type="button" id="addTmcRequestRow">Добавить строку</button>
+              <button type="submit" id="submitTmcRequest">Создать заявку</button>
             </div>
           </div>
           <div id="tmcRequestStatus" class="request-inline-status"></div>
@@ -163,7 +163,7 @@
             <h1 id="equipmentTitle"></h1>
             <p id="equipmentMeta"></p>
           </div>
-          <div class="badge" id="equipmentAlertBadge">?????</div>
+          <div class="badge" id="equipmentAlertBadge">Норма</div>
         </div>
         <div id="nodeList" class="node-list"></div>
       </section>
@@ -174,10 +174,10 @@
             <h1 id="nodeTitle"></h1>
             <p id="nodeMeta"></p>
           </div>
-          <div class="segmented" role="tablist" aria-label="?????">
-            <button id="prevMonth" type="button">?</button>
+          <div class="segmented" role="tablist" aria-label="Месяц">
+            <button id="prevMonth" type="button">‹</button>
             <strong id="monthLabel"></strong>
-            <button id="nextMonth" type="button">?</button>
+            <button id="nextMonth" type="button">›</button>
           </div>
         </div>
         <div id="scheduleGrid" class="schedule-grid"></div>
@@ -189,22 +189,22 @@
             <h1 id="checklistTitle"></h1>
             <p id="checklistMeta"></p>
           </div>
-          <div class="status-pill" id="dayStatus">?????</div>
+          <div class="status-pill" id="dayStatus">Пусто</div>
         </div>
         <div id="taskList" class="task-list"></div>
         <div class="comment-panel">
           <label>
-            <span id="commentLabel">??????????? ??</span>
-            <textarea id="commentInput" rows="4" placeholder="?????????"></textarea>
+            <span id="commentLabel">Комментарий ТО</span>
+            <textarea id="commentInput" rows="4" placeholder="Замечание"></textarea>
           </label>
           <label>
-            <span>???? ?????????</span>
+            <span>Фото замечания</span>
             <input id="commentPhotoInput" type="file" accept="image/*">
           </label>
           <div class="photo-preview" id="commentPhotoPreview"></div>
           <label class="resolved-row">
             <input id="resolvedInput" type="checkbox">
-            <span>?????????</span>
+            <span>Устранено</span>
           </label>
         </div>
       </section>
@@ -212,7 +212,7 @@
       <section id="requestsScreen" class="view">
         <div class="panel-head compact">
           <div>
-            <h1>??????</h1>
+            <h1>Заявки</h1>
             <p id="requestsMeta"></p>
           </div>
         </div>
@@ -227,30 +227,30 @@
       <section id="directorScreen" class="view">
         <div class="panel-head compact">
           <div>
-            <h1 id="directorTitle">????????????</h1>
-            <p id="directorMeta">?????? ????????? ?????????</p>
+            <h1 id="directorTitle">Директорская</h1>
+            <p id="directorMeta">Личные обращения директору</p>
           </div>
         </div>
         <div id="directorPanel" class="director-panel"></div>
       </section>
     </main>
 
-    <nav class="mobile-nav" aria-label="???????? ?????????">
-      <button type="button" data-mobile-view="home" class="active" aria-label="?????">
+    <nav class="mobile-nav" aria-label="Основная навигация">
+      <button type="button" data-mobile-view="home" class="active" aria-label="Назад">
         <span class="iphone-home-button" aria-hidden="true"><i></i></span>
-        <small>?????</small>
+        <small>Назад</small>
       </button>
       <button type="button" data-mobile-view="requestCreate">
         <span aria-hidden="true">+</span>
-        <small>???????</small>
+        <small>Создать</small>
       </button>
       <button type="button" data-mobile-view="downtime">
-        <span aria-hidden="true">?</span>
-        <small>???????</small>
+        <span aria-hidden="true">◷</span>
+        <small>Простои</small>
       </button>
       <button type="button" data-mobile-view="profile">
-        <span aria-hidden="true">?</span>
-        <small>???????</small>
+        <span aria-hidden="true">●</span>
+        <small>Профиль</small>
       </button>
     </nav>
   </div>
@@ -262,7 +262,7 @@
   <script src="modules/requests.js?v=288-print-request-pages"></script>
   <script src="modules/comments.js?v=288-print-request-pages"></script>
   <script src="modules/director.js?v=288-print-request-pages"></script>
-  <script src="app.js?v=157"></script>
+  <script src="app.js?v=158"></script>
 </body>
 </html>
 
