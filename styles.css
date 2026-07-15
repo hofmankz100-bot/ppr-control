@@ -765,8 +765,9 @@ body.warehouse-only-profile .mobile-nav [data-mobile-view="downtime"] {
 }
 
 .global-reminder-button.has-alerts {
-  border-color: #fecaca;
-  background: #c94a4a;
+  border-color: #d85858;
+  background: #fff;
+  color: #982f2f;
   animation: globalReminderBlink 2.6s ease-in-out infinite;
 }
 
@@ -786,8 +787,8 @@ body.warehouse-only-profile .mobile-nav [data-mobile-view="downtime"] {
 }
 
 @keyframes globalReminderBlink {
-  0%, 100% { transform:translateY(0);box-shadow:0 5px 14px rgba(145,35,35,.14);filter:brightness(1); }
-  50% { transform:translateY(-1px);box-shadow:0 0 0 3px rgba(201,74,74,.11),0 8px 20px rgba(145,35,35,.19);filter:brightness(1.07); }
+  0%, 100% { box-shadow:0 0 0 0 rgba(216,88,88,0);border-color:#d85858; }
+  50% { box-shadow:0 0 0 4px rgba(216,88,88,.18),0 6px 16px rgba(145,35,35,.12);border-color:#b93636; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8974,9 +8975,10 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   width:auto;min-width:0;height:auto;min-height:44px;padding:9px 13px;border-color:#c8d7e0;border-radius:14px;
   background:linear-gradient(180deg,#fff,#f4f8fa);color:#17394d;font-size:13px;font-weight:800;
 }
-.quick-nav .global-reminder-button.has-alerts { border-color:#c94a4a;background:#c94a4a;color:#fff; }
+.quick-nav .global-reminder-button.has-alerts { border-color:#d85858;background:#fff;color:#982f2f; }
 .quick-nav .global-reminder-button.all-clear { border-color:#15803d;background:#15803d;color:#fff; }
 .quick-nav .global-reminder-button strong { background:#fff;color:#14324a; }
+.quick-nav .global-reminder-button.has-alerts strong { background:#c94a4a;color:#fff; }
 .equipment-card,.node-card,.request-card,.warehouse-panel,.warehouse-installed-parts,.factory-analytics-card,.director-annual-card,.director-progress-card,.director-health-card,.director-ppr-plan-card,.audit-history-panel { border-color:#cfdce4;border-radius:18px;box-shadow:0 12px 32px rgba(20,50,74,.08); }
 .equipment-card,.node-card,.request-card { transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease; }
 .screen input,.screen select,.screen textarea { border-color:#cbd8e0;border-radius:12px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease; }
