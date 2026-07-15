@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v150";
+const APP_VERSION = "v151";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -486,13 +486,16 @@ ensureEngineerReportUi();
 function ensureWorkerRatingUi() {
   if (!ui.workerRatingButton) {
     const quickNav = document.querySelector(".quick-nav");
-    if (quickNav) {
+    const topbarActions = document.querySelector(".topbar-actions");
+    if (quickNav && topbarActions) {
       const button = document.createElement("button");
       button.type = "button";
       button.id = "workerRatingButton";
-      button.innerHTML = `<span>Рейтинг</span>`;
+      button.className = "topbar-overview-button";
+      button.innerHTML = `<span>Рейтинг и состояние завода</span><strong aria-hidden="true">🏭</strong>`;
+      topbarActions.append(button);
       const reportButton = document.querySelector("#engineerReportButton");
-      quickNav.insertBefore(button, reportButton || null);
+      if (ui.globalReminderButton) quickNav.insertBefore(ui.globalReminderButton, reportButton || null);
       ui.workerRatingButton = button;
     }
   }
