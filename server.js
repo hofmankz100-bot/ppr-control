@@ -1214,6 +1214,8 @@ const wsServers = [];
 const sseClients = new Set();
 const realtimeInstanceId = crypto.randomBytes(8).toString("hex");
 let realtimeStateCounter = 0;
+const realtimePatchHistory = [];
+const REALTIME_PATCH_HISTORY_LIMIT = 1000;
 
 function realtimeStateVersion() {
   return `${realtimeInstanceId}:${realtimeStateCounter}`;
@@ -1230,6 +1232,10 @@ function sendSse(res, payload) {
 function broadcastState(origin = "server", actionId = "", state = publicState(), partial = false) {
   realtimeStateCounter += 1;
   const payload = { type: "state", origin, actionId, stateVersion: realtimeStateVersion(), partial, state };
+  realtimePatchHistory.push({ counter: realtimeStateCounter, payload });
+  if (realtimePatchHistory.length > REALTIME_PATCH_HISTORY_LIMIT) {
+    realtimePatchHistory.splice(0, realtimePatchHistory.length - REALTIME_PATCH_HISTORY_LIMIT);
+  }
   if (wss) {
     const message = JSON.stringify(payload);
     for (const client of wss.clients) {
@@ -1295,6 +1301,27 @@ async function handleApi(req, res, pathname, url) {
       websocketClients: wss ? wss.clients.size : 0,
       eventClients: sseClients.size
     });
+    return true;
+  }
+
+  if (pathname === "/api/changes" && req.method === "GET") {
+    const since = String(url.searchParams.get("since") || "");
+    const match = since.match(/^([a-f0-9]+):(\d+)$/i);
+    const requestedCounter = match ? Number(match[2]) : -1;
+    const sameInstance = Boolean(match && match[1] === realtimeInstanceId);
+    const oldestCounter = realtimePatchHistory.length ? realtimePatchHistory[0].counter : realtimeStateCounter + 1;
+    const historyAvailable = sameInstance
+      && Number.isSafeInteger(requestedCounter)
+      && requestedCounter <= realtimeStateCounter
+      && requestedCounter >= oldestCounter - 1;
+    if (!historyAvailable) {
+      sendJson(res, 200, { ok: true, reset: true, stateVersion: realtimeStateVersion(), events: [] });
+      return true;
+    }
+    const events = realtimePatchHistory
+      .filter(entry => entry.counter > requestedCounter)
+      .map(entry => entry.payload);
+    sendJson(res, 200, { ok: true, reset: false, stateVersion: realtimeStateVersion(), events });
     return true;
   }
 

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v160";
+const APP_VERSION = "v161";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -245,6 +245,7 @@ let lastRemoteUsersPollAt = 0;
 const REALTIME_VERSION_KEY = "ppr-realtime-state-version-v1";
 let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
+let realtimeChangesLoadPromise = null;
 let remoteStateLoadPromise = null;
 let requestSearchTimer = null;
 let renderTimer = null;
@@ -1202,25 +1203,40 @@ function handleRealtimeMessage(data) {
       pollRemoteUsers(true);
       const serverVersion = String(msg.stateVersion || "");
       if (serverVersion && serverVersion !== realtimeStateVersion) {
-        loadRemoteState().then(loaded => {
-          if (loaded) setRealtimeStateVersion(serverVersion);
-        });
+        syncRemoteChanges(serverVersion);
       } else if (serverVersion) {
         setRealtimeStateVersion(serverVersion);
       }
       return;
     }
     if (msg.type !== "state") return;
-    if (msg.origin === CLIENT_ID) {
-      if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
-      return;
-    }
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else mergeRemoteState(msg.state || {}, { preferRemote: true });
     if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
     loadRemoteUsers();
     scheduleRender();
   } catch {}
+}
+
+async function syncRemoteChanges(expectedVersion = "") {
+  if (realtimeChangesLoadPromise) return realtimeChangesLoadPromise;
+  realtimeChangesLoadPromise = (async () => {
+    try {
+      if (!realtimeStateVersion) return await loadRemoteState();
+      const result = await apiJson(`/api/changes?since=${encodeURIComponent(realtimeStateVersion)}`, { timeout: 10000 });
+      if (result?.reset) return await loadRemoteState();
+      const events = Array.isArray(result?.events) ? result.events : [];
+      for (const event of events) handleRealtimeMessage(event);
+      const version = String(result?.stateVersion || expectedVersion || "");
+      if (version) setRealtimeStateVersion(version);
+      return true;
+    } catch {
+      return await loadRemoteState();
+    } finally {
+      realtimeChangesLoadPromise = null;
+    }
+  })();
+  return realtimeChangesLoadPromise;
 }
 
 async function pollRealtimeStateVersion() {
@@ -1230,7 +1246,7 @@ async function pollRealtimeStateVersion() {
     const health = await apiJson("/api/health", { timeout: 5000 });
     const serverVersion = String(health?.stateVersion || "");
     if (serverVersion && serverVersion !== realtimeStateVersion) {
-      const loaded = await loadRemoteState();
+      const loaded = await syncRemoteChanges(serverVersion);
       if (loaded) setRealtimeStateVersion(serverVersion);
     }
   } catch {
@@ -1297,15 +1313,14 @@ function startRealtimePoll() {
     pollRemoteUsers();
     const socketAlive = realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN;
     const eventsAlive = realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN;
+    pollRealtimeStateVersion();
     if (eventsAlive || socketAlive) {
-      pollRealtimeStateVersion();
       if (socketAlive && Date.now() - lastRealtimeMessageAt > 20000) {
         try { realtimeSocket.send(JSON.stringify({ type: "ping" })); } catch {}
       }
       return;
     }
-    loadRemoteState();
-    pollRemoteUsers();
+    connectRealtime();
   }, 1000);
 }
 
