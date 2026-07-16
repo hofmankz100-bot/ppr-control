@@ -724,6 +724,88 @@ async function sendRemarkPushNotifications(added, total, origin = "") {
   }
 }
 
+function resolutionUserKeyServer(user = {}) {
+  const id = String(user.id || "").trim();
+  if (id) return `id:${id}`;
+  const employeeId = String(user.employeeId || "").trim().toLowerCase();
+  if (employeeId) return `employee:${employeeId}`;
+  const phone = String(user.phone || "").replace(/\D/g, "");
+  if (phone) return `phone:${phone}`;
+  return `person:${String(user.role || "").trim().toLowerCase()}:${String(user.name || "").trim().toLowerCase()}`;
+}
+
+function sanitizeResolutionParticipant(user = {}) {
+  return {
+    key: resolutionUserKeyServer(user),
+    id: String(user.id || "").slice(0, 200),
+    employeeId: String(user.employeeId || "").slice(0, 100),
+    phone: String(user.phone || "").slice(0, 100),
+    name: String(user.name || "Сотрудник").trim().slice(0, 200),
+    role: String(user.role || "").trim().slice(0, 50),
+    area: String(user.area || "").trim().slice(0, 200)
+  };
+}
+
+function resolutionParticipantsServer(item = {}) {
+  const seen = new Set();
+  return (Array.isArray(item.resolutionParticipants) ? item.resolutionParticipants : [])
+    .map(sanitizeResolutionParticipant)
+    .filter(participant => participant.key && !seen.has(participant.key) && seen.add(participant.key));
+}
+
+function subscriptionMatchesResolutionParticipant(subscriptionEntry, participant) {
+  const subscriptionProfile = subscriptionEntry?.profile || {};
+  return resolutionUserKeyServer(subscriptionProfile) === resolutionUserKeyServer(participant);
+}
+
+function openRemarkCountForSubscription(db, subscriptionEntry) {
+  let count = 0;
+  for (const record of Object.values(db.checks || {})) {
+    const item = record?.to;
+    if (!item || item.resolved) continue;
+    const hasComment = Boolean(
+      String(item.comment || item.commentPhoto || "").trim()
+      || (Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
+    );
+    if (!hasComment) continue;
+    const participants = resolutionParticipantsServer(item);
+    if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+  }
+  return count;
+}
+
+async function sendResolutionPushNotifications(db, participants, origin, title, body) {
+  const targetParticipants = Array.isArray(participants) ? participants : [];
+  if (!targetParticipants.length) return;
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const targets = subscriptions.filter(entry =>
+    (!origin || entry.clientId !== origin)
+    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+  );
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    const badgeCount = openRemarkCountForSubscription(db, entry);
+    const payload = JSON.stringify({ type: "remark", title, body, badgeCount, url: "/" });
+    try {
+      await webPush.sendNotification(entry.subscription, payload, { TTL: 3600, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Resolution push notification failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
 function hasMeaningfulCheckKindServer(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
@@ -1440,6 +1522,9 @@ async function handleApi(req, res, pathname, url) {
       clientId: String(body.clientId || ""),
       profile: {
         id: String(body.profile?.id || ""),
+        employeeId: String(body.profile?.employeeId || ""),
+        phone: String(body.profile?.phone || ""),
+        name: String(body.profile?.name || ""),
         role: String(body.profile?.role || ""),
         area: String(body.profile?.area || "")
       },
@@ -2026,6 +2111,156 @@ async function handleApi(req, res, pathname, url) {
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, requestId: result.requestId, available: result.available });
+    return true;
+  }
+
+  if (pathname === "/api/remark-collaboration" && req.method === "POST") {
+    const body = await readBody(req);
+    const recordKey = String(body.key || "").trim();
+    const action = String(body.action || "").trim();
+    const actor = sanitizeResolutionParticipant(body.actor || {});
+    const allowedActions = new Set(["start", "add", "remove", "update"]);
+    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
+    if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !actor.key || !allowedRoles.has(actor.role)) {
+      sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const record = db.checks?.[recordKey];
+      const item = record?.to;
+      const hasComment = Boolean(
+        String(item?.comment || item?.commentPhoto || "").trim()
+        || (Array.isArray(item?.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
+      );
+      if (!item || item.resolved || !hasComment) return { error: "remark_not_open" };
+      const now = new Date().toISOString();
+      const before = JSON.stringify(record);
+      let participants = resolutionParticipantsServer(item);
+      let notifyParticipants = [];
+      let pushTitle = "ALKZ — совместное устранение";
+      let pushBody = "Обновлена общая карточка замечания";
+      const actorIsParticipant = participants.some(participant => participant.key === actor.key);
+      const canManage = ["editor", "engineer", "shop"].includes(actor.role) || item.resolutionLeadKey === actor.key;
+      item.resolutionEvents = Array.isArray(item.resolutionEvents) ? item.resolutionEvents : [];
+      item.resolutionUpdates = Array.isArray(item.resolutionUpdates) ? item.resolutionUpdates : [];
+
+      if (action === "start") {
+        if (!actorIsParticipant) {
+          participants.push(actor);
+          item.resolutionEvents.push({
+            id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+            action: "added",
+            actorKey: actor.key,
+            name: actor.name,
+            role: actor.role,
+            targetKey: actor.key,
+            targetName: actor.name,
+            at: now
+          });
+        }
+        item.resolutionLeadKey ||= actor.key;
+        item.resolutionLeadName ||= actor.name;
+        item.resolutionStartedAt ||= now;
+      }
+
+      if (action === "add") {
+        if (!canManage) return { error: "remark_participant_manage_forbidden" };
+        const requestedKey = resolutionUserKeyServer(body.participant || {});
+        const registeredUser = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedKey);
+        if (!registeredUser || registeredUser.approved === false || registeredUser.pendingApproval === true || !allowedRoles.has(registeredUser.role)) {
+          return { error: "remark_participant_invalid" };
+        }
+        const participant = sanitizeResolutionParticipant(registeredUser);
+        if (!participants.some(entry => entry.key === participant.key)) {
+          participants.push(participant);
+          notifyParticipants = [participant];
+          pushTitle = "Вас добавили к устранению";
+          pushBody = "Откройте ALKZ — работа ведётся в общей карточке замечания";
+          item.resolutionEvents.push({
+            id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+            action: "added",
+            actorKey: actor.key,
+            name: actor.name,
+            role: actor.role,
+            targetKey: participant.key,
+            targetName: participant.name,
+            at: now
+          });
+        }
+        item.resolutionStartedAt ||= now;
+      }
+
+      if (action === "remove") {
+        if (!canManage) return { error: "remark_participant_manage_forbidden" };
+        const participantKey = String(body.participantKey || "").trim();
+        if (!participantKey || participantKey === item.resolutionLeadKey) return { error: "remark_participant_remove_forbidden" };
+        const removed = participants.find(participant => participant.key === participantKey);
+        participants = participants.filter(participant => participant.key !== participantKey);
+        if (removed) {
+          item.resolutionEvents.push({
+            id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+            action: "removed",
+            actorKey: actor.key,
+            name: actor.name,
+            role: actor.role,
+            targetKey: removed.key,
+            targetName: removed.name,
+            at: now
+          });
+        }
+      }
+
+      if (action === "update") {
+        if (!actorIsParticipant) return { error: "remark_participant_required" };
+        const text = String(body.text || "").trim().slice(0, 4000);
+        const photo = String(body.photo || "");
+        if (!text) return { error: "remark_update_text_required" };
+        item.resolutionUpdates.push({
+          id: `resolution-update:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
+          text,
+          photo: photo.length <= 12000000 ? photo : "",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          at: now
+        });
+        notifyParticipants = participants;
+        pushTitle = "Новая запись по устранению";
+        pushBody = `${actor.name}: ${text.slice(0, 120)}`;
+      }
+
+      item.resolutionParticipants = participants;
+      item.updatedAt = now;
+      record.updatedAt = now;
+      const changed = before !== JSON.stringify(record);
+      const actionId = String(body.actionId || "");
+      if (changed) writeDb(db, { action: `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey });
+      const patch = { checks: { [recordKey]: record } };
+      return {
+        actionId,
+        changed,
+        origin: body.clientId || "api",
+        patch,
+        notifyParticipants,
+        pushTitle,
+        pushBody
+      };
+    });
+    if (result.error) {
+      const status = result.error === "remark_not_open" ? 409 : result.error.includes("forbidden") || result.error === "remark_participant_required" ? 403 : 400;
+      sendJson(res, status, { ok: false, error: result.error });
+      return true;
+    }
+    const stateVersion = result.changed
+      ? broadcastState(result.origin, result.actionId, result.patch, true)
+      : realtimeStateVersion();
+    if (result.changed && result.notifyParticipants.length) {
+      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody).catch(error => {
+        console.error(`Resolution push delivery failed: ${error?.message || error}`);
+      });
+    }
+    sendJson(res, 200, { ok: true, actionId: result.actionId, changed: result.changed, stateVersion, state: result.patch });
     return true;
   }
 

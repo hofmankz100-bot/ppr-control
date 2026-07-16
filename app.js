@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v174";
+const APP_VERSION = "v175";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -959,7 +959,14 @@ async function ensurePushSubscription() {
     body: JSON.stringify({
       subscription: subscription.toJSON(),
       clientId: CLIENT_ID,
-      profile: { id: profile?.id || "", role: profile?.role || "", area: profile?.area || "" }
+      profile: {
+        id: authenticatedProfile?.id || profile?.id || "",
+        employeeId: authenticatedProfile?.employeeId || profile?.employeeId || "",
+        phone: authenticatedProfile?.phone || profile?.phone || "",
+        name: authenticatedProfile?.name || profile?.name || "",
+        role: authenticatedProfile?.role || profile?.role || "",
+        area: authenticatedProfile?.area || profile?.area || ""
+      }
     })
   });
   if (!response.ok) return false;
@@ -1065,12 +1072,14 @@ function currentAppNotificationKeys() {
   const visibleEquipmentIds = new Set(visibleEquipment().map(eq => String(eq.id)));
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentId] = recordKey.split(":");
-    if (visibleEquipmentIds.has(equipmentId) && hasOpenCommentRecord(rec)) keys.add(`comment|${recordKey}`);
+    if (visibleEquipmentIds.has(equipmentId) && hasOpenCommentRecord(rec) && remarkNotificationVisibleToCurrentUser(rec?.to)) {
+      keys.add(`comment|${recordKey}`);
+    }
   });
   return keys;
 }
 
-function syncAppIconBadge(count = openCommentCount()) {
+function syncAppIconBadge(count = currentAppNotificationKeys().size) {
   const remarks = Math.max(0, Number(count) || 0);
   if (remarks > 0) localStorage.setItem(APP_BADGE_KEY, String(remarks));
   else localStorage.removeItem(APP_BADGE_KEY);
@@ -1133,7 +1142,7 @@ function processAppNotificationChanges(beforeKeys = null) {
     if (!baseline.has(item)) added += 1;
   });
   appNotificationKeys = afterKeys;
-  registerNewAppNotifications(added, openCommentCount());
+  registerNewAppNotifications(added, afterKeys.size);
 }
 
 function showQrSavedNotice(message = "") {
@@ -2255,6 +2264,9 @@ async function finishAuthOnCurrentPage() {
   const loaded = await loadRemoteState();
   if (!loaded) render();
   show(current.view, false);
+  if (localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1" && window.Notification?.permission === "granted") {
+    ensurePushSubscription().catch(() => {});
+  }
 }
 
 function defaultRequestRole(role = profile?.role) {
@@ -3879,6 +3891,119 @@ function nodeWalkShiftStatusText(rec, date = current.date) {
 
 function currentRoleId() {
   return profile?.role || "";
+}
+
+function resolutionUserKey(user = {}) {
+  const id = String(user.id || "").trim();
+  if (id) return `id:${id}`;
+  const employeeId = String(user.employeeId || "").trim().toLowerCase();
+  if (employeeId) return `employee:${employeeId}`;
+  const phone = String(user.phone || "").replace(/\D/g, "");
+  if (phone) return `phone:${phone}`;
+  return `person:${String(user.role || "").trim().toLowerCase()}:${String(user.name || "").trim().toLowerCase()}`;
+}
+
+function resolutionActor() {
+  const user = authenticatedProfile || profile || {};
+  return {
+    key: resolutionUserKey(user),
+    id: String(user.id || ""),
+    employeeId: String(user.employeeId || ""),
+    phone: String(user.phone || ""),
+    name: String(user.name || profile?.name || "Сотрудник"),
+    role: String(user.role || profile?.role || ""),
+    area: String(user.area || profile?.area || "")
+  };
+}
+
+function resolutionParticipantFromUser(user = {}) {
+  return {
+    key: resolutionUserKey(user),
+    id: String(user.id || ""),
+    employeeId: String(user.employeeId || ""),
+    phone: String(user.phone || ""),
+    name: String(user.name || "Сотрудник"),
+    role: String(user.role || ""),
+    area: String(user.area || "")
+  };
+}
+
+function resolutionParticipants(item = {}) {
+  const seen = new Set();
+  return (Array.isArray(item.resolutionParticipants) ? item.resolutionParticipants : [])
+    .map(resolutionParticipantFromUser)
+    .filter(participant => participant.key && !seen.has(participant.key) && seen.add(participant.key));
+}
+
+function isResolutionParticipant(item, user = resolutionActor()) {
+  const key = resolutionUserKey(user);
+  return resolutionParticipants(item).some(participant => participant.key === key);
+}
+
+function remarkNotificationVisibleToCurrentUser(item) {
+  const participants = resolutionParticipants(item);
+  return participants.length === 0 || participants.some(participant => participant.key === resolutionActor().key);
+}
+
+function canManageResolutionParticipants(item) {
+  const actor = resolutionActor();
+  return ["editor", "engineer", "shop"].includes(actor.role)
+    || Boolean(item?.resolutionLeadKey && item.resolutionLeadKey === actor.key);
+}
+
+function canCompleteCollaborativeResolution(item) {
+  const participants = resolutionParticipants(item);
+  if (!participants.length) return true;
+  return isResolutionParticipant(item) || ["editor", "engineer", "shop"].includes(resolutionActor().role);
+}
+
+function eligibleResolutionUsers(eq) {
+  const actor = resolutionActor();
+  const users = [...loadUsers(), actor]
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true && ROLE_ACCESS[user.role]?.checklist)
+    .filter(user => user.role !== "operator" && user.role !== "shop" || !user.area || user.area === eq.area);
+  const byKey = new Map();
+  users.forEach(user => byKey.set(resolutionUserKey(user), resolutionParticipantFromUser(user)));
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
+function resolutionUpdateAuthor(entry = {}) {
+  const role = ROLE_ACCESS[entry.role]?.label || entry.role || "";
+  return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
+}
+
+function appendResolutionCompletion(item) {
+  const actor = resolutionActor();
+  const now = new Date().toISOString();
+  item.resolutionEvents = [...(Array.isArray(item.resolutionEvents) ? item.resolutionEvents : []), {
+    id: `resolution-event:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+    action: "completed",
+    actorKey: actor.key,
+    name: actor.name,
+    role: actor.role,
+    at: now
+  }];
+  item.resolutionCompletedParticipants = resolutionParticipants(item);
+}
+
+async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, action, extra = {}) {
+  const recordKey = key(equipmentId, nodeIndex, date);
+  const result = await apiJson("/api/remark-collaboration", {
+    method: "POST",
+    timeout: 20000,
+    body: JSON.stringify({
+      actionId: nextActionId(),
+      clientId: CLIENT_ID,
+      key: recordKey,
+      action,
+      actor: resolutionActor(),
+      ...extra
+    })
+  });
+  if (result?.state) mergeRealtimePatch(result.state);
+  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  persistStateLocally(state);
+  return result;
 }
 
 function canEditComment(item) {
@@ -8906,6 +9031,59 @@ function renderNodeWalkthrough(eq) {
     const currentAuthorText = profile?.name
       ? `${profile.name} (${ROLE_ACCESS[profile?.role]?.label || profile?.role || "Сотрудник"})`
       : ROLE_ACCESS[profile?.role]?.label || "Сотрудник";
+    const participants = resolutionParticipants(item);
+    const participantKeys = new Set(participants.map(participant => participant.key));
+    const currentParticipant = isResolutionParticipant(item);
+    const canManageParticipants = canManageResolutionParticipants(item);
+    const participantOptions = eligibleResolutionUsers(eq).filter(user => !participantKeys.has(user.key));
+    const resolutionUpdates = (Array.isArray(item.resolutionUpdates) ? item.resolutionUpdates : []).slice().reverse();
+    const resolutionEvents = (Array.isArray(item.resolutionEvents) ? item.resolutionEvents : []).slice().reverse();
+    const resolutionStartedText = item.resolutionStartedAt
+      ? `В работе с ${dateTimeHuman(item.resolutionStartedAt)}`
+      : "Можно устранять вместе";
+    const collaborationBlock = hasUnresolvedRemark ? `
+      <section class="remark-collaboration">
+        <div class="remark-collaboration-head">
+          <div><strong>Совместное устранение</strong><span>${escapeHtml(resolutionStartedText)}</span></div>
+          ${!currentParticipant ? `<button type="button" data-resolution-join="${index}">${participants.length ? "Присоединиться" : "Начать устранение"}</button>` : `<span class="resolution-participating">Вы участвуете</span>`}
+        </div>
+        <div class="resolution-participants">
+          ${participants.length ? participants.map(participant => `
+            <span class="resolution-participant">
+              <span><strong>${escapeHtml(participant.name)}</strong><small>${escapeHtml(ROLE_ACCESS[participant.role]?.label || participant.role || "Сотрудник")}</small></span>
+              ${canManageParticipants && participant.key !== item.resolutionLeadKey ? `<button type="button" data-resolution-remove="${escapeHtml(participant.key)}" aria-label="Убрать участника">×</button>` : ""}
+            </span>
+          `).join("") : `<span class="resolution-empty">Участники ещё не добавлены</span>`}
+        </div>
+        ${canManageParticipants && participantOptions.length ? `
+          <div class="resolution-add-row">
+            <select data-resolution-user>
+              <option value="">Выберите участника</option>
+              ${participantOptions.map(user => `<option value="${escapeHtml(user.key)}">${escapeHtml(user.name)} · ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "Сотрудник")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</option>`).join("")}
+            </select>
+            <button type="button" data-resolution-add="${index}">Добавить</button>
+          </div>
+        ` : ""}
+        ${resolutionUpdates.length ? `
+          <div class="resolution-updates">
+            <strong>Что сделано</strong>
+            ${resolutionUpdates.map(entry => `
+              <div class="resolution-update">
+                <strong>${escapeHtml(resolutionUpdateAuthor(entry))}</strong>
+                <small>${escapeHtml(dateTimeHuman(entry.at || ""))}</small>
+                <p>${escapeHtml(entry.text || "")}</p>
+                ${entry.photo ? `<img src="${entry.photo}" alt="Фото выполненной работы">` : ""}
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${resolutionEvents.length ? `
+          <details class="resolution-events"><summary>История участников</summary>
+            ${resolutionEvents.map(event => `<p><strong>${escapeHtml(event.name || "Сотрудник")}</strong> · ${escapeHtml(event.action === "removed" ? "убрал участника" : event.action === "completed" ? "завершил устранение" : "добавил участника")} · ${escapeHtml(dateTimeHuman(event.at || ""))}</p>`).join("")}
+          </details>
+        ` : ""}
+      </section>
+    ` : "";
     const commentHistory = commentEntries.length ? `
       <div class="comment-history">
         <strong class="comment-history-title">Устранение замечаний</strong>
@@ -8931,7 +9109,7 @@ function renderNodeWalkthrough(eq) {
     ` : "";
     const productionStopActive = activeStop?.type === "production";
     const fixedButtonLabel = productionStopActive ? "Устранить" : waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
-    const fixedButtonDisabled = !canEditChecklist() || (!hasUnresolvedRemark && !productionStopActive) || (waitingShopFix && !canConfirmInstallation());
+    const fixedButtonDisabled = !canEditChecklist() || (!hasUnresolvedRemark && !productionStopActive) || (waitingShopFix && !canConfirmInstallation()) || (hasUnresolvedRemark && !canCompleteCollaborativeResolution(item));
     const submitRemarkDisabled = !canEditThisComment || hasUnresolvedRemark;
     const submitRemarkLabel = hasUnresolvedRemark ? "Ждёт устранения" : "Отправить";
     const downtimeActiveBlock = activeStop ? `
@@ -8958,8 +9136,10 @@ function renderNodeWalkthrough(eq) {
         </div>
         <div class="node-walk-actions node-comment-actions">
           <button type="button" data-node-submit-comment="${index}" ${submitRemarkDisabled ? "disabled" : ""}>${submitRemarkLabel}</button>
+          ${hasUnresolvedRemark ? `<button type="button" class="secondary" data-node-work-update="${index}" ${currentParticipant ? "" : "disabled"}>Добавить запись о работе</button>` : ""}
           <button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>
         </div>
+        ${collaborationBlock}
         ${resolutionBlock}
         ${commentHistory}
         ${downtimeCommentHistory}
@@ -9001,6 +9181,24 @@ function renderNodeWalkthrough(eq) {
       const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
       if (textarea) textarea.value = reminderItems.join("\n");
     });
+    row.querySelector("[data-resolution-join]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      await publishRemarkCollaborationAction(eq.id, index, current.date, "start");
+      renderNodeWalkthrough(equipmentById(eq.id));
+    }, participants.length ? "Присоединяем..." : "Начинаем..."));
+    row.querySelector("[data-resolution-add]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      const select = row.querySelector("[data-resolution-user]");
+      const participant = eligibleResolutionUsers(eq).find(user => user.key === select?.value);
+      if (!participant) {
+        select?.focus();
+        return;
+      }
+      await publishRemarkCollaborationAction(eq.id, index, current.date, "add", { participant });
+      renderNodeWalkthrough(equipmentById(eq.id));
+    }, "Добавляем..."));
+    row.querySelectorAll("[data-resolution-remove]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      await publishRemarkCollaborationAction(eq.id, index, current.date, "remove", { participantKey: event.currentTarget.dataset.resolutionRemove || "" });
+      renderNodeWalkthrough(equipmentById(eq.id));
+    }, "Убираем...")));
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
       const liveItem = record(eq.id, index, current.date).to;
@@ -9057,6 +9255,27 @@ function renderNodeWalkthrough(eq) {
       const sendChoice = await askCommentSubmit();
       await submitNodeText(button, sendChoice);
     });
+    row.querySelector("[data-node-work-update]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      await nodePhotoProcessing;
+      const liveItem = record(eq.id, index, current.date).to;
+      if (!isResolutionParticipant(liveItem)) return;
+      const commentBox = row.querySelector("[data-node-comment]");
+      const text = String(commentBox?.value || "").trim();
+      if (!text) {
+        commentBox?.classList.remove("comment-required-blink");
+        if (commentBox) void commentBox.offsetWidth;
+        commentBox?.classList.add("comment-required-blink");
+        commentBox?.scrollIntoView({ behavior: "smooth", block: "center" });
+        commentBox?.focus();
+        return;
+      }
+      const photo = liveItem.commentPhoto || "";
+      liveItem.nodeDraftText = "";
+      liveItem.commentPhoto = "";
+      persistStateLocally(state);
+      await publishRemarkCollaborationAction(eq.id, index, current.date, "update", { text, photo });
+      renderNodeWalkthrough(equipmentById(eq.id));
+    }, "Сохраняем..."));
     row.querySelector("[data-node-fixed]").addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditChecklist()) return;
       const liveItem = record(eq.id, index, current.date).to;
@@ -9083,6 +9302,9 @@ function renderNodeWalkthrough(eq) {
         renderNodeWalkthrough(equipmentById(eq.id));
         return;
       }
+      if (!canCompleteCollaborativeResolution(liveItem)) return;
+      if (!window.confirm("Устранение полностью завершено?")) return;
+      appendResolutionCompletion(liveItem);
       const relatedReq = relatedIssuedRequestForNode(eq.id, index, current.date, liveItem);
       if (liveItem.mechanicFixed && !liveItem.resolved && canConfirmInstallation()) {
         markCommentResolved(liveItem, fixText, liveItem.commentPhoto, { preserveExisting: true });

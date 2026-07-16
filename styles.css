@@ -9310,3 +9310,134 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
     -webkit-text-fill-color: #000 !important;
   }
 }
+.remark-collaboration {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #b9d6c5;
+  border-radius: 16px;
+  background: #f3fbf6;
+}
+
+.remark-collaboration-head,
+.resolution-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.remark-collaboration-head > div,
+.resolution-participant > span {
+  display: grid;
+  gap: 2px;
+}
+
+.remark-collaboration-head span,
+.resolution-participant small,
+.resolution-empty,
+.resolution-update small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resolution-participating {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #d9f2e2;
+  color: #176b3a !important;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.resolution-participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resolution-participant {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px 7px 11px;
+  border: 1px solid #c9ded0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.resolution-participant button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: #fff0f0;
+  color: #a02b2b;
+}
+
+.resolution-add-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.resolution-updates {
+  display: grid;
+  gap: 8px;
+}
+
+.resolution-update {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.resolution-update p,
+.resolution-events p {
+  grid-column: 1 / -1;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.resolution-update img {
+  grid-column: 1 / -1;
+  width: min(100%, 320px);
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.resolution-events summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.resolution-events p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .remark-collaboration-head,
+  .resolution-add-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remark-collaboration-head button,
+  .resolution-add-row button,
+  .resolution-add-row select {
+    width: 100%;
+  }
+
+  .resolution-participant {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+}
