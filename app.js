@@ -75,9 +75,9 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v169";
+const APP_VERSION = "v170";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
-const APP_BADGE_KEY = "ppr-app-unread-badge-v1";
+const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
@@ -862,11 +862,13 @@ function saveState(options = {}) {
   persistStateLocally(state);
   if (options.remote === false) {
     window.queueMicrotask(updateGlobalReminderBadge);
+    window.queueMicrotask(syncAppIconBadge);
     return;
   }
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   queueRemoteStateSave();
   window.queueMicrotask(updateGlobalReminderBadge);
+  window.queueMicrotask(syncAppIconBadge);
 }
 
 async function publishStateNow() {
@@ -934,7 +936,7 @@ async function requestAppNotificationPermission(button) {
   try {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
-      applyAppIconBadge(Number(localStorage.getItem(APP_BADGE_KEY)) || 0);
+      syncAppIconBadge();
       showAppToast("Уведомления и счётчик на иконке ALKZ включены.");
       renderProfile();
     } else {
@@ -948,42 +950,45 @@ async function requestAppNotificationPermission(button) {
   }
 }
 
-async function showBackgroundSystemNotification(count) {
+async function showBackgroundSystemNotification(added, total) {
   if (document.visibilityState !== "hidden" || !("Notification" in window) || Notification.permission !== "granted") return;
   try {
     const registration = await navigator.serviceWorker?.ready;
-    await registration?.showNotification("ALKZ", {
-      body: count === 1 ? "Поступило новое уведомление" : `Новых уведомлений: ${count}`,
-      icon: "/icon.svg",
-      badge: "/icon.svg",
-      tag: "alkz-notifications",
+    await registration?.showNotification("ALKZ — новое замечание", {
+      body: added === 1 ? `Открытых замечаний: ${total}` : `Новых замечаний: ${added}. Открытых: ${total}`,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: "alkz-remarks",
       renotify: true,
+      silent: false,
+      vibrate: [180, 80, 220],
       data: { url: "/" }
     });
   } catch {}
 }
 
 function resetAppNotificationsForOpen() {
-  localStorage.removeItem(APP_BADGE_KEY);
-  applyAppIconBadge(0);
-  // The first state received after opening becomes the new baseline and must
-  // not immediately restore the badge that the user has just cleared.
-  appNotificationTrackingReady = false;
-  appNotificationKeys = new Set();
+  appNotificationKeys = currentAppNotificationKeys();
+  appNotificationTrackingReady = Boolean(profile);
+  syncAppIconBadge();
 }
 
 function currentAppNotificationKeys() {
   if (!profile) return new Set();
   const keys = new Set();
-  downtimes().forEach(item => {
-    if (!item.endedAt) keys.add(`downtime|${item.id || item.key || item.startedAt}`);
-  });
   const visibleEquipmentIds = new Set(visibleEquipment().map(eq => String(eq.id)));
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentId] = recordKey.split(":");
     if (visibleEquipmentIds.has(equipmentId) && hasOpenCommentRecord(rec)) keys.add(`comment|${recordKey}`);
   });
   return keys;
+}
+
+function syncAppIconBadge(count = openCommentCount()) {
+  const remarks = Math.max(0, Number(count) || 0);
+  if (remarks > 0) localStorage.setItem(APP_BADGE_KEY, String(remarks));
+  else localStorage.removeItem(APP_BADGE_KEY);
+  applyAppIconBadge(remarks);
 }
 
 function unlockNotificationAudio() {
@@ -1019,14 +1024,13 @@ function playNotificationDingDong() {
   } catch {}
 }
 
-function registerNewAppNotifications(count) {
+function registerNewAppNotifications(count, total) {
   const added = Math.max(0, Number(count) || 0);
+  const openRemarks = Math.max(0, Number(total) || 0);
+  syncAppIconBadge(openRemarks);
   if (!added) return;
-  const unread = Math.max(0, Number(localStorage.getItem(APP_BADGE_KEY)) || 0) + added;
-  localStorage.setItem(APP_BADGE_KEY, String(unread));
-  applyAppIconBadge(unread);
   playNotificationDingDong();
-  showBackgroundSystemNotification(unread);
+  showBackgroundSystemNotification(added, openRemarks);
 }
 
 function processAppNotificationChanges(beforeKeys = null) {
@@ -1034,6 +1038,7 @@ function processAppNotificationChanges(beforeKeys = null) {
   if (!profile || !appNotificationTrackingReady) {
     appNotificationKeys = afterKeys;
     appNotificationTrackingReady = Boolean(profile);
+    syncAppIconBadge();
     return;
   }
   const baseline = beforeKeys instanceof Set ? beforeKeys : appNotificationKeys;
@@ -1042,7 +1047,7 @@ function processAppNotificationChanges(beforeKeys = null) {
     if (!baseline.has(item)) added += 1;
   });
   appNotificationKeys = afterKeys;
-  registerNewAppNotifications(added);
+  registerNewAppNotifications(added, openCommentCount());
 }
 
 function showQrSavedNotice(message = "") {
@@ -13889,9 +13894,6 @@ if ("serviceWorker" in navigator) {
     if (serviceWorkerReloading) return;
     serviceWorkerReloading = true;
     window.location.reload();
-  });
-  navigator.serviceWorker.addEventListener("message", event => {
-    if (event.data?.type === "clear-app-badge") resetAppNotificationsForOpen();
   });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();

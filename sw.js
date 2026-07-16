@@ -1,18 +1,21 @@
-const CACHE_NAME = "ppr-v169";
+const CACHE_NAME = "ppr-v170";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=169",
+  "./styles.css?v=170",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=169",
+  "./app.js?v=170",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
-  "./icon.svg"
+  "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png"
   ,"./hoffmann-logo.png"
 ];
 
@@ -66,12 +69,10 @@ self.addEventListener("notificationclick", event => {
   event.notification.close();
   event.waitUntil((async () => {
     try {
-      if ("clearAppBadge" in self.navigator) await self.navigator.clearAppBadge();
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const existing = windows[0];
       if (existing) {
         await existing.focus();
-        existing.postMessage({ type: "clear-app-badge" });
         return;
       }
       await self.clients.openWindow(event.notification.data?.url || "/");
