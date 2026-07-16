@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v181";
+const APP_VERSION = "v182";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -10546,7 +10546,8 @@ function personalRemarkMessages() {
     if (!eq) return;
     ensureRemarkEntries(rec?.to || {}).forEach(entry => {
       (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).forEach(event => {
-        if (!["confirmed", "returned"].includes(event.action)) return;
+        if (!["submitted", "returned"].includes(event.action)) return;
+        if (event.action === "submitted" && (!entry.resolutionPendingConfirmation || event.at !== entry.resolutionSubmittedAt)) return;
         const recipientKeys = Array.isArray(event.recipientKeys) ? event.recipientKeys.map(String) : [];
         if (!recipientKeys.includes(actorKey)) return;
         const id = String(event.id || `${entry.id}:${event.action}:${event.at || ""}`);
@@ -10554,9 +10555,9 @@ function personalRemarkMessages() {
           id,
           unread: !readIds.has(id),
           action: event.action,
-          title: event.action === "confirmed" ? "Устранение подтверждено" : "Возвращено на доработку",
-          text: event.action === "confirmed"
-            ? `${event.name || "Ответственный сотрудник"} подтвердил устранение предупреждения`
+          title: event.action === "submitted" ? "Требуется подтвердить устранение" : "Возвращено на доработку",
+          text: event.action === "submitted"
+            ? `${entry.resolutionSubmittedByName || event.name || "Сотрудник"}: ${entry.resolutionSubmittedComment || "Работа передана на подтверждение"}`
             : String(event.reason || entry.resolutionReturnReason || "Требуется доработка"),
           at: event.at || "",
           equipmentId,
@@ -10649,7 +10650,7 @@ function renderGlobalReminderPanel() {
   `).join("");
   const personalRows = personalMessages.map(message => `
     <button type="button" class="personal-remark-message ${message.unread ? "unread" : ""} ${message.action}" data-open-personal-remark="${escapeHtml(message.id)}">
-      <span>${message.action === "confirmed" ? "✅" : "↩️"}</span>
+      <span>${message.action === "submitted" ? "☑️" : "↩️"}</span>
       <div><strong>${escapeHtml(message.title)}</strong><p>${escapeHtml(message.text)}</p><small>${escapeHtml(message.equipment)} · ${escapeHtml(message.node)} · ${escapeHtml(dateTimeHuman(message.at))}</small></div>
     </button>
   `).join("");

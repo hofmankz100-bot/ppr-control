@@ -2407,6 +2407,7 @@ async function handleApi(req, res, pathname, url) {
           actorKey: actor.key,
           name: actor.name,
           role: actor.role,
+          recipientKeys: confirmationRule.users.map(user => user.key),
           at: now
         });
         remark.resolutionCompletedParticipants = participants;
@@ -2434,18 +2435,15 @@ async function handleApi(req, res, pathname, url) {
         remark.confirmedByKey = actor.key;
         remark.confirmedByName = actor.name;
         remark.confirmedByRole = actor.role;
-        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
-        const noticeRecipients = submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [];
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
           action: "confirmed",
           actorKey: actor.key,
           name: actor.name,
           role: actor.role,
-          recipientKeys: noticeRecipients.map(user => user.key),
           at: now
         });
-        notifyParticipants = noticeRecipients;
+        notifyParticipants = [];
         pushTitle = "Устранение подтверждено";
         pushBody = `${actor.name} подтвердил устранение`;
       }

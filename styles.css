@@ -6698,7 +6698,7 @@ body.editor-profile .warehouse-folders button.request-alert {
   text-align: left;
 }
 .personal-remark-message.unread { box-shadow: 0 0 0 2px rgba(16, 123, 156, .16); }
-.personal-remark-message.confirmed { border-left-color: var(--ok); }
+.personal-remark-message.submitted { border-left-color: #d59a00; background: #fffdf7; }
 .personal-remark-message.returned { border-left-color: var(--danger); background: #fff8f8; }
 .personal-remark-message > span { font-size: 20px; }
 .personal-remark-message div { display: grid; gap: 3px; }
