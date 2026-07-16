@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v175";
+const APP_VERSION = "v179";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -200,6 +200,7 @@ const COMMON_WAREHOUSE = "Склад общего пользования";
 const WAREHOUSE_AREAS = [COMMON_WAREHOUSE, ...AREAS];
 const WAREHOUSE_RENDER_LIMIT = 80;
 const DOWNTIME_MONTH_LIMIT_MS = 125 * 60 * 60 * 1000;
+const remarkResolutionPhotoDrafts = new Map();
 const WALK_SHIFT_DAY_START = 8;
 const WALK_SHIFT_NIGHT_START = 20;
 const WALK_SHIFT_LABELS = {
@@ -390,6 +391,8 @@ let current = {
   warehouseZeroArchiveOpen: false,
   warehouseZeroArchivePage: 1,
   scrollToCommentNode: null,
+  scrollToRemarkId: "",
+  returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
   downtimeMonth: new Date().getMonth(),
@@ -1072,9 +1075,10 @@ function currentAppNotificationKeys() {
   const visibleEquipmentIds = new Set(visibleEquipment().map(eq => String(eq.id)));
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentId] = recordKey.split(":");
-    if (visibleEquipmentIds.has(equipmentId) && hasOpenCommentRecord(rec) && remarkNotificationVisibleToCurrentUser(rec?.to)) {
-      keys.add(`comment|${recordKey}`);
-    }
+    if (!visibleEquipmentIds.has(equipmentId)) return;
+    openRemarkEntries(rec?.to || {}).forEach(entry => {
+      if (remarkNotificationVisibleToCurrentUser(entry)) keys.add(`comment|${recordKey}|${entry.id}`);
+    });
   });
   return keys;
 }
@@ -1313,8 +1317,8 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
     const brokenText = /^\?{3,}$/.test(String(entry.text || "").trim());
     const brokenName = /^[?\s]{3,}$/.test(String(entry.name || "").trim());
     if (brokenText && brokenName) continue;
-    const entryKey = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
-    map.set(entryKey, entry);
+    const entryKey = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
+    map.set(entryKey, { ...(map.get(entryKey) || {}), ...entry });
   }
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
@@ -1946,7 +1950,7 @@ function applyLanguage() {
   const createRequestButton = document.querySelector("#createTmcRequestButton span");
   if (createRequestButton) createRequestButton.textContent = t("createRequest");
   const alertCounterLabel = document.querySelector("#alertCounter span");
-  if (alertCounterLabel) alertCounterLabel.textContent = t("remarks");
+  if (alertCounterLabel) alertCounterLabel.textContent = remarksSectionLabel();
   const downtimeButton = document.querySelector("#downtimeOpenButton");
   if (downtimeButton?.firstChild) downtimeButton.firstChild.nodeValue = `${t("downtime")} `;
   const directorLabel = document.querySelector("#directorOpenLabel");
@@ -2529,8 +2533,8 @@ function saveNodeReminder(equipmentId, nodeIndex, text) {
 
 function areaAllowed(area) {
   if (!needsArea()) return true;
-  if (profile?.role === "operator" && !profile?.area) return false;
-  return !profile?.area || area === profile.area;
+  if (!profile?.area) return false;
+  return area === profile.area;
 }
 
 function visibleEquipment() {
@@ -3972,6 +3976,62 @@ function resolutionUpdateAuthor(entry = {}) {
   return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
 }
 
+function stableRemarkId(entry = {}) {
+  if (entry.id) return String(entry.id);
+  const source = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo]
+    .map(value => String(value || ""))
+    .join("\u0001");
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `remark:${String(entry.at || "legacy")}:${(hash >>> 0).toString(36)}`;
+}
+
+const REMARK_COLLABORATION_FIELDS = [
+  "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
+  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants"
+];
+
+function ensureRemarkEntries(item = {}) {
+  const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
+    .filter(entry => entry && !isDowntimeCommentEntry(entry) && String(entry.text || entry.photo || "").trim());
+  entries.forEach(entry => {
+    entry.id ||= stableRemarkId(entry);
+    if (typeof entry.resolved !== "boolean") entry.resolved = Boolean(item.resolved);
+  });
+  const legacyTarget = entries.find(entry => !entry.resolved);
+  if (legacyTarget && REMARK_COLLABORATION_FIELDS.some(field => item[field] !== undefined)) {
+    REMARK_COLLABORATION_FIELDS.forEach(field => {
+      if (legacyTarget[field] === undefined && item[field] !== undefined) legacyTarget[field] = item[field];
+      delete item[field];
+    });
+  }
+  return entries;
+}
+
+function openRemarkEntries(item = {}) {
+  return ensureRemarkEntries(item).filter(entry => !entry.resolved);
+}
+
+function syncItemRemarkSummary(item = {}) {
+  const entries = ensureRemarkEntries(item);
+  if (!entries.length) return;
+  const allResolved = entries.every(entry => entry.resolved);
+  item.resolved = allResolved;
+  if (allResolved) {
+    const latest = entries.slice().sort((a, b) => String(b.resolvedAt || "").localeCompare(String(a.resolvedAt || "")))[0] || {};
+    item.resolvedAt = latest.resolvedAt || item.resolvedAt || "";
+    item.resolvedByName = latest.resolvedByName || item.resolvedByName || "";
+    item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
+    item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
+    item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
+  } else {
+    item.resolvedAt = "";
+  }
+}
+
 function appendResolutionCompletion(item) {
   const actor = resolutionActor();
   const now = new Date().toISOString();
@@ -4044,12 +4104,14 @@ function appendCommentEntry(item, text, photo = "", meta = {}) {
   if (!cleanText) return null;
   const now = new Date().toISOString();
   const entry = {
+    id: `remark:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
     text: cleanText,
     photo: photo || item.commentPhoto || "",
     role: currentRoleId(),
     name: profile?.name || "",
     at: now,
-    type: meta.type || "remark"
+    type: meta.type || "remark",
+    resolved: meta.type === "downtime"
   };
   item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), entry];
   if (window.PPRModules?.comments?.clearComposer) {
@@ -4183,6 +4245,98 @@ function commentsSummary(item) {
   return visibleCommentEntries(item)
     .map(entry => `${commentEntryAuthor(entry)}: ${entry.text}`)
     .join("\n");
+}
+
+function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
+  const remarkId = stableRemarkId(entry);
+  const author = commentEntryAuthor(entry);
+  const resolved = Boolean(entry.resolved);
+  const participants = resolutionParticipants(entry);
+  const participantKeys = new Set(participants.map(participant => participant.key));
+  const currentParticipant = isResolutionParticipant(entry);
+  const canManageParticipants = canManageResolutionParticipants(entry);
+  const participantOptions = eligibleResolutionUsers(eq).filter(user => !participantKeys.has(user.key));
+  const resolutionUpdates = (Array.isArray(entry.resolutionUpdates) ? entry.resolutionUpdates : []).slice().reverse();
+  const resolutionEvents = (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).slice().reverse();
+  const resolutionStartedText = entry.resolutionStartedAt ? `В работе с ${dateTimeHuman(entry.resolutionStartedAt)}` : "Можно устранять вместе";
+  const photoKey = `${key(eq.id, nodeIndex, current.date)}:${remarkId}`;
+  const draftPhoto = remarkResolutionPhotoDrafts.get(photoKey) || "";
+  const canResolve = canCompleteCollaborativeResolution(entry);
+  const resolvedRole = ROLE_ACCESS[entry.resolvedByRole]?.label || entry.resolvedByRole || "";
+  const resolvedBy = entry.resolvedByName ? `${entry.resolvedByName}${resolvedRole ? ` (${resolvedRole})` : ""}` : resolvedRole;
+
+  return `
+    <article class="remark-card ${resolved ? "resolved" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
+      <header class="remark-card-head">
+        <div>
+          <strong>Замечание ${entryIndex + 1}</strong>
+          <small>${escapeHtml(author)} · ${escapeHtml(dateTimeHuman(entry.at || ""))}</small>
+        </div>
+        <span class="remark-card-status">${resolved ? "Устранено" : "Открыто"}</span>
+      </header>
+      <p class="remark-card-text">${escapeHtml(entry.text || "")}</p>
+      ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
+      ${resolved ? `
+        <div class="comment-resolution-detail">
+          <strong>Устранил: ${escapeHtml(resolvedBy || "Сотрудник")}</strong>
+          <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
+          ${entry.resolvedComment ? `<p>${escapeHtml(entry.resolvedComment)}</p>` : ""}
+          ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
+        </div>
+      ` : `
+        <section class="remark-collaboration">
+          <div class="remark-collaboration-head">
+            <div><strong>Совместное устранение</strong><span>${escapeHtml(resolutionStartedText)}</span></div>
+            ${!currentParticipant ? `<button type="button" data-remark-join>${participants.length ? "Присоединиться" : "Начать устранение"}</button>` : `<span class="resolution-participating">Вы участвуете</span>`}
+          </div>
+          <div class="resolution-participants">
+            ${participants.length ? participants.map(participant => `
+              <span class="resolution-participant">
+                <span><strong>${escapeHtml(participant.name)}</strong><small>${escapeHtml(ROLE_ACCESS[participant.role]?.label || participant.role || "Сотрудник")}</small></span>
+                ${canManageParticipants && participant.key !== entry.resolutionLeadKey ? `<button type="button" data-remark-remove="${escapeHtml(participant.key)}" aria-label="Убрать участника">×</button>` : ""}
+              </span>
+            `).join("") : `<span class="resolution-empty">Участники ещё не добавлены</span>`}
+          </div>
+          ${canManageParticipants && participantOptions.length ? `
+            <div class="resolution-add-row">
+              <select data-remark-user>
+                <option value="">Выберите участника</option>
+                ${participantOptions.map(user => `<option value="${escapeHtml(user.key)}">${escapeHtml(user.name)} · ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "Сотрудник")}</option>`).join("")}
+              </select>
+              <button type="button" data-remark-add>Добавить</button>
+            </div>
+          ` : ""}
+          ${resolutionUpdates.length ? `
+            <div class="resolution-updates">
+              <strong>Что сделано</strong>
+              ${resolutionUpdates.map(update => `
+                <div class="resolution-update">
+                  <strong>${escapeHtml(resolutionUpdateAuthor(update))}</strong>
+                  <small>${escapeHtml(dateTimeHuman(update.at || ""))}</small>
+                  <p>${escapeHtml(update.text || "")}</p>
+                  ${update.photo ? `<img src="${update.photo}" alt="Фото выполненной работы">` : ""}
+                </div>
+              `).join("")}
+            </div>
+          ` : ""}
+          <div class="remark-action-composer">
+            <textarea data-remark-action-text rows="2" placeholder="Что сделано по этому замечанию"></textarea>
+            <input data-remark-action-photo type="file" accept="image/*" capture="environment">
+            <div class="photo-preview remark-action-preview">${draftPhoto ? `<img src="${draftPhoto}" alt="Фото работы"><button type="button" data-clear-remark-photo>Удалить фото</button>` : ""}</div>
+            <div class="node-walk-actions">
+              <button type="button" class="secondary" data-remark-work-update ${currentParticipant ? "" : "disabled"}>Добавить запись о работе</button>
+              <button type="button" data-remark-resolve data-permission-disabled="${canResolve ? "false" : "true"}" ${!canResolve ? "disabled" : ""}>Устранено</button>
+            </div>
+          </div>
+          ${resolutionEvents.length ? `
+            <details class="resolution-events"><summary>История участников</summary>
+              ${resolutionEvents.map(event => `<p><strong>${escapeHtml(event.name || "Сотрудник")}</strong> · ${escapeHtml(event.action === "removed" ? "убрал участника" : event.action === "completed" ? "завершил устранение" : "добавил участника")} · ${escapeHtml(dateTimeHuman(event.at || ""))}</p>`).join("")}
+            </details>
+          ` : ""}
+        </section>
+      `}
+    </article>
+  `;
 }
 
 function commentOwnerText(item) {
@@ -7653,7 +7807,7 @@ function canOpenEquipmentDate(date) {
 }
 
 function hasOpenCommentRecord(rec) {
-  return ["to"].some(kind => hasAnyComment(rec?.[kind]) && !rec[kind].resolved);
+  return ["to"].some(kind => openRemarkEntries(rec?.[kind] || {}).length > 0);
 }
 
 function isActiveRequestSignal(req) {
@@ -7706,38 +7860,101 @@ function hasOpenCommentEquipment(equipmentId) {
 }
 
 function openCommentCount() {
-  return visibleEquipment().filter(eq => hasOpenCommentEquipment(eq.id)).length;
+  return allOpenCommentTargets().length;
 }
 
-function firstOpenCommentTarget() {
-  const visibleIds = new Set(visibleEquipment().map(eq => String(eq.id)));
+function remarksSectionLabel() {
+  return "Предупреждения";
+}
+
+function remarkVisibleToCurrentRole(eq) {
+  if (!eq) return false;
+  if (["shop", "operator"].includes(profile?.role)) return Boolean(profile?.area) && eq.area === profile.area;
+  if (["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(profile?.role)) return true;
+  return visibleEquipment().some(item => Number(item.id) === Number(eq.id));
+}
+
+function allOpenCommentTargets() {
   return Object.entries(state.checks)
     .flatMap(([k, rec]) => {
       const [equipmentId, nodeIndex, date] = k.split(":");
-      if (!visibleIds.has(String(equipmentId))) return [];
-      return ["to"]
-        .filter(kind => hasOpenCommentRecord({ [kind]: rec?.[kind] }))
-        .map(kind => ({
+      const eq = equipmentById(Number(equipmentId));
+      if (!remarkVisibleToCurrentRole(eq)) return [];
+      return openRemarkEntries(rec?.to || {}).map(entry => ({
           equipmentId: Number(equipmentId),
           nodeIndex: Number(nodeIndex),
           date,
-          kind
+          kind: "to",
+          remarkId: entry.id,
+          text: entry.text || "",
+          author: commentEntryAuthor(entry),
+          areaName: eq?.area || "",
+          equipmentName: eq?.name || `Оборудование ${equipmentId}`,
+          nodeName: eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`,
+          at: entry.at || ""
         }));
     })
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || a.equipmentId - b.equipmentId || a.nodeIndex - b.nodeIndex)[0] || null;
+    .sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)) || a.equipmentId - b.equipmentId || a.nodeIndex - b.nodeIndex);
 }
 
-function openFirstComment() {
-  const target = firstOpenCommentTarget();
-  if (!target) return;
-  current.equipmentId = target.equipmentId;
-  current.nodeIndex = target.nodeIndex;
-  current.nodeDetailIndex = target.nodeIndex;
-  current.date = target.date;
-  current.kind = target.kind;
-  current.scrollToCommentNode = target.kind === "to" ? target.nodeIndex : null;
-  current.scrollToMainComment = target.kind !== "to";
-  show("checklist");
+function openAllRemarkCards() {
+  const targets = allOpenCommentTargets();
+  if (!targets.length) {
+    showAppToast("Открытых замечаний нет");
+    return;
+  }
+  document.querySelector(".open-remarks-overlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.className = "request-archive-overlay open-remarks-overlay";
+  overlay.innerHTML = `
+    <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true">
+      <header>
+        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>Выберите любое замечание — очереди нет. Открыто: ${targets.length}</span></div>
+        <button type="button" data-close-open-remarks>Закрыть</button>
+      </header>
+      <div class="request-archive-dialog-list open-remarks-list">
+        ${targets.map((target, index) => `
+          <article class="open-remark-item" data-open-remark-id="${escapeHtml(target.remarkId)}">
+            <header>
+              <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
+              <span class="open-remark-status">Открыто</span>
+            </header>
+            <p>${escapeHtml(target.text)}</p>
+            <footer>
+              <small>${escapeHtml(target.author)}</small>
+              <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Перейти в узел и устранить</button>
+            </footer>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+  const close = () => overlay.remove();
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) close();
+  });
+  overlay.querySelector("[data-close-open-remarks]")?.addEventListener("click", close);
+  overlay.querySelectorAll("[data-open-remark-card]").forEach(button => button.addEventListener("click", () => {
+    current.equipmentId = Number(button.dataset.equipmentId);
+    current.nodeIndex = Number(button.dataset.nodeIndex);
+    current.nodeDetailIndex = Number(button.dataset.nodeIndex);
+    current.date = button.dataset.date || todayISO();
+    current.kind = "to";
+    current.scrollToCommentNode = current.nodeIndex;
+    current.scrollToRemarkId = button.dataset.remarkId || "";
+    current.returnToRemarkListAfterResolve = true;
+    close();
+    show("checklist");
+  }));
+  document.body.append(overlay);
+}
+
+function returnToOpenRemarkCards() {
+  current.returnToRemarkListAfterResolve = false;
+  current.scrollToRemarkId = "";
+  if (nav[nav.length - 1] === "equipment") nav.pop();
+  show("equipment", false);
+  window.setTimeout(() => openAllRemarkCards(), 50);
 }
 
 function show(view, push = true) {
@@ -8552,10 +8769,10 @@ function renderEquipment() {
   current.year = today.getFullYear();
   const count = openCommentCount();
   updateRoleBadges();
-  ui.alertCounter.innerHTML = `<span>Замечания</span><strong>${count}</strong>`;
+  ui.alertCounter.innerHTML = `<span>${escapeHtml(remarksSectionLabel())}</span><strong>${count}</strong>`;
   ui.alertCounter.classList.toggle("request-alert", count > 0);
   ui.alertCounter.classList.toggle("clickable", count > 0);
-  ui.alertCounter.title = count > 0 ? "Открыть первое замечание" : "Открытых замечаний нет";
+  ui.alertCounter.title = count > 0 ? `Открыть все ${remarksSectionLabel().toLowerCase()} отдельными карточками` : "Открытых замечаний нет";
   ui.equipmentList.innerHTML = "";
   const equipment = visibleEquipment();
   if (!equipment.length) {
@@ -8953,7 +9170,7 @@ function renderNodeWalkthrough(eq) {
   eq.nodes.forEach((nodeName, index) => {
     const item = getRecord(eq.id, index, current.date)?.to || blankKind();
     const activeStop = activeDowntime(eq.id, index);
-    const hasUnresolvedRemark = hasAnyComment(item) && !item.resolved;
+    const hasUnresolvedRemark = openRemarkEntries(item).length > 0;
     const nodeDone = isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key);
     if (selectedNodeIndex === null) {
       const row = document.createElement("div");
@@ -9015,85 +9232,15 @@ function renderNodeWalkthrough(eq) {
     const canEditThisComment = canEditComment(item);
     const ownerText = commentOwnerText(item);
     const allCommentEntries = visibleCommentEntries(item, !sameCommentAuthor(item));
-    const commentEntries = allCommentEntries.filter(entry => !isDowntimeCommentEntry(entry)).reverse();
+    const remarkEntries = ensureRemarkEntries(item).slice().reverse();
     const downtimeCommentEntries = allCommentEntries.filter(isDowntimeCommentEntry).reverse();
-    const resolutionText = commentResolutionText(item);
-    const resolvedRole = ROLE_ACCESS[item.resolvedByRole]?.label || item.resolvedByRole || "";
-    const resolvedByText = item.resolvedByName ? `${item.resolvedByName}${resolvedRole ? ` (${resolvedRole})` : ""}` : resolvedRole;
-    const resolutionBlock = item.resolvedAt ? `
-      <div class="comment-resolution-detail">
-        <strong>Устранил: ${escapeHtml(resolvedByText || "Сотрудник")}</strong>
-        ${resolutionText ? `<span>${escapeHtml(resolutionText)}</span>` : ""}
-        ${item.resolvedComment ? `<p>${escapeHtml(item.resolvedComment)}</p>` : ""}
-        ${item.resolvedPhoto ? `<img src="${item.resolvedPhoto}" alt="Фото устранения">` : ""}
-      </div>
-    ` : "";
     const currentAuthorText = profile?.name
       ? `${profile.name} (${ROLE_ACCESS[profile?.role]?.label || profile?.role || "Сотрудник"})`
       : ROLE_ACCESS[profile?.role]?.label || "Сотрудник";
-    const participants = resolutionParticipants(item);
-    const participantKeys = new Set(participants.map(participant => participant.key));
-    const currentParticipant = isResolutionParticipant(item);
-    const canManageParticipants = canManageResolutionParticipants(item);
-    const participantOptions = eligibleResolutionUsers(eq).filter(user => !participantKeys.has(user.key));
-    const resolutionUpdates = (Array.isArray(item.resolutionUpdates) ? item.resolutionUpdates : []).slice().reverse();
-    const resolutionEvents = (Array.isArray(item.resolutionEvents) ? item.resolutionEvents : []).slice().reverse();
-    const resolutionStartedText = item.resolutionStartedAt
-      ? `В работе с ${dateTimeHuman(item.resolutionStartedAt)}`
-      : "Можно устранять вместе";
-    const collaborationBlock = hasUnresolvedRemark ? `
-      <section class="remark-collaboration">
-        <div class="remark-collaboration-head">
-          <div><strong>Совместное устранение</strong><span>${escapeHtml(resolutionStartedText)}</span></div>
-          ${!currentParticipant ? `<button type="button" data-resolution-join="${index}">${participants.length ? "Присоединиться" : "Начать устранение"}</button>` : `<span class="resolution-participating">Вы участвуете</span>`}
-        </div>
-        <div class="resolution-participants">
-          ${participants.length ? participants.map(participant => `
-            <span class="resolution-participant">
-              <span><strong>${escapeHtml(participant.name)}</strong><small>${escapeHtml(ROLE_ACCESS[participant.role]?.label || participant.role || "Сотрудник")}</small></span>
-              ${canManageParticipants && participant.key !== item.resolutionLeadKey ? `<button type="button" data-resolution-remove="${escapeHtml(participant.key)}" aria-label="Убрать участника">×</button>` : ""}
-            </span>
-          `).join("") : `<span class="resolution-empty">Участники ещё не добавлены</span>`}
-        </div>
-        ${canManageParticipants && participantOptions.length ? `
-          <div class="resolution-add-row">
-            <select data-resolution-user>
-              <option value="">Выберите участника</option>
-              ${participantOptions.map(user => `<option value="${escapeHtml(user.key)}">${escapeHtml(user.name)} · ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "Сотрудник")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</option>`).join("")}
-            </select>
-            <button type="button" data-resolution-add="${index}">Добавить</button>
-          </div>
-        ` : ""}
-        ${resolutionUpdates.length ? `
-          <div class="resolution-updates">
-            <strong>Что сделано</strong>
-            ${resolutionUpdates.map(entry => `
-              <div class="resolution-update">
-                <strong>${escapeHtml(resolutionUpdateAuthor(entry))}</strong>
-                <small>${escapeHtml(dateTimeHuman(entry.at || ""))}</small>
-                <p>${escapeHtml(entry.text || "")}</p>
-                ${entry.photo ? `<img src="${entry.photo}" alt="Фото выполненной работы">` : ""}
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
-        ${resolutionEvents.length ? `
-          <details class="resolution-events"><summary>История участников</summary>
-            ${resolutionEvents.map(event => `<p><strong>${escapeHtml(event.name || "Сотрудник")}</strong> · ${escapeHtml(event.action === "removed" ? "убрал участника" : event.action === "completed" ? "завершил устранение" : "добавил участника")} · ${escapeHtml(dateTimeHuman(event.at || ""))}</p>`).join("")}
-          </details>
-        ` : ""}
-      </section>
-    ` : "";
-    const commentHistory = commentEntries.length ? `
-      <div class="comment-history">
-        <strong class="comment-history-title">Устранение замечаний</strong>
-        ${commentEntries.map((entry, entryIndex) => `
-          <div class="comment-entry" ${entryIndex === 0 ? `data-node-first-comment="${index}" tabindex="-1"` : ""}>
-            <strong>${escapeHtml(commentEntryAuthor(entry))}</strong>
-            <p>${escapeHtml(entry.text)}</p>
-            ${entry.photo ? `<img src="${entry.photo}" alt="Фото комментария">` : ""}
-          </div>
-        `).join("")}
+    const remarkCardsBlock = remarkEntries.length ? `
+      <div class="remark-cards" data-node-first-comment="${index}" tabindex="-1">
+        <div class="remark-cards-title"><strong>Все замечания</strong><span>Открыто: ${remarkEntries.filter(entry => !entry.resolved).length}</span></div>
+        ${remarkEntries.map((entry, entryIndex) => remarkCardHtml(eq, item, index, entry, entryIndex)).join("")}
       </div>
     ` : "";
     const downtimeCommentHistory = downtimeCommentEntries.length ? `
@@ -9109,9 +9256,9 @@ function renderNodeWalkthrough(eq) {
     ` : "";
     const productionStopActive = activeStop?.type === "production";
     const fixedButtonLabel = productionStopActive ? "Устранить" : waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
-    const fixedButtonDisabled = !canEditChecklist() || (!hasUnresolvedRemark && !productionStopActive) || (waitingShopFix && !canConfirmInstallation()) || (hasUnresolvedRemark && !canCompleteCollaborativeResolution(item));
-    const submitRemarkDisabled = !canEditThisComment || hasUnresolvedRemark;
-    const submitRemarkLabel = hasUnresolvedRemark ? "Ждёт устранения" : "Отправить";
+    const fixedButtonDisabled = !canEditChecklist() || !productionStopActive;
+    const submitRemarkDisabled = !canEditThisComment;
+    const submitRemarkLabel = "Отправить";
     const downtimeActiveBlock = activeStop ? `
       <div class="downtime-active" data-node-downtime="${index}" tabindex="-1">
         <strong>Простой идет: ${durationText(downtimeDurationMs(activeStop))}</strong>
@@ -9136,12 +9283,9 @@ function renderNodeWalkthrough(eq) {
         </div>
         <div class="node-walk-actions node-comment-actions">
           <button type="button" data-node-submit-comment="${index}" ${submitRemarkDisabled ? "disabled" : ""}>${submitRemarkLabel}</button>
-          ${hasUnresolvedRemark ? `<button type="button" class="secondary" data-node-work-update="${index}" ${currentParticipant ? "" : "disabled"}>Добавить запись о работе</button>` : ""}
-          <button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>
+          ${productionStopActive ? `<button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>` : ""}
         </div>
-        ${collaborationBlock}
-        ${resolutionBlock}
-        ${commentHistory}
+        ${remarkCardsBlock}
         ${downtimeCommentHistory}
       </div>
       <label class="node-walk-check">
@@ -9181,24 +9325,76 @@ function renderNodeWalkthrough(eq) {
       const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
       if (textarea) textarea.value = reminderItems.join("\n");
     });
-    row.querySelector("[data-resolution-join]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-      await publishRemarkCollaborationAction(eq.id, index, current.date, "start");
-      renderNodeWalkthrough(equipmentById(eq.id));
-    }, participants.length ? "Присоединяем..." : "Начинаем..."));
-    row.querySelector("[data-resolution-add]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-      const select = row.querySelector("[data-resolution-user]");
-      const participant = eligibleResolutionUsers(eq).find(user => user.key === select?.value);
-      if (!participant) {
-        select?.focus();
-        return;
-      }
-      await publishRemarkCollaborationAction(eq.id, index, current.date, "add", { participant });
-      renderNodeWalkthrough(equipmentById(eq.id));
-    }, "Добавляем..."));
-    row.querySelectorAll("[data-resolution-remove]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-      await publishRemarkCollaborationAction(eq.id, index, current.date, "remove", { participantKey: event.currentTarget.dataset.resolutionRemove || "" });
-      renderNodeWalkthrough(equipmentById(eq.id));
-    }, "Убираем...")));
+    row.querySelectorAll("[data-remark-card]").forEach(card => {
+      const remarkId = card.dataset.remarkCard || "";
+      const remarkEntry = ensureRemarkEntries(item).find(entry => entry.id === remarkId);
+      if (!remarkEntry || remarkEntry.resolved) return;
+      const photoKey = `${key(eq.id, index, current.date)}:${remarkId}`;
+      card.querySelector("[data-remark-join]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "start", { remarkId });
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, resolutionParticipants(remarkEntry).length ? "Присоединяем..." : "Начинаем..."));
+      card.querySelector("[data-remark-add]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        const select = card.querySelector("[data-remark-user]");
+        const participant = eligibleResolutionUsers(eq).find(user => user.key === select?.value);
+        if (!participant) {
+          select?.focus();
+          return;
+        }
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "add", { remarkId, participant });
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Добавляем..."));
+      card.querySelectorAll("[data-remark-remove]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "remove", { remarkId, participantKey: event.currentTarget.dataset.remarkRemove || "" });
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Убираем...")));
+      card.querySelector("[data-remark-action-photo]")?.addEventListener("change", async event => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+          const photo = await readPhotoFile(file);
+          remarkResolutionPhotoDrafts.set(photoKey, photo);
+          const preview = card.querySelector(".remark-action-preview");
+          if (preview) preview.innerHTML = `<img src="${photo}" alt="Фото работы"><button type="button" data-clear-remark-photo>Удалить фото</button>`;
+        } catch {
+          window.alert("Не удалось обработать фото. Выберите его ещё раз.");
+        }
+      });
+      card.addEventListener("click", event => {
+        if (!event.target.closest("[data-clear-remark-photo]")) return;
+        remarkResolutionPhotoDrafts.delete(photoKey);
+        const preview = card.querySelector(".remark-action-preview");
+        if (preview) preview.innerHTML = "";
+      });
+      card.querySelector("[data-remark-work-update]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        const textBox = card.querySelector("[data-remark-action-text]");
+        const text = String(textBox?.value || "").trim();
+        if (!text) {
+          textBox?.focus();
+          return;
+        }
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "update", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
+        remarkResolutionPhotoDrafts.delete(photoKey);
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Сохраняем..."));
+      card.querySelector("[data-remark-resolve]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        const textBox = card.querySelector("[data-remark-action-text]");
+        const text = String(textBox?.value || "").trim();
+        if (!text) {
+          textBox?.focus();
+          return;
+        }
+        if (!window.confirm("Устранение этого замечания полностью завершено?")) return;
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "resolve", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
+        remarkResolutionPhotoDrafts.delete(photoKey);
+        if (current.returnToRemarkListAfterResolve) {
+          returnToOpenRemarkCards();
+        } else {
+          renderNodeWalkthrough(equipmentById(eq.id));
+        }
+      }, "Публикуется..."));
+    });
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
       const liveItem = record(eq.id, index, current.date).to;
@@ -9207,7 +9403,7 @@ function renderNodeWalkthrough(eq) {
       saveState({ remote: false });
       if (event.target.value.trim()) event.target.classList.remove("comment-required-blink");
       const submitButton = row.querySelector(`[data-node-submit-comment="${index}"]`);
-      if (submitButton && !hasAnyComment(liveItem) && !liveItem.resolved) {
+      if (submitButton) {
         submitButton.disabled = false;
         submitButton.textContent = "Отправить";
       }
@@ -9216,9 +9412,6 @@ function renderNodeWalkthrough(eq) {
       await nodePhotoProcessing;
       const liveItem = record(eq.id, index, current.date).to;
       if (!canEditComment(liveItem)) return;
-      if (hasAnyComment(liveItem) && !liveItem.resolved) {
-        return;
-      }
       const text = row.querySelector("[data-node-comment]").value;
       if (!text.trim()) {
         const commentBox = row.querySelector("[data-node-comment]");
@@ -9239,7 +9432,7 @@ function renderNodeWalkthrough(eq) {
         if (sendChoice.downtime) openDowntimeFromRemark(eq.id, index, text, sendChoice.downtimeType);
         window.PPRModules?.comments?.clearComposer?.(liveItem);
         liveItem.nodeDraftText = "";
-        liveItem.resolved = false;
+        syncItemRemarkSummary(liveItem);
         saveState({ remote: false });
         renderNodeWalkthrough(equipmentById(eq.id));
         await publishNodeUpdateNow(eq.id, index, current.date);
@@ -9255,28 +9448,7 @@ function renderNodeWalkthrough(eq) {
       const sendChoice = await askCommentSubmit();
       await submitNodeText(button, sendChoice);
     });
-    row.querySelector("[data-node-work-update]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-      await nodePhotoProcessing;
-      const liveItem = record(eq.id, index, current.date).to;
-      if (!isResolutionParticipant(liveItem)) return;
-      const commentBox = row.querySelector("[data-node-comment]");
-      const text = String(commentBox?.value || "").trim();
-      if (!text) {
-        commentBox?.classList.remove("comment-required-blink");
-        if (commentBox) void commentBox.offsetWidth;
-        commentBox?.classList.add("comment-required-blink");
-        commentBox?.scrollIntoView({ behavior: "smooth", block: "center" });
-        commentBox?.focus();
-        return;
-      }
-      const photo = liveItem.commentPhoto || "";
-      liveItem.nodeDraftText = "";
-      liveItem.commentPhoto = "";
-      persistStateLocally(state);
-      await publishRemarkCollaborationAction(eq.id, index, current.date, "update", { text, photo });
-      renderNodeWalkthrough(equipmentById(eq.id));
-    }, "Сохраняем..."));
-    row.querySelector("[data-node-fixed]").addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+    row.querySelector("[data-node-fixed]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditChecklist()) return;
       const liveItem = record(eq.id, index, current.date).to;
       const commentBox = row.querySelector("[data-node-comment]");
@@ -9431,10 +9603,14 @@ function renderNodeWalkthrough(eq) {
   }
   if (current.scrollToCommentNode !== null && current.scrollToCommentNode !== undefined) {
     const targetIndex = current.scrollToCommentNode;
+    const targetRemarkId = current.scrollToRemarkId;
     current.scrollToCommentNode = null;
+    current.scrollToRemarkId = "";
     window.setTimeout(() => {
       const row = list.querySelector(`[data-node-walk-index="${targetIndex}"]`);
-      const target = row?.querySelector("[data-node-first-comment]") || row?.querySelector("[data-node-comment]");
+      const target = (targetRemarkId ? row?.querySelector(`[data-remark-card="${CSS.escape(targetRemarkId)}"]`) : null)
+        || row?.querySelector("[data-node-first-comment]")
+        || row?.querySelector("[data-node-comment]");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
       target?.classList.add("focus-comment");
       if (!target?.disabled) target?.focus();
@@ -9447,9 +9623,11 @@ function nodeWalkStatusText(item) {
   if (item.productionDirectorApproved && !item.accountingWrittenOff && !item.done) return "Подтверждено директором производства. Ждёт ответственного";
   if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "Установка подтверждена. Ждёт директора производства";
   if (item.mechanicFixed && !item.resolved) return "Устранено. Ждёт подтверждения начальника цеха/инженера";
-  if (item.resolved) return commentResolutionText(item) || "Замечание закрыто";
+  const openRemarks = openRemarkEntries(item).length;
+  if (openRemarks) return `Открытых замечаний: ${openRemarks}`;
+  if (item.resolved) return commentResolutionText(item) || "Замечания закрыты";
   if (String(item.nodeDraftText || "").trim() || item.commentPhoto) return "Черновик сохранён. Нажмите «Отправить»";
-  if (hasAnyComment(item)) return "Есть замечание. Ждёт устранения";
+  if (hasAnyComment(item)) return "Замечания закрыты";
   return "Замечаний нет";
 }
 
@@ -13887,6 +14065,10 @@ function dateTimeHuman(iso) {
 }
 
 function goBack() {
+  if (current.view === "checklist" && current.returnToRemarkListAfterResolve) {
+    returnToOpenRemarkCards();
+    return;
+  }
   const previous = nav.pop() || homeViewForProfile(profile?.role);
   show(previous, false);
 }
@@ -14013,7 +14195,7 @@ ui.engineerReportPrint?.addEventListener("click", () => {
   printEngineerMonthlyReport(current.engineerReportMonth);
 });
 
-ui.alertCounter?.addEventListener("click", openFirstComment);
+ui.alertCounter?.addEventListener("click", openAllRemarkCards);
 
 ui.createTmcRequestButton?.addEventListener("click", () => {
   show("requestCreate");
@@ -14336,7 +14518,6 @@ document.addEventListener("focusout", () => {
     if (backgroundRenderPending && !isUserEditingForm() && userApprovalDrafts.size === 0) scheduleRender();
   }, 800);
 });
-
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     serviceWorkerUpdateReady = true;

@@ -665,12 +665,8 @@ function openRemarkKeysServer(db = readDb()) {
   const keys = new Set();
   for (const [recordKey, record] of Object.entries(db.checks || {})) {
     const item = record?.to;
-    if (!item || item.resolved) continue;
-    const hasComment = Boolean(
-      String(item.comment || item.commentPhoto || "").trim()
-      || (Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
-    );
-    if (hasComment) keys.add(recordKey);
+    if (!item) continue;
+    ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => keys.add(`${recordKey}|${entry.id}`));
   }
   return keys;
 }
@@ -753,6 +749,63 @@ function resolutionParticipantsServer(item = {}) {
     .filter(participant => participant.key && !seen.has(participant.key) && seen.add(participant.key));
 }
 
+function isDowntimeCommentEntryServer(entry = {}) {
+  const text = String(entry.text || "").trim();
+  return entry.type === "downtime" || text.startsWith("Пуск:") || text.startsWith("Стоп:");
+}
+
+function stableRemarkIdServer(entry = {}) {
+  if (entry.id) return String(entry.id);
+  const source = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo]
+    .map(value => String(value || ""))
+    .join("\u0001");
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `remark:${String(entry.at || "legacy")}:${(hash >>> 0).toString(36)}`;
+}
+
+const REMARK_COLLABORATION_FIELDS_SERVER = [
+  "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
+  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants"
+];
+
+function ensureRemarkEntriesServer(item = {}) {
+  const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
+    .filter(entry => entry && !isDowntimeCommentEntryServer(entry) && String(entry.text || entry.photo || "").trim());
+  entries.forEach(entry => {
+    entry.id ||= stableRemarkIdServer(entry);
+    if (typeof entry.resolved !== "boolean") entry.resolved = Boolean(item.resolved);
+  });
+  const legacyTarget = entries.find(entry => !entry.resolved);
+  if (legacyTarget && REMARK_COLLABORATION_FIELDS_SERVER.some(field => item[field] !== undefined)) {
+    REMARK_COLLABORATION_FIELDS_SERVER.forEach(field => {
+      if (legacyTarget[field] === undefined && item[field] !== undefined) legacyTarget[field] = item[field];
+      delete item[field];
+    });
+  }
+  return entries;
+}
+
+function syncItemRemarkSummaryServer(item = {}) {
+  const entries = ensureRemarkEntriesServer(item);
+  if (!entries.length) return;
+  const allResolved = entries.every(entry => entry.resolved);
+  item.resolved = allResolved;
+  if (!allResolved) {
+    item.resolvedAt = "";
+    return;
+  }
+  const latest = entries.slice().sort((a, b) => String(b.resolvedAt || "").localeCompare(String(a.resolvedAt || "")))[0] || {};
+  item.resolvedAt = latest.resolvedAt || item.resolvedAt || "";
+  item.resolvedByName = latest.resolvedByName || item.resolvedByName || "";
+  item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
+  item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
+  item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
+}
+
 function subscriptionMatchesResolutionParticipant(subscriptionEntry, participant) {
   const subscriptionProfile = subscriptionEntry?.profile || {};
   return resolutionUserKeyServer(subscriptionProfile) === resolutionUserKeyServer(participant);
@@ -762,14 +815,11 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
   let count = 0;
   for (const record of Object.values(db.checks || {})) {
     const item = record?.to;
-    if (!item || item.resolved) continue;
-    const hasComment = Boolean(
-      String(item.comment || item.commentPhoto || "").trim()
-      || (Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
-    );
-    if (!hasComment) continue;
-    const participants = resolutionParticipantsServer(item);
-    if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+    if (!item) continue;
+    ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => {
+      const participants = resolutionParticipantsServer(entry);
+      if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+    });
   }
   return count;
 }
@@ -1306,8 +1356,19 @@ function mergeCommentLogs(current = [], incoming = []) {
     const brokenText = /^\?{3,}$/.test(String(entry.text || "").trim());
     const brokenName = /^[?\s]{3,}$/.test(String(entry.name || "").trim());
     if (brokenText && brokenName) continue;
-    const key = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
-    map.set(key, entry);
+    const key = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
+    const previous = map.get(key) || {};
+    const next = { ...previous, ...entry };
+    if (previous.resolved === true) {
+      next.resolved = true;
+      ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto", "resolutionEvents", "resolutionCompletedParticipants"].forEach(field => {
+        if (previous[field] !== undefined) next[field] = previous[field];
+      });
+    } else if (entry.resolved === true) {
+      next.resolved = false;
+      ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto"].forEach(field => delete next[field]);
+    }
+    map.set(key, next);
   }
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
@@ -1323,6 +1384,7 @@ function mergeCheckRecord(current = {}, incoming = {}) {
     ...baseTo,
     commentLog: mergeCommentLogs(currentTo.commentLog, incomingTo.commentLog)
   };
+  syncItemRemarkSummaryServer(next.to);
   const timestamps = [current.updatedAt, cleanIncoming.updatedAt, currentTo.updatedAt, incomingTo.updatedAt]
     .filter(Boolean)
     .sort();
@@ -2119,7 +2181,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const actor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !actor.key || !allowedRoles.has(actor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -2129,26 +2191,30 @@ async function handleApi(req, res, pathname, url) {
       const db = readDb();
       const record = db.checks?.[recordKey];
       const item = record?.to;
-      const hasComment = Boolean(
-        String(item?.comment || item?.commentPhoto || "").trim()
-        || (Array.isArray(item?.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
-      );
-      if (!item || item.resolved || !hasComment) return { error: "remark_not_open" };
+      if (!item) return { error: "remark_not_open" };
+      const remarkId = String(body.remarkId || "").trim();
+      const remarks = ensureRemarkEntriesServer(item);
+      const remark = remarks.find(entry => entry.id === remarkId);
+      if (!remark || remark.resolved) return { error: "remark_not_open" };
+      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === actor.key);
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== actor.role) {
+        return { error: "remark_actor_invalid" };
+      }
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
-      let participants = resolutionParticipantsServer(item);
+      let participants = resolutionParticipantsServer(remark);
       let notifyParticipants = [];
       let pushTitle = "ALKZ — совместное устранение";
       let pushBody = "Обновлена общая карточка замечания";
       const actorIsParticipant = participants.some(participant => participant.key === actor.key);
-      const canManage = ["editor", "engineer", "shop"].includes(actor.role) || item.resolutionLeadKey === actor.key;
-      item.resolutionEvents = Array.isArray(item.resolutionEvents) ? item.resolutionEvents : [];
-      item.resolutionUpdates = Array.isArray(item.resolutionUpdates) ? item.resolutionUpdates : [];
+      const canManage = ["editor", "engineer", "shop"].includes(actor.role) || remark.resolutionLeadKey === actor.key;
+      remark.resolutionEvents = Array.isArray(remark.resolutionEvents) ? remark.resolutionEvents : [];
+      remark.resolutionUpdates = Array.isArray(remark.resolutionUpdates) ? remark.resolutionUpdates : [];
 
       if (action === "start") {
         if (!actorIsParticipant) {
           participants.push(actor);
-          item.resolutionEvents.push({
+          remark.resolutionEvents.push({
             id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
             action: "added",
             actorKey: actor.key,
@@ -2159,9 +2225,9 @@ async function handleApi(req, res, pathname, url) {
             at: now
           });
         }
-        item.resolutionLeadKey ||= actor.key;
-        item.resolutionLeadName ||= actor.name;
-        item.resolutionStartedAt ||= now;
+        remark.resolutionLeadKey ||= actor.key;
+        remark.resolutionLeadName ||= actor.name;
+        remark.resolutionStartedAt ||= now;
       }
 
       if (action === "add") {
@@ -2177,7 +2243,7 @@ async function handleApi(req, res, pathname, url) {
           notifyParticipants = [participant];
           pushTitle = "Вас добавили к устранению";
           pushBody = "Откройте ALKZ — работа ведётся в общей карточке замечания";
-          item.resolutionEvents.push({
+          remark.resolutionEvents.push({
             id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
             action: "added",
             actorKey: actor.key,
@@ -2188,17 +2254,17 @@ async function handleApi(req, res, pathname, url) {
             at: now
           });
         }
-        item.resolutionStartedAt ||= now;
+        remark.resolutionStartedAt ||= now;
       }
 
       if (action === "remove") {
         if (!canManage) return { error: "remark_participant_manage_forbidden" };
         const participantKey = String(body.participantKey || "").trim();
-        if (!participantKey || participantKey === item.resolutionLeadKey) return { error: "remark_participant_remove_forbidden" };
+        if (!participantKey || participantKey === remark.resolutionLeadKey) return { error: "remark_participant_remove_forbidden" };
         const removed = participants.find(participant => participant.key === participantKey);
         participants = participants.filter(participant => participant.key !== participantKey);
         if (removed) {
-          item.resolutionEvents.push({
+          remark.resolutionEvents.push({
             id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
             action: "removed",
             actorKey: actor.key,
@@ -2216,7 +2282,7 @@ async function handleApi(req, res, pathname, url) {
         const text = String(body.text || "").trim().slice(0, 4000);
         const photo = String(body.photo || "");
         if (!text) return { error: "remark_update_text_required" };
-        item.resolutionUpdates.push({
+        remark.resolutionUpdates.push({
           id: `resolution-update:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
           text,
           photo: photo.length <= 12000000 ? photo : "",
@@ -2230,7 +2296,36 @@ async function handleApi(req, res, pathname, url) {
         pushBody = `${actor.name}: ${text.slice(0, 120)}`;
       }
 
-      item.resolutionParticipants = participants;
+      if (action === "resolve") {
+        if (participants.length && !actorIsParticipant && !["editor", "engineer", "shop"].includes(actor.role)) {
+          return { error: "remark_participant_required" };
+        }
+        const text = String(body.text || "").trim().slice(0, 4000);
+        const photo = String(body.photo || "");
+        if (!text) return { error: "remark_resolution_text_required" };
+        remark.resolved = true;
+        remark.resolvedAt = now;
+        remark.resolvedByKey = actor.key;
+        remark.resolvedByName = actor.name;
+        remark.resolvedByRole = actor.role;
+        remark.resolvedComment = text;
+        remark.resolvedPhoto = photo.length <= 12000000 ? photo : "";
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "completed",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          at: now
+        });
+        remark.resolutionCompletedParticipants = participants;
+        notifyParticipants = participants;
+        pushTitle = "Замечание устранено";
+        pushBody = `${actor.name}: ${text.slice(0, 120)}`;
+      }
+
+      remark.resolutionParticipants = participants;
+      syncItemRemarkSummaryServer(item);
       item.updatedAt = now;
       record.updatedAt = now;
       const changed = before !== JSON.stringify(record);
@@ -2244,12 +2339,13 @@ async function handleApi(req, res, pathname, url) {
         patch,
         notifyParticipants,
         pushTitle,
-        pushBody
+        pushBody,
+        remarkId
       };
     });
     if (result.error) {
       const status = result.error === "remark_not_open" ? 409 : result.error.includes("forbidden") || result.error === "remark_participant_required" ? 403 : 400;
-      sendJson(res, status, { ok: false, error: result.error });
+      sendJson(res, status, { ok: false, error: result.error, remainingMs: result.remainingMs || 0, availableAt: result.availableAt || "" });
       return true;
     }
     const stateVersion = result.changed
