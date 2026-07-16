@@ -4633,6 +4633,53 @@ body.editor-profile .warehouse-folders button.request-alert {
   transform: translate(-50%, 0);
 }
 
+.app-notification-prompt {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 3150;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  max-width: 540px;
+  margin: 0 auto;
+  border: 1px solid #b7d7e5;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, .97);
+  color: #14324a;
+  padding: 12px;
+  box-shadow: 0 18px 50px rgba(10, 47, 67, .24);
+}
+
+.app-notification-prompt div,
+.app-notification-prompt span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.app-notification-prompt span {
+  color: #557181;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.app-notification-prompt button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  background: #0f7b9c;
+  color: #fff;
+  padding: 9px 13px;
+  font-weight: 900;
+}
+
+.app-notification-prompt button:disabled {
+  background: #b4232f;
+}
+
 .downtime-active {
   grid-column: 1 / -1;
   display: grid;

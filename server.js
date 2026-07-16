@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 const QRCode = require("qrcode");
+const webPush = require("web-push");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -109,6 +110,8 @@ function normalizeDb(db) {
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
   db.translationCache ||= {};
+  db.pushNotifications ||= { subscriptions: [], vapid: null };
+  db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
   return db;
 }
 
@@ -656,6 +659,69 @@ function publicState(db = readDb()) {
     operationalResetAt: db.operationalResetAt || "",
     walkShiftCleanupVersion: db.walkShiftCleanupVersion || ""
   };
+}
+
+function openRemarkKeysServer(db = readDb()) {
+  const keys = new Set();
+  for (const [recordKey, record] of Object.entries(db.checks || {})) {
+    const item = record?.to;
+    if (!item || item.resolved) continue;
+    const hasComment = Boolean(
+      String(item.comment || item.commentPhoto || "").trim()
+      || (Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim()))
+    );
+    if (hasComment) keys.add(recordKey);
+  }
+  return keys;
+}
+
+function ensurePushConfig(db) {
+  db.pushNotifications ||= { subscriptions: [], vapid: null };
+  db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
+  if (!db.pushNotifications.vapid?.publicKey || !db.pushNotifications.vapid?.privateKey) {
+    db.pushNotifications.vapid = webPush.generateVAPIDKeys();
+    return true;
+  }
+  return false;
+}
+
+async function sendRemarkPushNotifications(added, total, origin = "") {
+  if (!added) return;
+  const db = readDb();
+  const configChanged = ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  if (!subscriptions.length) {
+    if (configChanged) writeDb(db, { action: "push_config_created" });
+    return;
+  }
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const payload = JSON.stringify({
+    type: "remark",
+    title: "ALKZ — новое замечание",
+    body: added === 1 ? `Открытых замечаний: ${total}` : `Новых замечаний: ${added}. Открытых: ${total}`,
+    badgeCount: total,
+    url: "/"
+  });
+  const expired = new Set();
+  await Promise.allSettled(subscriptions.map(async item => {
+    if (origin && item.clientId === origin) return;
+    try {
+      await webPush.sendNotification(item.subscription, payload, { TTL: 3600, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
+      else console.error(`Push notification failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(item => !expired.has(item.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  } else if (configChanged) {
+    writeDb(db, { action: "push_config_created" });
+  }
 }
 
 function hasMeaningfulCheckKindServer(item) {
@@ -1353,6 +1419,42 @@ function changedStatePatch(before = {}, after = {}) {
 }
 
 async function handleApi(req, res, pathname, url) {
+  if (pathname === "/api/push/public-key" && req.method === "GET") {
+    const db = readDb();
+    if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
+    sendJson(res, 200, { ok: true, publicKey: db.pushNotifications.vapid.publicKey });
+    return true;
+  }
+
+  if (pathname === "/api/push/subscribe" && req.method === "POST") {
+    const body = await readBody(req);
+    const subscription = body.subscription;
+    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      sendJson(res, 400, { ok: false, error: "invalid_push_subscription" });
+      return true;
+    }
+    const db = readDb();
+    ensurePushConfig(db);
+    const entry = {
+      subscription,
+      clientId: String(body.clientId || ""),
+      profile: {
+        id: String(body.profile?.id || ""),
+        role: String(body.profile?.role || ""),
+        area: String(body.profile?.area || "")
+      },
+      updatedAt: new Date().toISOString()
+    };
+    const subscriptions = db.pushNotifications.subscriptions || [];
+    const index = subscriptions.findIndex(item => item.subscription?.endpoint === subscription.endpoint);
+    if (index >= 0) subscriptions[index] = entry;
+    else subscriptions.push(entry);
+    db.pushNotifications.subscriptions = subscriptions.slice(-500);
+    writeDb(db, { action: "push_subscription_saved", clientId: entry.clientId, role: entry.profile.role });
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
   if (pathname === "/api/events" && req.method === "GET") {
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -1613,6 +1715,7 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const beforeState = JSON.stringify(publicState(db));
+      const beforeRemarkKeys = openRemarkKeysServer(db);
       const authenticatedRole = String(body.user?.authenticatedRole || body.user?.role || "");
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
@@ -1680,9 +1783,14 @@ async function handleApi(req, res, pathname, url) {
       migrateLegacyDirectorApprovals(db);
       const actionId = String(body.actionId || "");
       const afterState = publicState(db);
+      const afterRemarkKeys = openRemarkKeysServer(db);
+      let newRemarkCount = 0;
+      afterRemarkKeys.forEach(key => {
+        if (!beforeRemarkKeys.has(key)) newRemarkCount += 1;
+      });
       const changed = beforeState !== JSON.stringify(afterState);
       if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
-      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true };
+      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size };
     });
     if (result.error) {
       const status = result.error === "admin_required" ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;
@@ -1697,6 +1805,11 @@ async function handleApi(req, res, pathname, url) {
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.cleared ? result.fullState : result.patch, !result.cleared)
       : realtimeStateVersion();
+    if (result.newRemarkCount > 0) {
+      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin).catch(error => {
+        console.error(`Push delivery failed: ${error?.message || error}`);
+      });
+    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
     return true;
   }
@@ -1901,6 +2014,7 @@ async function handleApi(req, res, pathname, url) {
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      const beforeRemarkKeys = openRemarkKeysServer(db);
       const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
       db.checks ||= {};
       db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
@@ -1920,11 +2034,21 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         });
       }
-      return { actionId, changed, origin: body.clientId || "api", patch };
+      const afterRemarkKeys = openRemarkKeysServer(db);
+      let newRemarkCount = 0;
+      afterRemarkKeys.forEach(key => {
+        if (!beforeRemarkKeys.has(key)) newRemarkCount += 1;
+      });
+      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size };
     });
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.patch, true)
       : realtimeStateVersion();
+    if (result.newRemarkCount > 0) {
+      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin).catch(error => {
+        console.error(`Push delivery failed: ${error?.message || error}`);
+      });
+    }
     sendJson(res, 200, {
       ok: true,
       actionId: result.actionId,

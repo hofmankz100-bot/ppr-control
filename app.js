@@ -75,9 +75,10 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v170";
+const APP_VERSION = "v171";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
+const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
@@ -251,6 +252,7 @@ let remoteStateLoadPromise = null;
 let appNotificationKeys = new Set();
 let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
+let pushPublicKeyPromise = null;
 let requestSearchTimer = null;
 let renderTimer = null;
 let warehouseReconcileVersion = -1;
@@ -918,9 +920,68 @@ function applyAppIconBadge(count) {
 
 function appNotificationPermissionButton() {
   if (!("Notification" in window)) return "";
-  if (Notification.permission === "granted") return "";
+  if (Notification.permission === "granted" && localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1") return "";
   const denied = Notification.permission === "denied";
   return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications" ${denied ? "disabled" : ""}>${denied ? "Уведомления запрещены в настройках" : "🔔 Включить уведомления"}</button>`;
+}
+
+function pushApplicationServerKey(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(window.atob(base64), char => char.charCodeAt(0));
+}
+
+function preparePushPublicKey() {
+  pushPublicKeyPromise ||= fetch("/api/push/public-key", { cache: "no-store" })
+    .then(response => {
+      if (!response.ok) throw new Error("push_public_key_failed");
+      return response.json();
+    })
+    .then(result => String(result.publicKey || ""));
+  return pushPublicKeyPromise;
+}
+
+async function ensurePushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  const [registration, publicKey] = await Promise.all([navigator.serviceWorker.ready, preparePushPublicKey()]);
+  if (!publicKey) return false;
+  let subscription = await registration.pushManager.getSubscription();
+  subscription ||= await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: pushApplicationServerKey(publicKey)
+  });
+  const response = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      subscription: subscription.toJSON(),
+      clientId: CLIENT_ID,
+      profile: { id: profile?.id || "", role: profile?.role || "", area: profile?.area || "" }
+    })
+  });
+  if (!response.ok) return false;
+  localStorage.setItem(PUSH_SUBSCRIPTION_KEY, "1");
+  return true;
+}
+
+function syncNotificationSetupPrompt() {
+  const existing = document.querySelector("#notificationSetupPrompt");
+  const pushReady = localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1";
+  if (!isProfileReady() || !("Notification" in window) || (Notification.permission === "granted" && pushReady)) {
+    existing?.remove();
+    return;
+  }
+  preparePushPublicKey().catch(() => {});
+  const denied = Notification.permission === "denied";
+  const prompt = existing || document.createElement("div");
+  prompt.id = "notificationSetupPrompt";
+  prompt.className = "app-notification-prompt";
+  prompt.innerHTML = `
+    <div><strong>Замечания со звуком</strong><span>${denied ? "Разрешите уведомления для ALKZ в настройках iPhone" : "Нажмите один раз, чтобы включить красный счётчик и звук"}</span></div>
+    <button type="button" ${denied ? "disabled" : ""}>${denied ? "Откройте настройки" : "Включить"}</button>
+  `;
+  if (!existing) document.body.append(prompt);
+  prompt.querySelector("button")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
 }
 
 async function requestAppNotificationPermission(button) {
@@ -936,8 +997,26 @@ async function requestAppNotificationPermission(button) {
   try {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
+      const pushEnabled = await ensurePushSubscription().catch(() => false);
       syncAppIconBadge();
-      showAppToast("Уведомления и счётчик на иконке ALKZ включены.");
+      playNotificationDingDong();
+      const remarks = openCommentCount();
+      if (!remarks) {
+        applyAppIconBadge(1);
+        window.setTimeout(() => syncAppIconBadge(), 12000);
+      }
+      const registration = await navigator.serviceWorker?.ready;
+      await registration?.showNotification("ALKZ — уведомления включены", {
+        body: remarks ? `Открытых замечаний: ${remarks}` : "Звук и красный счётчик готовы к работе",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: "alkz-notification-test",
+        renotify: true,
+        silent: false
+      });
+      showAppToast(pushEnabled
+        ? "Готово: звук включён, на иконке показана проверочная цифра."
+        : "Уведомления разрешены, но push не подключился. Нажмите «Включить» ещё раз.", pushEnabled ? "ok" : "error");
       renderProfile();
     } else {
       showAppToast("Без разрешения iPhone не покажет счётчик на иконке ALKZ.", "error");
@@ -2812,6 +2891,7 @@ function renderProfile() {
     localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
     location.reload();
   });
+  syncNotificationSetupPrompt();
 }
 
 
