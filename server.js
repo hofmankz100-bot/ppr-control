@@ -769,7 +769,12 @@ function stableRemarkIdServer(entry = {}) {
 
 const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
-  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants"
+  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants",
+  "resolutionPendingConfirmation", "resolutionSubmittedAt", "resolutionSubmittedByKey",
+  "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
+  "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
+  "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
+  "confirmedByName", "confirmedByRole"
 ];
 
 function ensureRemarkEntriesServer(item = {}) {
@@ -796,6 +801,7 @@ function syncItemRemarkSummaryServer(item = {}) {
   item.resolved = allResolved;
   if (!allResolved) {
     item.resolvedAt = "";
+    item.confirmedAt = "";
     return;
   }
   const latest = entries.slice().sort((a, b) => String(b.resolvedAt || "").localeCompare(String(a.resolvedAt || "")))[0] || {};
@@ -804,6 +810,58 @@ function syncItemRemarkSummaryServer(item = {}) {
   item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
   item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
   item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
+  item.resolvedDurationMs = Number(latest.resolvedDurationMs || item.resolvedDurationMs || 0);
+  item.confirmedAt = latest.confirmedAt || item.confirmedAt || "";
+  item.confirmedByName = latest.confirmedByName || item.confirmedByName || "";
+  item.confirmedByRole = latest.confirmedByRole || item.confirmedByRole || "";
+}
+
+const REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES_SERVER = new Set(["mechanic", "electrician", "operator"]);
+
+function approvedResolutionUsersServer(db) {
+  return (db.users || [])
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true)
+    .map(sanitizeResolutionParticipant);
+}
+
+function sameRemarkAuthorServer(user = {}, remark = {}) {
+  const userKey = resolutionUserKeyServer(user);
+  if (remark.authorKey && userKey === String(remark.authorKey)) return true;
+  return Boolean(remark.name && remark.role
+    && String(user.name || "").trim().toLowerCase() === String(remark.name).trim().toLowerCase()
+    && String(user.role || "") === String(remark.role));
+}
+
+function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
+  const users = approvedResolutionUsersServer(db);
+  const area = String(remark.confirmationArea || equipmentArea || "").trim().slice(0, 200);
+  if (remark.confirmationRequiredKey) {
+    return {
+      mode: "author",
+      role: String(remark.confirmationRequiredRole || remark.role || ""),
+      area,
+      users: users.filter(user => user.key === String(remark.confirmationRequiredKey))
+    };
+  }
+  if (remark.confirmationRequiredRole === "shop") {
+    return { mode: "shop", role: "shop", area, users: users.filter(user => user.role === "shop" && user.area === area) };
+  }
+  if (remark.confirmationRequiredRole === "engineer") {
+    return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
+  }
+  if (REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES_SERVER.has(remark.role)) {
+    const shopUsers = users.filter(user => user.role === "shop" && user.area === area);
+    if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
+    return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
+  }
+  return { mode: "author", role: String(remark.role || ""), area, users: users.filter(user => sameRemarkAuthorServer(user, remark)) };
+}
+
+function actorCanConfirmRemarkServer(actor, remark, rule) {
+  if (rule.mode === "shop") return actor.role === "shop" && actor.area === rule.area;
+  if (rule.mode === "engineer") return actor.role === "engineer";
+  if (remark.confirmationRequiredKey) return actor.key === remark.confirmationRequiredKey;
+  return sameRemarkAuthorServer(actor, remark);
 }
 
 function subscriptionMatchesResolutionParticipant(subscriptionEntry, participant) {
@@ -818,7 +876,10 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
     if (!item) continue;
     ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => {
       const participants = resolutionParticipantsServer(entry);
-      if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+      const subscriptionActor = sanitizeResolutionParticipant(subscriptionEntry?.profile || {});
+      const confirmationRule = entry.resolutionPendingConfirmation ? remarkConfirmationRuleServer(db, entry, entry.confirmationArea || "") : null;
+      const canConfirm = confirmationRule ? actorCanConfirmRemarkServer(subscriptionActor, entry, confirmationRule) : false;
+      if (canConfirm || !participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
     });
   }
   return count;
@@ -2181,7 +2242,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const actor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !actor.key || !allowedRoles.has(actor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -2200,6 +2261,8 @@ async function handleApi(req, res, pathname, url) {
       if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== actor.role) {
         return { error: "remark_actor_invalid" };
       }
+      if (remark.resolutionPendingConfirmation && !["confirm", "return"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
       let participants = resolutionParticipantsServer(remark);
@@ -2210,6 +2273,16 @@ async function handleApi(req, res, pathname, url) {
       const canManage = ["editor", "engineer", "shop"].includes(actor.role) || remark.resolutionLeadKey === actor.key;
       remark.resolutionEvents = Array.isArray(remark.resolutionEvents) ? remark.resolutionEvents : [];
       remark.resolutionUpdates = Array.isArray(remark.resolutionUpdates) ? remark.resolutionUpdates : [];
+      if (!remark.authorKey) {
+        const authorUser = (db.users || []).find(user => sameRemarkAuthorServer(user, remark));
+        if (authorUser) {
+          const author = sanitizeResolutionParticipant(authorUser);
+          remark.authorKey = author.key;
+          remark.authorId = author.id;
+          remark.authorEmployeeId = author.employeeId;
+          remark.authorPhone = author.phone;
+        }
+      }
 
       if (action === "start") {
         if (!actorIsParticipant) {
@@ -2303,25 +2376,98 @@ async function handleApi(req, res, pathname, url) {
         const text = String(body.text || "").trim().slice(0, 4000);
         const photo = String(body.photo || "");
         if (!text) return { error: "remark_resolution_text_required" };
-        remark.resolved = true;
-        remark.resolvedAt = now;
-        remark.resolvedByKey = actor.key;
-        remark.resolvedByName = actor.name;
-        remark.resolvedByRole = actor.role;
-        remark.resolvedComment = text;
-        remark.resolvedPhoto = photo.length <= 12000000 ? photo : "";
+        const equipmentArea = String(body.equipmentArea || "").trim().slice(0, 200);
+        const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
+        remark.resolved = false;
+        remark.resolvedAt = "";
+        remark.resolutionPendingConfirmation = true;
+        remark.resolutionSubmittedAt = now;
+        remark.resolutionSubmittedByKey = actor.key;
+        remark.resolutionSubmittedByName = actor.name;
+        remark.resolutionSubmittedByRole = actor.role;
+        remark.resolutionSubmittedComment = text;
+        remark.resolutionSubmittedPhoto = photo.length <= 12000000 ? photo : "";
+        remark.confirmationArea = confirmationRule.area;
+        remark.confirmationRequiredRole = confirmationRule.role;
+        remark.confirmationRequiredKey = confirmationRule.mode === "author" ? (remark.authorKey || confirmationRule.users[0]?.key || "") : "";
+        remark.confirmationRequiredName = confirmationRule.mode === "author" ? (remark.name || confirmationRule.users[0]?.name || "") : "";
+        remark.confirmedAt = "";
+        remark.confirmedByKey = "";
+        remark.confirmedByName = "";
+        remark.confirmedByRole = "";
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
-          action: "completed",
+          action: "submitted",
           actorKey: actor.key,
           name: actor.name,
           role: actor.role,
           at: now
         });
         remark.resolutionCompletedParticipants = participants;
-        notifyParticipants = participants;
-        pushTitle = "Замечание устранено";
+        notifyParticipants = confirmationRule.users;
+        pushTitle = "Устранение ждёт подтверждения";
         pushBody = `${actor.name}: ${text.slice(0, 120)}`;
+      }
+
+      if (action === "confirm") {
+        const confirmationRule = remarkConfirmationRuleServer(db, remark, String(body.equipmentArea || ""));
+        if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
+        const submittedAt = remark.resolutionSubmittedAt || now;
+        const createdMs = Date.parse(remark.at || "");
+        const submittedMs = Date.parse(submittedAt);
+        remark.resolved = true;
+        remark.resolvedAt = submittedAt;
+        remark.resolvedDurationMs = Number.isFinite(createdMs) && Number.isFinite(submittedMs) ? Math.max(0, submittedMs - createdMs) : 0;
+        remark.resolvedByKey = remark.resolutionSubmittedByKey || "";
+        remark.resolvedByName = remark.resolutionSubmittedByName || "";
+        remark.resolvedByRole = remark.resolutionSubmittedByRole || "";
+        remark.resolvedComment = remark.resolutionSubmittedComment || "";
+        remark.resolvedPhoto = remark.resolutionSubmittedPhoto || "";
+        remark.resolutionPendingConfirmation = false;
+        remark.confirmedAt = now;
+        remark.confirmedByKey = actor.key;
+        remark.confirmedByName = actor.name;
+        remark.confirmedByRole = actor.role;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "confirmed",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          at: now
+        });
+        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
+        notifyParticipants = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
+          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
+        pushTitle = "Устранение подтверждено";
+        pushBody = `${actor.name} подтвердил устранение`;
+      }
+
+      if (action === "return") {
+        const confirmationRule = remarkConfirmationRuleServer(db, remark, String(body.equipmentArea || ""));
+        if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
+        const reason = String(body.reason || "").trim().slice(0, 2000);
+        if (!reason) return { error: "remark_return_reason_required" };
+        remark.resolutionPendingConfirmation = false;
+        remark.resolutionReturnedAt = now;
+        remark.resolutionReturnedByKey = actor.key;
+        remark.resolutionReturnedByName = actor.name;
+        remark.resolutionReturnedByRole = actor.role;
+        remark.resolutionReturnReason = reason;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "returned",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          reason,
+          at: now
+        });
+        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
+        notifyParticipants = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
+          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
+        pushTitle = "Устранение возвращено на доработку";
+        pushBody = reason.slice(0, 120);
       }
 
       remark.resolutionParticipants = participants;
@@ -2344,7 +2490,9 @@ async function handleApi(req, res, pathname, url) {
       };
     });
     if (result.error) {
-      const status = result.error === "remark_not_open" ? 409 : result.error.includes("forbidden") || result.error === "remark_participant_required" ? 403 : 400;
+      const status = ["remark_not_open", "remark_awaiting_confirmation", "remark_not_awaiting_confirmation"].includes(result.error)
+        ? 409
+        : result.error.includes("forbidden") || result.error === "remark_participant_required" ? 403 : 400;
       sendJson(res, status, { ok: false, error: result.error, remainingMs: result.remainingMs || 0, availableAt: result.availableAt || "" });
       return true;
     }

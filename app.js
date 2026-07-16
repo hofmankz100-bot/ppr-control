@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v179";
+const APP_VERSION = "v180";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -3946,6 +3946,7 @@ function isResolutionParticipant(item, user = resolutionActor()) {
 
 function remarkNotificationVisibleToCurrentUser(item) {
   const participants = resolutionParticipants(item);
+  if (item?.resolutionPendingConfirmation && canCurrentUserConfirmRemark(item)) return true;
   return participants.length === 0 || participants.some(participant => participant.key === resolutionActor().key);
 }
 
@@ -3976,6 +3977,80 @@ function resolutionUpdateAuthor(entry = {}) {
   return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
 }
 
+const REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES = new Set(["mechanic", "electrician", "operator"]);
+
+function remarkAuthorIdentity(entry = {}) {
+  return {
+    key: String(entry.authorKey || ""),
+    id: String(entry.authorId || ""),
+    employeeId: String(entry.authorEmployeeId || ""),
+    phone: String(entry.authorPhone || ""),
+    name: String(entry.name || ""),
+    role: String(entry.role || "")
+  };
+}
+
+function sameRemarkPerson(user = {}, identity = {}) {
+  const userKey = resolutionUserKey(user);
+  const identityKey = String(identity.key || resolutionUserKey(identity) || "");
+  if (identityKey && userKey === identityKey) return true;
+  return Boolean(identity.name && identity.role
+    && String(user.name || "").trim().toLowerCase() === String(identity.name).trim().toLowerCase()
+    && String(user.role || "") === String(identity.role));
+}
+
+function approvedRemarkUsers() {
+  const actor = resolutionActor();
+  const byKey = new Map();
+  [...loadUsers(), actor]
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true)
+    .forEach(user => byKey.set(resolutionUserKey(user), resolutionParticipantFromUser(user)));
+  return [...byKey.values()];
+}
+
+function remarkConfirmationRule(entry = {}, eq = null) {
+  const users = approvedRemarkUsers();
+  const area = String(entry.confirmationArea || eq?.area || "");
+  if (entry.confirmationRequiredKey) {
+    const candidates = users.filter(user => resolutionUserKey(user) === entry.confirmationRequiredKey);
+    return { mode: "author", role: entry.confirmationRequiredRole || entry.role || "", area, candidates };
+  }
+  if (entry.confirmationRequiredRole === "shop") {
+    const candidates = users.filter(user => user.role === "shop" && user.area === area);
+    return { mode: "shop", role: "shop", area, candidates };
+  }
+  if (entry.confirmationRequiredRole === "engineer") {
+    const candidates = users.filter(user => user.role === "engineer");
+    return { mode: "engineer", role: "engineer", area, candidates };
+  }
+  if (REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES.has(entry.role)) {
+    const shopCandidates = users.filter(user => user.role === "shop" && user.area === area);
+    if (shopCandidates.length) return { mode: "shop", role: "shop", area, candidates: shopCandidates };
+    return { mode: "engineer", role: "engineer", area, candidates: users.filter(user => user.role === "engineer") };
+  }
+  const author = remarkAuthorIdentity(entry);
+  return { mode: "author", role: entry.role || "", area, candidates: users.filter(user => sameRemarkPerson(user, author)) };
+}
+
+function canCurrentUserConfirmRemark(entry = {}, eq = null) {
+  const actor = resolutionActor();
+  const rule = remarkConfirmationRule(entry, eq);
+  if (rule.mode === "shop") return actor.role === "shop" && actor.area === rule.area;
+  if (rule.mode === "engineer") return actor.role === "engineer";
+  return sameRemarkPerson(actor, {
+    key: entry.confirmationRequiredKey || entry.authorKey || "",
+    name: entry.confirmationRequiredName || entry.name || "",
+    role: entry.confirmationRequiredRole || entry.role || ""
+  });
+}
+
+function remarkConfirmationLabel(entry = {}, eq = null) {
+  const rule = remarkConfirmationRule(entry, eq);
+  if (rule.mode === "shop") return `Начальник цеха · ${rule.area || "цех оборудования"}`;
+  if (rule.mode === "engineer") return "Инженер";
+  return entry.confirmationRequiredName || entry.name || "Автор предупреждения";
+}
+
 function stableRemarkId(entry = {}) {
   if (entry.id) return String(entry.id);
   const source = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo]
@@ -3991,7 +4066,12 @@ function stableRemarkId(entry = {}) {
 
 const REMARK_COLLABORATION_FIELDS = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
-  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants"
+  "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants",
+  "resolutionPendingConfirmation", "resolutionSubmittedAt", "resolutionSubmittedByKey",
+  "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
+  "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
+  "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
+  "confirmedByName", "confirmedByRole"
 ];
 
 function ensureRemarkEntries(item = {}) {
@@ -4027,8 +4107,13 @@ function syncItemRemarkSummary(item = {}) {
     item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
     item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
     item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
+    item.resolvedDurationMs = Number(latest.resolvedDurationMs || item.resolvedDurationMs || 0);
+    item.confirmedAt = latest.confirmedAt || item.confirmedAt || "";
+    item.confirmedByName = latest.confirmedByName || item.confirmedByName || "";
+    item.confirmedByRole = latest.confirmedByRole || item.confirmedByRole || "";
   } else {
     item.resolvedAt = "";
+    item.confirmedAt = "";
   }
 }
 
@@ -4048,6 +4133,7 @@ function appendResolutionCompletion(item) {
 
 async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, action, extra = {}) {
   const recordKey = key(equipmentId, nodeIndex, date);
+  const equipmentArea = equipmentById(Number(equipmentId))?.area || "";
   const result = await apiJson("/api/remark-collaboration", {
     method: "POST",
     timeout: 20000,
@@ -4057,6 +4143,7 @@ async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, ac
       key: recordKey,
       action,
       actor: resolutionActor(),
+      equipmentArea,
       ...extra
     })
   });
@@ -4074,8 +4161,13 @@ function canEditComment(item) {
 
 function setCommentOwner(item) {
   if (!item.commentOwnerRole && (String(item.comment || "").trim() || item.commentPhoto)) {
+    const actor = resolutionActor();
     item.commentOwnerRole = currentRoleId();
     item.commentOwnerName = profile?.name || "";
+    item.commentOwnerKey = actor.key;
+    item.commentOwnerId = actor.id;
+    item.commentOwnerEmployeeId = actor.employeeId;
+    item.commentOwnerPhone = actor.phone;
   }
 }
 
@@ -4095,6 +4187,10 @@ function currentCommentEntry(item) {
     photo: item.commentPhoto || "",
     role: item.commentOwnerRole || "",
     name: item.commentOwnerName || "",
+    authorKey: item.commentOwnerKey || "",
+    authorId: item.commentOwnerId || "",
+    authorEmployeeId: item.commentOwnerEmployeeId || "",
+    authorPhone: item.commentOwnerPhone || "",
     at: item.commentUpdatedAt || ""
   };
 }
@@ -4103,12 +4199,17 @@ function appendCommentEntry(item, text, photo = "", meta = {}) {
   const cleanText = String(text || "").trim();
   if (!cleanText) return null;
   const now = new Date().toISOString();
+  const actor = resolutionActor();
   const entry = {
     id: `remark:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
     text: cleanText,
     photo: photo || item.commentPhoto || "",
     role: currentRoleId(),
     name: profile?.name || "",
+    authorKey: actor.key,
+    authorId: actor.id,
+    authorEmployeeId: actor.employeeId,
+    authorPhone: actor.phone,
     at: now,
     type: meta.type || "remark",
     resolved: meta.type === "downtime"
@@ -4251,6 +4352,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const remarkId = stableRemarkId(entry);
   const author = commentEntryAuthor(entry);
   const resolved = Boolean(entry.resolved);
+  const pendingConfirmation = Boolean(entry.resolutionPendingConfirmation && !resolved);
   const participants = resolutionParticipants(entry);
   const participantKeys = new Set(participants.map(participant => participant.key));
   const currentParticipant = isResolutionParticipant(entry);
@@ -4262,17 +4364,23 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const photoKey = `${key(eq.id, nodeIndex, current.date)}:${remarkId}`;
   const draftPhoto = remarkResolutionPhotoDrafts.get(photoKey) || "";
   const canResolve = canCompleteCollaborativeResolution(entry);
+  const canConfirm = canCurrentUserConfirmRemark(entry, eq);
   const resolvedRole = ROLE_ACCESS[entry.resolvedByRole]?.label || entry.resolvedByRole || "";
   const resolvedBy = entry.resolvedByName ? `${entry.resolvedByName}${resolvedRole ? ` (${resolvedRole})` : ""}` : resolvedRole;
+  const submittedRole = ROLE_ACCESS[entry.resolutionSubmittedByRole]?.label || entry.resolutionSubmittedByRole || "";
+  const submittedBy = entry.resolutionSubmittedByName ? `${entry.resolutionSubmittedByName}${submittedRole ? ` (${submittedRole})` : ""}` : submittedRole;
+  const confirmedRole = ROLE_ACCESS[entry.confirmedByRole]?.label || entry.confirmedByRole || "";
+  const confirmedBy = entry.confirmedByName ? `${entry.confirmedByName}${confirmedRole ? ` (${confirmedRole})` : ""}` : confirmedRole;
+  const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : "Открыто";
 
   return `
-    <article class="remark-card ${resolved ? "resolved" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
+    <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
       <header class="remark-card-head">
         <div>
           <strong>Замечание ${entryIndex + 1}</strong>
           <small>${escapeHtml(author)} · ${escapeHtml(dateTimeHuman(entry.at || ""))}</small>
         </div>
-        <span class="remark-card-status">${resolved ? "Устранено" : "Открыто"}</span>
+        <span class="remark-card-status">${cardStatus}</span>
       </header>
       <p class="remark-card-text">${escapeHtml(entry.text || "")}</p>
       ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
@@ -4282,7 +4390,27 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
           ${entry.resolvedComment ? `<p>${escapeHtml(entry.resolvedComment)}</p>` : ""}
           ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
+          <small>Подтвердил: ${escapeHtml(confirmedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(entry.confirmedAt || ""))}</small>
         </div>
+      ` : pendingConfirmation ? `
+        <section class="remark-confirmation-panel">
+          <div class="remark-confirmation-head">
+            <strong>Устранение ожидает подтверждения</strong>
+            <span>Фактическое время устранения: ${escapeHtml(dateTimeHuman(entry.resolutionSubmittedAt || ""))}</span>
+          </div>
+          <div class="comment-resolution-detail pending">
+            <strong>Устранил: ${escapeHtml(submittedBy || "Сотрудник")}</strong>
+            ${entry.resolutionSubmittedComment ? `<p>${escapeHtml(entry.resolutionSubmittedComment)}</p>` : ""}
+            ${entry.resolutionSubmittedPhoto ? `<img src="${entry.resolutionSubmittedPhoto}" alt="Фото устранения для подтверждения">` : ""}
+          </div>
+          <p class="remark-confirmation-who">Подтверждает: <strong>${escapeHtml(remarkConfirmationLabel(entry, eq))}</strong></p>
+          ${canConfirm ? `
+            <div class="node-walk-actions remark-confirmation-actions">
+              <button type="button" class="secondary" data-remark-return>Вернуть на доработку</button>
+              <button type="button" data-remark-confirm>Подтвердить устранение</button>
+            </div>
+          ` : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
+        </section>
       ` : `
         <section class="remark-collaboration">
           <div class="remark-collaboration-head">
@@ -4330,7 +4458,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           </div>
           ${resolutionEvents.length ? `
             <details class="resolution-events"><summary>История участников</summary>
-              ${resolutionEvents.map(event => `<p><strong>${escapeHtml(event.name || "Сотрудник")}</strong> · ${escapeHtml(event.action === "removed" ? "убрал участника" : event.action === "completed" ? "завершил устранение" : "добавил участника")} · ${escapeHtml(dateTimeHuman(event.at || ""))}</p>`).join("")}
+              ${resolutionEvents.map(event => `<p><strong>${escapeHtml(event.name || "Сотрудник")}</strong> · ${escapeHtml(event.action === "removed" ? "убрал участника" : event.action === "submitted" ? "передал на подтверждение" : event.action === "confirmed" ? "подтвердил устранение" : event.action === "returned" ? "вернул на доработку" : event.action === "completed" ? "завершил устранение" : "добавил участника")} · ${escapeHtml(dateTimeHuman(event.at || ""))}</p>`).join("")}
             </details>
           ` : ""}
         </section>
@@ -7891,7 +8019,13 @@ function allOpenCommentTargets() {
           areaName: eq?.area || "",
           equipmentName: eq?.name || `Оборудование ${equipmentId}`,
           nodeName: eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`,
-          at: entry.at || ""
+          at: entry.at || "",
+          pendingConfirmation: Boolean(entry.resolutionPendingConfirmation),
+          submittedAt: entry.resolutionSubmittedAt || "",
+          submittedBy: resolutionUpdateAuthor({ name: entry.resolutionSubmittedByName, role: entry.resolutionSubmittedByRole }),
+          submittedComment: entry.resolutionSubmittedComment || "",
+          confirmationLabel: remarkConfirmationLabel(entry, eq),
+          canConfirm: canCurrentUserConfirmRemark(entry, eq)
         }));
     })
     .sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)) || a.equipmentId - b.equipmentId || a.nodeIndex - b.nodeIndex);
@@ -7904,25 +8038,34 @@ function openAllRemarkCards() {
     return;
   }
   document.querySelector(".open-remarks-overlay")?.remove();
+  const pendingCount = targets.filter(target => target.pendingConfirmation).length;
+  const activeCount = targets.length - pendingCount;
   const overlay = document.createElement("div");
   overlay.className = "request-archive-overlay open-remarks-overlay";
   overlay.innerHTML = `
     <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>Выберите любое замечание — очереди нет. Открыто: ${targets.length}</span></div>
+        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>К устранению: ${activeCount} · На подтверждении: ${pendingCount}</span></div>
         <button type="button" data-close-open-remarks>Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
         ${targets.map((target, index) => `
-          <article class="open-remark-item" data-open-remark-id="${escapeHtml(target.remarkId)}">
+          <article class="open-remark-item ${target.pendingConfirmation ? "pending-confirmation" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
             <header>
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
-              <span class="open-remark-status">Открыто</span>
+              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : "Открыто"}</span>
             </header>
             <p>${escapeHtml(target.text)}</p>
+            ${target.pendingConfirmation ? `
+              <div class="open-remark-confirmation-summary">
+                <strong>Устранил: ${escapeHtml(target.submittedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(target.submittedAt))}</strong>
+                <p>${escapeHtml(target.submittedComment)}</p>
+                <small>Подтверждает: ${escapeHtml(target.confirmationLabel)}</small>
+              </div>
+            ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Перейти в узел и устранить</button>
+              <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
             </footer>
           </article>
         `).join("")}
@@ -8057,12 +8200,15 @@ function aggregateJournalItems(area) {
         authorName: entry.name || item.commentOwnerName || "",
         authorRole: entry.role || item.commentOwnerRole || "",
         text: entry.text || "",
-        resolved: Boolean(item.resolved || item.resolvedAt),
-        resolvedAt: item.resolvedAt || "",
-        resolvedByName: item.resolvedByName || "",
-        resolvedByRole: item.resolvedByRole || "",
-        resolvedComment: item.resolvedComment || "",
-        durationMs: Number(item.resolvedDurationMs || 0)
+        resolved: Boolean(entry.resolved),
+        resolvedAt: entry.resolvedAt || "",
+        resolvedByName: entry.resolvedByName || "",
+        resolvedByRole: entry.resolvedByRole || "",
+        resolvedComment: entry.resolvedComment || "",
+        confirmedAt: entry.confirmedAt || "",
+        confirmedByName: entry.confirmedByName || "",
+        confirmedByRole: entry.confirmedByRole || "",
+        durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
   });
@@ -9385,7 +9531,7 @@ function renderNodeWalkthrough(eq) {
           textBox?.focus();
           return;
         }
-        if (!window.confirm("Устранение этого замечания полностью завершено?")) return;
+        if (!window.confirm("Работа выполнена? Зафиксировать время устранения и передать на подтверждение?")) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "resolve", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
         remarkResolutionPhotoDrafts.delete(photoKey);
         if (current.returnToRemarkListAfterResolve) {
@@ -9394,6 +9540,23 @@ function renderNodeWalkthrough(eq) {
           renderNodeWalkthrough(equipmentById(eq.id));
         }
       }, "Публикуется..."));
+      card.querySelector("[data-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "confirm", { remarkId });
+        if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
+        else renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Подтверждаем..."));
+      card.querySelector("[data-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        const reason = window.prompt("Что необходимо доработать?");
+        if (reason === null) return;
+        if (!String(reason).trim()) {
+          window.alert("Напишите причину возврата на доработку.");
+          return;
+        }
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "return", { remarkId, reason: String(reason).trim() });
+        if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
+        else renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Возвращаем..."));
     });
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
@@ -10687,7 +10850,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
       const created = dateYearMonth(createdAt);
-      const resolved = dateYearMonth(item.resolvedAt || "");
+      const resolved = dateYearMonth(entry.resolved ? entry.resolvedAt || "" : "");
       if (created?.year === year || resolved?.year === year) {
         events.push({
           type: "remark",
@@ -10696,13 +10859,16 @@ function annualRepairEvents(year = directorAnnualYear()) {
           area: eq.area || "",
           node: eq.nodes[Number(nodeIndexRaw)] || "",
           createdAt,
-          resolvedAt: item.resolvedAt || "",
+          resolvedAt: entry.resolved ? entry.resolvedAt || "" : "",
           authorRole: entry.role || item.commentOwnerRole || "",
           authorName: entry.name || item.commentOwnerName || "",
-          resolvedByRole: item.resolvedByRole || "",
-          resolvedByName: item.resolvedByName || "",
-          durationMs: Number(item.resolvedDurationMs || 0),
-          open: !item.resolved && !item.resolvedAt,
+          resolvedByRole: entry.resolvedByRole || "",
+          resolvedByName: entry.resolvedByName || "",
+          confirmedAt: entry.confirmedAt || "",
+          confirmedByRole: entry.confirmedByRole || "",
+          confirmedByName: entry.confirmedByName || "",
+          durationMs: Number(entry.resolvedDurationMs || 0),
+          open: !entry.resolved,
           text: entry.text || item.comment || ""
         });
       }
@@ -11679,10 +11845,10 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     visibleCommentEntries(item).forEach(entry => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
-      const resolvedAt = item.resolvedAt || "";
+      const resolvedAt = entry.resolved ? entry.resolvedAt || "" : "";
       const createdInMonth = String(createdAt).slice(0, 7) === key;
       const resolvedInMonth = String(resolvedAt).slice(0, 7) === key;
-      const openNow = !item.resolved && !resolvedAt;
+      const openNow = !entry.resolved;
       const createdMs = Date.parse(createdAt || "");
       const openForReport = openNow && Number.isFinite(createdMs) && createdMs < range.end.getTime();
       if (!createdInMonth && !resolvedInMonth && !openForReport) return;
@@ -11698,11 +11864,14 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
         open: openNow,
         author: entry.name || item.commentOwnerName || "",
         authorRole: entry.role || item.commentOwnerRole || "",
-        resolvedBy: item.resolvedByName || "",
-        resolvedByRole: item.resolvedByRole || "",
+        resolvedBy: entry.resolvedByName || "",
+        resolvedByRole: entry.resolvedByRole || "",
+        confirmedAt: entry.confirmedAt || "",
+        confirmedBy: entry.confirmedByName || "",
+        confirmedByRole: entry.confirmedByRole || "",
         text: entry.text || item.comment || "",
-        resolvedComment: item.resolvedComment || "",
-        durationMs: Number(item.resolvedDurationMs || 0)
+        resolvedComment: entry.resolvedComment || "",
+        durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
   });
@@ -12706,7 +12875,7 @@ function renderAggregateJournal() {
             <th>Наименование</th>
             <th>Количество, шт.</th>
             <th>Время устранения замечания</th>
-            <th>Ф.И.О. и подпись механика цеха</th>
+            <th>Кто устранил / кто подтвердил</th>
           </tr>
         </thead>
         <tbody>
@@ -12715,6 +12884,8 @@ function renderAggregateJournal() {
             const author = commentEntryAuthor({ name: item.authorName, role: item.authorRole });
             const resolverRole = ROLE_ACCESS[item.resolvedByRole]?.label || item.resolvedByRole || "";
             const resolver = item.resolvedByName ? `${item.resolvedByName}${resolverRole ? ` (${resolverRole})` : ""}` : resolverRole;
+            const confirmerRole = ROLE_ACCESS[item.confirmedByRole]?.label || item.confirmedByRole || "";
+            const confirmer = item.confirmedByName ? `${item.confirmedByName}${confirmerRole ? ` (${confirmerRole})` : ""}` : confirmerRole;
             const parts = item.kind === "Замечание" ? installedPartsForRemark(remarkLinkKey(item.equipmentId, item.nodeIndex, item.date)) : [];
             const partNames = parts.map(part => part.name).join("\n");
             const partQty = parts.map(part => `${part.qty}`).join("\n");
@@ -12731,7 +12902,7 @@ function renderAggregateJournal() {
                 <td>${escapeHtml(partNames || "")}</td>
                 <td>${escapeHtml(partQty || "")}</td>
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
-                <td>${escapeHtml(resolver || "")}</td>
+                <td>${escapeHtml(resolver ? `Устранил: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}</td>
               </tr>
             `;
           }).join("") : `

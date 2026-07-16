@@ -6567,6 +6567,24 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 900;
   white-space: normal;
 }
+.open-remark-item.pending-confirmation {
+  border-color: #f3cf70;
+  border-left-color: #d59a00;
+  background: #fffaf0;
+}
+.open-remark-item.pending-confirmation .open-remark-status {
+  background: #fff0bf;
+  color: #875d00;
+}
+.open-remark-confirmation-summary {
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+.open-remark-confirmation-summary p { white-space: pre-wrap; }
+.open-remark-confirmation-summary small { color: var(--muted); font-weight: 800; }
 
 .remark-cards { display: grid; gap: 12px; margin-top: 14px; }
 .remark-cards-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -6588,6 +6606,7 @@ body.editor-profile .warehouse-folders button.request-alert {
   padding: 12px;
 }
 .remark-card.resolved { border-left-color: var(--ok); background: #f7fff9; }
+.remark-card.pending-confirmation { border-left-color: #d59a00; background: #fffdf7; }
 .remark-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .remark-card-head strong,
 .remark-card-head small { display: block; }
@@ -6601,6 +6620,7 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 900;
 }
 .remark-card.resolved .remark-card-status { background: #dcfce7; color: #166534; }
+.remark-card.pending-confirmation .remark-card-status { background: #fff0bf; color: #875d00; }
 .remark-card-text { margin: 0; white-space: pre-wrap; }
 .remark-card-photo,
 .remark-action-preview img {
@@ -6618,6 +6638,21 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 .remark-action-composer textarea,
 .remark-action-composer input[type="file"] { width: 100%; }
+.remark-confirmation-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #efd27f;
+  border-radius: 12px;
+  background: #fff9e8;
+  padding: 12px;
+}
+.remark-confirmation-head,
+.remark-confirmation-head strong,
+.remark-confirmation-head span { display: block; }
+.remark-confirmation-head span { margin-top: 3px; color: #755500; font-size: 12px; font-weight: 800; }
+.comment-resolution-detail.pending { background: #fff; }
+.remark-confirmation-who { margin: 0; }
+.remark-confirmation-actions { margin-top: 2px; }
 
 @media (max-width: 640px) {
   .open-remarks-overlay { padding: 8px; }
