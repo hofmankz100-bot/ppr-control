@@ -75,10 +75,11 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v180";
+const APP_VERSION = "v181";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
+const PERSONAL_REMARK_READ_KEY = "ppr-personal-remark-read-v1";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
@@ -4071,7 +4072,8 @@ const REMARK_COLLABORATION_FIELDS = [
   "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
   "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
-  "confirmedByName", "confirmedByRole"
+  "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
+  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason"
 ];
 
 function ensureRemarkEntries(item = {}) {
@@ -4353,6 +4355,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const author = commentEntryAuthor(entry);
   const resolved = Boolean(entry.resolved);
   const pendingConfirmation = Boolean(entry.resolutionPendingConfirmation && !resolved);
+  const returnedToRework = Boolean(entry.resolutionReturnedAt && !pendingConfirmation && !resolved);
   const participants = resolutionParticipants(entry);
   const participantKeys = new Set(participants.map(participant => participant.key));
   const currentParticipant = isResolutionParticipant(entry);
@@ -4371,10 +4374,10 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const submittedBy = entry.resolutionSubmittedByName ? `${entry.resolutionSubmittedByName}${submittedRole ? ` (${submittedRole})` : ""}` : submittedRole;
   const confirmedRole = ROLE_ACCESS[entry.confirmedByRole]?.label || entry.confirmedByRole || "";
   const confirmedBy = entry.confirmedByName ? `${entry.confirmedByName}${confirmedRole ? ` (${confirmedRole})` : ""}` : confirmedRole;
-  const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : "Открыто";
+  const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : returnedToRework ? "На доработке" : "Открыто";
 
   return `
-    <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
+    <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
       <header class="remark-card-head">
         <div>
           <strong>Замечание ${entryIndex + 1}</strong>
@@ -4412,6 +4415,13 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           ` : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
         </section>
       ` : `
+        ${returnedToRework ? `
+          <div class="remark-returned-notice">
+            <strong>Возвращено на доработку</strong>
+            <p>${escapeHtml(entry.resolutionReturnReason || "Требуется доработка")}</p>
+            <small>${escapeHtml(entry.resolutionReturnedByName || "Ответственный сотрудник")} · ${escapeHtml(dateTimeHuman(entry.resolutionReturnedAt || ""))}</small>
+          </div>
+        ` : ""}
         <section class="remark-collaboration">
           <div class="remark-collaboration-head">
             <div><strong>Совместное устранение</strong><span>${escapeHtml(resolutionStartedText)}</span></div>
@@ -8025,7 +8035,9 @@ function allOpenCommentTargets() {
           submittedBy: resolutionUpdateAuthor({ name: entry.resolutionSubmittedByName, role: entry.resolutionSubmittedByRole }),
           submittedComment: entry.resolutionSubmittedComment || "",
           confirmationLabel: remarkConfirmationLabel(entry, eq),
-          canConfirm: canCurrentUserConfirmRemark(entry, eq)
+          canConfirm: canCurrentUserConfirmRemark(entry, eq),
+          returnedToRework: Boolean(entry.resolutionReturnedAt && !entry.resolutionPendingConfirmation),
+          returnReason: entry.resolutionReturnReason || ""
         }));
     })
     .sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)) || a.equipmentId - b.equipmentId || a.nodeIndex - b.nodeIndex);
@@ -8050,10 +8062,10 @@ function openAllRemarkCards() {
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
         ${targets.map((target, index) => `
-          <article class="open-remark-item ${target.pendingConfirmation ? "pending-confirmation" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
+          <article class="open-remark-item ${target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
             <header>
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
-              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : "Открыто"}</span>
+              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "На доработке" : "Открыто"}</span>
             </header>
             <p>${escapeHtml(target.text)}</p>
             ${target.pendingConfirmation ? `
@@ -8062,6 +8074,8 @@ function openAllRemarkCards() {
                 <p>${escapeHtml(target.submittedComment)}</p>
                 <small>Подтверждает: ${escapeHtml(target.confirmationLabel)}</small>
               </div>
+            ` : target.returnedToRework ? `
+              <div class="open-remark-return-summary"><strong>Комментарий возврата</strong><p>${escapeHtml(target.returnReason)}</p></div>
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
@@ -10511,6 +10525,59 @@ function globalControlEquipment() {
   return visibleEquipment().filter(eq => eq.area !== "Резерв");
 }
 
+function readPersonalRemarkMessageIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PERSONAL_REMARK_READ_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function personalRemarkMessages() {
+  const actorKey = resolutionActor().key;
+  const readIds = readPersonalRemarkMessageIds();
+  const messages = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
+    const equipmentId = Number(equipmentIdRaw);
+    const nodeIndex = Number(nodeIndexRaw);
+    const eq = equipmentById(equipmentId);
+    if (!eq) return;
+    ensureRemarkEntries(rec?.to || {}).forEach(entry => {
+      (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).forEach(event => {
+        if (!["confirmed", "returned"].includes(event.action)) return;
+        const recipientKeys = Array.isArray(event.recipientKeys) ? event.recipientKeys.map(String) : [];
+        if (!recipientKeys.includes(actorKey)) return;
+        const id = String(event.id || `${entry.id}:${event.action}:${event.at || ""}`);
+        messages.push({
+          id,
+          unread: !readIds.has(id),
+          action: event.action,
+          title: event.action === "confirmed" ? "Устранение подтверждено" : "Возвращено на доработку",
+          text: event.action === "confirmed"
+            ? `${event.name || "Ответственный сотрудник"} подтвердил устранение предупреждения`
+            : String(event.reason || entry.resolutionReturnReason || "Требуется доработка"),
+          at: event.at || "",
+          equipmentId,
+          nodeIndex,
+          date,
+          remarkId: entry.id,
+          equipment: eq.name || "",
+          node: eq.nodes?.[nodeIndex] || ""
+        });
+      });
+    });
+  });
+  return messages.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
+}
+
+function markPersonalRemarkMessagesRead(messages = personalRemarkMessages()) {
+  const ids = readPersonalRemarkMessageIds();
+  messages.forEach(message => ids.add(message.id));
+  localStorage.setItem(PERSONAL_REMARK_READ_KEY, JSON.stringify([...ids].slice(-300)));
+}
+
 function globalReminderItems(equipment = globalControlEquipment()) {
   const equipmentIds = new Set(equipment.map(eq => Number(eq.id)));
   const areas = new Set(equipment.map(eq => eq.area));
@@ -10563,9 +10630,11 @@ function renderGlobalReminderPanel() {
   ui.globalReminderButton.hidden = false;
   const equipment = globalControlEquipment();
   const reminders = globalReminderItems(equipment);
+  const personalMessages = personalRemarkMessages();
+  const unreadPersonalCount = personalMessages.filter(message => message.unread).length;
   const calendar = directorCalendarItems(equipment);
   const monthCalendar = renderPprMonthCalendar(allEquipment());
-  updateGlobalReminderBadge(reminders);
+  updateGlobalReminderBadge(reminders, unreadPersonalCount);
   const calendarRows = calendar.map(item => `
     <div class="director-calendar-row ${item.color}">
       <span class="director-calendar-icon">${item.icon}</span>
@@ -10578,8 +10647,18 @@ function renderGlobalReminderPanel() {
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
   `).join("");
+  const personalRows = personalMessages.map(message => `
+    <button type="button" class="personal-remark-message ${message.unread ? "unread" : ""} ${message.action}" data-open-personal-remark="${escapeHtml(message.id)}">
+      <span>${message.action === "confirmed" ? "✅" : "↩️"}</span>
+      <div><strong>${escapeHtml(message.title)}</strong><p>${escapeHtml(message.text)}</p><small>${escapeHtml(message.equipment)} · ${escapeHtml(message.node)} · ${escapeHtml(dateTimeHuman(message.at))}</small></div>
+    </button>
+  `).join("");
   ui.globalReminderContent.innerHTML = `
     <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
+    <section class="personal-remark-inbox">
+      <div class="director-section-head"><div><span>💬</span><h2>Личные сообщения</h2></div><strong>${unreadPersonalCount}</strong></div>
+      <div class="personal-remark-message-list">${personalRows || `<div class="director-empty-ok"><strong>Личных сообщений пока нет</strong></div>`}</div>
+    </section>
     <div class="global-control-grid">
       <section>
         <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
@@ -10597,6 +10676,20 @@ function renderGlobalReminderPanel() {
     </section>
   `;
   bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
+  ui.globalReminderContent.querySelectorAll("[data-open-personal-remark]").forEach(button => button.addEventListener("click", () => {
+    const message = personalMessages.find(item => item.id === button.dataset.openPersonalRemark);
+    if (!message) return;
+    markPersonalRemarkMessagesRead([message]);
+    current.equipmentId = message.equipmentId;
+    current.nodeIndex = message.nodeIndex;
+    current.nodeDetailIndex = message.nodeIndex;
+    current.date = message.date;
+    current.kind = "to";
+    current.scrollToCommentNode = message.nodeIndex;
+    current.scrollToRemarkId = message.remarkId;
+    closeGlobalReminderPanel();
+    show("checklist");
+  }));
   ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
     const openDate = () => {
       const date = row.dataset.openPprApproval;
@@ -10613,12 +10706,14 @@ function renderGlobalReminderPanel() {
   });
 }
 
-function updateGlobalReminderBadge(knownReminders = null) {
+function updateGlobalReminderBadge(knownReminders = null, knownUnreadPersonal = null) {
   if (!ui.globalReminderButton || !ui.globalReminderBadge || !profile) return;
   const reminders = Array.isArray(knownReminders) ? knownReminders : globalReminderItems(globalControlEquipment());
-  ui.globalReminderBadge.textContent = reminders.length;
-  ui.globalReminderButton.classList.toggle("has-alerts", reminders.length > 0);
-  ui.globalReminderButton.classList.toggle("all-clear", reminders.length === 0);
+  const unreadPersonal = Number.isFinite(Number(knownUnreadPersonal)) ? Number(knownUnreadPersonal) : personalRemarkMessages().filter(message => message.unread).length;
+  const total = reminders.length + unreadPersonal;
+  ui.globalReminderBadge.textContent = total;
+  ui.globalReminderButton.classList.toggle("has-alerts", total > 0);
+  ui.globalReminderButton.classList.toggle("all-clear", total === 0);
 }
 
 function directorEquipmentHealth(eq) {

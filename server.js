@@ -774,7 +774,8 @@ const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
   "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
-  "confirmedByName", "confirmedByRole"
+  "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
+  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason"
 ];
 
 function ensureRemarkEntriesServer(item = {}) {
@@ -2395,6 +2396,11 @@ async function handleApi(req, res, pathname, url) {
         remark.confirmedByKey = "";
         remark.confirmedByName = "";
         remark.confirmedByRole = "";
+        remark.resolutionReturnedAt = "";
+        remark.resolutionReturnedByKey = "";
+        remark.resolutionReturnedByName = "";
+        remark.resolutionReturnedByRole = "";
+        remark.resolutionReturnReason = "";
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
           action: "submitted",
@@ -2428,17 +2434,18 @@ async function handleApi(req, res, pathname, url) {
         remark.confirmedByKey = actor.key;
         remark.confirmedByName = actor.name;
         remark.confirmedByRole = actor.role;
+        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
+        const noticeRecipients = submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [];
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
           action: "confirmed",
           actorKey: actor.key,
           name: actor.name,
           role: actor.role,
+          recipientKeys: noticeRecipients.map(user => user.key),
           at: now
         });
-        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
-        notifyParticipants = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
-          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
+        notifyParticipants = noticeRecipients;
         pushTitle = "Устранение подтверждено";
         pushBody = `${actor.name} подтвердил устранение`;
       }
@@ -2454,6 +2461,9 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionReturnedByName = actor.name;
         remark.resolutionReturnedByRole = actor.role;
         remark.resolutionReturnReason = reason;
+        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
+        const noticeRecipients = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
+          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
           action: "returned",
@@ -2461,11 +2471,10 @@ async function handleApi(req, res, pathname, url) {
           name: actor.name,
           role: actor.role,
           reason,
+          recipientKeys: noticeRecipients.map(user => user.key),
           at: now
         });
-        const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
-        notifyParticipants = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
-          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
+        notifyParticipants = noticeRecipients;
         pushTitle = "Устранение возвращено на доработку";
         pushBody = reason.slice(0, 120);
       }

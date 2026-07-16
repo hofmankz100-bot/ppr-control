@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v180";
+const CACHE_NAME = "ppr-v181";
 const ASSETS = [
   "./",
   "./index.html",
