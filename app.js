@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v171";
+const APP_VERSION = "v172";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -253,6 +253,7 @@ let appNotificationKeys = new Set();
 let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
 let pushPublicKeyPromise = null;
+let pendingAppVersion = "";
 let requestSearchTimer = null;
 let renderTimer = null;
 let warehouseReconcileVersion = -1;
@@ -966,6 +967,10 @@ async function ensurePushSubscription() {
 
 function syncNotificationSetupPrompt() {
   const existing = document.querySelector("#notificationSetupPrompt");
+  if (!mobileShareMode()) {
+    existing?.remove();
+    return;
+  }
   const pushReady = localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1";
   if (!isProfileReady() || !("Notification" in window) || (Notification.permission === "granted" && pushReady)) {
     existing?.remove();
@@ -982,6 +987,51 @@ function syncNotificationSetupPrompt() {
   `;
   if (!existing) document.body.append(prompt);
   prompt.querySelector("button")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
+}
+
+function showAppUpdatePrompt(version) {
+  if (!mobileShareMode() || !version || version === APP_VERSION) return;
+  pendingAppVersion = version;
+  let prompt = document.querySelector("#appUpdatePrompt");
+  if (!prompt) {
+    prompt = document.createElement("div");
+    prompt.id = "appUpdatePrompt";
+    prompt.className = "app-update-prompt";
+    document.body.append(prompt);
+  }
+  prompt.innerHTML = `
+    <div><strong>Доступно обновление ALKZ</strong><span>Установите новую версию, чтобы изменения появились в приложении.</span></div>
+    <button type="button">Обновить</button>
+  `;
+  prompt.querySelector("button")?.addEventListener("click", event => installLatestAppVersion(event.currentTarget), { once: true });
+}
+
+async function checkForAppUpdate() {
+  if (!mobileShareMode()) return;
+  try {
+    const response = await fetch(`/api/app-version?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const result = await response.json();
+    const latest = String(result.version || "");
+    if (latest && latest !== APP_VERSION) showAppUpdatePrompt(latest);
+  } catch {}
+}
+
+async function installLatestAppVersion(button) {
+  setButtonBusy(button, true, "Обновляется...");
+  try {
+    localStorage.removeItem(ASSET_CACHE_VERSION_KEY);
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    }
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister()));
+    }
+  } catch {}
+  const version = pendingAppVersion || "latest";
+  window.location.replace(`/?updated=${encodeURIComponent(version)}&t=${Date.now()}`);
 }
 
 async function requestAppNotificationPermission(button) {
@@ -13962,6 +14012,7 @@ window.addEventListener("visibilitychange", () => {
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
+    checkForAppUpdate();
   }
 });
 
@@ -13973,15 +14024,21 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (serviceWorkerReloading) return;
     serviceWorkerReloading = true;
-    window.location.reload();
+    if (mobileShareMode()) checkForAppUpdate();
+    else window.location.reload();
   });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
     navigator.serviceWorker.register("/sw.js")
-      .then(registration => registration.update())
+      .then(async registration => {
+        await registration.update();
+        checkForAppUpdate();
+      })
       .catch(() => {});
   });
 }
+
+window.setInterval(checkForAppUpdate, 5 * 60 * 1000);
 
 setupTheme();
 setupLogin();

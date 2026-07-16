@@ -4680,6 +4680,59 @@ body.editor-profile .warehouse-folders button.request-alert {
   background: #b4232f;
 }
 
+.app-update-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 3600;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 24, 35, .62);
+  padding: 20px;
+}
+
+.app-update-prompt > div,
+.app-update-prompt > button {
+  width: min(390px, calc(100vw - 40px));
+}
+
+.app-update-prompt > div {
+  display: grid;
+  gap: 7px;
+  border-radius: 20px 20px 0 0;
+  background: #fff;
+  color: #14324a;
+  padding: 22px 20px 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+}
+
+.app-update-prompt strong {
+  font-size: 18px;
+}
+
+.app-update-prompt span {
+  color: #557181;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.app-update-prompt > button {
+  min-height: 52px;
+  border: 0;
+  border-radius: 0 0 20px 20px;
+  background: #0f7b9c;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+@media (min-width: 761px) and (pointer: fine) {
+  #qrWalkButton,
+  .app-notification-prompt,
+  .app-update-prompt {
+    display: none !important;
+  }
+}
+
 .downtime-active {
   grid-column: 1 / -1;
   display: grid;

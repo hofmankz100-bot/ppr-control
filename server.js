@@ -42,6 +42,7 @@ const actionLogFile = path.join(dataDir, "actions.log");
 const port = Number(process.env.PORT || 8080);
 const qrPort = Number(process.env.QR_PORT || 8081);
 const httpsPort = Number(process.env.HTTPS_PORT || 8443);
+const APP_RELEASE_VERSION = "v172";
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
@@ -1419,6 +1420,11 @@ function changedStatePatch(before = {}, after = {}) {
 }
 
 async function handleApi(req, res, pathname, url) {
+  if (pathname === "/api/app-version" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, version: APP_RELEASE_VERSION });
+    return true;
+  }
+
   if (pathname === "/api/push/public-key" && req.method === "GET") {
     const db = readDb();
     if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
