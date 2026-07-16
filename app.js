@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v172";
+const APP_VERSION = "v173";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -253,9 +253,11 @@ let appNotificationKeys = new Set();
 let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
 let pushPublicKeyPromise = null;
-let pendingAppVersion = "";
 let requestSearchTimer = null;
 let renderTimer = null;
+let backgroundRenderPending = false;
+let serviceWorkerUpdateReady = false;
+const userApprovalDrafts = new Map();
 let warehouseReconcileVersion = -1;
 let tmcRequestSubmitting = false;
 const pendingRequestIds = new Set();
@@ -989,51 +991,6 @@ function syncNotificationSetupPrompt() {
   prompt.querySelector("button")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
 }
 
-function showAppUpdatePrompt(version) {
-  if (!mobileShareMode() || !version || version === APP_VERSION) return;
-  pendingAppVersion = version;
-  let prompt = document.querySelector("#appUpdatePrompt");
-  if (!prompt) {
-    prompt = document.createElement("div");
-    prompt.id = "appUpdatePrompt";
-    prompt.className = "app-update-prompt";
-    document.body.append(prompt);
-  }
-  prompt.innerHTML = `
-    <div><strong>Доступно обновление ALKZ</strong><span>Установите новую версию, чтобы изменения появились в приложении.</span></div>
-    <button type="button">Обновить</button>
-  `;
-  prompt.querySelector("button")?.addEventListener("click", event => installLatestAppVersion(event.currentTarget), { once: true });
-}
-
-async function checkForAppUpdate() {
-  if (!mobileShareMode()) return;
-  try {
-    const response = await fetch(`/api/app-version?t=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) return;
-    const result = await response.json();
-    const latest = String(result.version || "");
-    if (latest && latest !== APP_VERSION) showAppUpdatePrompt(latest);
-  } catch {}
-}
-
-async function installLatestAppVersion(button) {
-  setButtonBusy(button, true, "Обновляется...");
-  try {
-    localStorage.removeItem(ASSET_CACHE_VERSION_KEY);
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(key => caches.delete(key)));
-    }
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(registration => registration.unregister()));
-    }
-  } catch {}
-  const version = pendingAppVersion || "latest";
-  window.location.replace(`/?updated=${encodeURIComponent(version)}&t=${Date.now()}`);
-}
-
 async function requestAppNotificationPermission(button) {
   if (!("Notification" in window)) {
     showAppToast("Системные уведомления не поддерживаются на этом устройстве.", "error");
@@ -1639,7 +1596,7 @@ async function loadRemoteState() {
         }
       }
       processAppNotificationChanges(notificationKeysBeforeUpdate);
-      render();
+      scheduleRender();
       return true;
     } catch {
       // Static/offline mode keeps using localStorage.
@@ -1719,7 +1676,10 @@ async function loadRemoteUsers() {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     const users = await apiJson("/api/users");
     if (Array.isArray(users)) {
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      const previousUsers = localStorage.getItem(USERS_KEY) || "[]";
+      const nextUsers = JSON.stringify(users);
+      const usersChanged = previousUsers !== nextUsers;
+      localStorage.setItem(USERS_KEY, nextUsers);
       if (isProfileWaitingApproval()) {
         const fresh = users.find(user =>
           (profile.id && user.id === profile.id) ||
@@ -1731,12 +1691,11 @@ async function loadRemoteUsers() {
           await finishAuthOnCurrentPage();
           return;
         }
+      }
+      processAppNotificationChanges(notificationKeysBeforeUpdate);
+      updateDirectorBadge();
+      if (usersChanged && ["director", "directorControl"].includes(current.view)) scheduleRender();
     }
-    processAppNotificationChanges(notificationKeysBeforeUpdate);
-    updateDirectorBadge();
-    if (current.view === "directorControl") renderDirectorControl();
-    }
-    if (current.view === "director") renderDirector();
   } catch {
     // Static/offline mode keeps using local registered users.
   }
@@ -7619,10 +7578,22 @@ function updateMobileNavigation() {
   });
 }
 
+function isUserEditingForm() {
+  const active = document.activeElement;
+  return Boolean(active && active !== document.body && active.matches?.("input, textarea, select, [contenteditable='true']"));
+}
+
 function scheduleRender(delay = 80) {
+  if (isUserEditingForm()) {
+    backgroundRenderPending = true;
+    clearTimeout(renderTimer);
+    renderTimer = null;
+    return;
+  }
   clearTimeout(renderTimer);
   renderTimer = window.setTimeout(() => {
     renderTimer = null;
+    backgroundRenderPending = false;
     render();
   }, delay);
 }
@@ -11998,6 +11969,17 @@ function renderDirector() {
     await loadRemoteUsers();
     renderDirector();
   }, "Обновляем..."));
+  ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area]").forEach(select => {
+    select.addEventListener("change", event => {
+      const row = event.currentTarget.closest("[data-user-key]");
+      const userKey = row?.dataset.userKey || "";
+      if (!userKey) return;
+      const draft = userApprovalDrafts.get(userKey) || {};
+      if (event.currentTarget.matches("[data-user-role]")) draft.role = event.currentTarget.value;
+      if (event.currentTarget.matches("[data-user-area]")) draft.area = event.currentTarget.value;
+      userApprovalDrafts.set(userKey, draft);
+    });
+  });
   ui.directorPanel.querySelectorAll("[data-approve-user]").forEach(button => {
     button.addEventListener("click", event => {
       const userKey = event.currentTarget.dataset.approveUser || "";
@@ -12023,6 +12005,7 @@ function renderDirector() {
       user.area = needsArea(role) ? area : "";
       user.approvedAt = new Date().toISOString();
       user.approvedBy = profile?.name || "";
+      userApprovalDrafts.delete(userKey);
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
       apiJson("/api/users", {
         method: "POST",
@@ -12358,14 +12341,17 @@ function renderDirectorUsers() {
       </div>
       <div class="empty-state">Пароли не отображаются. Директор может выдать сотруднику новый временный пароль.</div>
       ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">Новые регистрации ждут подтверждения: ${pendingCount}</div>` : ""}
-      ${users.length ? users.map(user => `
-        <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}">
+      ${users.length ? users.map(user => {
+        const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
+        const draft = userApprovalDrafts.get(userKey) || {};
+        return `
+        <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}" data-user-key="${escapeHtml(userKey)}">
           <span>${escapeHtml(user.name || "")}</span>
           <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
           ${user.approved === false || user.pendingApproval ? `
-            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(user.role || "")}</select></label>
-            <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(user.area || "")}</select></label>
+            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(draft.role ?? user.role ?? "")}</select></label>
+            <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
           <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
@@ -12373,7 +12359,8 @@ function renderDirectorUsers() {
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
-      `).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
+      `;
+      }).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
     </div>
   `;
 }
@@ -14008,37 +13995,41 @@ window.addEventListener("online", () => {
 
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
+    if (serviceWorkerUpdateReady && !isUserEditingForm()) {
+      window.location.reload();
+      return;
+    }
     resetAppNotificationsForOpen();
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
-    checkForAppUpdate();
   }
 });
 
 window.addEventListener("pointerdown", unlockNotificationAudio, { once: true, passive: true });
 window.addEventListener("keydown", unlockNotificationAudio, { once: true });
+document.addEventListener("focusin", () => {
+  if (!isUserEditingForm()) return;
+  clearTimeout(renderTimer);
+  renderTimer = null;
+});
+document.addEventListener("focusout", () => {
+  window.setTimeout(() => {
+    if (backgroundRenderPending && !isUserEditingForm() && userApprovalDrafts.size === 0) scheduleRender();
+  }, 800);
+});
 
 if ("serviceWorker" in navigator) {
-  let serviceWorkerReloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (serviceWorkerReloading) return;
-    serviceWorkerReloading = true;
-    if (mobileShareMode()) checkForAppUpdate();
-    else window.location.reload();
+    serviceWorkerUpdateReady = true;
   });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
     navigator.serviceWorker.register("/sw.js")
-      .then(async registration => {
-        await registration.update();
-        checkForAppUpdate();
-      })
+      .then(registration => registration.update())
       .catch(() => {});
   });
 }
-
-window.setInterval(checkForAppUpdate, 5 * 60 * 1000);
 
 setupTheme();
 setupLogin();
