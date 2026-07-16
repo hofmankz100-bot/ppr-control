@@ -4300,14 +4300,29 @@ body.editor-profile .warehouse-folders button.request-alert {
 .node-admin-actions {
   grid-column: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
   padding: 0 10px 10px 0;
 }
 
 .node-admin-actions button {
+  background: var(--nav);
+}
+
+.node-admin-actions button.danger {
   background: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .node-admin-actions {
+    grid-template-columns: 1fr 1fr;
+    padding-right: 0;
+  }
+
+  .node-admin-actions input {
+    grid-column: 1 / -1;
+  }
 }
 
 .node-qr-logo-button {
@@ -4674,6 +4689,26 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: #fff;
   padding: 9px 13px;
   font-weight: 900;
+}
+
+.catalog-editor-actions,
+.node-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 9px 9px;
+}
+
+.catalog-editor-actions button,
+.node-reminder-actions button {
+  margin: 0;
+}
+
+.catalog-editor button.secondary,
+.node-reminder button.secondary,
+.node-admin-actions button.secondary {
+  background: #e8eef2;
+  color: #294b5f;
 }
 
 .app-notification-prompt button:disabled {

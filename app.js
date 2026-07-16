@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v173";
+const APP_VERSION = "v174";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1738,7 +1738,7 @@ function changedRemoteStateSections() {
   REMOTE_STATE_FIELDS.forEach(field => {
     const value = state[field];
     const fingerprint = JSON.stringify(value);
-    if (field === "catalog" && !isEditorSession()) {
+    if (field === "catalog" && !["editor", "engineer", "shop"].includes(catalogEditorRole())) {
       remoteSectionFingerprints.set(field, fingerprint);
       return;
     }
@@ -1774,8 +1774,10 @@ async function saveRemoteState() {
         user: profile ? {
           name: profile.name || "",
           role: profile.role || "",
+          area: profile.area || "",
           phone: profile.phone || "",
-          authenticatedRole: authenticatedProfile?.role || profile.role || ""
+          authenticatedRole: authenticatedProfile?.role || profile.role || "",
+          authenticatedArea: authenticatedProfile?.area || profile.area || ""
         } : null,
         ...changedSections.payload
       })
@@ -2351,8 +2353,26 @@ function canEditChecklist() {
   return Boolean(roleAccess().checklist);
 }
 
+function catalogEditorRole() {
+  return authenticatedProfile?.role || profile?.role || "";
+}
+
+function canManageCatalogStructure(equipmentOrId = current.equipmentId) {
+  return canEditEquipmentCatalog(equipmentOrId);
+}
+
+function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
+  const role = catalogEditorRole();
+  if (!["editor", "engineer", "shop"].includes(role)) return false;
+  const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
+  if (!eq) return false;
+  if (role !== "shop") return true;
+  const actorArea = authenticatedProfile?.area || profile?.area || "";
+  return Boolean(actorArea && eq.area === actorArea);
+}
+
 function canEditCatalog() {
-  return isEditorSession();
+  return canEditEquipmentCatalog(current.equipmentId);
 }
 
 function escapeHtml(value) {
@@ -2387,42 +2407,77 @@ function allEquipment() {
 }
 
 function saveEquipmentCatalog(equipmentId, patch) {
-  if (!canEditCatalog()) return false;
+  const eq = equipmentById(equipmentId);
+  if (!eq || !canEditEquipmentCatalog(eq)) return false;
   const item = equipmentOverride(equipmentId);
-  Object.assign(item, patch);
+  const nextName = String(patch?.name || eq.name).trim() || eq.name;
+  item.name = nextName;
+  item.area ||= eq.area;
+  item.updatedAt = new Date().toISOString();
+  if (nextName !== eq.name) recordAudit("Изменил название оборудования", eq.name, "", `Новое название: ${nextName}`);
   saveState();
   return true;
 }
 
 function saveNodeName(equipmentId, nodeIndex, value) {
-  if (!canEditCatalog()) return false;
+  if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
+  if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
+  const previousName = eq.nodes[nodeIndex];
+  const nextName = String(value || "").trim() || previousName;
+  if (nextName === previousName) return true;
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
-  item.nodes[nodeIndex] = value.trim() || eq.nodes[nodeIndex];
+  item.nodes[nodeIndex] = nextName;
+  item.area ||= eq.area;
+  item.updatedAt = new Date().toISOString();
+  recordAudit("Изменил название узла", `${eq.name} · ${previousName}`, "", `Новое название: ${nextName}`);
   saveState();
   return true;
 }
 
 function addNodeName(equipmentId, value) {
-  if (!canEditCatalog()) return false;
+  if (!canManageCatalogStructure(equipmentId)) return false;
   const clean = String(value || "").trim();
   if (!clean) return false;
   const eq = equipmentById(equipmentId);
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes, clean];
+  item.area ||= eq.area;
+  item.updatedAt = new Date().toISOString();
+  recordAudit("Добавил узел", eq.name, "", clean);
   saveState();
   return true;
 }
 
+function nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex) {
+  const targetEquipmentId = Number(equipmentId);
+  const targetNodeIndex = Number(nodeIndex);
+  const checkHistory = Object.keys(state.checks || {}).some(recordKey => {
+    const [eqId, index] = recordKey.split(":").map(Number);
+    return eqId === targetEquipmentId && index >= targetNodeIndex;
+  });
+  const linkedRows = [
+    ...Object.values(state.requests || {}),
+    ...(state.downtimes || []),
+    ...(state.serviceCosts || [])
+  ];
+  return checkHistory || linkedRows.some(item =>
+    Number(item?.equipmentId) === targetEquipmentId && Number(item?.nodeIndex) >= targetNodeIndex
+  );
+}
+
 function deleteNodeName(equipmentId, nodeIndex) {
-  if (!canEditCatalog()) return false;
+  if (!canManageCatalogStructure(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   if (eq.nodes.length <= 1) return false;
+  if (nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex)) return false;
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes.splice(nodeIndex, 1);
+  item.area ||= eq.area;
+  item.updatedAt = new Date().toISOString();
   if (item.reminders) {
     const nextReminders = {};
     Object.entries(item.reminders).forEach(([key, value]) => {
@@ -2432,6 +2487,7 @@ function deleteNodeName(equipmentId, nodeIndex) {
     });
     item.reminders = nextReminders;
   }
+  recordAudit("Удалил узел", eq.name, "", eq.nodes[nodeIndex]);
   saveState();
   return true;
 }
@@ -2442,10 +2498,21 @@ function reminderItemsForNode(equipmentId, nodeIndex, nodeName) {
 }
 
 function saveNodeReminder(equipmentId, nodeIndex, text) {
+  if (!canEditEquipmentCatalog(equipmentId)) return false;
+  const eq = equipmentById(equipmentId);
+  if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   const item = equipmentOverride(equipmentId);
   item.reminders ||= {};
-  item.reminders[nodeIndex] = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const previous = reminderItemsForNode(equipmentId, nodeIndex, eq.nodes[nodeIndex]);
+  const next = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  item.reminders[nodeIndex] = next;
+  item.area ||= eq.area;
+  item.updatedAt = new Date().toISOString();
+  if (JSON.stringify(previous) !== JSON.stringify(next)) {
+    recordAudit("Изменил памятку узла", `${eq.name} · ${eq.nodes[nodeIndex]}`, "", `${next.length} строк`);
+  }
   saveState();
+  return true;
 }
 
 function areaAllowed(area) {
@@ -8444,6 +8511,16 @@ function renderEquipment() {
             </button>
             ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
+          ${canEditEquipmentCatalog(eq) ? `
+            <details class="catalog-editor" data-equipment-editor="${eq.id}">
+              <summary>Редактировать название</summary>
+              <label><span>Название оборудования</span><input data-equipment-name="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.name)}"></label>
+              <div class="catalog-editor-actions">
+                <button type="button" data-save-equipment="${eq.id}">Сохранить</button>
+                <button type="button" class="secondary" data-cancel-equipment="${eq.id}">Отмена</button>
+              </div>
+            </details>
+          ` : ""}
         </th>
       `;
       tr.querySelector("[data-aggregate-area]")?.addEventListener("click", () => {
@@ -8479,12 +8556,16 @@ function renderEquipment() {
         });
         tr.append(td);
       }
-      tr.querySelector("[data-save-equipment]")?.addEventListener("click", () => {
-        saveEquipmentCatalog(eq.id, {
-          name: tr.querySelector(`[data-equipment-name="${eq.id}"]`)?.value.trim() || eq.name,
-          area: tr.querySelector(`[data-equipment-area="${eq.id}"]`)?.value.trim() || eq.area
-        });
+      tr.querySelector("[data-save-equipment]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+        const input = tr.querySelector(`[data-equipment-name="${eq.id}"]`);
+        if (!saveEquipmentCatalog(eq.id, { name: input?.value || eq.name })) return;
         renderEquipment();
+      }, "Сохраняется..."));
+      tr.querySelector("[data-cancel-equipment]")?.addEventListener("click", () => {
+        const input = tr.querySelector(`[data-equipment-name="${eq.id}"]`);
+        if (input) input.value = eq.name;
+        const editor = tr.querySelector(`[data-equipment-editor="${eq.id}"]`);
+        if (editor) editor.open = false;
       });
       tbody.append(tr);
     });
@@ -8725,7 +8806,7 @@ function renderNodeWalkthrough(eq) {
     backRow.querySelector("[data-node-screen-back]")?.addEventListener("click", goBack);
     list.append(backRow);
   }
-  if (selectedNodeIndex === null && canEditCatalog()) {
+  if (selectedNodeIndex === null && canManageCatalogStructure(eq)) {
     const adminPanel = document.createElement("form");
     adminPanel.className = "node-catalog-admin";
     adminPanel.innerHTML = `
@@ -8764,10 +8845,12 @@ function renderNodeWalkthrough(eq) {
           </span>
           <span class="node-open-arrow">›</span>
         </button>
-        ${canEditCatalog() ? `
+        ${canEditEquipmentCatalog(eq) ? `
           <div class="node-admin-actions">
             <input class="node-name-editor" data-node-name-list="${index}" type="text" value="${escapeHtml(nodeName)}">
-            <button type="button" data-delete-node="${index}">Удалить</button>
+            <button type="button" data-save-node-name="${index}">Сохранить</button>
+            <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
+            ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
           </div>
         ` : ""}
       `;
@@ -8776,20 +8859,26 @@ function renderNodeWalkthrough(eq) {
         current.nodeIndex = index;
         renderNodeWalkthrough(eq);
       });
-      row.querySelector("[data-node-name-list]")?.addEventListener("change", event => {
-        if (!canEditCatalog()) return;
-        saveNodeName(eq.id, index, event.target.value);
+      row.querySelector("[data-save-node-name]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+        const input = row.querySelector("[data-node-name-list]");
+        if (!saveNodeName(eq.id, index, input?.value || nodeName)) return;
         renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Сохраняется..."));
+      row.querySelector("[data-cancel-node-name]")?.addEventListener("click", () => {
+        const input = row.querySelector("[data-node-name-list]");
+        if (input) input.value = nodeName;
       });
       row.querySelector("[data-delete-node]")?.addEventListener("click", event => {
-        if (!canEditCatalog()) return;
-        if (!window.confirm(`Удалить узел "${nodeName}"?`)) return;
+        if (!canManageCatalogStructure(eq)) return;
+        if (!window.confirm(`Точно удалить узел "${nodeName}"? После удаления QR-коды следующих узлов нужно распечатать заново.`)) return;
         if (deleteNodeName(eq.id, index)) {
           current.nodeDetailIndex = null;
           current.nodeIndex = 0;
           renderNodeWalkthrough(equipmentById(eq.id));
         } else {
-          window.alert("Нельзя удалить последний узел.");
+          window.alert(eq.nodes.length <= 1
+            ? "Нельзя удалить последний узел."
+            : "Удаление запрещено: у этого или следующих узлов уже есть сохранённые обходы, заявки или простои.");
         }
       });
       list.append(row);
@@ -8879,9 +8968,12 @@ function renderNodeWalkthrough(eq) {
         ${downtimeActiveBlock}
         <details class="node-reminder">
           <summary>Памятка</summary>
-          ${canEditCatalog() ? `
+          ${canEditEquipmentCatalog(eq) ? `
             <textarea data-node-reminder="${index}" rows="6">${escapeHtml(reminderItems.join("\n"))}</textarea>
-            <button type="button" data-save-reminder="${index}">Сохранить памятку</button>
+            <div class="node-reminder-actions">
+              <button type="button" data-save-reminder="${index}">Сохранить памятку</button>
+              <button type="button" class="secondary" data-cancel-reminder="${index}">Отмена</button>
+            </div>
           ` : `
             <ol>
               ${reminderItems.map(text => `<li>${escapeHtml(text)}</li>`).join("")}
@@ -8901,10 +8993,14 @@ function renderNodeWalkthrough(eq) {
       renderNodeWalkthrough(equipmentById(eq.id));
     });
     row.querySelector("[data-save-reminder]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
-      if (!canEditCatalog()) return;
+      if (!canEditEquipmentCatalog(eq)) return;
       saveNodeReminder(eq.id, index, row.querySelector(`[data-node-reminder="${index}"]`)?.value || "");
       renderNodeWalkthrough(equipmentById(eq.id));
     }));
+    row.querySelector("[data-cancel-reminder]")?.addEventListener("click", () => {
+      const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
+      if (textarea) textarea.value = reminderItems.join("\n");
+    });
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
       const liveItem = record(eq.id, index, current.date).to;

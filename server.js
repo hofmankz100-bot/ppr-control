@@ -1717,9 +1717,33 @@ async function handleApi(req, res, pathname, url) {
       const beforeState = JSON.stringify(publicState(db));
       const beforeRemarkKeys = openRemarkKeysServer(db);
       const authenticatedRole = String(body.user?.authenticatedRole || body.user?.role || "");
+      const authenticatedArea = String(body.user?.authenticatedArea || body.user?.area || "").trim();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
-      const incomingCatalog = authenticatedRole === "editor" ? body.catalog?.equipment : undefined;
+      const incomingCatalog = {};
+      if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
+        Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
+          if (!rawItem || typeof rawItem !== "object") return;
+          const currentItem = db.catalog.equipment[equipmentId] || {};
+          const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
+          if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
+          const item = {};
+          if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
+          if (Array.isArray(rawItem.nodes)) {
+            item.nodes = rawItem.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean).slice(0, 200);
+          }
+          if (rawItem.reminders && typeof rawItem.reminders === "object") {
+            item.reminders = {};
+            Object.entries(rawItem.reminders).forEach(([nodeIndex, lines]) => {
+              if (!Array.isArray(lines)) return;
+              item.reminders[nodeIndex] = lines.map(value => String(value || "").trim().slice(0, 1000)).filter(Boolean).slice(0, 100);
+            });
+          }
+          if (equipmentArea) item.area = equipmentArea;
+          item.updatedAt = String(rawItem.updatedAt || new Date().toISOString());
+          incomingCatalog[equipmentId] = item;
+        });
+      }
       const mergedCatalog = mergeObjectRecords(db.catalog.equipment, incomingCatalog);
       if (body.clearRecordedData === true && authenticatedRole !== "editor") {
         return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "admin_required" };
