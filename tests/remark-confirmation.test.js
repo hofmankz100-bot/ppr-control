@@ -279,6 +279,7 @@ test("the common warning hall excludes pending confirmations", () => {
 test("confirmation is handled in the personal role inbox instead of the PPR node", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(html, /id="rolePersonalInbox"/);
   assert.match(source, /function renderRolePersonalInbox\(\)/);
   assert.match(source, /data-personal-remark-confirm/);
@@ -287,7 +288,11 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.doesNotMatch(source, /<button[^>]+data-remark-confirm/);
   const reminderPanel = source.slice(source.indexOf("function renderGlobalReminderPanel"), source.indexOf("function updateGlobalReminderBadge"));
   assert.doesNotMatch(reminderPanel, /personalRemarkMessages|personal-remark-inbox|data-open-personal-remark/);
+  assert.doesNotMatch(html, /id="personalInboxButton"/);
+  assert.match(source, /const personalCount = isEditorSession\(\) \? 0 : personalRemarkMessages\(\)\.length/);
   assert.match(source, /const personalWaiting = role === profile\?\.role \? personalCount : 0/);
   assert.match(source, /role-personal-count">Личные:/);
-  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?return Boolean\(ROLE_ACCESS\[role\]\)/);
+  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?if \(isEditorSession\(\) \|\| role === "all"\) return false[\s\S]*?return role === profile\?\.role/);
+  assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
+  assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
 });

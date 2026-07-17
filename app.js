@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v185";
+const APP_VERSION = "v186";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -2348,6 +2348,7 @@ function isFieldWorkerRole(role = profile?.role) {
 
 function canOpenRequestRole(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
+    if (profile?.role === "editor") return role === "all" || Boolean(ROLE_ACCESS[role]);
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
     return role === profile?.role && Boolean(ROLE_ACCESS[role]);
@@ -2360,9 +2361,8 @@ function canOpenRequestRole(role) {
 
 function canSeeRequestRoleIndicator(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
-    if (role === "all") return profile?.role !== "warehouse";
-    if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return Boolean(ROLE_ACCESS[role]);
+    if (isEditorSession() || role === "all") return false;
+    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -7037,7 +7037,7 @@ function requestRoleCounts() {
 
 function updateRoleBadges() {
   const counts = requestRoleCounts();
-  const personalCount = personalRemarkMessages().length;
+  const personalCount = isEditorSession() ? 0 : personalRemarkMessages().length;
   document.querySelectorAll("[data-open-role], .request-tabs .tab[data-role]").forEach(button => {
     const role = button.dataset.openRole || button.dataset.role;
     const quickButton = Boolean(button.dataset.openRole);
