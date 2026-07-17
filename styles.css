@@ -6705,6 +6705,70 @@ body.editor-profile .warehouse-folders button.request-alert {
 .personal-remark-message p { margin: 0; white-space: pre-wrap; }
 .personal-remark-message small { color: var(--muted); }
 
+.role-personal-count {
+  display: block;
+  margin-top: 2px;
+  color: #a73535;
+  font-size: 11px;
+  font-weight: 900;
+}
+.request-alert .role-personal-count { color: inherit; }
+.role-personal-inbox {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  border: 2px solid #d7a52b;
+  border-radius: 16px;
+  background: #fffaf0;
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(132, 92, 0, .1);
+}
+.role-personal-inbox-head,
+.role-personal-message > header,
+.role-personal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.role-personal-inbox-head span { color: #8a6000; font-size: 11px; font-weight: 900; letter-spacing: .08em; }
+.role-personal-inbox-head h2 { margin: 2px 0 0; }
+.role-personal-inbox-head > strong {
+  min-width: 34px;
+  border-radius: 999px;
+  background: #c48700;
+  color: #fff;
+  padding: 7px 10px;
+  text-align: center;
+}
+.role-personal-message-list { display: grid; gap: 12px; }
+.role-personal-message {
+  display: grid;
+  gap: 11px;
+  border: 1px solid #ead69d;
+  border-left: 6px solid #d59a00;
+  border-radius: 13px;
+  background: #fff;
+  padding: 13px;
+}
+.role-personal-message.returned { border-left-color: var(--danger); }
+.role-personal-message > header small,
+.role-personal-message > header span,
+.role-personal-resolution small { color: var(--muted); }
+.role-personal-warning,
+.role-personal-resolution,
+.role-personal-return-reason { display: grid; gap: 6px; }
+.role-personal-warning p,
+.role-personal-resolution p,
+.role-personal-return-reason p { margin: 0; white-space: pre-wrap; }
+.role-personal-warning img,
+.role-personal-resolution img { width: min(100%, 420px); max-height: 300px; border-radius: 10px; object-fit: cover; }
+.role-personal-resolution,
+.role-personal-return-reason { border-radius: 10px; background: #f7fafc; padding: 10px; }
+.role-personal-actions { justify-content: flex-end; }
+.role-personal-empty { display: grid; gap: 3px; border-radius: 10px; background: #fff; padding: 14px; color: var(--muted); }
+.role-personal-empty strong { color: var(--ink); }
+
 @media (max-width: 640px) {
   .open-remarks-overlay { padding: 8px; }
   .open-remarks-dialog { max-height: 96vh; }
@@ -6715,6 +6779,9 @@ body.editor-profile .warehouse-folders button.request-alert {
   .remark-card-head,
   .remark-cards-title { align-items: flex-start; }
   .remark-card .node-walk-actions { grid-template-columns: 1fr; }
+  .role-personal-message > header,
+  .role-personal-actions { align-items: stretch; flex-direction: column; }
+  .role-personal-actions button { width: 100%; }
 }
 
 .request-badges {
