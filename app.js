@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v183";
+const APP_VERSION = "v184";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -367,6 +367,7 @@ const ui = {
   directorPanel: document.querySelector("#directorPanel"),
   directorControlPanel: document.querySelector("#directorControlPanel"),
   requestsMeta: document.querySelector("#requestsMeta"),
+  rolePersonalInbox: document.querySelector("#rolePersonalInbox"),
   requestSearchInput: document.querySelector("#requestSearchInput"),
   warehousePanel: document.querySelector("#warehousePanel"),
   resolvedInput: document.querySelector("#resolvedInput")
@@ -2349,7 +2350,7 @@ function canOpenRequestRole(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return role === profile?.role && canReceiveWarehouseIssue(role);
+    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -2361,7 +2362,7 @@ function canSeeRequestRoleIndicator(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return role === profile?.role && canReceiveWarehouseIssue(role);
+    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -4386,12 +4387,9 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             ${entry.resolutionSubmittedPhoto ? `<img src="${entry.resolutionSubmittedPhoto}" alt="Фото устранения для подтверждения">` : ""}
           </div>
           <p class="remark-confirmation-who">Подтверждает: <strong>${escapeHtml(remarkConfirmationLabel(entry, eq))}</strong></p>
-          ${canConfirm ? `
-            <div class="node-walk-actions remark-confirmation-actions">
-              <button type="button" class="secondary" data-remark-return>Вернуть на доработку</button>
-              <button type="button" data-remark-confirm>Подтвердить устранение</button>
-            </div>
-          ` : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
+          ${canConfirm
+            ? `<div class="resolution-empty">Подтверждение доступно в «Личных сообщениях» на кнопке вашей роли.</div>`
+            : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
         </section>
       ` : `
         ${returnedToRework ? `
@@ -7039,14 +7037,16 @@ function requestRoleCounts() {
 
 function updateRoleBadges() {
   const counts = requestRoleCounts();
+  const personalCount = personalRemarkMessages().length;
   document.querySelectorAll("[data-open-role], .request-tabs .tab[data-role]").forEach(button => {
     const role = button.dataset.openRole || button.dataset.role;
     const quickButton = Boolean(button.dataset.openRole);
     const canEnter = canOpenRequestRole(role);
     button.hidden = quickButton ? !canSeeRequestRoleIndicator(role) : !canEnter;
-    const waiting = counts[role] || 0;
+    const personalWaiting = role === profile?.role ? personalCount : 0;
+    const waiting = (counts[role] || 0) + personalWaiting;
     const label = requestRoleLabel(role);
-    button.innerHTML = `<span>${label}</span><strong>${waiting}</strong>`;
+    button.innerHTML = `<span>${label}${personalWaiting ? `<small class="role-personal-count">Личные: ${personalWaiting}</small>` : ""}</span><strong>${waiting}</strong>`;
     button.classList.toggle("indicator-only", quickButton && !canEnter);
     button.classList.toggle("request-alert", waiting > 0 && role !== "all");
     button.classList.toggle("has-count", waiting > 0);
@@ -9835,6 +9835,7 @@ function nodeReminderItems(nodeName) {
 function renderRequests() {
   ui.subtitle.textContent = "Заявки";
   if (!canOpenRequestRole(current.requestRole)) current.requestRole = defaultRequestRole();
+  renderRolePersonalInbox();
   const list = document.querySelector("#requestList");
   if (current.requestRole === "warehouse") {
     ui.requestsMeta.textContent = "Склад: приход, остатки и выдача.";
@@ -10547,7 +10548,14 @@ function personalRemarkMessages() {
           date,
           remarkId: entry.id,
           equipment: eq.name || "",
-          node: eq.nodes?.[nodeIndex] || ""
+          area: eq.area || "",
+          node: eq.nodes?.[nodeIndex] || "",
+          originalText: entry.text || "",
+          originalPhoto: entry.photo || "",
+          submittedBy: entry.resolutionSubmittedByName || event.name || "Сотрудник",
+          submittedComment: entry.resolutionSubmittedComment || "",
+          submittedPhoto: entry.resolutionSubmittedPhoto || "",
+          confirmationLabel: remarkConfirmationLabel(entry, eq)
         });
       });
     });
@@ -10559,6 +10567,118 @@ function markPersonalRemarkMessagesRead(messages = personalRemarkMessages()) {
   const ids = readPersonalRemarkMessageIds();
   messages.forEach(message => ids.add(message.id));
   localStorage.setItem(PERSONAL_REMARK_READ_KEY, JSON.stringify([...ids].slice(-300)));
+}
+
+function rolePersonalMessageHtml(message) {
+  const submitted = message.action === "submitted";
+  return `
+    <article class="role-personal-message ${escapeHtml(message.action)}" data-role-personal-message="${escapeHtml(message.id)}">
+      <header>
+        <div>
+          <strong>${escapeHtml(message.title)}</strong>
+          <small>${escapeHtml(message.area)} · ${escapeHtml(message.equipment)} · ${escapeHtml(message.node)}</small>
+        </div>
+        <span>${escapeHtml(dateTimeHuman(message.at))}</span>
+      </header>
+      <div class="role-personal-warning">
+        <strong>Предупреждение</strong>
+        <p>${escapeHtml(message.originalText || "Без текста")}</p>
+        ${message.originalPhoto ? `<img src="${message.originalPhoto}" alt="Фото предупреждения">` : ""}
+      </div>
+      ${submitted ? `
+        <div class="role-personal-resolution">
+          <strong>Устранил: ${escapeHtml(message.submittedBy)}</strong>
+          <p>${escapeHtml(message.submittedComment || "Работа передана на подтверждение")}</p>
+          ${message.submittedPhoto ? `<img src="${message.submittedPhoto}" alt="Фото устранения">` : ""}
+          <small>Подтверждает: ${escapeHtml(message.confirmationLabel)}</small>
+        </div>
+        <div class="role-personal-actions">
+          <button type="button" class="secondary" data-personal-remark-return>Вернуть с комментарием</button>
+          <button type="button" data-personal-remark-confirm>Подтвердить устранение</button>
+        </div>
+      ` : `
+        <div class="role-personal-return-reason">
+          <strong>Комментарий к возврату</strong>
+          <p>${escapeHtml(message.text)}</p>
+        </div>
+        <div class="role-personal-actions">
+          <button type="button" data-personal-remark-open-node>Перейти в узел и доработать</button>
+        </div>
+      `}
+    </article>
+  `;
+}
+
+function openPersonalRemarkNode(message) {
+  current.equipmentId = message.equipmentId;
+  current.nodeIndex = message.nodeIndex;
+  current.nodeDetailIndex = message.nodeIndex;
+  current.date = message.date;
+  current.kind = "to";
+  current.scrollToCommentNode = message.nodeIndex;
+  current.scrollToRemarkId = message.remarkId;
+  show("checklist");
+}
+
+function refreshPersonalRemarkSurfaces() {
+  renderRequests();
+  updateRoleBadges();
+  updateGlobalReminderBadge();
+  if (ui.globalReminderOverlay && !ui.globalReminderOverlay.hidden) renderGlobalReminderPanel();
+}
+
+function bindRolePersonalInbox(messages) {
+  if (!ui.rolePersonalInbox) return;
+  ui.rolePersonalInbox.querySelectorAll("[data-role-personal-message]").forEach(card => {
+    const message = messages.find(item => item.id === card.dataset.rolePersonalMessage);
+    if (!message) return;
+    card.querySelector("[data-personal-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
+      await publishRemarkCollaborationAction(message.equipmentId, message.nodeIndex, message.date, "confirm", { remarkId: message.remarkId });
+      markPersonalRemarkMessagesRead([message]);
+      refreshPersonalRemarkSurfaces();
+      showAppToast("Устранение подтверждено и записано в журналы и отчёты.", "ok");
+    }));
+    card.querySelector("[data-personal-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      const reason = window.prompt("Укажите, что нужно доработать:");
+      if (!String(reason || "").trim()) {
+        window.alert("Возврат возможен только с комментарием.");
+        return;
+      }
+      await publishRemarkCollaborationAction(message.equipmentId, message.nodeIndex, message.date, "return", {
+        remarkId: message.remarkId,
+        reason: String(reason).trim()
+      });
+      markPersonalRemarkMessagesRead([message]);
+      refreshPersonalRemarkSurfaces();
+      showAppToast("Предупреждение возвращено исполнителю на доработку.", "ok");
+    }));
+    card.querySelector("[data-personal-remark-open-node]")?.addEventListener("click", () => openPersonalRemarkNode(message));
+  });
+}
+
+function renderRolePersonalInbox() {
+  if (!ui.rolePersonalInbox) return;
+  const isOwnRole = current.requestRole === profile?.role;
+  const messages = isOwnRole ? personalRemarkMessages() : [];
+  ui.rolePersonalInbox.hidden = !isOwnRole;
+  if (!isOwnRole) {
+    ui.rolePersonalInbox.innerHTML = "";
+    return;
+  }
+  markPersonalRemarkMessagesRead(messages);
+  ui.rolePersonalInbox.innerHTML = `
+    <section class="role-personal-inbox">
+      <div class="role-personal-inbox-head">
+        <div><span>ЛИЧНО ВАМ</span><h2>Личные сообщения</h2></div>
+        <strong>${messages.length}</strong>
+      </div>
+      <div class="role-personal-message-list">
+        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>Новых личных сообщений нет</strong><span>Запросы на подтверждение и возвраты появятся здесь.</span></div>`}
+      </div>
+    </section>
+  `;
+  bindRolePersonalInbox(messages);
 }
 
 function globalReminderItems(equipment = globalControlEquipment()) {
@@ -10663,15 +10783,9 @@ function renderGlobalReminderPanel() {
     const message = personalMessages.find(item => item.id === button.dataset.openPersonalRemark);
     if (!message) return;
     markPersonalRemarkMessagesRead([message]);
-    current.equipmentId = message.equipmentId;
-    current.nodeIndex = message.nodeIndex;
-    current.nodeDetailIndex = message.nodeIndex;
-    current.date = message.date;
-    current.kind = "to";
-    current.scrollToCommentNode = message.nodeIndex;
-    current.scrollToRemarkId = message.remarkId;
+    current.requestRole = profile?.role || defaultRequestRole();
     closeGlobalReminderPanel();
-    show("checklist");
+    show("requests");
   }));
   ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
     const openDate = () => {

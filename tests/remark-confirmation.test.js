@@ -275,3 +275,15 @@ test("the common warning hall excludes pending confirmations", () => {
   assert.match(source, /return commonHallRemarkEntries\(rec\?\.to \|\| \{\}\)\.map/);
   assert.match(source, /if \(item\?\.resolutionPendingConfirmation\) return canCurrentUserConfirmRemark\(item\)/);
 });
+
+test("confirmation is handled in the personal role inbox instead of the PPR node", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.match(html, /id="rolePersonalInbox"/);
+  assert.match(source, /function renderRolePersonalInbox\(\)/);
+  assert.match(source, /data-personal-remark-confirm/);
+  assert.match(source, /data-personal-remark-return/);
+  assert.match(source, /role === profile\?\.role && Boolean\(ROLE_ACCESS\[role\]\)/);
+  assert.match(source, /current\.requestRole = profile\?\.role \|\| defaultRequestRole\(\);[\s\S]*?show\("requests"\)/);
+  assert.doesNotMatch(source, /<button[^>]+data-remark-confirm/);
+});
