@@ -284,6 +284,10 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.match(source, /data-personal-remark-confirm/);
   assert.match(source, /data-personal-remark-return/);
   assert.match(source, /role === profile\?\.role && Boolean\(ROLE_ACCESS\[role\]\)/);
-  assert.match(source, /current\.requestRole = profile\?\.role \|\| defaultRequestRole\(\);[\s\S]*?show\("requests"\)/);
   assert.doesNotMatch(source, /<button[^>]+data-remark-confirm/);
+  const reminderPanel = source.slice(source.indexOf("function renderGlobalReminderPanel"), source.indexOf("function updateGlobalReminderBadge"));
+  assert.doesNotMatch(reminderPanel, /personalRemarkMessages|personal-remark-inbox|data-open-personal-remark/);
+  assert.match(source, /const personalWaiting = role === profile\?\.role \? personalCount : 0/);
+  assert.match(source, /role-personal-count">Личные:/);
+  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?return Boolean\(ROLE_ACCESS\[role\]\)/);
 });
