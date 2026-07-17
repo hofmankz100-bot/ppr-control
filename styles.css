@@ -8381,7 +8381,6 @@ textarea:disabled {
     margin-top: -1px;
   }
 
-  .quick-nav [data-open-role]:not([data-open-role="warehouse"]),
   .quick-nav #createTmcRequestButton {
     display: none !important;
   }
