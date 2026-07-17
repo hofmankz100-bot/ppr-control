@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v182";
+const APP_VERSION = "v183";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1319,7 +1319,18 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
     const brokenName = /^[?\s]{3,}$/.test(String(entry.name || "").trim());
     if (brokenText && brokenName) continue;
     const entryKey = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
-    map.set(entryKey, { ...(map.get(entryKey) || {}), ...entry });
+    const previous = map.get(entryKey) || {};
+    const next = { ...previous, ...entry };
+    if (previous.resolved === true) {
+      next.resolved = true;
+      [
+        "resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto",
+        ...REMARK_COLLABORATION_FIELDS
+      ].forEach(field => {
+        if (previous[field] !== undefined) next[field] = previous[field];
+      });
+    }
+    map.set(entryKey, next);
   }
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
@@ -3947,7 +3958,10 @@ function isResolutionParticipant(item, user = resolutionActor()) {
 
 function remarkNotificationVisibleToCurrentUser(item) {
   const participants = resolutionParticipants(item);
-  if (item?.resolutionPendingConfirmation && canCurrentUserConfirmRemark(item)) return true;
+  if (item?.resolutionPendingConfirmation) return canCurrentUserConfirmRemark(item);
+  if (item?.resolutionReturnedAt && item?.resolutionSubmittedByKey) {
+    return String(item.resolutionSubmittedByKey) === resolutionActor().key;
+  }
   return participants.length === 0 || participants.some(participant => participant.key === resolutionActor().key);
 }
 
@@ -3978,28 +3992,6 @@ function resolutionUpdateAuthor(entry = {}) {
   return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
 }
 
-const REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES = new Set(["mechanic", "electrician", "operator"]);
-
-function remarkAuthorIdentity(entry = {}) {
-  return {
-    key: String(entry.authorKey || ""),
-    id: String(entry.authorId || ""),
-    employeeId: String(entry.authorEmployeeId || ""),
-    phone: String(entry.authorPhone || ""),
-    name: String(entry.name || ""),
-    role: String(entry.role || "")
-  };
-}
-
-function sameRemarkPerson(user = {}, identity = {}) {
-  const userKey = resolutionUserKey(user);
-  const identityKey = String(identity.key || resolutionUserKey(identity) || "");
-  if (identityKey && userKey === identityKey) return true;
-  return Boolean(identity.name && identity.role
-    && String(user.name || "").trim().toLowerCase() === String(identity.name).trim().toLowerCase()
-    && String(user.role || "") === String(identity.role));
-}
-
 function approvedRemarkUsers() {
   const actor = resolutionActor();
   const byKey = new Map();
@@ -4009,47 +4001,30 @@ function approvedRemarkUsers() {
   return [...byKey.values()];
 }
 
+function sameRemarkArea(left = "", right = "") {
+  return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
+}
+
 function remarkConfirmationRule(entry = {}, eq = null) {
   const users = approvedRemarkUsers();
-  const area = String(entry.confirmationArea || eq?.area || "");
-  if (entry.confirmationRequiredKey) {
-    const candidates = users.filter(user => resolutionUserKey(user) === entry.confirmationRequiredKey);
-    return { mode: "author", role: entry.confirmationRequiredRole || entry.role || "", area, candidates };
-  }
-  if (entry.confirmationRequiredRole === "shop") {
-    const candidates = users.filter(user => user.role === "shop" && user.area === area);
-    return { mode: "shop", role: "shop", area, candidates };
-  }
-  if (entry.confirmationRequiredRole === "engineer") {
-    const candidates = users.filter(user => user.role === "engineer");
-    return { mode: "engineer", role: "engineer", area, candidates };
-  }
-  if (REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES.has(entry.role)) {
-    const shopCandidates = users.filter(user => user.role === "shop" && user.area === area);
-    if (shopCandidates.length) return { mode: "shop", role: "shop", area, candidates: shopCandidates };
-    return { mode: "engineer", role: "engineer", area, candidates: users.filter(user => user.role === "engineer") };
-  }
-  const author = remarkAuthorIdentity(entry);
-  return { mode: "author", role: entry.role || "", area, candidates: users.filter(user => sameRemarkPerson(user, author)) };
+  const area = String(eq?.area || entry.confirmationArea || "");
+  const shopCandidates = area ? users.filter(user => user.role === "shop" && sameRemarkArea(user.area, area)) : [];
+  if (shopCandidates.length) return { mode: "shop", role: "shop", area, candidates: shopCandidates };
+  return { mode: "engineer", role: "engineer", area, candidates: users.filter(user => user.role === "engineer") };
 }
 
 function canCurrentUserConfirmRemark(entry = {}, eq = null) {
   const actor = resolutionActor();
   const rule = remarkConfirmationRule(entry, eq);
-  if (rule.mode === "shop") return actor.role === "shop" && actor.area === rule.area;
+  if (rule.mode === "shop") return actor.role === "shop" && sameRemarkArea(actor.area, rule.area);
   if (rule.mode === "engineer") return actor.role === "engineer";
-  return sameRemarkPerson(actor, {
-    key: entry.confirmationRequiredKey || entry.authorKey || "",
-    name: entry.confirmationRequiredName || entry.name || "",
-    role: entry.confirmationRequiredRole || entry.role || ""
-  });
+  return false;
 }
 
 function remarkConfirmationLabel(entry = {}, eq = null) {
   const rule = remarkConfirmationRule(entry, eq);
   if (rule.mode === "shop") return `Начальник цеха · ${rule.area || "цех оборудования"}`;
-  if (rule.mode === "engineer") return "Инженер";
-  return entry.confirmationRequiredName || entry.name || "Автор предупреждения";
+  return "Инженер";
 }
 
 function stableRemarkId(entry = {}) {
@@ -4095,6 +4070,10 @@ function ensureRemarkEntries(item = {}) {
 
 function openRemarkEntries(item = {}) {
   return ensureRemarkEntries(item).filter(entry => !entry.resolved);
+}
+
+function commonHallRemarkEntries(item = {}) {
+  return openRemarkEntries(item).filter(entry => !entry.resolutionPendingConfirmation);
 }
 
 function syncItemRemarkSummary(item = {}) {
@@ -4374,7 +4353,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const submittedBy = entry.resolutionSubmittedByName ? `${entry.resolutionSubmittedByName}${submittedRole ? ` (${submittedRole})` : ""}` : submittedRole;
   const confirmedRole = ROLE_ACCESS[entry.confirmedByRole]?.label || entry.confirmedByRole || "";
   const confirmedBy = entry.confirmedByName ? `${entry.confirmedByName}${confirmedRole ? ` (${confirmedRole})` : ""}` : confirmedRole;
-  const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : returnedToRework ? "На доработке" : "Открыто";
+  const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : returnedToRework ? "Возвращено" : "Открыто";
 
   return `
     <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
@@ -8018,7 +7997,7 @@ function allOpenCommentTargets() {
       const [equipmentId, nodeIndex, date] = k.split(":");
       const eq = equipmentById(Number(equipmentId));
       if (!remarkVisibleToCurrentRole(eq)) return [];
-      return openRemarkEntries(rec?.to || {}).map(entry => ({
+      return commonHallRemarkEntries(rec?.to || {}).map(entry => ({
           equipmentId: Number(equipmentId),
           nodeIndex: Number(nodeIndex),
           date,
@@ -8050,14 +8029,12 @@ function openAllRemarkCards() {
     return;
   }
   document.querySelector(".open-remarks-overlay")?.remove();
-  const pendingCount = targets.filter(target => target.pendingConfirmation).length;
-  const activeCount = targets.length - pendingCount;
   const overlay = document.createElement("div");
   overlay.className = "request-archive-overlay open-remarks-overlay";
   overlay.innerHTML = `
     <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>К устранению: ${activeCount} · На подтверждении: ${pendingCount}</span></div>
+        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>К устранению: ${targets.length}</span></div>
         <button type="button" data-close-open-remarks>Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
@@ -8065,7 +8042,7 @@ function openAllRemarkCards() {
           <article class="open-remark-item ${target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
             <header>
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
-              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "На доработке" : "Открыто"}</span>
+              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
             </header>
             <p>${escapeHtml(target.text)}</p>
             ${target.pendingConfirmation ? `
@@ -10547,9 +10524,14 @@ function personalRemarkMessages() {
     ensureRemarkEntries(rec?.to || {}).forEach(entry => {
       (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).forEach(event => {
         if (!["submitted", "returned"].includes(event.action)) return;
-        if (event.action === "submitted" && (!entry.resolutionPendingConfirmation || event.at !== entry.resolutionSubmittedAt)) return;
-        const recipientKeys = Array.isArray(event.recipientKeys) ? event.recipientKeys.map(String) : [];
-        if (!recipientKeys.includes(actorKey)) return;
+        if (event.action === "submitted") {
+          if (!entry.resolutionPendingConfirmation || event.at !== entry.resolutionSubmittedAt || !canCurrentUserConfirmRemark(entry, eq)) return;
+        } else if (
+          entry.resolutionPendingConfirmation
+          || entry.resolved
+          || event.at !== entry.resolutionReturnedAt
+          || String(entry.resolutionSubmittedByKey || "") !== actorKey
+        ) return;
         const id = String(event.id || `${entry.id}:${event.action}:${event.at || ""}`);
         messages.push({
           id,
@@ -10950,7 +10932,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
       if (created?.year === year || resolved?.year === year) {
         events.push({
           type: "remark",
-          resolutionKey: `remark:${recordKey}`,
+          resolutionKey: `remark:${recordKey}:${stableRemarkId(entry)}`,
           equipment: eq.name || "",
           area: eq.area || "",
           node: eq.nodes[Number(nodeIndexRaw)] || "",
@@ -11942,8 +11924,10 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
       const resolvedAt = entry.resolved ? entry.resolvedAt || "" : "";
-      const createdInMonth = String(createdAt).slice(0, 7) === key;
-      const resolvedInMonth = String(resolvedAt).slice(0, 7) === key;
+      const createdPeriod = dateYearMonth(createdAt);
+      const resolvedPeriod = dateYearMonth(resolvedAt);
+      const createdInMonth = createdPeriod?.year === year && createdPeriod.month === month;
+      const resolvedInMonth = resolvedPeriod?.year === year && resolvedPeriod.month === month;
       const openNow = !entry.resolved;
       const createdMs = Date.parse(createdAt || "");
       const openForReport = openNow && Number.isFinite(createdMs) && createdMs < range.end.getTime();

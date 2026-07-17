@@ -348,9 +348,21 @@ function objectRecordsForMonth(records = {}, month) {
   return out;
 }
 
+function checkRecordsForMonth(records = {}, month) {
+  const out = {};
+  for (const [key, value] of Object.entries(records || {})) {
+    const item = value?.to && typeof value.to === "object" ? value.to : value || {};
+    const remarks = Array.isArray(item.commentLog) ? item.commentLog : [];
+    if (String(key).includes(month) || remarks.some(entry => remarkBelongsToMonthServer(entry, month)) || JSON.stringify(value || {}).includes(month)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 function monthlyExport(db, month) {
   db = normalizeDb(db);
-  const checks = objectRecordsForMonth(db.checks, month);
+  const checks = checkRecordsForMonth(db.checks, month);
   const requests = objectRecordsForMonth(db.requests, month);
   const pprSheets = objectRecordsForMonth(db.pprSheets, month);
   const directorMessages = (db.directorMessages || []).filter(item => itemBelongsToMonth(item, month));
@@ -444,20 +456,91 @@ function sendExcelDownload(res, filename, rows) {
   res.end("\ufeff" + html);
 }
 
+const plantMonthFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Qyzylorda",
+  year: "numeric",
+  month: "2-digit"
+});
+
+function plantMonthKey(value) {
+  const parsed = new Date(value || "");
+  if (!Number.isFinite(parsed.getTime())) return String(value || "").slice(0, 7);
+  const parts = Object.fromEntries(plantMonthFormatter.formatToParts(parsed).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}`;
+}
+
+function remarkBelongsToMonthServer(entry = {}, month = "") {
+  return [
+    entry.at,
+    entry.resolutionSubmittedAt,
+    entry.resolvedAt,
+    entry.confirmedAt,
+    entry.resolutionReturnedAt
+  ].some(value => value && plantMonthKey(value) === month);
+}
+
+function exportPerson(name = "", role = "") {
+  return String(name || "").trim() ? `${String(name).trim()}${role ? ` (${role})` : ""}` : String(role || "");
+}
+
 function monthlyCsvRows(db, month) {
   const exported = monthlyExport(db, month);
-  const rows = [["Раздел", "Дата", "Цех", "Оборудование", "Узел", "Статус", "Количество", "Кто записал", "Комментарий / описание"]];
+  const rows = [[
+    "Раздел", "Дата", "Цех", "Оборудование", "Узел", "Статус", "Количество", "Кто записал",
+    "Кто устранил", "Время устранения", "Кто подтвердил", "Время подтверждения", "Комментарий / описание"
+  ]];
   for (const [key, value] of Object.entries(exported.checks || {})) {
+    const [equipmentId, nodeIndexRaw, recordDate] = String(key).split(":");
+    const nodeIndex = Number(nodeIndexRaw);
+    const equipment = db.catalog?.equipment?.[equipmentId] || {};
+    const item = value?.to && typeof value.to === "object" ? value.to : value || {};
+    const area = equipment.area || DEFAULT_EQUIPMENT_AREAS_SERVER[equipmentId] || value?.area || item.area || "";
+    const equipmentName = equipment.name || value?.equipment || item.equipment || `Оборудование ${equipmentId}`;
+    const nodeName = (Array.isArray(equipment.nodes) ? equipment.nodes[nodeIndex] : "") || value?.node || item.node || `Узел ${nodeIndex + 1}`;
+    const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
+      .filter(entry => entry && !isDowntimeCommentEntryServer(entry) && String(entry.text || entry.photo || "").trim())
+      .filter(entry => remarkBelongsToMonthServer(entry, month));
+    if (entries.length) {
+      entries.forEach(entry => {
+        const pending = Boolean(entry.resolutionPendingConfirmation && !entry.resolved);
+        const returned = Boolean(entry.resolutionReturnedAt && !pending && !entry.resolved);
+        const resolutionTime = entry.resolved ? entry.resolvedAt || "" : pending ? entry.resolutionSubmittedAt || "" : "";
+        rows.push([
+          "Предупреждение",
+          entry.at || recordDate || key,
+          area,
+          equipmentName,
+          nodeName,
+          entry.resolved ? "Подтверждено" : pending ? "На подтверждении" : returned ? "Возвращено" : "Открыто",
+          "",
+          exportPerson(entry.name || item.commentOwnerName, entry.role || item.commentOwnerRole),
+          exportPerson(entry.resolvedByName || entry.resolutionSubmittedByName, entry.resolvedByRole || entry.resolutionSubmittedByRole),
+          resolutionTime,
+          exportPerson(entry.confirmedByName, entry.confirmedByRole),
+          entry.confirmedAt || "",
+          [
+            entry.text || "",
+            entry.resolvedComment || entry.resolutionSubmittedComment || "",
+            returned ? `Возврат: ${entry.resolutionReturnReason || ""}` : ""
+          ].filter(Boolean).join(" · ")
+        ]);
+      });
+      continue;
+    }
     rows.push([
       "Обход / замечание",
-      value?.date || key,
-      value?.area || "",
-      value?.equipment || "",
-      value?.node || key,
-      value?.resolved ? "Устранено" : value?.comment ? "Открыто" : value?.status || "",
+      value?.date || recordDate || key,
+      area,
+      equipmentName,
+      nodeName,
+      item.resolved ? "Устранено" : item.comment ? "Открыто" : item.status || "",
       "",
-      value?.commentAuthorName || value?.authorName || "",
-      value?.comment || value?.request || JSON.stringify(value || {})
+      item.commentAuthorName || item.authorName || "",
+      exportPerson(item.resolvedByName, item.resolvedByRole),
+      item.resolvedAt || "",
+      exportPerson(item.confirmedByName, item.confirmedByRole),
+      item.confirmedAt || "",
+      item.comment || item.request || JSON.stringify(item || {})
     ]);
   }
   for (const [key, value] of Object.entries(exported.requests || {})) {
@@ -470,6 +553,10 @@ function monthlyCsvRows(db, month) {
       value?.status || value?.routeStatus || "",
       value?.qtyReceived || value?.qtyIssued || value?.qty || "",
       value?.authorName || value?.requestAuthorName || "",
+      "",
+      "",
+      "",
+      "",
       value?.text || value?.comment || value?.description || JSON.stringify(value || {})
     ]);
   }
@@ -486,6 +573,10 @@ function monthlyCsvRows(db, month) {
         row.mark === "done" ? "Выполнено" : row.mark === "na" ? "Не требуется" : "Без отметки",
         "",
         row.markedByName || sheet?.updatedByName || "",
+        "",
+        row.markedAt || "",
+        sheet?.approvedByName || "",
+        sheet?.approvedAt || "",
         `${row.work || ""}${row.markedAt ? ` · ${row.markedAt}` : ""}${sheet?.approvedByName ? ` · Принял инженер: ${sheet.approvedByName}` : ""}`
       ]);
     }
@@ -500,6 +591,10 @@ function monthlyCsvRows(db, month) {
       item?.type || item?.status || "",
       item?.durationText || item?.durationMs || "",
       item?.authorName || "",
+      exportPerson(item?.closedByName, item?.closedByRole),
+      item?.endedAt || "",
+      "",
+      "",
       item?.reason || item?.comment || JSON.stringify(item || {})
     ]);
   }
@@ -513,6 +608,10 @@ function monthlyCsvRows(db, month) {
       item?.status || "",
       "",
       item?.from || item?.name || "",
+      "",
+      "",
+      "",
+      "",
       item?.subject ? `${item.subject}. ${item.text || item.message || ""}` : item?.text || item?.message || JSON.stringify(item || {})
     ]);
   }
@@ -817,8 +916,6 @@ function syncItemRemarkSummaryServer(item = {}) {
   item.confirmedByRole = latest.confirmedByRole || item.confirmedByRole || "";
 }
 
-const REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES_SERVER = new Set(["mechanic", "electrician", "operator"]);
-
 function approvedResolutionUsersServer(db) {
   return (db.users || [])
     .filter(user => user && user.approved !== false && user.pendingApproval !== true)
@@ -833,36 +930,68 @@ function sameRemarkAuthorServer(user = {}, remark = {}) {
     && String(user.role || "") === String(remark.role));
 }
 
+function sameRemarkAreaServer(left = "", right = "") {
+  return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
+}
+
 function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   const users = approvedResolutionUsersServer(db);
-  const area = String(remark.confirmationArea || equipmentArea || "").trim().slice(0, 200);
-  if (remark.confirmationRequiredKey) {
-    return {
-      mode: "author",
-      role: String(remark.confirmationRequiredRole || remark.role || ""),
-      area,
-      users: users.filter(user => user.key === String(remark.confirmationRequiredKey))
-    };
-  }
-  if (remark.confirmationRequiredRole === "shop") {
-    return { mode: "shop", role: "shop", area, users: users.filter(user => user.role === "shop" && user.area === area) };
-  }
-  if (remark.confirmationRequiredRole === "engineer") {
-    return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
-  }
-  if (REMARK_SHOP_CONFIRMATION_AUTHOR_ROLES_SERVER.has(remark.role)) {
-    const shopUsers = users.filter(user => user.role === "shop" && user.area === area);
-    if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
-    return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
-  }
-  return { mode: "author", role: String(remark.role || ""), area, users: users.filter(user => sameRemarkAuthorServer(user, remark)) };
+  const area = String(equipmentArea || remark.confirmationArea || "").trim().slice(0, 200);
+  const shopUsers = area ? users.filter(user => user.role === "shop" && sameRemarkAreaServer(user.area, area)) : [];
+  if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
+  return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
 }
 
 function actorCanConfirmRemarkServer(actor, remark, rule) {
-  if (rule.mode === "shop") return actor.role === "shop" && actor.area === rule.area;
+  if (rule.mode === "shop") return actor.role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
   if (rule.mode === "engineer") return actor.role === "engineer";
-  if (remark.confirmationRequiredKey) return actor.key === remark.confirmationRequiredKey;
-  return sameRemarkAuthorServer(actor, remark);
+  return false;
+}
+
+const DEFAULT_EQUIPMENT_AREAS_SERVER = Object.freeze({
+  "1": "Прессовый участок",
+  "2": "Прессовый участок",
+  "3": "Литейный цех",
+  "4": "Покрасочный цех",
+  "5": "Шихтовый цех",
+  "6": "Анодный цех",
+  "7": "Упаковка",
+  "8": "Инструментальный цех",
+  "9": "Компрессорная",
+  "10": "Насосная",
+  "11": "Токарный цех",
+  "12": "Электроподстанции",
+  "13": "Территория",
+  "14": "Офисные помещения",
+  "15": "Газовое хозяйство",
+  "16": "Резерв",
+  "17": "Резерв",
+  "18": "Резерв",
+  "19": "Резерв",
+  "20": "Резерв"
+});
+
+function remarkEquipmentAreaServer(db, recordKey, requestedArea = "") {
+  const equipmentId = String(recordKey || "").split(":")[0];
+  const record = db.checks?.[recordKey] || {};
+  return String(
+    db.catalog?.equipment?.[equipmentId]?.area
+    || DEFAULT_EQUIPMENT_AREAS_SERVER[equipmentId]
+    || record.area
+    || record.to?.area
+    || requestedArea
+    || ""
+  ).trim().slice(0, 200);
+}
+
+function latestRemarkSubmissionAtServer(remark = {}) {
+  const direct = String(remark.resolutionSubmittedAt || "");
+  if (Number.isFinite(Date.parse(direct))) return direct;
+  return (Array.isArray(remark.resolutionEvents) ? remark.resolutionEvents : [])
+    .filter(event => event?.action === "submitted" && Number.isFinite(Date.parse(event.at || "")))
+    .map(event => String(event.at))
+    .sort()
+    .at(-1) || "";
 }
 
 function subscriptionMatchesResolutionParticipant(subscriptionEntry, participant) {
@@ -878,9 +1007,16 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
     ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => {
       const participants = resolutionParticipantsServer(entry);
       const subscriptionActor = sanitizeResolutionParticipant(subscriptionEntry?.profile || {});
-      const confirmationRule = entry.resolutionPendingConfirmation ? remarkConfirmationRuleServer(db, entry, entry.confirmationArea || "") : null;
-      const canConfirm = confirmationRule ? actorCanConfirmRemarkServer(subscriptionActor, entry, confirmationRule) : false;
-      if (canConfirm || !participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+      if (entry.resolutionPendingConfirmation) {
+        const confirmationRule = remarkConfirmationRuleServer(db, entry, entry.confirmationArea || "");
+        if (actorCanConfirmRemarkServer(subscriptionActor, entry, confirmationRule)) count += 1;
+        return;
+      }
+      if (entry.resolutionReturnedAt && entry.resolutionSubmittedByKey) {
+        if (subscriptionActor.key === String(entry.resolutionSubmittedByKey)) count += 1;
+        return;
+      }
+      if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
     });
   }
   return count;
@@ -1413,25 +1549,30 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
 
 function mergeCommentLogs(current = [], incoming = []) {
   const map = new Map();
-  for (const entry of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-    if (!entry || typeof entry !== "object") continue;
+  const mergeEntry = (entry, fromIncoming) => {
+    if (!entry || typeof entry !== "object") return;
     const brokenText = /^\?{3,}$/.test(String(entry.text || "").trim());
     const brokenName = /^[?\s]{3,}$/.test(String(entry.name || "").trim());
-    if (brokenText && brokenName) continue;
+    if (brokenText && brokenName) return;
     const key = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     const previous = map.get(key) || {};
     const next = { ...previous, ...entry };
-    if (previous.resolved === true) {
+    if (fromIncoming && previous.resolved === true) {
       next.resolved = true;
-      ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto", "resolutionEvents", "resolutionCompletedParticipants"].forEach(field => {
+      [
+        "resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto",
+        ...REMARK_COLLABORATION_FIELDS_SERVER
+      ].forEach(field => {
         if (previous[field] !== undefined) next[field] = previous[field];
       });
-    } else if (entry.resolved === true) {
+    } else if (fromIncoming && entry.resolved === true) {
       next.resolved = false;
       ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto"].forEach(field => delete next[field]);
     }
     map.set(key, next);
-  }
+  };
+  (Array.isArray(current) ? current : []).forEach(entry => mergeEntry(entry, false));
+  (Array.isArray(incoming) ? incoming : []).forEach(entry => mergeEntry(entry, true));
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
 
@@ -2242,10 +2383,10 @@ async function handleApi(req, res, pathname, url) {
     const body = await readBody(req);
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
-    const actor = sanitizeResolutionParticipant(body.actor || {});
+    const requestedActor = sanitizeResolutionParticipant(body.actor || {});
     const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
-    if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !actor.key || !allowedRoles.has(actor.role)) {
+    if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
       return true;
     }
@@ -2258,10 +2399,11 @@ async function handleApi(req, res, pathname, url) {
       const remarks = ensureRemarkEntriesServer(item);
       const remark = remarks.find(entry => entry.id === remarkId);
       if (!remark || remark.resolved) return { error: "remark_not_open" };
-      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === actor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== actor.role) {
+      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
         return { error: "remark_actor_invalid" };
       }
+      const actor = sanitizeResolutionParticipant(registeredActor);
       if (remark.resolutionPendingConfirmation && !["confirm", "return"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
@@ -2377,7 +2519,7 @@ async function handleApi(req, res, pathname, url) {
         const text = String(body.text || "").trim().slice(0, 4000);
         const photo = String(body.photo || "");
         if (!text) return { error: "remark_resolution_text_required" };
-        const equipmentArea = String(body.equipmentArea || "").trim().slice(0, 200);
+        const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
         const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
         remark.resolved = false;
         remark.resolvedAt = "";
@@ -2390,8 +2532,8 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionSubmittedPhoto = photo.length <= 12000000 ? photo : "";
         remark.confirmationArea = confirmationRule.area;
         remark.confirmationRequiredRole = confirmationRule.role;
-        remark.confirmationRequiredKey = confirmationRule.mode === "author" ? (remark.authorKey || confirmationRule.users[0]?.key || "") : "";
-        remark.confirmationRequiredName = confirmationRule.mode === "author" ? (remark.name || confirmationRule.users[0]?.name || "") : "";
+        remark.confirmationRequiredKey = "";
+        remark.confirmationRequiredName = "";
         remark.confirmedAt = "";
         remark.confirmedByKey = "";
         remark.confirmedByName = "";
@@ -2417,9 +2559,11 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "confirm") {
-        const confirmationRule = remarkConfirmationRuleServer(db, remark, String(body.equipmentArea || ""));
+        const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
+        const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
         if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
-        const submittedAt = remark.resolutionSubmittedAt || now;
+        const submittedAt = latestRemarkSubmissionAtServer(remark);
+        if (!submittedAt) return { error: "remark_resolution_time_missing" };
         const createdMs = Date.parse(remark.at || "");
         const submittedMs = Date.parse(submittedAt);
         remark.resolved = true;
@@ -2449,7 +2593,8 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "return") {
-        const confirmationRule = remarkConfirmationRuleServer(db, remark, String(body.equipmentArea || ""));
+        const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
+        const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
         if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
         if (!reason) return { error: "remark_return_reason_required" };
@@ -2460,8 +2605,7 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionReturnedByRole = actor.role;
         remark.resolutionReturnReason = reason;
         const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
-        const noticeRecipients = [...participants, ...(submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [])]
-          .filter((user, index, all) => all.findIndex(entry => entry.key === user.key) === index);
+        const noticeRecipients = submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [];
         remark.resolutionEvents.push({
           id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
           action: "returned",
@@ -2497,7 +2641,7 @@ async function handleApi(req, res, pathname, url) {
       };
     });
     if (result.error) {
-      const status = ["remark_not_open", "remark_awaiting_confirmation", "remark_not_awaiting_confirmation"].includes(result.error)
+      const status = ["remark_not_open", "remark_awaiting_confirmation", "remark_not_awaiting_confirmation", "remark_resolution_time_missing"].includes(result.error)
         ? 409
         : result.error.includes("forbidden") || result.error === "remark_participant_required" ? 403 : 400;
       sendJson(res, status, { ok: false, error: result.error, remainingMs: result.remainingMs || 0, availableAt: result.availableAt || "" });
