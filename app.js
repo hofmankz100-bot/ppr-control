@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v184";
+const APP_VERSION = "v185";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -2362,7 +2362,7 @@ function canSeeRequestRoleIndicator(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (role === "all") return profile?.role !== "warehouse";
     if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
-    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
+    return Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
   if (profile?.role === "warehouse") return role === "warehouse";
@@ -10624,7 +10624,6 @@ function refreshPersonalRemarkSurfaces() {
   renderRequests();
   updateRoleBadges();
   updateGlobalReminderBadge();
-  if (ui.globalReminderOverlay && !ui.globalReminderOverlay.hidden) renderGlobalReminderPanel();
 }
 
 function bindRolePersonalInbox(messages) {
@@ -10733,11 +10732,9 @@ function renderGlobalReminderPanel() {
   ui.globalReminderButton.hidden = false;
   const equipment = globalControlEquipment();
   const reminders = globalReminderItems(equipment);
-  const personalMessages = personalRemarkMessages();
-  const unreadPersonalCount = personalMessages.filter(message => message.unread).length;
   const calendar = directorCalendarItems(equipment);
   const monthCalendar = renderPprMonthCalendar(allEquipment());
-  updateGlobalReminderBadge(reminders, unreadPersonalCount);
+  updateGlobalReminderBadge(reminders);
   const calendarRows = calendar.map(item => `
     <div class="director-calendar-row ${item.color}">
       <span class="director-calendar-icon">${item.icon}</span>
@@ -10750,18 +10747,8 @@ function renderGlobalReminderPanel() {
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
   `).join("");
-  const personalRows = personalMessages.map(message => `
-    <button type="button" class="personal-remark-message ${message.unread ? "unread" : ""} ${message.action}" data-open-personal-remark="${escapeHtml(message.id)}">
-      <span>${message.action === "submitted" ? "☑️" : "↩️"}</span>
-      <div><strong>${escapeHtml(message.title)}</strong><p>${escapeHtml(message.text)}</p><small>${escapeHtml(message.equipment)} · ${escapeHtml(message.node)} · ${escapeHtml(dateTimeHuman(message.at))}</small></div>
-    </button>
-  `).join("");
   ui.globalReminderContent.innerHTML = `
     <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
-    <section class="personal-remark-inbox">
-      <div class="director-section-head"><div><span>💬</span><h2>Личные сообщения</h2></div><strong>${unreadPersonalCount}</strong></div>
-      <div class="personal-remark-message-list">${personalRows || `<div class="director-empty-ok"><strong>Личных сообщений пока нет</strong></div>`}</div>
-    </section>
     <div class="global-control-grid">
       <section>
         <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
@@ -10779,14 +10766,6 @@ function renderGlobalReminderPanel() {
     </section>
   `;
   bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
-  ui.globalReminderContent.querySelectorAll("[data-open-personal-remark]").forEach(button => button.addEventListener("click", () => {
-    const message = personalMessages.find(item => item.id === button.dataset.openPersonalRemark);
-    if (!message) return;
-    markPersonalRemarkMessagesRead([message]);
-    current.requestRole = profile?.role || defaultRequestRole();
-    closeGlobalReminderPanel();
-    show("requests");
-  }));
   ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
     const openDate = () => {
       const date = row.dataset.openPprApproval;
@@ -10803,11 +10782,10 @@ function renderGlobalReminderPanel() {
   });
 }
 
-function updateGlobalReminderBadge(knownReminders = null, knownUnreadPersonal = null) {
+function updateGlobalReminderBadge(knownReminders = null) {
   if (!ui.globalReminderButton || !ui.globalReminderBadge || !profile) return;
   const reminders = Array.isArray(knownReminders) ? knownReminders : globalReminderItems(globalControlEquipment());
-  const unreadPersonal = Number.isFinite(Number(knownUnreadPersonal)) ? Number(knownUnreadPersonal) : personalRemarkMessages().filter(message => message.unread).length;
-  const total = reminders.length + unreadPersonal;
+  const total = reminders.length;
   ui.globalReminderBadge.textContent = total;
   ui.globalReminderButton.classList.toggle("has-alerts", total > 0);
   ui.globalReminderButton.classList.toggle("all-clear", total === 0);
