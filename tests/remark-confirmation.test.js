@@ -526,6 +526,16 @@ test("engineers receive visible counters and push notifications for incoming req
   assert.match(serverSource, /ALKZ — новая заявка инженеру/);
 });
 
+test("the gas journal stays readable with horizontal scrolling on phones", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styleSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /mobile-table-swipe-hint/);
+  assert.match(styleSource, /Mobile gas journal: preserve readable cells/);
+  assert.match(styleSource, /\.gas-journal-table\.gas-sheet-table \{[\s\S]*?min-width: 1180px !important/);
+  assert.match(styleSource, /-webkit-overflow-scrolling: touch/);
+  assert.match(styleSource, /position: sticky;[\s\S]*?left: 0/);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",

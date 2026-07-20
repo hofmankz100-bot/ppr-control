@@ -9751,3 +9751,109 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
     justify-content: space-between;
   }
 }
+
+/* Mobile gas journal: preserve readable cells and scroll only the table. */
+.mobile-table-swipe-hint { display: none; }
+
+@media screen and (max-width: 760px) {
+  #aggregateJournalScreen,
+  #aggregateJournalScreen .aggregate-journal-list {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+  .gas-a4-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    margin: 0 0 14px !important;
+    padding: 8px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .10) !important;
+  }
+  .gas-a4-sheet .aggregate-sheet-head {
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 7px !important;
+    font-size: 14px !important;
+    line-height: 1.25 !important;
+    flex-wrap: wrap !important;
+    gap: 3px 10px !important;
+  }
+  .mobile-table-swipe-hint {
+    display: block;
+    margin: 0 0 6px;
+    border-radius: 8px;
+    background: #e0f2fe;
+    color: #075985;
+    padding: 7px 9px;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .gas-a4-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: block !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    border: 1px solid #b8c8d1;
+    border-radius: 9px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .gas-journal-table.gas-sheet-table {
+    width: 1180px !important;
+    min-width: 1180px !important;
+    height: auto !important;
+    table-layout: fixed !important;
+  }
+  .gas-journal-table.gas-sheet-table thead,
+  .gas-section-a-table tbody tr,
+  .gas-section-b-table tbody tr { height: auto !important; }
+  .gas-journal-table.gas-sheet-table th,
+  .gas-journal-table.gas-sheet-table td {
+    height: auto !important;
+    min-height: 52px !important;
+    overflow: visible !important;
+    padding: 6px !important;
+    font-size: 12px !important;
+    line-height: 1.25 !important;
+  }
+  .gas-section-b-table th,
+  .gas-section-b-table td { min-height: 92px !important; }
+  .gas-journal-table input,
+  .gas-journal-table select {
+    min-width: 74px !important;
+    min-height: 42px !important;
+    padding: 7px !important;
+    font-size: 16px !important;
+  }
+  .gas-journal-table.gas-sheet-table th:first-child,
+  .gas-journal-table.gas-sheet-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff !important;
+    box-shadow: 2px 0 0 #94a3b8;
+  }
+  .gas-journal-table.gas-sheet-table thead th:first-child {
+    z-index: 3;
+    background: #eaf1f5 !important;
+  }
+  .gas-sheet-actions { justify-content: stretch !important; }
+  .gas-sheet-actions button {
+    flex: 1 1 150px;
+    min-height: 44px;
+  }
+}
+
+@media print {
+  .mobile-table-swipe-hint { display: none !important; }
+}

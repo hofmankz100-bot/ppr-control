@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v193";
+const APP_VERSION = "v194";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -8981,6 +8981,7 @@ function renderGasJournal() {
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
       <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span>Лист раздела А № ${sheetNoA}</span></div>
+      <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-a-table">
           <thead><tr><th>Дата</th><th>Время</th><th>Давление входное<br>МПа</th><th>Давление выходное<br>МПа</th><th>Температура входная<br>°C</th><th>Температура выходная<br>°C</th><th>Перепад давления<br>МПа</th><th>Исправность оборудования</th><th>Срабатывание<br>ПСК</th><th>Техническое обслуживание</th><th>Замечания</th><th>Подпись</th></tr></thead>
@@ -9010,6 +9011,7 @@ function renderGasJournal() {
 
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-b ${datesB.includes(todayISO()) && !gasJournalRowCompleteB(todayISO()) ? "gas-missing-today" : ""}" data-print-section="B">
       <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span>Лист раздела Б № ${sheetNoB}</span></div>
+      <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-b-table">
           <thead><tr><th>Дата</th><th>Время</th><th>Участок</th><th>Контрольный трубопровод<br>и колодцы</th><th>Запах газа</th><th>Охранная зона</th><th>Замечания</th><th>Принятые меры</th><th>Подпись</th></tr></thead>
