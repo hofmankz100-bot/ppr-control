@@ -233,7 +233,7 @@ async function initializeStorage() {
   const connectionString = String(process.env.DATABASE_URL || "").trim();
   if (!connectionString) {
     const db = readDbFile();
-    if (migrateLegacyDirectorApprovals(db)) writeDbFile(db);
+    if (migrateLegacyDirectorApprovals(db) || removeObsoletePressNoMaterialNodes(db)) writeDbFile(db);
     storageStatus = { mode: "json" };
     return storageStatus;
   }
@@ -258,7 +258,8 @@ async function initializeStorage() {
     );
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
-      if (migrateLegacyDirectorApprovals(postgresState)) {
+      const catalogChanged = removeObsoletePressNoMaterialNodes(postgresState);
+      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged) {
         await pool.query(
           `INSERT INTO ppr_settings(setting_key, payload, updated_at)
            VALUES ('full_state', $1::jsonb, now())
@@ -271,6 +272,7 @@ async function initializeStorage() {
     } else {
       postgresState = readDbFile();
       migrateLegacyDirectorApprovals(postgresState);
+      removeObsoletePressNoMaterialNodes(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -736,6 +738,35 @@ function migrateLegacyDirectorApprovals(db) {
       });
     }
     req.updatedAt = req.updatedAt || now;
+    changed = true;
+  }
+  return changed;
+}
+
+function removeObsoletePressNoMaterialNodes(db) {
+  let changed = false;
+  for (const equipmentId of ["1", "2"]) {
+    const item = db.catalog?.equipment?.[equipmentId];
+    if (!item || !Array.isArray(item.nodes)) continue;
+    const removedIndexes = [];
+    const nodes = item.nodes.filter((node, index) => {
+      const obsolete = String(node || "").trim().toLocaleLowerCase("ru-RU") === "нет сырья";
+      if (obsolete) removedIndexes.push(index);
+      return !obsolete;
+    });
+    if (!removedIndexes.length) continue;
+    item.nodes = nodes;
+    if (item.reminders && typeof item.reminders === "object") {
+      const nextReminders = {};
+      Object.entries(item.reminders).forEach(([rawIndex, lines]) => {
+        const oldIndex = Number(rawIndex);
+        if (!Number.isInteger(oldIndex) || removedIndexes.includes(oldIndex)) return;
+        const shift = removedIndexes.filter(index => index < oldIndex).length;
+        nextReminders[oldIndex - shift] = lines;
+      });
+      item.reminders = nextReminders;
+    }
+    item.updatedAt = new Date().toISOString();
     changed = true;
   }
   return changed;

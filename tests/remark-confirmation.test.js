@@ -479,6 +479,13 @@ test("the approved press catalogs are locked in the UI and on the server", async
   assert.deepEqual(after.catalog.equipment["2"], before.catalog.equipment["2"]);
 });
 
+test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
+  const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);
+  assert.match(source, /=== "нет сырья"/);
+  assert.match(source, /for \(const equipmentId of \["1", "2"\]\)/);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",
