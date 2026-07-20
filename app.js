@@ -1185,6 +1185,23 @@ async function runButtonOperation(button, handler, text = "В ожидании..
 
 async function clearRecordedDataEverywhere() {
   const clearedAt = new Date().toISOString();
+  const warehouseRequests = Object.fromEntries(Object.entries(state.requests || {}).filter(([, req]) =>
+    req && (
+      String(req.id || "").startsWith("stock-issue:")
+      || String(req.id || "").startsWith("warehouse-ask:")
+      || String(req.id || "").startsWith("manual-warehouse:")
+      || req.kind === "stock"
+      || req.route === "stock"
+      || req.warehouseAsk
+      || req.transferredToWarehouse
+      || req.warehouseReceived
+      || req.issued
+      || req.stock
+      || req.stockOut
+      || req.inventoryId
+      || Number(req.inventoryAddedQty || 0) > 0
+    )
+  ));
   const downtimeTombstones = (state.downtimes || [])
     .filter(item => item?.id)
     .map(item => ({
@@ -1201,14 +1218,14 @@ async function clearRecordedDataEverywhere() {
     updatedAt: clearedAt
   });
   state.checks = {};
-  state.requests = {};
-  state.inventory = {};
+  state.requests = warehouseRequests;
+  // Склад — самостоятельный учёт. Административная очистка рабочих
+  // журналов не должна менять остатки или историю складских операций.
   state.downtimes = downtimeTombstones;
   state.compressorJournal = {};
   state.gasJournal = {};
   state.pprSheets = {};
   state.directorMessages = [];
-  state.serviceCosts = [];
   state.serviceCosts = [];
   persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
@@ -2988,7 +3005,7 @@ function renderProfile() {
   });
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
-    if (!window.confirm("Очистить все записанные данные: комментарии, заявки, складские остатки, простои и директорскую? Памятки и оборудование останутся.")) return;
+    if (!window.confirm("Очистить рабочие записи: комментарии, обычные заявки, простои, журналы и отчёты? Складские остатки и складские операции сохранятся.")) return;
     const confirmation = window.prompt("Для подтверждения введите слово ОЧИСТИТЬ:");
     if (String(confirmation || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
       window.alert("Очистка отменена.");
@@ -13029,31 +13046,33 @@ function renderDirector() {
     });
   });
   ui.directorPanel.querySelectorAll("[data-delete-user]").forEach(button => {
-    button.addEventListener("click", event => {
+    button.addEventListener("click", async event => {
       const userKey = event.currentTarget.dataset.deleteUser || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
       if (!user || !window.confirm(`Удалить сотрудника: ${user.name || user.phone || ""}?`)) return;
       const reason = window.prompt("Укажите причину удаления сотрудника:")?.trim();
       if (!reason) return;
-      recordAudit("Удалил сотрудника", user.name || user.phone || userKey, reason);
-      saveState();
-      const nextUsers = users.filter(item => (item.id || item.employeeId || item.phone || item.name || "") !== userKey);
-      localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-      apiJson("/api/users", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "delete",
-          id: user.id || "",
-          employeeId: user.employeeId || "",
-          phone: user.phone || "",
-          name: user.name || "",
-          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
-          actionId: nextActionId(),
-          clientId: CLIENT_ID
-        })
-      }).then(loadRemoteUsers).catch(() => {});
-      renderDirector();
+      await runButtonOperation(event.currentTarget, async () => {
+        await apiJson("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "delete",
+            id: user.id || "",
+            employeeId: user.employeeId || "",
+            phone: user.phone || "",
+            name: user.name || "",
+            actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+            actionId: nextActionId(),
+            clientId: CLIENT_ID
+          })
+        });
+        const nextUsers = users.filter(item => item !== user);
+        localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+        recordAudit("Удалил сотрудника", user.name || user.phone || userKey, reason);
+        await loadRemoteUsers();
+        renderDirector();
+      }, "Удаляем...");
     });
   });
 

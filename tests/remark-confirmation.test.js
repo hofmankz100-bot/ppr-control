@@ -98,8 +98,13 @@ test.before(async () => {
       "1:1:2026-07-16": { to: { commentLog: [remark("remark-any-author", "Директор производства", "productionDirector", "Предупреждение другой роли")] } },
       "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } }
     },
-    requests: {},
-    inventory: {},
+    requests: {
+      "ordinary-request": { id: "ordinary-request", kind: "tmc", text: "Обычная заявка", createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" },
+      "stock-issue:preserve": { id: "stock-issue:preserve", kind: "stock", text: "Складская операция", issued: true, createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" }
+    },
+    inventory: {
+      "inventory-preserve": { id: "inventory-preserve", name: "Подшипник", qty: 12, updatedAt: "2026-07-16T08:00:00.000Z" }
+    },
     catalog: {
       equipment: {
         "1": { name: "Оборудование А", area: "Цех А", nodes: ["Узел А1", "Узел А2"] },
@@ -135,7 +140,9 @@ test.before(async () => {
       user("shop-a", "Начальник А", "shop", "Цех А"),
       user("shop-other", "Начальник Другого Цеха", "shop", "Другой цех"),
       user("engineer-1", "Инженер Один", "engineer"),
-      user("director-1", "Директор производства", "productionDirector")
+      user("director-1", "Директор производства", "productionDirector"),
+      user("editor-1", "Администратор", "editor"),
+      { employeeId: "legacy-77", name: "Старый сотрудник", role: "mechanic", approved: true, pendingApproval: false }
     ],
     translationCache: {},
     pushNotifications: { subscriptions: [], vapid: null }
@@ -443,4 +450,50 @@ test("every signed-in role sees only the factory reliability graph while enginee
   assert.match(source, /const detailed = \["engineer", "editor"\]\.includes\(profile\?\.role\)/);
   assert.match(source, /if \(!detailed\) \{[\s\S]*?directorFactoryAnalyticsGraphHtml\(\)[\s\S]*?return;/);
   assert.match(source, /if \(controls\) controls\.hidden = !detailed/);
+});
+
+test("an admin can delete a legacy employee that has no internal id", async () => {
+  const response = await fetch(`${baseUrl}/api/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      action: "delete",
+      id: "",
+      employeeId: "legacy-77",
+      name: "Старый сотрудник",
+      actor: { role: "editor", name: "Администратор" },
+      actionId: "delete-legacy-user-test",
+      clientId: "admin-test"
+    })
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const users = await (await fetch(`${baseUrl}/api/users`)).json();
+  assert.equal(users.some(item => item.employeeId === "legacy-77"), false);
+});
+
+test("admin operational clear preserves inventory and warehouse records", async () => {
+  const before = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.ok(Object.keys(before.inventory || {}).length > 0);
+  const warehouseRequestId = Object.keys(before.requests || {}).find(id => id.startsWith("stock-issue:"));
+  assert.ok(warehouseRequestId);
+  const response = await fetch(`${baseUrl}/api/state`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: "warehouse-safe-clear-test",
+      clientId: "admin-test",
+      clearRecordedData: true,
+      clearConfirm: "ОЧИСТИТЬ",
+      baseOperationalResetAt: "",
+      user: { role: "editor", authenticatedRole: "editor", name: "Администратор" }
+    })
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const state = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.deepEqual(state.inventory, before.inventory);
+  assert.ok(state.requests[warehouseRequestId]);
+  assert.equal(state.requests["ordinary-request"], undefined);
+  assert.deepEqual(state.checks, {});
 });
