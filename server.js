@@ -2722,6 +2722,9 @@ async function handleApi(req, res, pathname, url) {
           actorKey: actor.key,
           name: actor.name,
           role: actor.role,
+          targetKey: submittedUser ? resolutionUserKeyServer(submittedUser) : String(remark.resolutionSubmittedByKey || ""),
+          targetName: submittedUser?.name || remark.resolutionSubmittedByName || "",
+          targetRole: submittedUser?.role || remark.resolutionSubmittedByRole || "",
           reason,
           recipientKeys: noticeRecipients.map(user => user.key),
           at: now
