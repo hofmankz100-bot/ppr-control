@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v189";
+const APP_VERSION = "v190";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -395,8 +395,6 @@ let current = {
   warehouseZeroArchivePage: 1,
   scrollToCommentNode: null,
   scrollToRemarkId: "",
-  focusNodeCommentComposer: false,
-  returnHomeAfterQrCommentKey: "",
   returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
@@ -3339,21 +3337,17 @@ async function handleIncomingNodeQrFromUrl() {
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   clearIncomingNodeQrFromUrl();
   if (alreadyDone) {
-    openRepeatedNodeQrDestination(parsed, shift);
+    show(homeViewForProfile(profile?.role), false);
+    await openRepeatedNodeQrDestination(parsed, shift);
     return true;
   }
   current.equipmentId = parsed.equipmentId;
   current.nodeIndex = parsed.nodeIndex;
   current.date = shift.date;
   current.kind = "to";
+  show(homeViewForProfile(profile?.role), false);
   const action = await promptQrWalkDecision(parsed);
-  if (action === "comment-saved") {
-    show(homeViewForProfile(profile?.role), false);
-    showAppToast("Комментарий отправлен. Обход этой смены засчитан.");
-  } else if (action) {
-    current.nodeDetailIndex = null;
-    show("checklist", false);
-  }
+  if (action === "comment-saved") showAppToast("Комментарий отправлен. Обход этой смены засчитан.");
   return true;
 }
 
@@ -3363,7 +3357,7 @@ function oldestOpenRemarkForNode(equipmentId, nodeIndex) {
     const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
     if (Number(rawEquipmentId) !== Number(equipmentId) || Number(rawNodeIndex) !== Number(nodeIndex)) return;
     openRemarkEntries(rec?.to || {}).forEach(entry => {
-      matches.push({ date, remarkId: entry.id || stableRemarkId(entry), at: entry.at || date });
+      matches.push({ date, remarkId: entry.id || stableRemarkId(entry), at: entry.at || date, entry });
     });
   });
   return matches.sort((a, b) => String(a.at).localeCompare(String(b.at)) || String(a.date).localeCompare(String(b.date)))[0] || null;
@@ -3371,20 +3365,83 @@ function oldestOpenRemarkForNode(equipmentId, nodeIndex) {
 
 function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
   const openRemark = oldestOpenRemarkForNode(parsed.equipmentId, parsed.nodeIndex);
-  current.equipmentId = parsed.equipmentId;
-  current.nodeIndex = parsed.nodeIndex;
-  current.nodeDetailIndex = parsed.nodeIndex;
-  current.date = openRemark?.date || shift.date;
-  current.kind = "to";
-  current.scrollToCommentNode = parsed.nodeIndex;
-  current.scrollToRemarkId = openRemark?.remarkId || "";
-  current.focusNodeCommentComposer = !openRemark;
-  current.returnHomeAfterQrCommentKey = openRemark ? "" : key(parsed.equipmentId, parsed.nodeIndex, shift.date);
-  show("checklist", false);
-  showAppToast(openRemark
-    ? "Обход уже выполнен — открыто активное замечание для устранения."
-    : "Обход уже выполнен — напишите новый комментарий.");
-  return openRemark ? "remark" : "comment";
+  const eq = equipmentById(parsed.equipmentId);
+  const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
+  const pending = Boolean(openRemark?.entry?.resolutionPendingConfirmation);
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay";
+  overlay.innerHTML = `
+    <section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Действие по QR">
+      <div class="qr-result-progress">Обход этой смены уже выполнен</div>
+      <h2>${escapeHtml(eq?.name || "Оборудование")}</h2>
+      <p class="qr-result-node">${escapeHtml(nodeName)}</p>
+      ${openRemark ? `
+        <div class="qr-already-done"><strong>Активное замечание</strong><br>${escapeHtml(openRemark.entry?.text || "")}</div>
+        ${pending ? `<p>Устранение уже отправлено руководителю на подтверждение.</p>` : `
+          <label><span>Что дополнительно сделано или обнаружено</span><textarea rows="4" data-qr-action-text placeholder="Напишите комментарий..."></textarea></label>
+          <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-action-photo></label>
+        `}
+      ` : `
+        <label><span>Новый комментарий по узлу</span><textarea rows="4" data-qr-action-text placeholder="Напишите замечание..."></textarea></label>
+        <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-action-photo></label>
+      `}
+      <div class="qr-remark-error" data-qr-action-error></div>
+      <div class="qr-result-actions ${pending ? "single" : ""}">
+        ${pending ? "" : openRemark
+          ? `<button type="button" class="qr-good-button" data-qr-action-update>Добавить запись</button><button type="button" class="qr-remark-button" data-qr-action-resolve>Устранено</button>`
+          : `<button type="button" class="qr-save-remark-button" data-qr-action-create>Отправить</button>`}
+        <button type="button" class="qr-finish-button" data-qr-action-close>Закрыть</button>
+      </div>
+    </section>`;
+  document.body.append(overlay);
+  return new Promise(resolve => {
+    const finish = result => {
+      overlay.remove();
+      show(homeViewForProfile(profile?.role), false);
+      resolve(result);
+    };
+    const submit = async (button, action) => {
+      const textBox = overlay.querySelector("[data-qr-action-text]");
+      const text = String(textBox?.value || "").trim();
+      const error = overlay.querySelector("[data-qr-action-error]");
+      if (!text) {
+        if (error) error.textContent = "Напишите комментарий.";
+        textBox?.focus();
+        return;
+      }
+      if (action === "resolve" && !window.confirm("Работа фактически выполнена? Передать устранение на подтверждение?")) return;
+      setButtonBusy(button, true, "Отправляем...");
+      try {
+        const file = overlay.querySelector("[data-qr-action-photo]")?.files?.[0];
+        const photo = file ? await readPhotoFile(file) : "";
+        if (!openRemark) {
+          const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
+          appendCommentEntry(item, text, photo);
+          syncItemRemarkSummary(item);
+          saveState({ remote: false });
+          await publishNodeUpdateNow(parsed.equipmentId, parsed.nodeIndex, shift.date);
+          showAppToast("Комментарий отправлен. Вы остались на главном экране.");
+          finish("created");
+          return;
+        }
+        if (!isResolutionParticipant(openRemark.entry)) {
+          await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, openRemark.date, "start", { remarkId: openRemark.remarkId });
+        }
+        await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, openRemark.date, action, { remarkId: openRemark.remarkId, text, photo });
+        showAppToast(action === "resolve" ? "Устранение отправлено на подтверждение." : "Запись добавлена к замечанию.");
+        finish(action);
+      } catch (submitError) {
+        console.error("QR action failed", submitError);
+        if (error) error.textContent = "Не удалось отправить. Текст сохранён на экране, попробуйте ещё раз.";
+        setButtonBusy(button, false);
+      }
+    };
+    overlay.querySelector("[data-qr-action-close]")?.addEventListener("click", () => finish("closed"));
+    overlay.querySelector("[data-qr-action-create]")?.addEventListener("click", event => submit(event.currentTarget, "create"));
+    overlay.querySelector("[data-qr-action-update]")?.addEventListener("click", event => submit(event.currentTarget, "update"));
+    overlay.querySelector("[data-qr-action-resolve]")?.addEventListener("click", event => submit(event.currentTarget, "resolve"));
+    window.setTimeout(() => overlay.querySelector("[data-qr-action-text]")?.focus(), 50);
+  });
 }
 
 function refreshNodeWalkProgress(eq) {
@@ -9716,13 +9773,6 @@ function renderNodeWalkthrough(eq) {
         saveState({ remote: false });
         renderNodeWalkthrough(equipmentById(eq.id));
         await publishNodeUpdateNow(eq.id, index, current.date);
-        const returnHome = current.returnHomeAfterQrCommentKey === key(eq.id, index, current.date);
-        current.returnHomeAfterQrCommentKey = "";
-        if (returnHome) {
-          show(homeViewForProfile(profile?.role), false);
-          showAppToast("Комментарий отправлен. Обход этой смены уже засчитан.");
-          return;
-        }
         renderNodeWalkthrough(equipmentById(eq.id));
       } catch (error) {
         scheduleRemoteRetry();
@@ -9820,17 +9870,13 @@ function renderNodeWalkthrough(eq) {
   if (current.scrollToCommentNode !== null && current.scrollToCommentNode !== undefined) {
     const targetIndex = current.scrollToCommentNode;
     const targetRemarkId = current.scrollToRemarkId;
-    const focusComposer = current.focusNodeCommentComposer;
     current.scrollToCommentNode = null;
     current.scrollToRemarkId = "";
-    current.focusNodeCommentComposer = false;
     window.setTimeout(() => {
       const row = list.querySelector(`[data-node-walk-index="${targetIndex}"]`);
-      const target = focusComposer
-        ? row?.querySelector("[data-node-comment]")
-        : (targetRemarkId ? row?.querySelector(`[data-remark-card="${CSS.escape(targetRemarkId)}"]`) : null)
-          || row?.querySelector("[data-node-first-comment]")
-          || row?.querySelector("[data-node-comment]");
+      const target = (targetRemarkId ? row?.querySelector(`[data-remark-card="${CSS.escape(targetRemarkId)}"]`) : null)
+        || row?.querySelector("[data-node-first-comment]")
+        || row?.querySelector("[data-node-comment]");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
       target?.classList.add("focus-comment");
       if (!target?.disabled) target?.focus();
@@ -14622,7 +14668,6 @@ function dateTimeHuman(iso) {
 }
 
 function goBack() {
-  current.returnHomeAfterQrCommentKey = "";
   if (current.view === "checklist" && current.returnToRemarkListAfterResolve) {
     returnToOpenRemarkCards();
     return;
@@ -14651,7 +14696,7 @@ ui.qrWalkButton?.addEventListener("click", async () => {
       if (!parsed) break;
       const shift = currentWalkShift();
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
-        openRepeatedNodeQrDestination(parsed, shift);
+        await openRepeatedNodeQrDestination(parsed, shift);
         break;
       }
       const action = await promptQrWalkDecision(parsed);

@@ -486,15 +486,17 @@ test("obsolete no-material nodes are removed from both fixed press catalogs", ()
   assert.match(source, /for \(const equipmentId of \["1", "2"\]\)/);
 });
 
-test("repeat QR scans open an active remark or focus a new comment without another walk", () => {
+test("repeat QR scans stay in an overlay on the main screen", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /function oldestOpenRemarkForNode\(equipmentId, nodeIndex\)/);
   assert.match(source, /function openRepeatedNodeQrDestination\(parsed, shift = currentWalkShift\(\)\)/);
-  assert.match(source, /current\.date = openRemark\?\.date \|\| shift\.date/);
-  assert.match(source, /current\.focusNodeCommentComposer = !openRemark/);
+  assert.match(source, /overlay\.className = "qr-result-overlay"/);
+  assert.match(source, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
+  assert.match(source, /data-qr-action-create/);
+  assert.match(source, /data-qr-action-resolve/);
   assert.match(source, /appendCommentEntry\(item, comment, photo\)/);
   assert.match(source, /finish\("comment-saved"\)/);
-  assert.match(source, /Комментарий отправлен\. Обход этой смены засчитан\./);
+  assert.match(source, /Вы остались на главном экране/);
   assert.doesNotMatch(source, /Узел уже обойден — открыт комментарий узла/);
 });
 

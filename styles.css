@@ -4605,8 +4605,24 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 900;
 }
 
+.qr-result-panel > label {
+  display: grid;
+  gap: 6px;
+  font-weight: 900;
+}
+
 .qr-remark-form textarea,
 .qr-remark-form input {
+  width: 100%;
+  border: 1px solid #b8c8d1;
+  border-radius: 9px;
+  background: #fff;
+  padding: 11px;
+  font: inherit;
+}
+
+.qr-result-panel > label textarea,
+.qr-result-panel > label input {
   width: 100%;
   border: 1px solid #b8c8d1;
   border-radius: 9px;
