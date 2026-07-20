@@ -1054,6 +1054,37 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   }
 }
 
+async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null) {
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const requested = Array.isArray(participants) ? participants : null;
+  const targets = subscriptions.filter(entry =>
+    (!origin || entry.clientId !== origin)
+    && (!requested || requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant)))
+  );
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const badgeCount = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).length;
+  const payload = JSON.stringify({ type: "downtime", title, body, badgeCount, url: "/?view=downtime" });
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, payload, { TTL: 3600, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Downtime push notification failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
 function hasMeaningfulCheckKindServer(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
@@ -1672,7 +1703,16 @@ function mergeArrayById(current = [], incoming = []) {
     if (!item || !item.id) continue;
     if (String(item.id).includes("\uFFFD")) continue;
     const currentItem = map.get(item.id) || {};
-    map.set(item.id, { ...currentItem, ...sanitizeIncomingValue(currentItem, item) });
+    const nextItem = { ...currentItem, ...sanitizeIncomingValue(currentItem, item) };
+    if (currentItem.endedAt && !item.endedAt) {
+      nextItem.endedAt = currentItem.endedAt;
+      nextItem.updatedAt = currentItem.updatedAt || currentItem.endedAt;
+      nextItem.closeComment = currentItem.closeComment || nextItem.closeComment || "";
+      nextItem.closedByName = currentItem.closedByName || nextItem.closedByName || "";
+      nextItem.closedByRole = currentItem.closedByRole || nextItem.closedByRole || "";
+      nextItem.closedParticipants = currentItem.closedParticipants || nextItem.closedParticipants || [];
+    }
+    map.set(item.id, nextItem);
   }
   return Array.from(map.values()).sort((a, b) => String(b.updatedAt || b.createdAt || b.startedAt || b.registeredAt || '').localeCompare(String(a.updatedAt || a.createdAt || a.startedAt || a.registeredAt || '')));
 }
@@ -2379,6 +2419,65 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/downtime-close" && req.method === "POST") {
+    const body = await readBody(req);
+    const downtimeId = String(body.downtimeId || "").trim();
+    const comment = String(body.comment || "").trim().slice(0, 4000);
+    const requestedActor = sanitizeResolutionParticipant(body.actor || {});
+    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
+    if (!downtimeId || !comment || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
+      sendJson(res, 400, { ok: false, error: "downtime_close_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
+        return { error: "downtime_actor_invalid" };
+      }
+      const actor = sanitizeResolutionParticipant(registeredActor);
+      const downtime = (db.downtimes || []).find(item => item?.id === downtimeId && !item.deleted);
+      if (!downtime) return { error: "downtime_not_found" };
+      if (downtime.endedAt) return { error: "downtime_already_closed", downtime };
+      const now = new Date().toISOString();
+      downtime.endedAt = now;
+      downtime.updatedAt = now;
+      downtime.closeComment = comment;
+      downtime.closedByName = actor.name;
+      downtime.closedByRole = actor.role;
+      downtime.closedByKey = actor.key;
+      downtime.closedParticipants = [actor];
+      const authorUser = (db.users || []).find(user =>
+        String(user.name || "").trim() === String(downtime.authorName || "").trim()
+        && String(user.role || "") === String(downtime.authorRole || "")
+      );
+      const notifyParticipants = authorUser ? [sanitizeResolutionParticipant(authorUser)] : [];
+      const actionId = String(body.actionId || "");
+      writeDb(db, { action: "downtime_closed", actionId, clientId: String(body.clientId || ""), user: actor, downtimeId });
+      return {
+        actionId,
+        origin: body.clientId || "api",
+        patch: { downtimes: db.downtimes || [] },
+        downtime,
+        notifyParticipants,
+        equipment: downtime.equipment || downtime.node || "Оборудование"
+      };
+    });
+    if (result.error) {
+      const status = result.error === "downtime_not_found" ? 404 : result.error === "downtime_already_closed" ? 409 : result.error === "downtime_actor_invalid" ? 403 : 400;
+      sendJson(res, status, { ok: false, error: result.error, downtime: result.downtime || null });
+      return true;
+    }
+    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    if (result.notifyParticipants.length) {
+      sendDowntimePushNotifications(readDb(), "Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants).catch(error => {
+        console.error(`Downtime close push delivery failed: ${error?.message || error}`);
+      });
+    }
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, downtime: result.downtime });
+    return true;
+  }
+
   if (pathname === "/api/remark-collaboration" && req.method === "POST") {
     const body = await readBody(req);
     const recordKey = String(body.key || "").trim();
@@ -2587,7 +2686,15 @@ async function handleApi(req, res, pathname, url) {
           role: actor.role,
           at: now
         });
-        notifyParticipants = [];
+        notifyParticipants = resolutionParticipantsServer({
+          resolutionParticipants: remark.resolutionCompletedParticipants?.length
+            ? remark.resolutionCompletedParticipants
+            : participants
+        });
+        if (!notifyParticipants.length && remark.resolutionSubmittedByKey) {
+          const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
+          if (submittedUser) notifyParticipants = [sanitizeResolutionParticipant(submittedUser)];
+        }
         pushTitle = "Устранение подтверждено";
         pushBody = `${actor.name} подтвердил устранение`;
       }
@@ -2669,6 +2776,7 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const beforeRemarkKeys = openRemarkKeysServer(db);
+      const beforeActiveDowntimeIds = new Set((db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).map(item => item.id));
       const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
       db.checks ||= {};
       db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
@@ -2693,7 +2801,8 @@ async function handleApi(req, res, pathname, url) {
       afterRemarkKeys.forEach(key => {
         if (!beforeRemarkKeys.has(key)) newRemarkCount += 1;
       });
-      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size };
+      const newDowntimes = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt && !beforeActiveDowntimeIds.has(item.id));
+      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newDowntimes };
     });
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.patch, true)
@@ -2701,6 +2810,14 @@ async function handleApi(req, res, pathname, url) {
     if (result.newRemarkCount > 0) {
       sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin).catch(error => {
         console.error(`Push delivery failed: ${error?.message || error}`);
+      });
+    }
+    if (result.newDowntimes.length) {
+      const item = result.newDowntimes[0];
+      const title = item.type === "production" ? "Производственный простой" : "Аварийная остановка";
+      const bodyText = `${item.equipment || item.node || "Оборудование"}: ${item.comment || "без причины"}`;
+      sendDowntimePushNotifications(readDb(), title, bodyText, result.origin).catch(error => {
+        console.error(`Downtime push delivery failed: ${error?.message || error}`);
       });
     }
     sendJson(res, 200, {
