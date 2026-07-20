@@ -473,6 +473,7 @@ function ensureEngineerReportUi() {
       button.type = "button";
       button.id = "engineerReportButton";
       button.className = "topbar-overview-button topbar-factory-button";
+      button.hidden = true;
       button.innerHTML = `<span>Состояние завода</span><strong>🏭</strong>`;
       topbarActions.append(button);
       ui.engineerReportButton = button;
@@ -2328,7 +2329,7 @@ function roleAccess() {
 function canOpenView(view) {
   if (profile?.role === "warehouse") return view === "requests";
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
-  if (view === "engineerReport") return ["engineer", "editor", "productionDirector"].includes(profile?.role);
+  if (view === "engineerReport") return isProfileReady();
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
   return true;
@@ -2926,7 +2927,7 @@ function requestVisibleForRoleIndicator(req, role) {
 
 function renderProfile() {
   if (!ui.profileBar) return;
-  if (ui.factoryStatusButton) ui.factoryStatusButton.hidden = profile?.role !== "editor";
+  if (ui.factoryStatusButton) ui.factoryStatusButton.hidden = !isProfileReady();
   document.body.classList.toggle("editor-profile", profile?.role === "editor");
   document.body.classList.toggle("editor-preview-profile", isEditorSession() && profile?.role !== "editor");
   document.body.classList.toggle("warehouse-only-profile", profile?.role === "warehouse");
@@ -7128,7 +7129,7 @@ function updateRoleBadges() {
   renderEngineerIncomingBanner();
   if (ui.createTmcRequestButton) ui.createTmcRequestButton.hidden = !canEditChecklist();
   if (ui.workerRatingButton) ui.workerRatingButton.hidden = !canOpenView("workerRating");
-  if (ui.engineerReportButton) ui.engineerReportButton.hidden = profile?.role !== "engineer";
+  if (ui.engineerReportButton) ui.engineerReportButton.hidden = true;
 }
 
 function getRequestKindById(id) {
@@ -12536,6 +12537,20 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
 
 function renderEngineerReport() {
   if (!ui.engineerReportPanel) return;
+  const detailed = ["engineer", "editor"].includes(profile?.role);
+  const screen = document.querySelector("#engineerReportScreen");
+  const title = screen?.querySelector(".panel-head h1");
+  const description = screen?.querySelector(".panel-head p");
+  const controls = screen?.querySelector(".engineer-report-controls");
+  if (title) title.textContent = detailed ? "Отчёт инженера" : "Состояние завода";
+  if (description) description.textContent = detailed
+    ? "Месячный отчёт для печати и объяснения директору"
+    : "Общий индекс надёжности предприятия";
+  if (controls) controls.hidden = !detailed;
+  if (!detailed) {
+    ui.engineerReportPanel.innerHTML = `<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
+    return;
+  }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
   ui.engineerReportPanel.querySelector("#serviceCostArea")?.addEventListener("change", event => {
