@@ -2146,8 +2146,25 @@ async function handleApi(req, res, pathname, url) {
           return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "clear_requires_confirmation" };
         }
         db.checks = {};
-        db.requests = {};
-        db.inventory = {};
+        db.requests = Object.fromEntries(Object.entries(db.requests || {}).filter(([, req]) =>
+          req && (
+            String(req.id || "").startsWith("stock-issue:")
+            || String(req.id || "").startsWith("warehouse-ask:")
+            || String(req.id || "").startsWith("manual-warehouse:")
+            || req.kind === "stock"
+            || req.route === "stock"
+            || req.warehouseAsk
+            || req.transferredToWarehouse
+            || req.warehouseReceived
+            || req.issued
+            || req.stock
+            || req.stockOut
+            || req.inventoryId
+            || Number(req.inventoryAddedQty || 0) > 0
+          )
+        ));
+        // Inventory and warehouse-linked requests are financial/stock records,
+        // so an operational reset must never erase them.
         db.directorMessages = [];
         db.serviceCosts = [];
         db.downtimes = [];
@@ -3046,15 +3063,23 @@ async function handleApi(req, res, pathname, url) {
         (user.id && item.id === user.id) ||
         (employeeId && item.employeeId === employeeId) ||
         (phone && item.phone === phone);
-      const sameUserById = item => Boolean(user.id && item.id === user.id);
       const existing = (db.users || []).find(sameUserForUpdate);
       if (user.action === "delete") {
-        if (!user.id) return { actionId, origin: user.clientId || "user", error: "delete_requires_id" };
-        const beforeCount = (db.users || []).length;
-        db.users = (db.users || []).filter(item => !sameUserById(item));
-        if (db.users.length === beforeCount) return { actionId, origin: user.clientId || "user", error: "user_not_found" };
-        writeDb(db, { action: "user_delete", actionId, clientId: String(user.clientId || ""), user: { id: user.id, name, phone } });
-        return { actionId, origin: user.clientId || "user" };
+        const users = db.users || [];
+        let target = user.id ? users.find(item => item.id === user.id) : null;
+        if (!target && employeeId) target = users.find(item => String(item.employeeId || "").trim() === employeeId);
+        if (!target && phone) target = users.find(item => String(item.phone || "").trim() === phone);
+        if (!target && name) {
+          const sameName = users.filter(item => String(item.name || "").trim().toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU"));
+          if (sameName.length === 1) target = sameName[0];
+        }
+        if (!target) return { actionId, origin: user.clientId || "user", error: "user_not_found" };
+        if (target.role === "editor" && users.filter(item => item.role === "editor").length <= 1) {
+          return { actionId, origin: user.clientId || "user", error: "last_editor_forbidden" };
+        }
+        db.users = users.filter(item => item !== target);
+        writeDb(db, { action: "user_delete", actionId, clientId: String(user.clientId || ""), user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || name, phone: target.phone || phone } });
+        return { actionId, origin: user.clientId || "user", deletedUser: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "" } };
       }
       db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
       const {
@@ -3083,7 +3108,8 @@ async function handleApi(req, res, pathname, url) {
       return { actionId, origin: user.clientId || "user" };
     });
     if (result.error) {
-      sendJson(res, result.error === "user_not_found" ? 404 : 400, { ok: false, error: result.error, actionId: result.actionId });
+      const status = result.error === "user_not_found" ? 404 : result.error === "last_editor_forbidden" ? 409 : 400;
+      sendJson(res, status, { ok: false, error: result.error, actionId: result.actionId });
       return true;
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId });
