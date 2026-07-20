@@ -852,6 +852,50 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
   }
 }
 
+function engineerIncomingRequestItemCountServer(db) {
+  return Object.values(db.requests || {}).reduce((sum, request) => {
+    if (!request || request.deleted || request.done || request.stock || request.kind !== "tmc" || !request.engineerCombinedBatch
+      || request.formedAt || request.engineerApproved || request.productionDirectorRequestApproved || request.transferredToWarehouse) return sum;
+    return sum + Math.max(1, Array.isArray(request.items) ? request.items.length : 0);
+  }, 0);
+}
+
+async function sendEngineerRequestPushNotifications(db, submittedCount, origin = "", request = {}) {
+  const added = Math.max(1, Number(submittedCount) || 1);
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && entry.profile?.role === "engineer");
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const badgeCount = engineerIncomingRequestItemCountServer(db);
+  const payload = JSON.stringify({
+    type: "engineer-request",
+    title: "ALKZ — новая заявка инженеру",
+    body: added === 1 ? "Поступила 1 новая позиция" : `Поступило новых позиций: ${added}`,
+    badgeCount,
+    url: "/?view=requestCreate",
+    entityId: request.id || "engineer-incoming",
+    tag: "engineer-request-incoming"
+  });
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, payload, { TTL: 86400, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Engineer request push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
 function resolutionUserKeyServer(user = {}) {
   const id = String(user.id || "").trim();
   if (id) return `id:${id}`;
@@ -2460,6 +2504,11 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    if (action === "submit" && result.submittedCount > 0) {
+      sendEngineerRequestPushNotifications(readDb(), result.submittedCount, result.origin, result.request).catch(error => {
+        console.error(`Engineer request push delivery failed: ${error?.message || error}`);
+      });
+    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, request: result.request, submittedCount: result.submittedCount });
     return true;
   }

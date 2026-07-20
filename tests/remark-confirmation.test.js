@@ -511,6 +511,21 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /failures >= 2/);
 });
 
+test("engineers receive visible counters and push notifications for incoming requests", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.match(appSource, /Новые заявки инженеру: \$\{count\}/);
+  assert.match(appSource, /engineer-request\|\$\{req\.id\}/);
+  assert.match(appSource, /requestedView === "requestCreate"/);
+  assert.match(appSource, /function syncPushSubscriptionProfile\(\)/);
+  assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role\]/);
+  assert.match(htmlSource, /data-mobile-request-count/);
+  assert.match(serverSource, /sendEngineerRequestPushNotifications/);
+  assert.match(serverSource, /entry\.profile\?\.role === "engineer"/);
+  assert.match(serverSource, /ALKZ — новая заявка инженеру/);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",

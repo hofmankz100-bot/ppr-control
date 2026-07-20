@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v192";
+const APP_VERSION = "v193";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -257,6 +257,7 @@ let appNotificationKeys = new Set();
 let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
 let pushPublicKeyPromise = null;
+let pushProfileSyncKey = "";
 let requestSearchTimer = null;
 let renderTimer = null;
 let backgroundRenderPending = false;
@@ -1010,6 +1011,17 @@ async function ensurePushSubscription() {
   return true;
 }
 
+function syncPushSubscriptionProfile() {
+  if (notificationSetupState() !== "ready") return;
+  const actor = authenticatedProfile || profile || {};
+  const syncKey = [actor.id, actor.employeeId, actor.phone, actor.role].map(value => String(value || "")).join("|");
+  if (!syncKey || syncKey === pushProfileSyncKey) return;
+  pushProfileSyncKey = syncKey;
+  ensurePushSubscription().catch(() => {
+    pushProfileSyncKey = "";
+  });
+}
+
 function syncNotificationSetupPrompt() {
   const existing = document.querySelector("#notificationSetupPrompt");
   if (!mobileShareMode()) {
@@ -1137,6 +1149,13 @@ function currentAppNotificationKeys() {
       if (remarkNotificationVisibleToCurrentUser(entry)) keys.add(`comment|${recordKey}|${entry.id}`);
     });
   });
+  if (profile?.role === "engineer") {
+    engineerIncomingTmcRequests().forEach(req => {
+      const items = requestItems(req);
+      if (items.length) items.forEach(item => keys.add(`engineer-request|${req.id}|${item.id || item.name || "item"}`));
+      else keys.add(`engineer-request|${req.id}`);
+    });
+  }
   return keys;
 }
 
@@ -3087,6 +3106,7 @@ function renderProfile() {
     location.reload();
   });
   syncNotificationSetupPrompt();
+  syncPushSubscriptionProfile();
 }
 
 
@@ -5633,8 +5653,12 @@ function renderEngineerIncomingTmcPanel() {
 function renderEngineerIncomingBanner() {
   const banner = ui.engineerIncomingBanner;
   if (!banner) return;
-  banner.hidden = true;
-  banner.innerHTML = "";
+  const count = profile?.role === "engineer" ? engineerIncomingTmcItemCount() : 0;
+  banner.hidden = count <= 0;
+  banner.innerHTML = count > 0 ? `
+    <div><strong>Новые заявки инженеру: ${count}</strong><span>Ожидают проверки и формирования</span></div>
+    <button type="button" data-open-engineer-incoming>Открыть заявки</button>
+  ` : "";
 }
 
 function resetTmcRequestForm() {
@@ -5660,6 +5684,14 @@ function updateTmcRequestButtonLabels() {
   if (quickBadge) quickBadge.textContent = engineerCount > 0 ? engineerCount : workerSendsTmcRequestToEngineer() ? "→" : "+";
   ui.createTmcRequestButton?.classList.toggle("request-alert", engineerCount > 0);
   ui.createTmcRequestButton?.classList.toggle("has-count", engineerCount > 0);
+  const mobileRequestButton = document.querySelector('[data-mobile-view="requestCreate"]');
+  const mobileRequestCount = mobileRequestButton?.querySelector("[data-mobile-request-count]");
+  mobileRequestButton?.classList.toggle("request-alert", engineerCount > 0);
+  mobileRequestButton?.classList.toggle("has-count", engineerCount > 0);
+  if (mobileRequestCount) {
+    mobileRequestCount.hidden = engineerCount <= 0;
+    mobileRequestCount.textContent = String(engineerCount);
+  }
   if (ui.submitTmcRequest) ui.submitTmcRequest.textContent = submitLabel;
 }
 
@@ -6343,6 +6375,10 @@ function handleIncomingNotificationLink() {
     }
   } else if (requestedView === "downtime") {
     show("downtime");
+    handled = true;
+  } else if (requestedView === "requestCreate" && profile?.role === "engineer") {
+    show("requestCreate");
+    window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     handled = true;
   }
 
