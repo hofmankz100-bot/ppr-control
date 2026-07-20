@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v187";
+const APP_VERSION = "v188";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -6100,6 +6100,44 @@ function openDowntimeComment(item) {
   current.scrollToMainComment = false;
   show("checklist");
   return true;
+}
+
+function handleIncomingNotificationLink() {
+  const url = new URL(window.location.href);
+  const downtimeId = String(url.searchParams.get("downtime") || "");
+  const recordKey = String(url.searchParams.get("record") || "");
+  const remarkId = String(url.searchParams.get("remark") || "");
+  const requestedView = String(url.searchParams.get("view") || "");
+  let handled = false;
+
+  if (downtimeId) {
+    const item = downtimes().find(entry => entry.id === downtimeId);
+    if (item) handled = openDowntimeComment(item);
+  } else if (recordKey && remarkId) {
+    const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
+    const eq = equipmentById(Number(equipmentIdRaw));
+    const nodeIndex = Number(nodeIndexRaw);
+    if (eq && Number.isInteger(nodeIndex) && /^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
+      current.equipmentId = eq.id;
+      current.nodeIndex = nodeIndex;
+      current.nodeDetailIndex = nodeIndex;
+      current.date = date;
+      current.kind = "to";
+      current.scrollToCommentNode = nodeIndex;
+      current.scrollToRemarkId = remarkId;
+      show("checklist");
+      handled = true;
+    }
+  } else if (requestedView === "downtime") {
+    show("downtime");
+    handled = true;
+  }
+
+  if (downtimeId || recordKey || remarkId || requestedView) {
+    ["downtime", "record", "remark", "view"].forEach(key => url.searchParams.delete(key));
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  return handled;
 }
 
 function downtimeDurationMs(item, endTime = Date.now()) {
@@ -14804,6 +14842,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
+  handleIncomingNotificationLink();
   loadRemoteUsers();
   connectRealtime();
   startRealtimePoll();

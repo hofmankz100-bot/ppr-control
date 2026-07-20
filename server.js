@@ -780,7 +780,7 @@ function ensurePushConfig(db) {
   return false;
 }
 
-async function sendRemarkPushNotifications(added, total, origin = "") {
+async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general") {
   if (!added) return;
   const db = readDb();
   const configChanged = ensurePushConfig(db);
@@ -799,7 +799,9 @@ async function sendRemarkPushNotifications(added, total, origin = "") {
     title: "ALKZ — новое замечание",
     body: added === 1 ? `Открытых замечаний: ${total}` : `Новых замечаний: ${added}. Открытых: ${total}`,
     badgeCount: total,
-    url: "/"
+    url,
+    entityId,
+    tag: `remark:${entityId}`
   });
   const expired = new Set();
   await Promise.allSettled(subscriptions.map(async item => {
@@ -1022,7 +1024,7 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
   return count;
 }
 
-async function sendResolutionPushNotifications(db, participants, origin, title, body) {
+async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
   const targetParticipants = Array.isArray(participants) ? participants : [];
   if (!targetParticipants.length) return;
   ensurePushConfig(db);
@@ -1040,7 +1042,7 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     const badgeCount = openRemarkCountForSubscription(db, entry);
-    const payload = JSON.stringify({ type: "remark", title, body, badgeCount, url: "/" });
+    const payload = JSON.stringify({ type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` });
     try {
       await webPush.sendNotification(entry.subscription, payload, { TTL: 3600, urgency: "high" });
     } catch (error) {
@@ -1054,7 +1056,7 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   }
 }
 
-async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null) {
+async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
   const requested = Array.isArray(participants) ? participants : null;
@@ -1069,7 +1071,8 @@ async function sendDowntimePushNotifications(db, title, body, origin = "", parti
     db.pushNotifications.vapid.privateKey
   );
   const badgeCount = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).length;
-  const payload = JSON.stringify({ type: "downtime", title, body, badgeCount, url: "/?view=downtime" });
+  const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
+  const payload = JSON.stringify({ type: "downtime", title, body, badgeCount, url: targetUrl, entityId: downtimeId || "general", tag: `downtime:${downtimeId || "general"}` });
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
@@ -2470,7 +2473,7 @@ async function handleApi(req, res, pathname, url) {
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
     if (result.notifyParticipants.length) {
-      sendDowntimePushNotifications(readDb(), "Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants).catch(error => {
+      sendDowntimePushNotifications(readDb(), "Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants, result.downtime.id).catch(error => {
         console.error(`Downtime close push delivery failed: ${error?.message || error}`);
       });
     }
@@ -2744,7 +2747,8 @@ async function handleApi(req, res, pathname, url) {
         notifyParticipants,
         pushTitle,
         pushBody,
-        remarkId
+        remarkId,
+        recordKey
       };
     });
     if (result.error) {
@@ -2758,7 +2762,8 @@ async function handleApi(req, res, pathname, url) {
       ? broadcastState(result.origin, result.actionId, result.patch, true)
       : realtimeStateVersion();
     if (result.changed && result.notifyParticipants.length) {
-      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody).catch(error => {
+      const remarkUrl = `/?record=${encodeURIComponent(result.recordKey)}&remark=${encodeURIComponent(result.remarkId)}`;
+      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
         console.error(`Resolution push delivery failed: ${error?.message || error}`);
       });
     }
@@ -2798,17 +2803,28 @@ async function handleApi(req, res, pathname, url) {
       }
       const afterRemarkKeys = openRemarkKeysServer(db);
       let newRemarkCount = 0;
+      const newRemarkKeys = [];
       afterRemarkKeys.forEach(key => {
-        if (!beforeRemarkKeys.has(key)) newRemarkCount += 1;
+        if (!beforeRemarkKeys.has(key)) {
+          newRemarkCount += 1;
+          newRemarkKeys.push(key);
+        }
       });
       const newDowntimes = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt && !beforeActiveDowntimeIds.has(item.id));
-      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newDowntimes };
+      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarkKeys, newDowntimes };
     });
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.patch, true)
       : realtimeStateVersion();
     if (result.newRemarkCount > 0) {
-      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin).catch(error => {
+      const firstTarget = String(result.newRemarkKeys[0] || "");
+      const separator = firstTarget.lastIndexOf("|");
+      const targetRecord = separator >= 0 ? firstTarget.slice(0, separator) : "";
+      const targetRemark = separator >= 0 ? firstTarget.slice(separator + 1) : "";
+      const targetUrl = targetRecord && targetRemark
+        ? `/?record=${encodeURIComponent(targetRecord)}&remark=${encodeURIComponent(targetRemark)}`
+        : "/?view=remarks";
+      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin, targetUrl, targetRemark || "general").catch(error => {
         console.error(`Push delivery failed: ${error?.message || error}`);
       });
     }
@@ -2816,7 +2832,7 @@ async function handleApi(req, res, pathname, url) {
       const item = result.newDowntimes[0];
       const title = item.type === "production" ? "Производственный простой" : "Аварийная остановка";
       const bodyText = `${item.equipment || item.node || "Оборудование"}: ${item.comment || "без причины"}`;
-      sendDowntimePushNotifications(readDb(), title, bodyText, result.origin).catch(error => {
+      sendDowntimePushNotifications(readDb(), title, bodyText, result.origin, null, item.id).catch(error => {
         console.error(`Downtime push delivery failed: ${error?.message || error}`);
       });
     }

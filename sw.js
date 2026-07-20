@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v187";
+const CACHE_NAME = "ppr-v188";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,7 +9,7 @@ const ASSETS = [
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=176",
+  "./app.js?v=188",
   "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
   "./manifest.json",
   "./icon.svg",
@@ -71,11 +71,13 @@ self.addEventListener("notificationclick", event => {
     try {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const existing = windows[0];
+      const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
       if (existing) {
+        if ("navigate" in existing) await existing.navigate(targetUrl);
         await existing.focus();
         return;
       }
-      await self.clients.openWindow(event.notification.data?.url || "/");
+      await self.clients.openWindow(targetUrl);
     } catch {}
   })());
 });
@@ -93,7 +95,7 @@ self.addEventListener("push", event => {
       body: payload.body || "Поступило новое замечание",
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      tag: "alkz-remarks",
+      tag: payload.tag || `${payload.type || "notice"}:${payload.entityId || "general"}`,
       renotify: true,
       silent: false,
       data: { url: payload.url || "/" }
