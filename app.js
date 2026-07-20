@@ -262,6 +262,7 @@ let serviceWorkerUpdateReady = false;
 const userApprovalDrafts = new Map();
 let warehouseReconcileVersion = -1;
 let tmcRequestSubmitting = false;
+const engineerRequestSaveTimers = new Map();
 const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
 const THEME_KEY = "ppr-theme-v1";
@@ -5079,7 +5080,7 @@ function engineerIncomingTmcRequests() {
     && !req.deleted
     && !req.done
     && !req.stock
-    && ["mechanic", "electrician", "operator"].includes(req.sourceRole || "")
+    && (req.engineerCombinedBatch || ["mechanic", "electrician", "operator"].includes(req.sourceRole || ""))
     && !req.engineerApproved
     && !req.productionDirectorRequestApproved
     && !req.financePreApproved
@@ -5100,7 +5101,8 @@ function tmcRequestArchiveItems() {
   if (!canSeeTmcRequestArchive()) return [];
   return allRequests().filter(req => {
     if (!req || req.deleted || req.kind !== "tmc") return false;
-    if (profile?.role === "engineer") return ["mechanic", "electrician", "operator", "shop", "engineer"].includes(req.sourceRole || "");
+    if (req.engineerCombinedBatch && !req.formedAt) return false;
+    if (profile?.role === "engineer") return req.engineerCombinedBatch || ["mechanic", "electrician", "operator", "shop", "engineer"].includes(req.sourceRole || "");
     if (profile?.role === "shop") return areaAllowed(req.area);
     return true;
   });
@@ -5422,16 +5424,18 @@ function renderEngineerIncomingTmcPanel() {
         <header>
           <b>${escapeHtml(req.requestNumber || requestNumberFromId(req))}</b>
           <span>${escapeHtml(req.area || "")} · ${dateHuman(req.date)}${req.sourceName ? ` · от ${escapeHtml(req.sourceName)}` : ""}</span>
-          <button type="button" data-print-engineer-req="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>
+          <span>Редактируется · печать после формирования</span>
         </header>
         <div class="engineer-incoming-table-wrap">
           <table class="engineer-incoming-table">
             <thead><tr><th>№</th><th>Кто отправил</th><th>Наименование</th><th>Артикул</th><th>Остаток</th><th>Ед.</th><th>Заяв.</th><th>Необх.</th><th>Примечание</th><th></th></tr></thead>
             <tbody>
               ${requestItems(req).map((item, index) => `
-                <tr data-engineer-req-row="${escapeHtml(req.id)}" data-engineer-item-index="${index}">
+                <tr data-engineer-req-row="${escapeHtml(req.id)}" data-engineer-item-index="${index}" data-engineer-item-id="${escapeHtml(item.id || "")}">
                   <td>${index + 1}</td>
-                  <td><span class="manual-text">${escapeHtml([item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · "))}</span></td>
+                  <td><span class="manual-text">${escapeHtml(Array.isArray(item.sources) && item.sources.length
+                    ? item.sources.map(source => [source.name, source.role ? requestRoleLabel(source.role) : ""].filter(Boolean).join(" · ")).join("; ")
+                    : [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · "))}</span></td>
                   <td><textarea data-engineer-item-name rows="2">${escapeHtml(item.name || "")}</textarea></td>
                   <td><input data-engineer-item-article type="text" value="${escapeHtml(item.article || "")}"></td>
                   <td><input data-engineer-item-stock type="text" value="${escapeHtml(item.stockRemainder || "")}"></td>
@@ -5445,6 +5449,10 @@ function renderEngineerIncomingTmcPanel() {
             </tbody>
           </table>
         </div>
+        <footer class="engineer-incoming-actions">
+          <button type="button" class="secondary" data-merge-engineer-req="${escapeHtml(req.id)}">Объединить одинаковые</button>
+          <button type="button" class="action-button" data-form-engineer-req="${escapeHtml(req.id)}">Сформировать заявку</button>
+        </footer>
       </section>
     `).join("")}
   `;
@@ -5468,7 +5476,6 @@ function workerSendsTmcRequestToEngineer(role = profile?.role) {
 }
 
 function tmcRequestSubmitLabel(role = profile?.role) {
-  if (mobileShareMode()) return "Отправить в WhatsApp";
   return workerSendsTmcRequestToEngineer(role) ? "Отправить инженеру" : "Создать заявку";
 }
 
@@ -5663,6 +5670,40 @@ function buildMobileTmcRequestDraft() {
     history: [{ at: now, action: "Отправлено через WhatsApp", details: items.map(item => item.name).filter(Boolean).join("; "), status: "whatsapp", role: profile?.role || "", name: profile?.name || "" }],
     approvals: {}
   });
+}
+
+function buildEngineerRequestSubmission() {
+  if (!canEditChecklist() || !workerSendsTmcRequestToEngineer()) return null;
+  const rawItems = readTmcRequestRows();
+  if (!rawItems.length || !rawItems.some(item => item.name)) return null;
+  const eq = selectedTmcEquipment();
+  const nodeIndex = Number(ui.tmcRequestNode?.value || 0);
+  const area = ui.tmcRequestArea?.value || eq?.area || profile?.area || "";
+  return {
+    area,
+    equipment: eq?.name || "Без оборудования",
+    node: eq?.nodes?.[nodeIndex] || "",
+    dueDate: ui.tmcRequestDue?.value || "",
+    items: tmcRequestItemsWithContext(rawItems, eq, nodeIndex).map(item => ({ ...item, sourceArea: area }))
+  };
+}
+
+async function publishEngineerRequestAction(action, details = {}) {
+  const result = await apiJson("/api/engineer-request/action", {
+    method: "POST",
+    timeout: 30000,
+    body: JSON.stringify({
+      actionId: nextActionId(),
+      clientId: CLIENT_ID,
+      action,
+      actor: resolutionActor(),
+      ...details
+    })
+  });
+  if (result?.state) mergeRealtimePatch(result.state);
+  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  persistStateLocally(state);
+  return result;
 }
 
 function createNodeWalkRequestSubmission(equipmentId, nodeIndex, date, item, text, requestPhoto = "") {
@@ -14786,6 +14827,27 @@ ui.tmcRequestRows?.addEventListener("change", async event => {
   ` : "";
 });
 
+async function flushEngineerRequestEdits(requestId) {
+  const req = state.requests?.[requestId];
+  if (!req) return;
+  const rows = [...ui.engineerIncomingTmcPanel.querySelectorAll(`[data-engineer-req-row="${CSS.escape(requestId)}"]`)];
+  for (const row of rows) {
+    const index = Number(row.dataset.engineerItemIndex);
+    if (!Number.isFinite(index) || !saveEngineerIncomingTmcRow(req, index, row)) continue;
+    const item = requestItems(req)[index];
+    if (!item) continue;
+    const saveKey = `${req.id}:${row.dataset.engineerItemId || index}`;
+    clearTimeout(engineerRequestSaveTimers.get(saveKey));
+    engineerRequestSaveTimers.delete(saveKey);
+    await publishEngineerRequestAction("edit-item", {
+      requestId: req.id,
+      itemId: row.dataset.engineerItemId || item.id || "",
+      itemIndex: index,
+      item
+    });
+  }
+}
+
 ui.engineerIncomingTmcPanel?.addEventListener("input", event => {
   const row = event.target.closest("[data-engineer-req-row]");
   if (!row) return;
@@ -14793,22 +14855,56 @@ ui.engineerIncomingTmcPanel?.addEventListener("input", event => {
   const index = Number(row.dataset.engineerItemIndex);
   if (!req || !Number.isFinite(index)) return;
   if (saveEngineerIncomingTmcRow(req, index, row)) {
-    saveState();
+    persistStateLocally(state);
     updateRoleBadges();
+    const saveKey = `${req.id}:${row.dataset.engineerItemId || index}`;
+    clearTimeout(engineerRequestSaveTimers.get(saveKey));
+    engineerRequestSaveTimers.set(saveKey, window.setTimeout(async () => {
+      try {
+        const item = requestItems(req)[index];
+        if (!item) return;
+        await publishEngineerRequestAction("edit-item", {
+          requestId: req.id,
+          itemId: row.dataset.engineerItemId || item.id || "",
+          itemIndex: index,
+          item
+        });
+      } catch (error) {
+        showAppToast("Изменение не сохранилось. Обновите список и повторите.", "error");
+        await loadRemoteState();
+        renderRequestCreate();
+      } finally {
+        engineerRequestSaveTimers.delete(saveKey);
+      }
+    }, 600));
   }
 });
 
-ui.engineerIncomingTmcPanel?.addEventListener("click", event => {
+ui.engineerIncomingTmcPanel?.addEventListener("click", async event => {
   const openButton = event.target.closest("[data-open-engineer-requests]");
   if (openButton) {
-    current.requestRole = "engineer";
-    show("requests");
+    ui.engineerIncomingTmcPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
-  const printButton = event.target.closest("[data-print-engineer-req]");
-  if (printButton) {
-    const req = state.requests?.[printButton.dataset.printEngineerReq];
-    if (req) sendRequestByDevice(req);
+  const mergeButton = event.target.closest("[data-merge-engineer-req]");
+  if (mergeButton) {
+    if (!window.confirm("Объединить строки с одинаковым названием, артикулом и единицей измерения? Количество будет сложено.")) return;
+    await runButtonOperation(mergeButton, async () => {
+      await flushEngineerRequestEdits(mergeButton.dataset.mergeEngineerReq || "");
+      await publishEngineerRequestAction("merge-items", { requestId: mergeButton.dataset.mergeEngineerReq || "" });
+      renderRequestCreate();
+    }, "Объединяем...");
+    return;
+  }
+  const formButton = event.target.closest("[data-form-engineer-req]");
+  if (formButton) {
+    if (!window.confirm("Сформировать итоговую заявку? После этого редактирование будет закрыто.")) return;
+    await runButtonOperation(formButton, async () => {
+      await flushEngineerRequestEdits(formButton.dataset.formEngineerReq || "");
+      const result = await publishEngineerRequestAction("form", { requestId: formButton.dataset.formEngineerReq || "" });
+      renderRequestCreate();
+      if (result?.request) await sendRequestByDevice(result.request);
+    }, "Формируем...");
     return;
   }
   const deleteButton = event.target.closest("[data-delete-engineer-item]");
@@ -14817,12 +14913,18 @@ ui.engineerIncomingTmcPanel?.addEventListener("click", event => {
   const req = state.requests?.[row?.dataset.engineerReqRow || ""];
   const index = Number(row?.dataset.engineerItemIndex);
   if (!req || !Number.isFinite(index)) return;
-  if (!window.confirm("Удалить эту строку из накопленной заявки?")) return;
-  if (deleteEngineerIncomingTmcRow(req, index)) {
-    saveState();
+  const reason = window.prompt("Почему позиция удаляется? Причина сохранится в истории.");
+  if (!String(reason || "").trim()) return;
+  await runButtonOperation(deleteButton, async () => {
+    await publishEngineerRequestAction("delete-item", {
+      requestId: req.id,
+      itemId: row.dataset.engineerItemId || requestItems(req)[index]?.id || "",
+      itemIndex: index,
+      reason: String(reason).trim()
+    });
     renderRequestCreate();
     updateRoleBadges();
-  }
+  }, "Удаляем...");
 });
 
 ui.tmcRequestForm?.addEventListener("submit", async event => {
@@ -14832,6 +14934,20 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
   setButtonBusy(ui.submitTmcRequest, true, "Отправляем...");
   try {
     restoreTranslatedPage(ui.requestCreateScreen || document.body);
+    if (workerSendsTmcRequestToEngineer()) {
+      const submission = buildEngineerRequestSubmission();
+      if (!submission) {
+        ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
+        ui.tmcRequestStatus.classList.add("error");
+        return;
+      }
+      const result = await publishEngineerRequestAction("submit", submission);
+      ui.tmcRequestStatus.classList.remove("error");
+      ui.tmcRequestStatus.textContent = `Отправлено инженеру: ${Number(result?.submittedCount || submission.items.length)} поз.`;
+      resetTmcRequestForm();
+      updateTmcRequestButtonLabels();
+      return;
+    }
     if (mobileShareMode()) {
       const draft = buildMobileTmcRequestDraft();
       if (!draft) {

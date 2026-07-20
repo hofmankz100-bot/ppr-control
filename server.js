@@ -2231,6 +2231,187 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/engineer-request/action" && req.method === "POST") {
+    const body = await readBody(req);
+    const action = String(body.action || "").trim();
+    const requestedActor = sanitizeResolutionParticipant(body.actor || {});
+    const workerRoles = new Set(["mechanic", "electrician", "operator"]);
+    const engineerRoles = new Set(["engineer", "editor"]);
+    if (!new Set(["submit", "edit-item", "delete-item", "merge-items", "form"]).has(action) || !requestedActor.key) {
+      sendJson(res, 400, { ok: false, error: "engineer_request_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.requests ||= {};
+      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
+        return { error: "engineer_request_actor_invalid" };
+      }
+      const actor = sanitizeResolutionParticipant(registeredActor);
+      if (action === "submit" && !workerRoles.has(actor.role)) return { error: "engineer_request_worker_required" };
+      if (action !== "submit" && !engineerRoles.has(actor.role)) return { error: "engineer_request_engineer_required" };
+      const now = new Date().toISOString();
+      const date = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit"
+      }).format(new Date());
+      const cleanItem = (item = {}) => ({
+        id: String(item.id || `engineer-item:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`).slice(0, 200),
+        name: String(item.name || "").trim().slice(0, 500),
+        article: String(item.article || "").trim().slice(0, 200),
+        stockRemainder: String(item.stockRemainder || "").trim().slice(0, 100),
+        unit: String(item.unit || "шт").trim().slice(0, 50) || "шт",
+        requestedQty: Math.max(0, Number(item.requestedQty || 0)),
+        requiredQty: Math.max(0, Number(item.requiredQty || item.requestedQty || 0)),
+        note: String(item.note || "").trim().slice(0, 2000),
+        photo: String(item.photo || "").length <= 12000000 ? String(item.photo || "") : "",
+        sourceKey: actor.key,
+        sourceRole: actor.role,
+        sourceName: actor.name,
+        sourcePhone: actor.phone,
+        sourceEmployeeId: actor.employeeId,
+        sourceArea: String(item.sourceArea || body.area || actor.area || "").slice(0, 300),
+        submittedAt: now
+      });
+      const updateSummary = request => {
+        request.items = (Array.isArray(request.items) ? request.items : []).filter(item => item && String(item.name || "").trim());
+        request.text = request.items.map(item => item.name).filter(Boolean).join("; ");
+        request.requestedQty = request.items.reduce((sum, item) => sum + Number(item.requiredQty || item.requestedQty || 0), 0) || 1;
+        request.updatedAt = now;
+      };
+      let request;
+      let submittedCount = 0;
+      if (action === "submit") {
+        const incoming = (Array.isArray(body.items) ? body.items : []).map(cleanItem).filter(item => item.name);
+        if (!incoming.length) return { error: "engineer_request_items_required" };
+        request = Object.values(db.requests).find(item => item && item.kind === "tmc" && item.engineerCombinedBatch
+          && item.date === date && !item.deleted && !item.formedAt && !item.engineerApproved && !item.done && !item.stock);
+        if (!request) {
+          const id = `engineer-batch:${date}:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`;
+          request = {
+            id,
+            date,
+            kind: "tmc",
+            equipmentId: 0,
+            nodeIndex: 0,
+            equipment: "Общая накопительная заявка",
+            area: "Заявки инженеру",
+            node: "",
+            status: "engineer",
+            route: "purchase",
+            priority: "normal",
+            dueDate: String(body.dueDate || "").slice(0, 10),
+            sourceRole: "engineerBatch",
+            sourceName: "Несколько сотрудников",
+            sourceKey: "engineer-batch",
+            engineerCombinedBatch: true,
+            shopApproved: true,
+            engineerApproved: false,
+            done: false,
+            stock: false,
+            items: [],
+            history: [],
+            approvals: {},
+            createdAt: now,
+            updatedAt: now
+          };
+          db.requests[id] = request;
+        }
+        request.items = [...(Array.isArray(request.items) ? request.items : []), ...incoming];
+        submittedCount = incoming.length;
+        if (body.dueDate && (!request.dueDate || String(body.dueDate) < request.dueDate)) request.dueDate = String(body.dueDate).slice(0, 10);
+        request.history = [...(Array.isArray(request.history) ? request.history : []), {
+          at: now, action: "Добавлены позиции инженеру", details: incoming.map(item => item.name).join("; "), status: "engineer", role: actor.role, name: actor.name
+        }];
+        updateSummary(request);
+      } else {
+        const requestId = String(body.requestId || "").trim();
+        request = db.requests[requestId];
+        if (!request || request.deleted || request.kind !== "tmc" || !request.engineerCombinedBatch) return { error: "engineer_request_not_found" };
+        if (request.formedAt || request.engineerApproved) return { error: "engineer_request_locked" };
+        request.items = Array.isArray(request.items) ? request.items : [];
+        request.items.forEach(item => { item.id ||= `engineer-item:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`; });
+        if (action === "edit-item") {
+          const itemId = String(body.itemId || "").trim();
+          const itemIndex = Number(body.itemIndex);
+          const item = request.items.find(entry => String(entry?.id || "") === itemId)
+            || (Number.isInteger(itemIndex) ? request.items[itemIndex] : null);
+          if (!item) return { error: "engineer_request_item_not_found" };
+          const editable = body.item || {};
+          item.name = String(editable.name || "").trim().slice(0, 500);
+          item.article = String(editable.article || "").trim().slice(0, 200);
+          item.stockRemainder = String(editable.stockRemainder || "").trim().slice(0, 100);
+          item.unit = String(editable.unit || "шт").trim().slice(0, 50) || "шт";
+          item.requestedQty = Math.max(0, Number(editable.requestedQty || 0));
+          item.requiredQty = Math.max(0, Number(editable.requiredQty || editable.requestedQty || 0));
+          item.note = String(editable.note || "").trim().slice(0, 2000);
+          item.engineerEditedAt = now;
+          item.engineerEditedBy = actor.name;
+        }
+        if (action === "delete-item") {
+          const itemId = String(body.itemId || "").trim();
+          const reason = String(body.reason || "").trim().slice(0, 1000);
+          const requestedIndex = Number(body.itemIndex);
+          const indexById = request.items.findIndex(entry => String(entry?.id || "") === itemId);
+          const index = indexById >= 0 ? indexById : Number.isInteger(requestedIndex) ? requestedIndex : -1;
+          if (index < 0) return { error: "engineer_request_item_not_found" };
+          if (!reason) return { error: "engineer_request_delete_reason_required" };
+          const [removed] = request.items.splice(index, 1);
+          request.history = [...(Array.isArray(request.history) ? request.history : []), {
+            at: now, action: "Инженер удалил позицию", details: `${removed.name}: ${reason}`, status: "engineer", role: actor.role, name: actor.name
+          }];
+        }
+        if (action === "merge-items") {
+          const grouped = new Map();
+          request.items.forEach(item => {
+            const key = [item.name, item.article, item.unit].map(value => String(value || "").trim().toLocaleLowerCase("ru-RU")).join("::");
+            if (!grouped.has(key)) {
+              grouped.set(key, { ...item, sources: [{ key: item.sourceKey, name: item.sourceName, role: item.sourceRole, at: item.submittedAt }] });
+              return;
+            }
+            const target = grouped.get(key);
+            target.sources.push({ key: item.sourceKey, name: item.sourceName, role: item.sourceRole, at: item.submittedAt });
+            target.requestedQty = Number(target.requestedQty || 0) + Number(item.requestedQty || 0);
+            target.requiredQty = Number(target.requiredQty || 0) + Number(item.requiredQty || item.requestedQty || 0);
+            target.note = [...new Set([target.note, item.note].filter(Boolean))].join(" · ");
+          });
+          request.items = [...grouped.values()];
+          request.history = [...(Array.isArray(request.history) ? request.history : []), { at: now, action: "Объединены одинаковые позиции", details: actor.name, status: "engineer", role: actor.role, name: actor.name }];
+        }
+        if (action === "form") {
+          if (!request.items.length || request.items.some(item => !String(item.name || "").trim() || Number(item.requiredQty || item.requestedQty || 0) <= 0)) {
+            return { error: "engineer_request_not_ready" };
+          }
+          request.formedAt = now;
+          request.formedByName = actor.name;
+          request.formedByRole = actor.role;
+          request.engineerApproved = true;
+          request.status = "manualFormed";
+          request.requestNumber ||= `З-${date.replaceAll("-", "")}-${String(Date.now()).slice(-6)}`;
+          request.history = [...(Array.isArray(request.history) ? request.history : []), { at: now, action: "Итоговая заявка сформирована", details: `${request.items.length} позиций`, status: "manualFormed", role: actor.role, name: actor.name }];
+        }
+        updateSummary(request);
+        if (!request.items.length) {
+          request.deleted = true;
+          request.deletedAt = now;
+        }
+      }
+      const actionId = String(body.actionId || "");
+      writeDb(db, { action: `engineer_request_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, requestId: request.id, submittedCount });
+      return { actionId, origin: body.clientId || "api", patch: { requests: { [request.id]: request } }, request, submittedCount };
+    });
+    if (result.error) {
+      const status = ["engineer_request_actor_invalid", "engineer_request_worker_required", "engineer_request_engineer_required"].includes(result.error) ? 403
+        : ["engineer_request_not_found", "engineer_request_item_not_found"].includes(result.error) ? 404
+          : result.error === "engineer_request_locked" ? 409 : 400;
+      sendJson(res, status, { ok: false, error: result.error });
+      return true;
+    }
+    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, request: result.request, submittedCount: result.submittedCount });
+    return true;
+  }
+
   if (pathname === "/api/ppr-sheet/action" && req.method === "POST") {
     const body = await readBody(req);
     const date = String(body.date || "").trim();
