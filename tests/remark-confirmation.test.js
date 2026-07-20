@@ -486,6 +486,18 @@ test("obsolete no-material nodes are removed from both fixed press catalogs", ()
   assert.match(source, /for \(const equipmentId of \["1", "2"\]\)/);
 });
 
+test("repeat QR scans open an active remark or focus a new comment without another walk", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /function oldestOpenRemarkForNode\(equipmentId, nodeIndex\)/);
+  assert.match(source, /function openRepeatedNodeQrDestination\(parsed, shift = currentWalkShift\(\)\)/);
+  assert.match(source, /current\.date = openRemark\?\.date \|\| shift\.date/);
+  assert.match(source, /current\.focusNodeCommentComposer = !openRemark/);
+  assert.match(source, /appendCommentEntry\(item, comment, photo\)/);
+  assert.match(source, /finish\("comment-saved"\)/);
+  assert.match(source, /Комментарий отправлен\. Обход этой смены засчитан\./);
+  assert.doesNotMatch(source, /Узел уже обойден — открыт комментарий узла/);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",

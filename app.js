@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v188";
+const APP_VERSION = "v189";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -395,6 +395,8 @@ let current = {
   warehouseZeroArchivePage: 1,
   scrollToCommentNode: null,
   scrollToRemarkId: "",
+  focusNodeCommentComposer: false,
+  returnHomeAfterQrCommentKey: "",
   returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
@@ -3328,30 +3330,61 @@ async function handleIncomingNodeQrFromUrl() {
     return false;
   }
   const shift = currentWalkShift();
-  const marked = markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
-  if (!marked) {
+  const eq = equipmentById(parsed.equipmentId);
+  if (!eq?.nodes?.[parsed.nodeIndex]) {
     window.alert("QR найден, но узел в журнале не найден. Проверьте, что QR распечатан из этой версии ППР.");
     clearIncomingNodeQrFromUrl();
     return false;
   }
+  const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
+  clearIncomingNodeQrFromUrl();
+  if (alreadyDone) {
+    openRepeatedNodeQrDestination(parsed, shift);
+    return true;
+  }
   current.equipmentId = parsed.equipmentId;
   current.nodeIndex = parsed.nodeIndex;
-  current.date = marked.date;
+  current.date = shift.date;
   current.kind = "to";
-  current.scrollToQrNode = parsed.nodeIndex;
-  clearIncomingNodeQrFromUrl();
-  show("checklist", false);
-  publishStateNow().catch(scheduleRemoteRetry);
-  const eq = equipmentById(parsed.equipmentId);
-  window.setTimeout(() => {
-    const row = document.querySelector(`[data-node-walk-index="${parsed.nodeIndex}"]`);
-    row?.scrollIntoView({ behavior: "smooth", block: "center" });
-    row?.classList.add("qr-just-scanned");
-    window.setTimeout(() => row?.classList.remove("qr-just-scanned"), 1800);
-  }, 150);
-  if (eq) refreshNodeWalkProgress(eq);
-  showQrSavedNotice();
+  const action = await promptQrWalkDecision(parsed);
+  if (action === "comment-saved") {
+    show(homeViewForProfile(profile?.role), false);
+    showAppToast("Комментарий отправлен. Обход этой смены засчитан.");
+  } else if (action) {
+    current.nodeDetailIndex = null;
+    show("checklist", false);
+  }
   return true;
+}
+
+function oldestOpenRemarkForNode(equipmentId, nodeIndex) {
+  const matches = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
+    if (Number(rawEquipmentId) !== Number(equipmentId) || Number(rawNodeIndex) !== Number(nodeIndex)) return;
+    openRemarkEntries(rec?.to || {}).forEach(entry => {
+      matches.push({ date, remarkId: entry.id || stableRemarkId(entry), at: entry.at || date });
+    });
+  });
+  return matches.sort((a, b) => String(a.at).localeCompare(String(b.at)) || String(a.date).localeCompare(String(b.date)))[0] || null;
+}
+
+function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
+  const openRemark = oldestOpenRemarkForNode(parsed.equipmentId, parsed.nodeIndex);
+  current.equipmentId = parsed.equipmentId;
+  current.nodeIndex = parsed.nodeIndex;
+  current.nodeDetailIndex = parsed.nodeIndex;
+  current.date = openRemark?.date || shift.date;
+  current.kind = "to";
+  current.scrollToCommentNode = parsed.nodeIndex;
+  current.scrollToRemarkId = openRemark?.remarkId || "";
+  current.focusNodeCommentComposer = !openRemark;
+  current.returnHomeAfterQrCommentKey = openRemark ? "" : key(parsed.equipmentId, parsed.nodeIndex, shift.date);
+  show("checklist", false);
+  showAppToast(openRemark
+    ? "Обход уже выполнен — открыто активное замечание для устранения."
+    : "Обход уже выполнен — напишите новый комментарий.");
+  return openRemark ? "remark" : "comment";
 }
 
 function refreshNodeWalkProgress(eq) {
@@ -3837,14 +3870,13 @@ function promptQrWalkDecision(parsed) {
         const photo = file ? await readPhotoFile(file) : "";
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
-        saveCommentDraft(item, comment);
-        item.commentPhoto = photo;
-        item.resolved = false;
+        appendCommentEntry(item, comment, photo);
+        syncItemRemarkSummary(item);
         item.updatedAt = new Date().toISOString();
         saveState();
         publishStateNow().catch(scheduleRemoteRetry);
         showQrSavedNotice("Обход сохранён с замечанием");
-        finish("continue");
+        finish("comment-saved");
       } catch {
         if (errorEl) errorEl.textContent = "Не удалось обработать фото. Попробуйте ещё раз.";
         setButtonBusy(button, false);
@@ -9684,6 +9716,13 @@ function renderNodeWalkthrough(eq) {
         saveState({ remote: false });
         renderNodeWalkthrough(equipmentById(eq.id));
         await publishNodeUpdateNow(eq.id, index, current.date);
+        const returnHome = current.returnHomeAfterQrCommentKey === key(eq.id, index, current.date);
+        current.returnHomeAfterQrCommentKey = "";
+        if (returnHome) {
+          show(homeViewForProfile(profile?.role), false);
+          showAppToast("Комментарий отправлен. Обход этой смены уже засчитан.");
+          return;
+        }
         renderNodeWalkthrough(equipmentById(eq.id));
       } catch (error) {
         scheduleRemoteRetry();
@@ -9781,13 +9820,17 @@ function renderNodeWalkthrough(eq) {
   if (current.scrollToCommentNode !== null && current.scrollToCommentNode !== undefined) {
     const targetIndex = current.scrollToCommentNode;
     const targetRemarkId = current.scrollToRemarkId;
+    const focusComposer = current.focusNodeCommentComposer;
     current.scrollToCommentNode = null;
     current.scrollToRemarkId = "";
+    current.focusNodeCommentComposer = false;
     window.setTimeout(() => {
       const row = list.querySelector(`[data-node-walk-index="${targetIndex}"]`);
-      const target = (targetRemarkId ? row?.querySelector(`[data-remark-card="${CSS.escape(targetRemarkId)}"]`) : null)
-        || row?.querySelector("[data-node-first-comment]")
-        || row?.querySelector("[data-node-comment]");
+      const target = focusComposer
+        ? row?.querySelector("[data-node-comment]")
+        : (targetRemarkId ? row?.querySelector(`[data-remark-card="${CSS.escape(targetRemarkId)}"]`) : null)
+          || row?.querySelector("[data-node-first-comment]")
+          || row?.querySelector("[data-node-comment]");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
       target?.classList.add("focus-comment");
       if (!target?.disabled) target?.focus();
@@ -14579,6 +14622,7 @@ function dateTimeHuman(iso) {
 }
 
 function goBack() {
+  current.returnHomeAfterQrCommentKey = "";
   if (current.view === "checklist" && current.returnToRemarkListAfterResolve) {
     returnToOpenRemarkCards();
     return;
@@ -14607,20 +14651,15 @@ ui.qrWalkButton?.addEventListener("click", async () => {
       if (!parsed) break;
       const shift = currentWalkShift();
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
-        current.equipmentId = parsed.equipmentId;
-        current.nodeIndex = parsed.nodeIndex;
-        current.date = shift.date;
-        current.kind = "to";
-        current.scrollToQrNode = parsed.nodeIndex;
-        show("checklist");
-        window.setTimeout(() => {
-          ui.commentInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-          if (canEditChecklist()) ui.commentInput?.focus();
-        }, 180);
-        showAppToast("Узел уже обойден — открыт комментарий узла.");
+        openRepeatedNodeQrDestination(parsed, shift);
         break;
       }
       const action = await promptQrWalkDecision(parsed);
+      if (action === "comment-saved") {
+        show(homeViewForProfile(profile?.role), false);
+        showAppToast("Комментарий отправлен. Обход этой смены засчитан.");
+        break;
+      }
       if (action === "finish") break;
     }
   } finally {
