@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v190";
+const APP_VERSION = "v191";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -3377,7 +3377,11 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
       <p class="qr-result-node">${escapeHtml(nodeName)}</p>
       ${openRemark ? `
         <div class="qr-already-done"><strong>Активное замечание</strong><br>${escapeHtml(openRemark.entry?.text || "")}</div>
-        ${pending ? `<p>Устранение уже отправлено руководителю на подтверждение.</p>` : `
+        ${pending ? `
+          <p>Устранение уже отправлено руководителю на подтверждение. Если обнаружена новая проблема, запишите её ниже.</p>
+          <label><span>Новое замечание по узлу</span><textarea rows="4" data-qr-action-text placeholder="Напишите новое замечание..."></textarea></label>
+          <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-action-photo></label>
+        ` : `
           <label><span>Что дополнительно сделано или обнаружено</span><textarea rows="4" data-qr-action-text placeholder="Напишите комментарий..."></textarea></label>
           <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-action-photo></label>
         `}
@@ -3387,7 +3391,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
       `}
       <div class="qr-remark-error" data-qr-action-error></div>
       <div class="qr-result-actions ${pending ? "single" : ""}">
-        ${pending ? "" : openRemark
+        ${pending ? `<button type="button" class="qr-save-remark-button" data-qr-action-create>Отправить новое замечание</button>` : openRemark
           ? `<button type="button" class="qr-good-button" data-qr-action-update>Добавить запись</button><button type="button" class="qr-remark-button" data-qr-action-resolve>Устранено</button>`
           : `<button type="button" class="qr-save-remark-button" data-qr-action-create>Отправить</button>`}
         <button type="button" class="qr-finish-button" data-qr-action-close>Закрыть</button>
@@ -3414,7 +3418,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
       try {
         const file = overlay.querySelector("[data-qr-action-photo]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        if (!openRemark) {
+        if (!openRemark || action === "create") {
           const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
           appendCommentEntry(item, text, photo);
           syncItemRemarkSummary(item);

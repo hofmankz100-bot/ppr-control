@@ -494,6 +494,8 @@ test("repeat QR scans stay in an overlay on the main screen", () => {
   assert.match(source, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
   assert.match(source, /data-qr-action-create/);
   assert.match(source, /data-qr-action-resolve/);
+  assert.match(source, /Если обнаружена новая проблема, запишите её ниже/);
+  assert.match(source, /if \(!openRemark \|\| action === "create"\)/);
   assert.match(source, /appendCommentEntry\(item, comment, photo\)/);
   assert.match(source, /finish\("comment-saved"\)/);
   assert.match(source, /Вы остались на главном экране/);
