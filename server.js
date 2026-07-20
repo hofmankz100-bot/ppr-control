@@ -2114,9 +2114,13 @@ async function handleApi(req, res, pathname, url) {
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
+      const lockedEquipmentCatalogIds = new Set(["1", "2"]);
       if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
+          // Press 2400 EGE and Press 1540 EGE have an approved, fixed node catalog.
+          // Ignore catalog mutations even from an old browser tab or direct state request.
+          if (lockedEquipmentCatalogIds.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;

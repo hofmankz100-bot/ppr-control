@@ -452,6 +452,33 @@ test("every signed-in role sees only the factory reliability graph while enginee
   assert.match(source, /if \(controls\) controls\.hidden = !detailed/);
 });
 
+test("the approved press catalogs are locked in the UI and on the server", async () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /LOCKED_EQUIPMENT_CATALOG_IDS = new Set\(\[1, 2\]\)/);
+  assert.match(source, /if \(isEquipmentCatalogLocked\(equipmentOrId\)\) return false/);
+
+  const before = await (await fetch(`${baseUrl}/api/state`)).json();
+  const response = await fetch(`${baseUrl}/api/state`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: "locked-press-catalog-test",
+      clientId: "admin-test",
+      user: { role: "editor", authenticatedRole: "editor" },
+      catalog: {
+        equipment: {
+          "1": { ...before.catalog.equipment["1"], name: "Changed press", nodes: ["Changed node"] },
+          "2": { ...before.catalog.equipment["2"], name: "Changed press 2", nodes: ["Changed node 2"] }
+        }
+      }
+    })
+  });
+  assert.equal(response.status, 200);
+  const after = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.deepEqual(after.catalog.equipment["1"], before.catalog.equipment["1"]);
+  assert.deepEqual(after.catalog.equipment["2"], before.catalog.equipment["2"]);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",

@@ -2415,11 +2415,19 @@ function catalogEditorRole() {
   return authenticatedProfile?.role || profile?.role || "";
 }
 
+const LOCKED_EQUIPMENT_CATALOG_IDS = new Set([1, 2]);
+
+function isEquipmentCatalogLocked(equipmentOrId = current.equipmentId) {
+  const equipmentId = typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId;
+  return LOCKED_EQUIPMENT_CATALOG_IDS.has(Number(equipmentId));
+}
+
 function canManageCatalogStructure(equipmentOrId = current.equipmentId) {
   return canEditEquipmentCatalog(equipmentOrId);
 }
 
 function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
+  if (isEquipmentCatalogLocked(equipmentOrId)) return false;
   const role = catalogEditorRole();
   if (!["editor", "engineer", "shop"].includes(role)) return false;
   const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
