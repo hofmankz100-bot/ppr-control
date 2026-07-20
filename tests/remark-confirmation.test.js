@@ -73,6 +73,23 @@ function patchedRemark(response, key, remarkId) {
   return response.state.checks[key].to.commentLog.find(entry => entry.id === remarkId);
 }
 
+async function postEngineerRequest(action, actor, extra = {}, expectedStatus = 200) {
+  const response = await fetch(`${baseUrl}/api/engineer-request/action`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: `engineer-request-test-${Date.now()}-${Math.random()}`,
+      clientId: "engineer-request-test",
+      action,
+      actor,
+      ...extra
+    })
+  });
+  const body = await response.json();
+  assert.equal(response.status, expectedStatus, JSON.stringify(body));
+  return body;
+}
+
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "ppr-remark-test-"));
   const db = {
@@ -328,6 +345,51 @@ test("the common warning hall excludes pending confirmations", () => {
   assert.match(source, /if \(item\?\.resolutionPendingConfirmation\) return canCurrentUserConfirmRemark\(item\)/);
 });
 
+test("workers accumulate one server-side engineer draft that is editable and locks after formation", async () => {
+  const mechanic = user("mechanic-1", "Механик Один", "mechanic");
+  const electrician = user("electrician-1", "Электрик Один", "electrician");
+  const engineer = user("engineer-1", "Инженер Один", "engineer");
+  const first = await postEngineerRequest("submit", mechanic, {
+    area: "Цех А",
+    items: [{ name: "Подшипник", article: "A-1", unit: "шт", requestedQty: 1, requiredQty: 2 }]
+  });
+  const second = await postEngineerRequest("submit", electrician, {
+    area: "Цех Б",
+    items: [{ name: "Подшипник", article: "A-1", unit: "шт", requestedQty: 2, requiredQty: 3 }]
+  });
+  assert.equal(second.request.id, first.request.id);
+  assert.equal(second.request.items.length, 2);
+  assert.deepEqual(second.request.items.map(item => item.sourceRole).sort(), ["electrician", "mechanic"]);
+
+  await postEngineerRequest("edit-item", mechanic, {
+    requestId: second.request.id,
+    itemId: second.request.items[0].id,
+    item: { ...second.request.items[0], name: "Запрещённое изменение" }
+  }, 403);
+  const edited = await postEngineerRequest("edit-item", engineer, {
+    requestId: second.request.id,
+    itemId: second.request.items[0].id,
+    item: { ...second.request.items[0], note: "Проверено инженером" }
+  });
+  assert.equal(edited.request.items[0].note, "Проверено инженером");
+
+  const merged = await postEngineerRequest("merge-items", engineer, { requestId: second.request.id });
+  assert.equal(merged.request.items.length, 1);
+  assert.equal(merged.request.items[0].requestedQty, 3);
+  assert.equal(merged.request.items[0].requiredQty, 5);
+  assert.equal(merged.request.items[0].sources.length, 2);
+
+  const formed = await postEngineerRequest("form", engineer, { requestId: second.request.id });
+  assert.ok(formed.request.formedAt);
+  assert.equal(formed.request.engineerApproved, true);
+  assert.equal(formed.request.status, "manualFormed");
+  await postEngineerRequest("edit-item", engineer, {
+    requestId: second.request.id,
+    itemId: merged.request.items[0].id,
+    item: merged.request.items[0]
+  }, 409);
+});
+
 test("confirmation is handled in the personal role inbox instead of the PPR node", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
@@ -363,4 +425,13 @@ test("the rating uses the agreed simple values and accepted-work rules", () => {
   assert.match(source, /if \(event\.confirmedAt && inPeriod\(event\.confirmedAt\)\)/);
   assert.match(source, /Number\(penaltiesByWorker\.get\(key\) \|\| 0\) >= 2/);
   assert.match(source, /if \(item\.type === "production"\) return/);
+});
+
+test("mobile workers use the same engineer inbox instead of a WhatsApp-only draft", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const submitHandler = source.slice(source.indexOf('ui.tmcRequestForm?.addEventListener("submit"'), source.indexOf('ui.requestSearchInput?.addEventListener'));
+  assert.ok(submitHandler.indexOf("if (workerSendsTmcRequestToEngineer())") < submitHandler.indexOf("if (mobileShareMode())"));
+  assert.match(submitHandler, /publishEngineerRequestAction\("submit", submission\)/);
+  assert.match(source, /if \(req\.engineerCombinedBatch && !req\.formedAt\) return false/);
+  assert.match(source, /Редактируется · печать после формирования/);
 });

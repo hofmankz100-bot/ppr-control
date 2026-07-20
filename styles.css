@@ -5497,6 +5497,19 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: var(--danger);
 }
 
+.engineer-incoming-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.engineer-incoming-actions .secondary {
+  background: #e8eef2;
+  color: #14324a;
+}
+
 .tmc-request-header {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
