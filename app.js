@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v186";
+const APP_VERSION = "v187";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1277,7 +1277,17 @@ function mergeArrayByIdLocal(current = [], incoming = []) {
   }
   for (const item of Array.isArray(incoming) ? incoming : []) {
     if (!item || !item.id) continue;
-    map.set(item.id, { ...(map.get(item.id) || {}), ...item });
+    const currentItem = map.get(item.id) || {};
+    const nextItem = { ...currentItem, ...item };
+    if (currentItem.endedAt && !item.endedAt) {
+      nextItem.endedAt = currentItem.endedAt;
+      nextItem.updatedAt = currentItem.updatedAt || currentItem.endedAt;
+      nextItem.closeComment = currentItem.closeComment || nextItem.closeComment || "";
+      nextItem.closedByName = currentItem.closedByName || nextItem.closedByName || "";
+      nextItem.closedByRole = currentItem.closedByRole || nextItem.closedByRole || "";
+      nextItem.closedParticipants = currentItem.closedParticipants || nextItem.closedParticipants || [];
+    }
+    map.set(item.id, nextItem);
   }
   return Array.from(map.values()).sort((a, b) => String(b.updatedAt || b.createdAt || b.startedAt || b.registeredAt || '').localeCompare(String(a.updatedAt || a.createdAt || a.startedAt || a.registeredAt || '')));
 }
@@ -6309,15 +6319,6 @@ function openDowntime(equipmentId, nodeIndex, comment, type = "breakdown", saveO
   saveState(saveOptions);
 }
 
-function closeDowntime(item, comment = "", saveOptions = {}) {
-  if (!item || item.endedAt) return;
-  item.endedAt = new Date().toISOString();
-  item.closeComment = String(comment || "").trim();
-  item.closedByName = profile?.name || "";
-  item.closedByRole = profile?.role || "";
-  saveState(saveOptions);
-}
-
 function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdown") {
   const text = String(comment || "").trim();
   if (!text || activeDowntime(equipmentId, nodeIndex)) return null;
@@ -6327,33 +6328,22 @@ function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdo
   return opened;
 }
 
-function closeDowntimeFromFix(equipmentId, nodeIndex, comment) {
-  const active = activeDowntime(equipmentId, nodeIndex);
-  if (!active) return;
-  const text = String(comment || "").trim() || "Замечание устранено";
-  closeDowntime(active, text);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Пуск", text);
-}
-
-async function toggleDowntime(equipmentId, nodeIndex) {
-  const active = activeDowntime(equipmentId, nodeIndex);
-  if (active) {
-    const comment = window.prompt("Комментарий к пуску. Без комментария пуск не сохраняем.");
-    if (!String(comment || "").trim()) return;
-    closeDowntime(active, comment);
-    appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Пуск", comment);
-    saveState();
-    renderChecklist();
-    return;
-  }
-  const type = await chooseDowntimeType();
-  if (!type) return;
-  const comment = window.prompt("Причина простоя. Без комментария остановку не сохраняем.");
-  if (!String(comment || "").trim()) return;
-  openDowntime(equipmentId, nodeIndex, comment, type);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Стоп", comment);
-  saveState();
-  renderChecklist();
+async function publishDowntimeClose(downtimeId, comment) {
+  const result = await apiJson("/api/downtime-close", {
+    method: "POST",
+    timeout: 20000,
+    body: JSON.stringify({
+      actionId: nextActionId(),
+      clientId: CLIENT_ID,
+      downtimeId,
+      comment: String(comment || "").trim(),
+      actor: resolutionActor()
+    })
+  });
+  if (result?.state) mergeRealtimePatch(result.state);
+  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  persistStateLocally(state);
+  return result;
 }
 
 function updateDowntimeBadge() {
@@ -9391,9 +9381,6 @@ function renderNodeWalkthrough(eq) {
         `).join("")}
       </div>
     ` : "";
-    const productionStopActive = activeStop?.type === "production";
-    const fixedButtonLabel = productionStopActive ? "Устранить" : waitingShopFix && canConfirmInstallation() ? "Подтвердить устранение" : "Устранено";
-    const fixedButtonDisabled = !canEditChecklist() || !productionStopActive;
     const submitRemarkDisabled = !canEditThisComment;
     const submitRemarkLabel = "Отправить";
     const downtimeActiveBlock = activeStop ? `
@@ -9402,6 +9389,7 @@ function renderNodeWalkthrough(eq) {
         <span>Тип: ${escapeHtml(downtimeTypeLabel(activeStop.type))}</span>
         <span>Причина: ${escapeHtml(activeStop.comment || "без комментария")}</span>
         <span>Записал: ${escapeHtml(activeStop.authorName || "сотрудник")}</span>
+        <button type="button" data-close-downtime="${escapeHtml(activeStop.id)}" ${canEditChecklist() ? "" : "disabled"}>${activeStop.type === "production" ? "Возобновить производство" : "Устранить простой / Пуск"}</button>
       </div>
     ` : "";
     const row = document.createElement("div");
@@ -9420,7 +9408,6 @@ function renderNodeWalkthrough(eq) {
         </div>
         <div class="node-walk-actions node-comment-actions">
           <button type="button" data-node-submit-comment="${index}" ${submitRemarkDisabled ? "disabled" : ""}>${submitRemarkLabel}</button>
-          ${productionStopActive ? `<button type="button" data-node-fixed="${index}" ${fixedButtonDisabled ? "disabled" : ""}>${fixedButtonLabel}</button>` : ""}
         </div>
         ${remarkCardsBlock}
         ${downtimeCommentHistory}
@@ -9582,7 +9569,9 @@ function renderNodeWalkthrough(eq) {
       if (button.disabled) return;
       setButtonBusy(button, true, "Отправка...");
       try {
-        if (sendChoice.downtimeType !== "production") appendCommentEntry(liveItem, text, liveItem.commentPhoto);
+        // Любая остановка живёт только в журнале простоев. Предупреждение
+        // создаём исключительно для варианта «Без остановки».
+        if (!sendChoice.downtime) appendCommentEntry(liveItem, text, liveItem.commentPhoto);
         if (sendChoice.downtime) openDowntimeFromRemark(eq.id, index, text, sendChoice.downtimeType);
         window.PPRModules?.comments?.clearComposer?.(liveItem);
         liveItem.nodeDraftText = "";
@@ -9602,102 +9591,31 @@ function renderNodeWalkthrough(eq) {
       const sendChoice = await askCommentSubmit();
       await submitNodeText(button, sendChoice);
     });
-    row.querySelector("[data-node-fixed]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
-      if (!canEditChecklist()) return;
-      const liveItem = record(eq.id, index, current.date).to;
-      const commentBox = row.querySelector("[data-node-comment]");
-      const fixText = commentBox.value.trim();
-      if (!fixText) {
-        commentBox.classList.remove("comment-required-blink");
-        void commentBox.offsetWidth;
-        commentBox.classList.add("comment-required-blink");
-        commentBox.scrollIntoView({ behavior: "smooth", block: "center" });
-        commentBox.focus();
-        return;
-      }
-      const activeStop = activeDowntime(eq.id, index);
-      if (activeStop?.type === "production") {
-        closeDowntimeFromFix(eq.id, index, fixText);
-        window.PPRModules?.comments?.clearComposer?.(liveItem);
-        liveItem.nodeDraftText = "";
-        saveState();
+    row.querySelector("[data-close-downtime]")?.addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const liveStop = activeDowntime(eq.id, index);
+      if (!liveStop || button.disabled) return;
+      const promptText = liveStop.type === "production"
+        ? "Причина возобновления производства. Без комментария пуск не сохраняем."
+        : "Что выполнено для устранения поломки? Без комментария пуск не сохраняем.";
+      const comment = window.prompt(promptText);
+      if (!String(comment || "").trim()) return;
+      if (!window.confirm("Оборудование фактически запущено? Закрыть простой?")) return;
+      setButtonBusy(button, true, "Сохраняем пуск...");
+      try {
+        const result = await publishDowntimeClose(liveStop.id, comment);
+        const closed = result?.downtime;
+        if (!closed?.endedAt) throw new Error("downtime_close_not_confirmed");
+        showAppToast(`Простой закрыт. Длительность: ${durationText(downtimeDurationMs(closed))}`);
         renderNodeWalkthrough(equipmentById(eq.id));
-        return;
+      } catch (error) {
+        console.error("Downtime close failed", error);
+        window.alert("Пуск не подтверждён сервером. Простой остался активным.");
+        await loadRemoteState();
+      } finally {
+        if (button.isConnected) setButtonBusy(button, false);
       }
-      if (!hasAnyComment(liveItem)) {
-        renderNodeWalkthrough(equipmentById(eq.id));
-        return;
-      }
-      if (!canCompleteCollaborativeResolution(liveItem)) return;
-      if (!window.confirm("Устранение полностью завершено?")) return;
-      appendResolutionCompletion(liveItem);
-      const relatedReq = relatedIssuedRequestForNode(eq.id, index, current.date, liveItem);
-      if (liveItem.mechanicFixed && !liveItem.resolved && canConfirmInstallation()) {
-        markCommentResolved(liveItem, fixText, liveItem.commentPhoto, { preserveExisting: true });
-        closeDowntimeFromFix(eq.id, index, fixText);
-        liveItem.mechanicFixed = false;
-        if (relatedReq) {
-          relatedReq.shopInstallApproved = true;
-          relatedReq.productionDirectorApproved = false;
-          relatedReq.done = false;
-          relatedReq.status = "productionDirector";
-          clearInstallResponsibilityDeclines(relatedReq);
-          syncRequestToRecord(relatedReq);
-        } else {
-          liveItem.shopInstallApproved = true;
-          saveState({ remote: false });
-        }
-        renderNodeWalkthrough(equipmentById(eq.id));
-        return;
-      }
-      if (profile?.role === "shop" || profile?.role === "engineer" || profile?.role === "editor") {
-        markCommentResolved(liveItem, fixText, liveItem.commentPhoto);
-        closeDowntimeFromFix(eq.id, index, fixText);
-        liveItem.mechanicFixed = false;
-        liveItem.shopInstallApproved = true;
-        liveItem.productionDirectorApproved = false;
-        liveItem.accountingWrittenOff = false;
-        if (relatedReq) {
-          lockRequestInstalledQty(relatedReq);
-          relatedReq.mechanicInstalled = true;
-          relatedReq.shopInstallApproved = true;
-          relatedReq.productionDirectorApproved = false;
-          relatedReq.done = false;
-          relatedReq.stock = false;
-          relatedReq.status = "productionDirector";
-          clearInstallResponsibilityDeclines(relatedReq);
-          syncRequestToRecord(relatedReq);
-        } else {
-          saveState();
-        }
-        renderNodeWalkthrough(equipmentById(eq.id));
-        return;
-      }
-      liveItem.mechanicFixed = true;
-      liveItem.resolved = false;
-      liveItem.shopInstallApproved = false;
-      liveItem.productionDirectorApproved = false;
-      liveItem.accountingWrittenOff = false;
-      saveCommentResolution(liveItem, fixText, liveItem.commentPhoto);
-      closeDowntimeFromFix(eq.id, index, fixText);
-      if (relatedReq) {
-        lockRequestInstalledQty(relatedReq);
-        relatedReq.mechanicInstalled = true;
-        relatedReq.done = false;
-        relatedReq.stock = false;
-        relatedReq.shopInstallApproved = false;
-        relatedReq.productionDirectorApproved = false;
-        relatedReq.accountingWrittenOff = false;
-        relatedReq.status = "waitingShopDone";
-        clearInstallResponsibilityDeclines(relatedReq);
-        syncRequestToRecord(relatedReq);
-      } else {
-        markCommentResolved(liveItem, "", "", { preserveExisting: true });
-        liveItem.mechanicFixed = false;
-        saveState();
-      }
-      renderNodeWalkthrough(equipmentById(eq.id));
-    }, "Публикуется..."));
+    });
     row.querySelector("[data-node-comment-photo]").addEventListener("change", event => {
       const liveItem = record(eq.id, index, current.date).to;
       if (!canEditComment(liveItem)) return;

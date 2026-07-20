@@ -91,7 +91,20 @@ test.before(async () => {
     },
     directorMessages: [],
     serviceCosts: [],
-    downtimes: [],
+    downtimes: [{
+      id: "downtime-test-1",
+      key: "1:0",
+      equipmentId: 1,
+      nodeIndex: 0,
+      equipment: "Equipment A",
+      node: "Node A1",
+      type: "breakdown",
+      comment: "Stopped for test",
+      startedAt: "2026-07-16T08:00:00.000Z",
+      endedAt: "",
+      authorName: "Electrician One",
+      authorRole: "electrician"
+    }],
     compressorJournal: {},
     gasJournal: {},
     pprSheets: {},
@@ -140,6 +153,42 @@ test.after(async () => {
     ]);
   }
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+test("closes a downtime only after the dedicated server action and protects it from stale reopen", async () => {
+  const response = await fetch(`${baseUrl}/api/downtime-close`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: "downtime-close-test",
+      clientId: "downtime-test-client",
+      downtimeId: "downtime-test-1",
+      comment: "Equipment started",
+      actor: user("mechanic-1", "Mechanic One", "mechanic")
+    })
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.ok(body.downtime.endedAt);
+  assert.equal(body.downtime.closeComment, "Equipment started");
+  assert.equal(body.downtime.closedByRole, "mechanic");
+
+  const stale = await fetch(`${baseUrl}/api/node-update`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: "downtime-stale-reopen-test",
+      clientId: "stale-downtime-client",
+      key: "1:0:2026-07-16",
+      record: { to: { commentLog: [] } },
+      downtimes: [{ ...body.downtime, endedAt: "", closeComment: "", closedByName: "" }]
+    })
+  });
+  assert.equal(stale.status, 200);
+  const state = await (await fetch(`${baseUrl}/api/state`)).json();
+  const protectedStop = state.downtimes.find(item => item.id === "downtime-test-1");
+  assert.ok(protectedStop.endedAt);
+  assert.equal(protectedStop.closeComment, "Equipment started");
 });
 
 test("routes every warning to the equipment shop chief and stores the accepted resolution time", async () => {
