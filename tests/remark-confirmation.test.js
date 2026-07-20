@@ -435,3 +435,12 @@ test("mobile workers use the same engineer inbox instead of a WhatsApp-only draf
   assert.match(source, /if \(req\.engineerCombinedBatch && !req\.formedAt\) return false/);
   assert.match(source, /Редактируется · печать после формирования/);
 });
+
+test("every signed-in role sees only the factory reliability graph while engineer roles see the detailed report", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /if \(view === "engineerReport"\) return isProfileReady\(\)/);
+  assert.match(source, /ui\.factoryStatusButton\.hidden = !isProfileReady\(\)/);
+  assert.match(source, /const detailed = \["engineer", "editor"\]\.includes\(profile\?\.role\)/);
+  assert.match(source, /if \(!detailed\) \{[\s\S]*?directorFactoryAnalyticsGraphHtml\(\)[\s\S]*?return;/);
+  assert.match(source, /if \(controls\) controls\.hidden = !detailed/);
+});
