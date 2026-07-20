@@ -10977,7 +10977,16 @@ function annualRepairEvents(year = directorAnnualYear()) {
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
       const created = dateYearMonth(createdAt);
       const resolved = dateYearMonth(entry.resolved ? entry.resolvedAt || "" : "");
-      if (created?.year === year || resolved?.year === year) {
+      const confirmed = dateYearMonth(entry.confirmedAt || "");
+      const ratingReturns = (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : [])
+        .filter(event => event?.action === "returned")
+        .map(event => ({
+          key: event.targetKey || event.recipientKeys?.[0] || "",
+          role: event.targetRole || "",
+          name: event.targetName || "",
+          at: event.at || ""
+        }));
+      if (created?.year === year || resolved?.year === year || confirmed?.year === year || ratingReturns.some(event => dateYearMonth(event.at)?.year === year)) {
         events.push({
           type: "remark",
           resolutionKey: `remark:${recordKey}:${stableRemarkId(entry)}`,
@@ -10993,6 +11002,10 @@ function annualRepairEvents(year = directorAnnualYear()) {
           confirmedAt: entry.confirmedAt || "",
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
+          ratingParticipants: (Array.isArray(entry.resolutionCompletedParticipants) && entry.resolutionCompletedParticipants.length
+            ? entry.resolutionCompletedParticipants
+            : entry.resolutionParticipants || []),
+          ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
           text: entry.text || item.comment || ""
@@ -11015,6 +11028,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
       authorRole: item.authorRole || "",
       resolvedByRole: item.closedByRole || "",
       resolvedByName: item.closedByName || "",
+      ratingParticipants: Array.isArray(item.closedParticipants) ? item.closedParticipants : [],
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
       text: item.comment || ""
@@ -11295,6 +11309,126 @@ function emptyWorkerRating(role, name) {
   };
 }
 
+const WORK_RATING_POINTS = Object.freeze({
+  journal: 2,
+  qrShift: 3,
+  ppr: 5,
+  pprPress: 6,
+  remark: 10,
+  remarkPress: 15,
+  breakdown: 20,
+  breakdownPress: 30,
+  returnPenalty: -1
+});
+
+function isPressRatingEquipment(area = "") {
+  return String(area || "").trim().toLocaleLowerCase("ru-RU") === "прессовый участок";
+}
+
+function workerRatingPointMap(year, monthIndex = null) {
+  const points = new Map();
+  const usersByResolutionKey = new Map(loadUsers().map(user => [resolutionUserKey(user), user]));
+  const inPeriod = value => {
+    const parsed = dateYearMonth(value);
+    return parsed?.year === year && (monthIndex === null || parsed.month === monthIndex);
+  };
+  const add = (role, name, value) => {
+    if (!["mechanic", "electrician"].includes(role)) return;
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return;
+    const key = workerRatingKey(role, cleanName);
+    points.set(key, Number(points.get(key) || 0) + Number(value || 0));
+  };
+  const participantList = event => {
+    const list = Array.isArray(event.ratingParticipants) ? event.ratingParticipants : [];
+    const normalized = list
+      .map(participant => {
+        const registered = usersByResolutionKey.get(participant.key || resolutionUserKey(participant));
+        return registered || participant;
+      })
+      .filter(participant => ["mechanic", "electrician"].includes(participant?.role) && String(participant?.name || "").trim());
+    if (normalized.length) return [...new Map(normalized.map(participant => [workerRatingKey(participant.role, participant.name), participant])).values()];
+    return [{ role: event.resolvedByRole, name: event.resolvedByName }];
+  };
+
+  annualRepairEvents(year).forEach(event => {
+    if (event.type === "remark") {
+      // A warning changes the rating only after a supervisor has accepted it.
+      if (event.confirmedAt && inPeriod(event.confirmedAt)) {
+        const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.remarkPress : WORK_RATING_POINTS.remark;
+        participantList(event).forEach(participant => add(participant.role, participant.name, value));
+      }
+      const penaltiesByWorker = new Map();
+      (event.ratingReturns || []).filter(item => inPeriod(item.at)).forEach(item => {
+        const registered = usersByResolutionKey.get(item.key);
+        const role = item.role || registered?.role || "";
+        const name = item.name || registered?.name || "";
+        const key = workerRatingKey(role, name);
+        if (!["mechanic", "electrician"].includes(role) || !name || Number(penaltiesByWorker.get(key) || 0) >= 2) return;
+        penaltiesByWorker.set(key, Number(penaltiesByWorker.get(key) || 0) + 1);
+        add(role, name, WORK_RATING_POINTS.returnPenalty);
+      });
+      return;
+    }
+    if (event.type === "breakdown" && event.resolvedAt && inPeriod(event.resolvedAt)) {
+      const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.breakdownPress : WORK_RATING_POINTS.breakdown;
+      participantList(event).forEach(participant => add(participant.role, participant.name, value));
+    }
+  });
+
+  const qrAwards = new Set();
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    Object.values(rec?.to?.walkShifts || {}).forEach(shift => {
+      if (!shift?.done || !inPeriod(shift.at)) return;
+      const date = String(recordKey || "").split(":")[2] || String(shift.at || "").slice(0, 10);
+      const key = `${workerRatingKey(shift.byRole, shift.byName)}:${date}:${shift.shift === "night" ? "night" : "day"}`;
+      if (qrAwards.has(key)) return;
+      qrAwards.add(key);
+      add(shift.byRole, shift.byName, WORK_RATING_POINTS.qrShift);
+    });
+  });
+
+  Object.values(state.pprSheets || {}).forEach(sheet => {
+    if (!sheet?.approvedAt || !inPeriod(sheet.approvedAt)) return;
+    (Array.isArray(sheet.rows) ? sheet.rows : []).forEach(row => {
+      if (row?.mark !== "done") return;
+      add(row.markedByRole, row.markedByName,
+        isPressRatingEquipment(row.area) ? WORK_RATING_POINTS.pprPress : WORK_RATING_POINTS.ppr);
+    });
+  });
+
+  const journalAwards = new Map();
+  const addJournal = (role, name, date, journalKey) => {
+    if (!["mechanic", "electrician"].includes(role) || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !inPeriod(`${date}T12:00:00`)) return;
+    const workerKey = workerRatingKey(role, name);
+    const awardKey = `${workerKey}:${date}:${journalKey}`;
+    if (journalAwards.has(awardKey)) return;
+    const dayKey = `${workerKey}:${date}`;
+    const dayPoints = [...journalAwards.entries()]
+      .filter(([key]) => key.startsWith(`${dayKey}:`))
+      .reduce((sum, [, value]) => sum + value, 0);
+    if (dayPoints >= 6) return;
+    journalAwards.set(awardKey, WORK_RATING_POINTS.journal);
+    add(role, name, WORK_RATING_POINTS.journal);
+  };
+  const compressorByDate = new Map();
+  Object.values(state.compressorJournal || {}).forEach(row => {
+    if (!row?.date) return;
+    if (!compressorByDate.has(row.date)) compressorByDate.set(row.date, []);
+    compressorByDate.get(row.date).push(row);
+  });
+  compressorByDate.forEach((rows, date) => {
+    if (rows.length < COMPRESSOR_JOURNAL_COMPRESSORS.length || !rows.every(compressorJournalRowComplete)) return;
+    rows.forEach(row => addJournal(row.updatedByRole, row.checkedBy || row.updatedByName, date, "compressor"));
+  });
+  Object.values(state.gasJournal || {}).forEach(row => {
+    const complete = row?.section === "A" ? window.PPRModules.shgrp.rowAComplete(row)
+      : row?.section === "B" ? window.PPRModules.shgrp.rowBComplete(row) : false;
+    if (complete) addJournal(row.updatedByRole, row.checkedBy || row.updatedByName, row.date, `gas-${row.section}`);
+  });
+  return points;
+}
+
 function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   const workers = new Map();
   const ensureWorker = (role, name) => {
@@ -11364,6 +11498,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     });
   });
 
+  const annualPoints = workerRatingPointMap(year);
   const list = [...workers.values()].map(worker => {
     const avgReactionMs = worker.reactionDurations.length
       ? worker.reactionDurations.reduce((sum, value) => sum + value, 0) / worker.reactionDurations.length
@@ -11376,17 +11511,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     const planPercent = planBase ? Math.round(worker.closed / planBase * 100) : 0;
     const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const pprPercent = workTotal ? Math.round((worker.plannedDone + worker.qrDone) / workTotal * 100) : 0;
-    const speedBonus = avgRepairMs && avgRepairMs <= 4 * 3600000 ? 12 : avgRepairMs && avgRepairMs <= 24 * 3600000 ? 6 : 0;
-    const points = Math.max(0,
-      worker.closed * 10
-      + worker.breakdownClosed * 12
-      + worker.installs * 6
-      + worker.qrDone * 2
-      + worker.plannedDone * 5
-      + worker.remarksFound * 3
-      + speedBonus
-      - worker.overdueOpen * 8
-    );
+    const points = Number(annualPoints.get(worker.key) || 0);
     const efficiency = Math.min(100, Math.round(
       (planPercent * 0.45)
       + (Math.min(worker.closed, 40) / 40 * 25)
@@ -11423,7 +11548,6 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
       const author = ensureMonthWorker(event.authorRole, event.authorName);
       if (author) {
         author.remarksFound += 1;
-        author.points += 3;
       }
     }
     const resolved = dateYearMonth(event.resolvedAt || "");
@@ -11437,7 +11561,6 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     worker.closed += 1;
     if (event.type === "breakdown") worker.breakdownClosed += 1;
     if (event.type === "remark") worker.remarksResolved += 1;
-    worker.points += event.type === "breakdown" ? 22 : event.type === "install" ? 16 : 15;
   });
   Object.values(state.checks || {}).forEach(rec => {
     Object.values(rec?.to?.walkShifts || {}).forEach(shift => {
@@ -11446,8 +11569,17 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
       const worker = ensureMonthWorker(shift.byRole, shift.byName);
       if (!worker) return;
       worker.qrDone += 1;
-      worker.points += 2;
     });
+  });
+  const monthPoints = workerRatingPointMap(year, monthIndex);
+  monthWorkers.forEach(worker => { worker.points = Number(monthPoints.get(workerRatingKey(worker.role, worker.name)) || 0); });
+  monthPoints.forEach((value, key) => {
+    if (monthWorkers.has(key)) return;
+    const separator = key.indexOf(":");
+    const role = key.slice(0, separator);
+    const matchedUser = loadUsers().find(user => workerRatingKey(user.role, user.name || user.employeeId || user.phone) === key);
+    const worker = ensureMonthWorker(role, matchedUser?.name || key.slice(separator + 1));
+    if (worker) worker.points = Number(value || 0);
   });
   const monthLeaders = [...monthWorkers.values()].sort((a, b) => b.points - a.points || b.closed - a.closed || b.qrDone - a.qrDone);
   const bestMechanic = monthLeaders.find(worker => worker.role === "mechanic") || null;
@@ -11570,7 +11702,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
     <section class="worker-month-winners">
       <div><span>Лучший механик месяца</span><strong>${escapeHtml(bestMechanic)}</strong></div>
       <div><span>Лучший электрик месяца</span><strong>${escapeHtml(bestElectrician)}</strong></div>
-      <div><span>${detailed ? "Как считается" : "Твоя цель"}</span><strong>${detailed ? "работы + аварии + QR-ППР - просрочки" : "подняться выше в графике"}</strong></div>
+      <div><span>${detailed ? "Как считается" : "Твоя цель"}</span><strong>${detailed ? "баллы только за принятую работу; возврат −1" : "качественно закрывать работы"}</strong></div>
     </section>
     <section class="worker-rating-graph">
       <div class="worker-rating-graph-head">
@@ -11584,10 +11716,10 @@ function workerRatingHtml(stats = workerRatingStats()) {
     ${detailed ? `
       <section class="worker-rating-explain">
         <strong>Как понимать рейтинг:</strong>
-        <span>Предупреждение считается его автору отдельно, устранение — сотруднику, который закрыл замечание.</span>
-        <span>За найденное или написанное предупреждение начисляется 3 балла; устранение входит в выполненные работы и считается только один раз.</span>
-        <span>КПД учитывает выполнение плана, количество работ, ППР и скорость закрытия.</span>
-        <span>Чем меньше просрочек и быстрее ремонт, тем выше место.</span>
+        <span>Журнал — 2, общий QR-обход за смену — 3, ППР — 5 (пресс 6).</span>
+        <span>Принятое предупреждение — 10 (пресс 15), аварийный простой — 20 (пресс 30).</span>
+        <span>Производственная остановка баллов не даёт. Возврат на доработку снимает 1 балл с отправителя, максимум 2 за работу.</span>
+        <span>При совместном устранении каждый зафиксированный участник получает полные баллы после подтверждения.</span>
       </section>
       <section class="worker-rating-list">
         ${rows || `<div class="empty-state">Пока нет механиков и электриков в списке сотрудников</div>`}

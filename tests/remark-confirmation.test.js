@@ -292,6 +292,8 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.equal(returned.resolutionPendingConfirmation, false);
   assert.equal(returned.resolutionReturnReason, "Нужно переделать");
   assert.deepEqual(returned.resolutionEvents.at(-1).recipientKeys, ["id:mechanic-1"]);
+  assert.equal(returned.resolutionEvents.at(-1).targetKey, "id:mechanic-1");
+  assert.equal(returned.resolutionEvents.at(-1).targetRole, "mechanic");
 
   await new Promise(resolve => setTimeout(resolve, 10));
   const secondResolve = await postRemark("2:0:2026-07-16", "remark-engineer", "resolve", electrician, {
@@ -308,6 +310,7 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.equal(finalRemark.resolvedByName, "Электрик Один");
   assert.equal(finalRemark.resolvedComment, "Повторно устранено другим сотрудником");
   assert.equal(finalRemark.confirmedByName, "Инженер Один");
+  assert.deepEqual(finalRemark.resolutionCompletedParticipants.map(item => item.key).sort(), ["id:electrician-1", "id:mechanic-1"]);
 
   const reportResponse = await fetch(`${baseUrl}/api/export/month.xls?month=2026-07`);
   assert.equal(reportResponse.status, 200);
@@ -344,4 +347,20 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?if \(isEditorSession\(\) \|\| role === "all"\) return false[\s\S]*?return role === profile\?\.role/);
   assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
   assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
+});
+
+test("the rating uses the agreed simple values and accepted-work rules", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /journal:\s*2/);
+  assert.match(source, /qrShift:\s*3/);
+  assert.match(source, /ppr:\s*5/);
+  assert.match(source, /pprPress:\s*6/);
+  assert.match(source, /remark:\s*10/);
+  assert.match(source, /remarkPress:\s*15/);
+  assert.match(source, /breakdown:\s*20/);
+  assert.match(source, /breakdownPress:\s*30/);
+  assert.match(source, /returnPenalty:\s*-1/);
+  assert.match(source, /if \(event\.confirmedAt && inPeriod\(event\.confirmedAt\)\)/);
+  assert.match(source, /Number\(penaltiesByWorker\.get\(key\) \|\| 0\) >= 2/);
+  assert.match(source, /if \(item\.type === "production"\) return/);
 });
