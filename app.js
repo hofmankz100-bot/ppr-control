@@ -75,10 +75,12 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v191";
+const APP_VERSION = "v192";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
+const PUSH_FAILURE_COUNT_KEY = "ppr-push-failure-count-v1";
+const NOTIFICATION_PROMPT_DISMISSED_KEY = "ppr-notification-prompt-dismissed-v1";
 const PERSONAL_REMARK_READ_KEY = "ppr-personal-remark-read-v1";
 const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
@@ -929,10 +931,37 @@ function applyAppIconBadge(count) {
 }
 
 function appNotificationPermissionButton() {
-  if (!("Notification" in window)) return "";
-  if (Notification.permission === "granted" && localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1") return "";
-  const denied = Notification.permission === "denied";
-  return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications" ${denied ? "disabled" : ""}>${denied ? "Уведомления запрещены в настройках" : "🔔 Включить уведомления"}</button>`;
+  const state = notificationSetupState();
+  if (state === "ready") return `<span class="notification-support-status ready">🔔 Push включён</span>`;
+  if (state === "unsupported") return `<span class="notification-support-status">Уведомления: телефон не поддерживает push</span>`;
+  if (state === "install") return `<span class="notification-support-status">Для push установите ALKZ на главный экран</span>`;
+  if (state === "denied") return `<span class="notification-support-status">Уведомления запрещены в настройках телефона</span>`;
+  if (state === "failed") return `<span class="notification-support-status">Push не подключился; внутренние уведомления работают</span>`;
+  return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications">🔔 Включить уведомления</button>`;
+}
+
+function notificationDeviceCapability() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window) || !window.isSecureContext) return "unsupported";
+  const iosMatch = navigator.userAgent.match(/OS (\d+)[._](\d+)/i);
+  const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (isIos && iosMatch && (Number(iosMatch[1]) < 16 || (Number(iosMatch[1]) === 16 && Number(iosMatch[2]) < 4))) return "unsupported";
+  const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches || navigator.standalone === true;
+  if (isIos && !standalone) return "install";
+  return "supported";
+}
+
+function notificationSetupState() {
+  const capability = notificationDeviceCapability();
+  if (capability !== "supported") return capability;
+  if (Notification.permission === "denied") return "denied";
+  if (Notification.permission === "granted" && localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1") return "ready";
+  if (Number(localStorage.getItem(PUSH_FAILURE_COUNT_KEY) || 0) >= 2) return "failed";
+  return "available";
+}
+
+function dismissNotificationSetupPrompt() {
+  localStorage.setItem(NOTIFICATION_PROMPT_DISMISSED_KEY, "1");
+  document.querySelector("#notificationSetupPrompt")?.remove();
 }
 
 function pushApplicationServerKey(value) {
@@ -987,27 +1016,39 @@ function syncNotificationSetupPrompt() {
     existing?.remove();
     return;
   }
-  const pushReady = localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1";
-  if (!isProfileReady() || !("Notification" in window) || (Notification.permission === "granted" && pushReady)) {
+  const setupState = notificationSetupState();
+  if (!isProfileReady() || localStorage.getItem(NOTIFICATION_PROMPT_DISMISSED_KEY) === "1" || ["ready", "unsupported", "failed"].includes(setupState)) {
     existing?.remove();
     return;
   }
-  preparePushPublicKey().catch(() => {});
-  const denied = Notification.permission === "denied";
+  if (setupState === "available") preparePushPublicKey().catch(() => {});
+  const denied = setupState === "denied";
+  const install = setupState === "install";
   const prompt = existing || document.createElement("div");
   prompt.id = "notificationSetupPrompt";
   prompt.className = "app-notification-prompt";
   prompt.innerHTML = `
-    <div><strong>Замечания со звуком</strong><span>${denied ? "Разрешите уведомления для ALKZ в настройках iPhone" : "Нажмите один раз, чтобы включить красный счётчик и звук"}</span></div>
-    <button type="button" ${denied ? "disabled" : ""}>${denied ? "Откройте настройки" : "Включить"}</button>
+    <div><strong>Замечания со звуком</strong><span>${denied ? "Разрешите уведомления для ALKZ в настройках телефона" : install ? "На iPhone push работает только у приложения, добавленного на главный экран" : "Нажмите один раз, чтобы включить красный счётчик и звук"}</span></div>
+    <button type="button" data-notification-enable ${denied || install ? "hidden" : ""}>Включить</button>
+    <button type="button" class="notification-prompt-close" data-notification-dismiss aria-label="Больше не показывать">×</button>
   `;
   if (!existing) document.body.append(prompt);
-  prompt.querySelector("button")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
+  prompt.querySelector("[data-notification-enable]")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
+  prompt.querySelector("[data-notification-dismiss]")?.addEventListener("click", dismissNotificationSetupPrompt, { once: true });
 }
 
 async function requestAppNotificationPermission(button) {
-  if (!("Notification" in window)) {
+  const capability = notificationDeviceCapability();
+  if (capability === "unsupported") {
     showAppToast("Системные уведомления не поддерживаются на этом устройстве.", "error");
+    dismissNotificationSetupPrompt();
+    renderProfile();
+    return;
+  }
+  if (capability === "install") {
+    showAppToast("Сначала добавьте ALKZ на главный экран, затем откройте приложение с иконки.", "error");
+    dismissNotificationSetupPrompt();
+    renderProfile();
     return;
   }
   if (Notification.permission === "denied") {
@@ -1038,13 +1079,25 @@ async function requestAppNotificationPermission(button) {
       showAppToast(pushEnabled
         ? "Готово: звук включён, на иконке показана проверочная цифра."
         : "Уведомления разрешены, но push не подключился. Нажмите «Включить» ещё раз.", pushEnabled ? "ok" : "error");
+      if (pushEnabled) {
+        localStorage.removeItem(PUSH_FAILURE_COUNT_KEY);
+        localStorage.removeItem(NOTIFICATION_PROMPT_DISMISSED_KEY);
+      } else {
+        const failures = Number(localStorage.getItem(PUSH_FAILURE_COUNT_KEY) || 0) + 1;
+        localStorage.setItem(PUSH_FAILURE_COUNT_KEY, String(failures));
+        if (failures >= 2) localStorage.setItem(NOTIFICATION_PROMPT_DISMISSED_KEY, "1");
+      }
       renderProfile();
     } else {
       showAppToast("Без разрешения iPhone не покажет счётчик на иконке ALKZ.", "error");
       renderProfile();
     }
   } catch {
+    const failures = Number(localStorage.getItem(PUSH_FAILURE_COUNT_KEY) || 0) + 1;
+    localStorage.setItem(PUSH_FAILURE_COUNT_KEY, String(failures));
+    if (failures >= 2) localStorage.setItem(NOTIFICATION_PROMPT_DISMISSED_KEY, "1");
     showAppToast("Не удалось включить уведомления. Откройте ALKZ с домашнего экрана.", "error");
+    renderProfile();
   } finally {
     if (button?.isConnected) setButtonBusy(button, false);
   }

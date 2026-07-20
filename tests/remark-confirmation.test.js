@@ -502,6 +502,15 @@ test("repeat QR scans stay in an overlay on the main screen", () => {
   assert.doesNotMatch(source, /Узел уже обойден — открыт комментарий узла/);
 });
 
+test("notification setup stops nagging unsupported and legacy phones", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /function notificationDeviceCapability\(\)/);
+  assert.match(source, /Number\(iosMatch\[1\]\) === 16 && Number\(iosMatch\[2\]\) < 4/);
+  assert.match(source, /\["ready", "unsupported", "failed"\]\.includes\(setupState\)/);
+  assert.match(source, /data-notification-dismiss/);
+  assert.match(source, /failures >= 2/);
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",
