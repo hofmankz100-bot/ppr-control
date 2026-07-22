@@ -1500,6 +1500,25 @@ function mergeObjectByFreshnessLocal(current = {}, incoming = {}) {
   return next;
 }
 
+function mergeRemarkHistoryItemsLocal(current = [], incoming = [], identity = item => String(item?.id || "")) {
+  const map = new Map();
+  for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    if (!item || typeof item !== "object") continue;
+    const key = identity(item);
+    if (!key) continue;
+    map.set(key, { ...(map.get(key) || {}), ...item });
+  }
+  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+}
+
+function remarkDecisionTimeLocal(entry = {}) {
+  return Math.max(
+    Date.parse(entry.confirmedAt || "") || 0,
+    Date.parse(entry.resolutionReturnedAt || "") || 0,
+    Date.parse(entry.resolutionSubmittedAt || "") || 0
+  );
+}
+
 function mergeCommentLogsLocal(current = [], incoming = []) {
   const map = new Map();
   for (const entry of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
@@ -1510,15 +1529,27 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
     const entryKey = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     const previous = map.get(entryKey) || {};
     const next = { ...previous, ...entry };
-    if (previous.resolved === true) {
-      next.resolved = true;
+    if (remarkDecisionTimeLocal(previous) > 0 && remarkDecisionTimeLocal(previous) >= remarkDecisionTimeLocal(entry)) {
       [
+        "resolved",
         "resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto",
         ...REMARK_COLLABORATION_FIELDS
       ].forEach(field => {
         if (previous[field] !== undefined) next[field] = previous[field];
       });
     }
+    next.resolutionEvents = mergeRemarkHistoryItemsLocal(previous.resolutionEvents, entry.resolutionEvents);
+    next.resolutionUpdates = mergeRemarkHistoryItemsLocal(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionParticipants = mergeRemarkHistoryItemsLocal(
+      previous.resolutionParticipants,
+      entry.resolutionParticipants,
+      item => resolutionUserKey(item)
+    );
+    next.resolutionCompletedParticipants = mergeRemarkHistoryItemsLocal(
+      previous.resolutionCompletedParticipants,
+      entry.resolutionCompletedParticipants,
+      item => resolutionUserKey(item)
+    );
     map.set(entryKey, next);
   }
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));

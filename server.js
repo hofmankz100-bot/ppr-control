@@ -1694,6 +1694,25 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
+function mergeRemarkHistoryItems(current = [], incoming = [], identity = item => String(item?.id || "")) {
+  const map = new Map();
+  for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    if (!item || typeof item !== "object") continue;
+    const key = identity(item);
+    if (!key) continue;
+    map.set(key, { ...(map.get(key) || {}), ...item });
+  }
+  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+}
+
+function remarkDecisionTime(entry = {}) {
+  return Math.max(
+    Date.parse(entry.confirmedAt || "") || 0,
+    Date.parse(entry.resolutionReturnedAt || "") || 0,
+    Date.parse(entry.resolutionSubmittedAt || "") || 0
+  );
+}
+
 function mergeCommentLogs(current = [], incoming = []) {
   const map = new Map();
   const mergeEntry = (entry, fromIncoming) => {
@@ -1704,9 +1723,12 @@ function mergeCommentLogs(current = [], incoming = []) {
     const key = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     const previous = map.get(key) || {};
     const next = { ...previous, ...entry };
-    if (fromIncoming && previous.resolved === true) {
-      next.resolved = true;
+    const previousDecisionTime = remarkDecisionTime(previous);
+    const incomingDecisionTime = remarkDecisionTime(entry);
+    const preservePreviousDecision = fromIncoming && previousDecisionTime > 0 && previousDecisionTime >= incomingDecisionTime;
+    if (preservePreviousDecision) {
       [
+        "resolved",
         "resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto",
         ...REMARK_COLLABORATION_FIELDS_SERVER
       ].forEach(field => {
@@ -1716,6 +1738,18 @@ function mergeCommentLogs(current = [], incoming = []) {
       next.resolved = false;
       ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto"].forEach(field => delete next[field]);
     }
+    next.resolutionEvents = mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents);
+    next.resolutionUpdates = mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionParticipants = mergeRemarkHistoryItems(
+      previous.resolutionParticipants,
+      entry.resolutionParticipants,
+      item => resolutionUserKeyServer(item)
+    );
+    next.resolutionCompletedParticipants = mergeRemarkHistoryItems(
+      previous.resolutionCompletedParticipants,
+      entry.resolutionCompletedParticipants,
+      item => resolutionUserKeyServer(item)
+    );
     map.set(key, next);
   };
   (Array.isArray(current) ? current : []).forEach(entry => mergeEntry(entry, false));

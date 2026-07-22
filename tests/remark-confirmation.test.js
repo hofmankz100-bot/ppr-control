@@ -142,7 +142,8 @@ test.before(async () => {
       user("engineer-1", "Инженер Один", "engineer"),
       user("director-1", "Директор производства", "productionDirector"),
       user("editor-1", "Администратор", "editor"),
-      { employeeId: "legacy-77", name: "Старый сотрудник", role: "mechanic", approved: true, pendingApproval: false }
+      { employeeId: "legacy-77", name: "Старый сотрудник", role: "mechanic", approved: true, pendingApproval: false },
+      user("shop-a-2", "Second Shop Chief", "shop", "Цех А"),
     ],
     translationCache: {},
     pushNotifications: { subscriptions: [], vapid: null }
@@ -226,7 +227,7 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   assert.equal(pending.resolutionSubmittedByName, "Электрик Один");
   assert.equal(pending.confirmationArea, "Цех А");
   assert.equal(pending.confirmationRequiredRole, "shop");
-  assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys, ["id:shop-a"]);
+  assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
 
   await postRemark(
     "1:0:2026-07-16",
@@ -249,6 +250,23 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   assert.equal(closed.resolvedByName, "Электрик Один");
   assert.equal(closed.confirmedByName, "Начальник А");
   assert.ok(Date.parse(closed.confirmedAt) >= Date.parse(closed.resolvedAt));
+
+  await postRemark(
+    "1:0:2026-07-16",
+    "remark-shop",
+    "confirm",
+    user("shop-a-2", "Second Shop Chief", "shop", "Цех А"),
+    {},
+    409
+  );
+  await postRemark(
+    "1:0:2026-07-16",
+    "remark-shop",
+    "return",
+    user("shop-a-2", "Second Shop Chief", "shop", "Цех А"),
+    { reason: "Late return" },
+    409
+  );
 
   const staleResponse = await fetch(`${baseUrl}/api/state`, {
     method: "PUT",
@@ -291,7 +309,7 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   );
   const otherPending = patchedRemark(otherRole, "1:1:2026-07-16", "remark-any-author");
   assert.equal(otherPending.confirmationRequiredRole, "shop");
-  assert.deepEqual(otherPending.resolutionEvents.at(-1).recipientKeys, ["id:shop-a"]);
+  assert.deepEqual(otherPending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
 });
 
 test("falls back to the engineer, returns only to the last performer, and accepts the latest attempt", async () => {
@@ -318,6 +336,39 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.deepEqual(returned.resolutionEvents.at(-1).recipientKeys, ["id:mechanic-1"]);
   assert.equal(returned.resolutionEvents.at(-1).targetKey, "id:mechanic-1");
   assert.equal(returned.resolutionEvents.at(-1).targetRole, "mechanic");
+
+  const staleReturnResponse = await fetch(`${baseUrl}/api/state`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      actionId: "stale-return-test",
+      clientId: "stale-return-client",
+      baseOperationalResetAt: "",
+      checks: {
+        "2:0:2026-07-16": {
+          to: {
+            commentLog: [{
+              ...returned,
+              resolutionPendingConfirmation: true,
+              resolutionReturnedAt: "",
+              resolutionReturnedByKey: "",
+              resolutionReturnedByName: "",
+              resolutionReturnReason: "",
+              resolutionEvents: returned.resolutionEvents.slice(0, -1)
+            }]
+          }
+        }
+      },
+      user: mechanic
+    })
+  });
+  assert.equal(staleReturnResponse.status, 200);
+  const stateAfterStaleReturn = await (await fetch(`${baseUrl}/api/state`)).json();
+  const protectedReturn = stateAfterStaleReturn.checks["2:0:2026-07-16"].to.commentLog.find(entry => entry.id === "remark-engineer");
+  assert.equal(protectedReturn.resolutionPendingConfirmation, false);
+  assert.equal(protectedReturn.resolutionReturnedAt, returned.resolutionReturnedAt);
+  assert.equal(protectedReturn.resolutionReturnedByName, returned.resolutionReturnedByName);
+  assert.equal(protectedReturn.resolutionEvents.at(-1).action, "returned");
 
   await new Promise(resolve => setTimeout(resolve, 10));
   const secondResolve = await postRemark("2:0:2026-07-16", "remark-engineer", "resolve", electrician, {
