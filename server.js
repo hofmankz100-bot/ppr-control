@@ -2848,7 +2848,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -2868,6 +2868,35 @@ async function handleApi(req, res, pathname, url) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
+      if (action === "delete") {
+        if (actor.role !== "editor") return { error: "remark_delete_forbidden" };
+        item.commentLog = (Array.isArray(item.commentLog) ? item.commentLog : []).filter(entry => entry?.id !== remarkId);
+        syncItemRemarkSummaryServer(item);
+        const now = new Date().toISOString();
+        item.updatedAt = now;
+        record.updatedAt = now;
+        const actionId = String(body.actionId || "");
+        writeDb(db, {
+          action: "remark_deleted",
+          actionId,
+          clientId: String(body.clientId || ""),
+          user: actor,
+          recordKey,
+          remarkId,
+          remarkText: String(remark.text || "").slice(0, 500)
+        });
+        return {
+          actionId,
+          changed: true,
+          origin: body.clientId || "api",
+          patch: { checks: { [recordKey]: record } },
+          notifyParticipants: [],
+          pushTitle: "",
+          pushBody: "",
+          remarkId,
+          recordKey
+        };
+      }
       if (remark.resolutionPendingConfirmation && !["confirm", "return"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();

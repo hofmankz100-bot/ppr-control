@@ -312,6 +312,32 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   assert.deepEqual(otherPending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
 });
 
+test("an admin deletes only the selected obsolete personal remark", async () => {
+  await postRemark(
+    "1:1:2026-07-16",
+    "remark-any-author",
+    "delete",
+    user("shop-a", "Shop Chief", "shop", "Цех А"),
+    {},
+    403
+  );
+  await postRemark(
+    "1:1:2026-07-16",
+    "remark-any-author",
+    "delete",
+    user("editor-1", "Administrator", "editor")
+  );
+  const state = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.equal(
+    state.checks["1:1:2026-07-16"].to.commentLog.some(entry => entry.id === "remark-any-author"),
+    false
+  );
+  assert.equal(
+    state.checks["1:0:2026-07-16"].to.commentLog.some(entry => entry.id === "remark-shop"),
+    true
+  );
+});
+
 test("falls back to the engineer, returns only to the last performer, and accepts the latest attempt", async () => {
   const mechanic = user("mechanic-1", "Механик Один", "mechanic");
   const electrician = user("electrician-1", "Электрик Один", "electrician");
