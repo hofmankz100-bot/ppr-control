@@ -217,7 +217,7 @@ test("closes a downtime only after the dedicated server action and protects it f
 });
 
 test("routes every warning to the equipment shop chief and stores the accepted resolution time", async () => {
-  const electrician = user("electrician-1", "Подменённое имя", "electrician", "Другой цех");
+  const electrician = user("electrician-1", "Подменённое имя", "mechanic", "Другой цех");
   const resolved = await postRemark("1:0:2026-07-16", "remark-shop", "resolve", electrician, {
     text: "Исправлено с первой попытки",
     equipmentArea: "Другой цех"
@@ -225,6 +225,7 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   const pending = patchedRemark(resolved, "1:0:2026-07-16", "remark-shop");
   assert.equal(pending.resolutionPendingConfirmation, true);
   assert.equal(pending.resolutionSubmittedByName, "Электрик Один");
+  assert.equal(pending.resolutionSubmittedByRole, "electrician");
   assert.equal(pending.confirmationArea, "Цех А");
   assert.equal(pending.confirmationRequiredRole, "shop");
   assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
@@ -586,6 +587,25 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /\["ready", "unsupported", "failed"\]\.includes\(setupState\)/);
   assert.match(source, /data-notification-dismiss/);
   assert.match(source, /failures >= 2/);
+});
+
+test("uploaded photos are served and production keeps a PostgreSQL fallback", async () => {
+  const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(source, /CREATE TABLE IF NOT EXISTS ppr_photos/);
+  assert.match(source, /SELECT mime_type, payload FROM ppr_photos WHERE file_name = \$1/);
+  const data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const upload = await fetch(`${baseUrl}/api/photos`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ data })
+  });
+  const uploaded = await upload.json();
+  assert.equal(upload.status, 200, JSON.stringify(uploaded));
+  assert.match(uploaded.url, /^\/api\/photos\/[a-f0-9]{40}\.png$/);
+  const photo = await fetch(`${baseUrl}${uploaded.url}`);
+  assert.equal(photo.status, 200);
+  assert.equal(photo.headers.get("content-type"), "image/png");
+  assert.ok((await photo.arrayBuffer()).byteLength > 0);
 });
 
 test("engineers receive visible counters and push notifications for incoming requests", () => {

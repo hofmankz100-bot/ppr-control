@@ -47,6 +47,7 @@ let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
 let postgresPendingState = null;
 let postgresWriterActive = false;
+let postgresPhotoWriteQueue = Promise.resolve();
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
@@ -189,7 +190,24 @@ function savePhotoDataUrl(dataUrl = "") {
   const fileName = `${hash}.${ext}`;
   const file = path.join(photosDir, fileName);
   if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
+  schedulePostgresPhotoWrite(fileName, match[1] === "image/jpg" ? "image/jpeg" : match[1], bytes);
   return `/api/photos/${fileName}`;
+}
+
+function schedulePostgresPhotoWrite(fileName, mimeType, bytes) {
+  if (!postgresPool || !fileName || !Buffer.isBuffer(bytes) || !bytes.length) return;
+  const storedBytes = Buffer.from(bytes);
+  postgresPhotoWriteQueue = postgresPhotoWriteQueue
+    .then(() => postgresPool.query(
+      `INSERT INTO ppr_photos(file_name, mime_type, payload, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT(file_name) DO UPDATE
+       SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
+      [fileName, mimeType, storedBytes]
+    ))
+    .catch(error => {
+      console.error(`PostgreSQL photo write failed; local copy preserved: ${error.message}`);
+    });
 }
 
 function externalizePhotosInValue(value, seen = new WeakSet()) {
@@ -251,6 +269,14 @@ async function initializeStorage() {
       CREATE TABLE IF NOT EXISTS ppr_settings (
         setting_key text PRIMARY KEY,
         payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_photos (
+        file_name text PRIMARY KEY,
+        mime_type text NOT NULL,
+        payload bytea NOT NULL,
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
@@ -807,6 +833,10 @@ function permissionBaseRoleServer(role) {
   return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", technicalDirector: "director" })[role] || role;
 }
 
+function samePermissionRoleServer(left, right) {
+  return permissionBaseRoleServer(String(left || "")) === permissionBaseRoleServer(String(right || ""));
+}
+
 function remarkEntryByKeyServer(db, key) {
   const separator = String(key || "").lastIndexOf("|");
   if (separator < 0) return null;
@@ -1050,14 +1080,15 @@ function sameRemarkAreaServer(left = "", right = "") {
 function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   const users = approvedResolutionUsersServer(db);
   const area = String(equipmentArea || remark.confirmationArea || "").trim().slice(0, 200);
-  const shopUsers = area ? users.filter(user => user.role === "shop" && sameRemarkAreaServer(user.area, area)) : [];
+  const shopUsers = area ? users.filter(user => permissionBaseRoleServer(user.role) === "shop" && sameRemarkAreaServer(user.area, area)) : [];
   if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
-  return { mode: "engineer", role: "engineer", area, users: users.filter(user => user.role === "engineer") };
+  return { mode: "engineer", role: "engineer", area, users: users.filter(user => permissionBaseRoleServer(user.role) === "engineer") };
 }
 
 function actorCanConfirmRemarkServer(actor, remark, rule) {
-  if (rule.mode === "shop") return actor.role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
-  if (rule.mode === "engineer") return actor.role === "engineer";
+  const role = permissionBaseRoleServer(actor.role);
+  if (rule.mode === "shop") return role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
+  if (rule.mode === "engineer") return role === "engineer";
   return false;
 }
 
@@ -2204,6 +2235,7 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: "Bad photo" });
       return true;
     }
+    if (postgresPool) await postgresPhotoWriteQueue;
     sendJson(res, 200, { ok: true, url });
     return true;
   }
@@ -2216,18 +2248,39 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const file = path.join(photosDir, fileName);
-    fs.readFile(file, (err, data) => {
-      if (err) {
-        res.writeHead(404);
-        res.end("Not found");
-        return;
+    let data = null;
+    let mimeType = contentTypes[path.extname(file).toLowerCase()] || "application/octet-stream";
+    try {
+      data = await fs.promises.readFile(file);
+    } catch {
+      if (postgresPool) {
+        try {
+          const stored = await postgresPool.query(
+            "SELECT mime_type, payload FROM ppr_photos WHERE file_name = $1 LIMIT 1",
+            [fileName]
+          );
+          if (stored.rows[0]?.payload) {
+            data = Buffer.from(stored.rows[0].payload);
+            mimeType = String(stored.rows[0].mime_type || mimeType);
+            fs.mkdirSync(photosDir, { recursive: true });
+            fs.promises.writeFile(file, data).catch(() => {});
+          }
+        } catch (error) {
+          console.error(`PostgreSQL photo read failed: ${error.message}`);
+        }
       }
-      res.writeHead(200, {
-        "Content-Type": contentTypes[path.extname(file).toLowerCase()] || "application/octet-stream",
-        "Cache-Control": "public, max-age=31536000, immutable"
-      });
-      res.end(data);
+    }
+    if (!data) {
+      res.writeHead(404);
+      res.end("Not found");
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": mimeType,
+      "Content-Length": data.length,
+      "Cache-Control": "public, max-age=31536000, immutable"
     });
+    res.end(data);
     return true;
   }
 
@@ -2421,12 +2474,13 @@ async function handleApi(req, res, pathname, url) {
       const db = readDb();
       db.requests ||= {};
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "engineer_request_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
-      if (action === "submit" && !workerRoles.has(actor.role)) return { error: "engineer_request_worker_required" };
-      if (action !== "submit" && !engineerRoles.has(actor.role)) return { error: "engineer_request_engineer_required" };
+      const actorPermissionRole = permissionBaseRoleServer(actor.role);
+      if (action === "submit" && !workerRoles.has(actorPermissionRole)) return { error: "engineer_request_worker_required" };
+      if (action !== "submit" && !engineerRoles.has(actorPermissionRole)) return { error: "engineer_request_engineer_required" };
       const now = new Date().toISOString();
       const date = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit"
@@ -2797,7 +2851,7 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "downtime_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
@@ -2864,7 +2918,7 @@ async function handleApi(req, res, pathname, url) {
       const remark = remarks.find(entry => entry.id === remarkId);
       if (!remark || remark.resolved) return { error: "remark_not_open" };
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || registeredActor.role !== requestedActor.role) {
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
@@ -2906,7 +2960,8 @@ async function handleApi(req, res, pathname, url) {
       let pushTitle = "ALKZ — совместное устранение";
       let pushBody = "Обновлена общая карточка замечания";
       const actorIsParticipant = participants.some(participant => participant.key === actor.key);
-      const canManage = ["editor", "engineer", "shop"].includes(actor.role) || remark.resolutionLeadKey === actor.key;
+      const actorPermissionRole = permissionBaseRoleServer(actor.role);
+      const canManage = ["editor", "engineer", "shop"].includes(actorPermissionRole) || remark.resolutionLeadKey === actor.key;
       remark.resolutionEvents = Array.isArray(remark.resolutionEvents) ? remark.resolutionEvents : [];
       remark.resolutionUpdates = Array.isArray(remark.resolutionUpdates) ? remark.resolutionUpdates : [];
       if (!remark.authorKey) {
@@ -3006,7 +3061,7 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "resolve") {
-        if (participants.length && !actorIsParticipant && !["editor", "engineer", "shop"].includes(actor.role)) {
+        if (participants.length && !actorIsParticipant && !["editor", "engineer", "shop"].includes(actorPermissionRole)) {
           return { error: "remark_participant_required" };
         }
         const text = String(body.text || "").trim().slice(0, 4000);
@@ -3476,6 +3531,7 @@ async function shutdown() {
   try {
     flushLocalBackup();
     await flushPostgresWrites();
+    await postgresPhotoWriteQueue;
     if (postgresPool) await postgresPool.end();
   } catch {}
   server.close(() => process.exit(0));
