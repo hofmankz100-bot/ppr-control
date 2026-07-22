@@ -106,7 +106,8 @@ let translationRunId = 0;
 let translationCacheSaveTimer = null;
 const LANGUAGES = {
   ru: "Русский",
-  kk: "Қазақша"
+  kk: "Қазақша",
+  uz: "O‘zbekcha"
 };
 const I18N = {
   ru: {
@@ -190,6 +191,47 @@ const I18N = {
     remarks: "Ескертулер",
     director: "Директорлық",
     aggregateJournal: "Агрегат журналы"
+  },
+  uz: {
+    appTitle: "PPR nazorati",
+    equipment: "Uskunalar",
+    home: "Bosh sahifa",
+    requests: "Arizalar",
+    downtime: "To‘xtashlar",
+    profile: "Profil",
+    reminders: "PPR eslatmalari va taqvimi",
+    todayControl: "Bugungi nazorat",
+    close: "Yopish",
+    back: "Orqaga",
+    loginTitle: "Xodim kirishi",
+    registerTitle: "Xodimni ro‘yxatdan o‘tkazish",
+    loginTab: "Kirish",
+    registerTab: "Ro‘yxatdan o‘tish",
+    fullName: "F.I.Sh.",
+    fullNamePlaceholder: "To‘liq ismni kiriting",
+    identifier: "Tabel raqami yoki telefon",
+    employeeId: "Tabel raqami",
+    employeeIdPlaceholder: "Tabel raqamini kiriting",
+    phone: "Telefon",
+    password: "Parol",
+    passwordPlaceholder: "Kamida 6 ta belgi",
+    loginButton: "Kirish",
+    registerButton: "Ro‘yxatdan o‘tishni yuborish",
+    loginHint: "Tabel raqami yoki telefon va parolni kiriting.",
+    registerHint: "Rol va uchastkani tekshiruvdan so‘ng admin belgilaydi.",
+    loginFailed: "Kirish amalga oshmadi.",
+    registerFailed: "Ro‘yxatdan o‘tishni yuborib bo‘lmadi.",
+    pendingApproval: "Ro‘yxatdan o‘tish adminga yuborildi. Tasdiqlangandan so‘ng tizimga kiring.",
+    language: "Til",
+    changeRole: "Rolni almashtirish",
+    viewMode: "Ko‘rish rejimi",
+    commonControl: "Umumiy nazorat",
+    clearRecords: "Yozuvlarni tozalash",
+    logout: "Chiqish",
+    createRequest: "Ariza yaratish",
+    remarks: "Ogohlantirishlar",
+    director: "Direktor bo‘limi",
+    aggregateJournal: "Agregat jurnali"
   }
 };
 const DOWNTIME_COLORS = [
@@ -211,16 +253,58 @@ const WALK_SHIFT_LABELS = {
   night: "Ночная смена"
 };
 const ROLE_ACCESS = {
-  mechanic: { label: "Механик", requestRoles: ["warehouse", "mechanic"], equipment: "all", checklist: true },
-  electrician: { label: "Электрик", requestRoles: ["warehouse", "electrician"], equipment: "all", checklist: true },
+  mechanic: { label: "Электромеханик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
+  electrician: { label: "Электромеханик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
+  welder: { label: "Сварщик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
+  turner: { label: "Токарь", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
+  forkliftDriver: { label: "Карщик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "forklifts", checklist: true },
   operator: { label: "Оператор", requestRoles: ["warehouse", "operator"], equipment: "area", checklist: true },
   shop: { label: "Начальник цеха", requestRoles: ["all", "shop", "warehouse"], equipment: "area", checklist: true },
   engineer: { label: "Инженер", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  safetyEngineer: { label: "Инженер по технике безопасности", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  energyEngineer: { label: "Инженер-энергетик", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  designEngineer: { label: "Инженер-конструктор", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  mechanicalEngineer: { label: "Инженер-механик", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
+  instrumentationEngineer: { label: "Инженер КИПиА", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
   warehouse: { label: "Складовщик", requestRoles: ["warehouse"], equipment: "none", checklist: false },
   productionDirector: { label: "Директор производства", requestRoles: ["all", "warehouse", "productionDirector"], equipment: "all", checklist: true },
   director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
+  technicalDirector: { label: "Технический директор", requestRoles: [], equipment: "none", checklist: false },
   editor: { label: "Админ", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true }
 };
+
+const ROLE_PERMISSION_BASE = {
+  electrician: "mechanic",
+  welder: "mechanic",
+  turner: "mechanic",
+  forkliftDriver: "mechanic",
+  safetyEngineer: "engineer",
+  energyEngineer: "engineer",
+  designEngineer: "engineer",
+  mechanicalEngineer: "engineer",
+  instrumentationEngineer: "engineer",
+  technicalDirector: "director"
+};
+
+function permissionBaseRole(role) {
+  return ROLE_PERMISSION_BASE[role] || role;
+}
+
+function canonicalWorkerRole(role) {
+  return role === "electrician" ? "mechanic" : role;
+}
+
+function isElectromechanicRole(role) {
+  return role === "mechanic" || role === "electrician";
+}
+
+function sameWorkerRole(left, right) {
+  return canonicalWorkerRole(left) === canonicalWorkerRole(right);
+}
+
+function visibleRoleEntries() {
+  return Object.entries(ROLE_ACCESS).filter(([role]) => role !== "electrician");
+}
 const state = loadState();
 let stateDataVersion = 0;
 let allRequestsCacheVersion = -1;
@@ -238,7 +322,7 @@ let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
   "checks", "requests", "inventory", "catalog", "directorMessages", "serviceCosts",
   "downtimes", "compressorJournal", "gasJournal", "pprSheets", "journalDueSince",
-  "auditHistory", "operationalResetAt", "walkShiftCleanupVersion"
+  "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
 const remoteSectionFingerprints = new Map();
 let remoteRetryTimer = null;
@@ -539,7 +623,7 @@ function ensureWorkerRatingUi() {
     section.innerHTML = `
       <div class="panel-head compact">
         <div>
-          <h1>Рейтинг электриков и механиков</h1>
+          <h1>Рейтинг электромехаников</h1>
           <p>Баллы, КПД, скорость ремонта, аварии, ППР и лучший сотрудник месяца</p>
         </div>
         <div class="segmented worker-rating-controls" role="group" aria-label="Год рейтинга">
@@ -1002,7 +1086,8 @@ async function ensurePushSubscription() {
         phone: authenticatedProfile?.phone || profile?.phone || "",
         name: authenticatedProfile?.name || profile?.name || "",
         role: authenticatedProfile?.role || profile?.role || "",
-        area: authenticatedProfile?.area || profile?.area || ""
+        area: authenticatedProfile?.area || profile?.area || "",
+        language: authenticatedProfile?.language || profile?.language || currentLanguage()
       }
     })
   });
@@ -1014,7 +1099,7 @@ async function ensurePushSubscription() {
 function syncPushSubscriptionProfile() {
   if (notificationSetupState() !== "ready") return;
   const actor = authenticatedProfile || profile || {};
-  const syncKey = [actor.id, actor.employeeId, actor.phone, actor.role].map(value => String(value || "")).join("|");
+  const syncKey = [actor.id, actor.employeeId, actor.phone, actor.role, actor.area, actor.language || currentLanguage()].map(value => String(value || "")).join("|");
   if (!syncKey || syncKey === pushProfileSyncKey) return;
   pushProfileSyncKey = syncKey;
   ensurePushSubscription().catch(() => {
@@ -1145,8 +1230,9 @@ function currentAppNotificationKeys() {
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentId] = recordKey.split(":");
     if (!visibleEquipmentIds.has(equipmentId)) return;
+    const eq = equipmentById(Number(equipmentId));
     openRemarkEntries(rec?.to || {}).forEach(entry => {
-      if (remarkNotificationVisibleToCurrentUser(entry)) keys.add(`comment|${recordKey}|${entry.id}`);
+      if (remarkNotificationVisibleToCurrentUser(entry, eq)) keys.add(`comment|${recordKey}|${entry.id}`);
     });
   });
   if (profile?.role === "engineer") {
@@ -1156,6 +1242,7 @@ function currentAppNotificationKeys() {
       else keys.add(`engineer-request|${req.id}`);
     });
   }
+  activeSystemBroadcasts().forEach(item => keys.add(`system-broadcast|${item.id}`));
   return keys;
 }
 
@@ -1956,7 +2043,7 @@ function isEditorSession() {
 
 function editorPreviewRole() {
   if (!isEditorSession()) return "";
-  const savedRole = localStorage.getItem(EDITOR_PREVIEW_ROLE_KEY) || "editor";
+  const savedRole = canonicalWorkerRole(localStorage.getItem(EDITOR_PREVIEW_ROLE_KEY) || "editor");
   return ROLE_ACCESS[savedRole] ? savedRole : "editor";
 }
 
@@ -1970,14 +2057,19 @@ function activeProfileFromSession(user) {
   if (user && REMOVED_REQUEST_ROLES.has(user.role)) {
     return { ...user, role: "mechanic", originalRemovedRole: user.role };
   }
+  if (user && user.role !== "editor" && permissionBaseRole(user.role) !== user.role) {
+    return { ...user, role: permissionBaseRole(user.role), jobRole: user.role };
+  }
   if (!user || user.role !== "editor") return user;
   const previewRole = editorPreviewRole();
-  const area = needsArea(previewRole)
-    ? editorPreviewArea(previewRole) || user.area || AREAS.find(areaName => areaName !== "Резерв") || ""
+  const accessRole = permissionBaseRole(previewRole);
+  const area = needsArea(accessRole)
+    ? editorPreviewArea(accessRole) || user.area || AREAS.find(areaName => areaName !== "Резерв") || ""
     : user.area || "";
   return {
     ...user,
-    role: previewRole,
+    role: accessRole,
+    jobRole: previewRole,
     area,
     editorOriginalRole: "editor",
     editorPreviewRole: previewRole
@@ -2242,6 +2334,43 @@ function setCachedTranslation(target, text, translated) {
   }, 700);
 }
 
+function userTextWithRussianHtml(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const target = currentLanguage();
+  const cached = getCachedTranslation(target, text);
+  return `<span class="user-text-original" data-user-text-localized="${escapeHtml(encodeURIComponent(text))}" data-no-translate>${escapeHtml(cached || text)}</span>`;
+}
+
+async function translateUserTextsForCurrentProfile() {
+  const targets = [...document.querySelectorAll("[data-user-text-localized]")];
+  if (!targets.length) return;
+  const targetLanguage = currentLanguage();
+  const byText = new Map();
+  targets.forEach(el => {
+    try {
+      const text = decodeURIComponent(el.dataset.userTextLocalized || "").trim();
+      if (text) {
+        if (!byText.has(text)) byText.set(text, []);
+        byText.get(text).push(el);
+      }
+    } catch {}
+  });
+  const missing = [...byText.keys()].filter(text => !getCachedTranslation(targetLanguage, text));
+  if (missing.length) {
+    try {
+      const response = await apiJson("/api/translate", { method: "POST", body: JSON.stringify({ texts: missing, target: targetLanguage }) });
+      Object.entries(response?.translations || {}).forEach(([source, translated]) => setCachedTranslation(targetLanguage, source, translated));
+    } catch {}
+  }
+  byText.forEach((elements, text) => {
+    const translated = getCachedTranslation(targetLanguage, text) || text;
+    elements.forEach(el => {
+      el.textContent = translated;
+    });
+  });
+}
+
 function restoreTranslatedPage(root = document.body) {
   translatedTextNodes.forEach(node => {
     if (!node.isConnected) {
@@ -2444,7 +2573,7 @@ function needsArea(role = profile?.role) {
 }
 
 function isFieldWorkerRole(role = profile?.role) {
-  return ["mechanic", "electrician", "operator"].includes(role);
+  return isElectromechanicRole(role) || role === "operator";
 }
 
 function canOpenRequestRole(role) {
@@ -2663,6 +2792,7 @@ function visibleEquipment() {
   const mode = roleAccess().equipment;
   if (mode === "none") return [];
   const equipment = allEquipment();
+  if (profile?.jobRole === "forkliftDriver") return equipment.filter(eq => String(eq.name || "").trim().toLocaleLowerCase("ru-RU") === "вилочные погрузчики");
   if (mode === "area") return equipment.filter(eq => areaAllowed(eq.area));
   return equipment;
 }
@@ -2681,11 +2811,11 @@ function isRequestSource(req) {
 }
 
 function warehouseIssueTargetRole(req) {
-  return req.issueTargetRole || "mechanic";
+  return canonicalWorkerRole(req.issueTargetRole || "mechanic");
 }
 
 function canReceiveWarehouseIssue(role) {
-  return ["mechanic", "electrician", "operator", "shop", "engineer"].includes(role);
+  return isElectromechanicRole(role) || ["operator", "shop", "engineer"].includes(role);
 }
 
 function canConfirmIssuedInstall(req, role = current.requestRole) {
@@ -2701,7 +2831,7 @@ function issuedWarehouseItemVisibleToProfile(req, role = profile?.role) {
   const issuedPhone = targetPhone.replace(/\D/g, "").replace(/^8(?=\d{10}$)/, "7");
   const profileName = String(profile?.name || "").trim().toLowerCase();
   const registeredProfile = loadUsers().find(user => {
-    if (user.approved === false || user.pendingApproval === true || user.role !== profile?.role) return false;
+    if (user.approved === false || user.pendingApproval === true || !sameWorkerRole(user.role, profile?.role)) return false;
     if (profile?.id && user.id === profile.id) return true;
     if (profile?.employeeId && user.employeeId === profile.employeeId) return true;
     if (profilePhone && normalizeWarehousePhone(user.phone) === profilePhone) return true;
@@ -3040,7 +3170,7 @@ function renderProfile() {
     <label class="editor-role-switcher">
       <span>${escapeHtml(t("changeRole"))}</span>
       <select id="editorPreviewRoleSelect">
-        ${Object.entries(ROLE_ACCESS).map(([role, access]) => `<option value="${role}" ${profile.role === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}
+        ${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}
       </select>
     </label>
   ` : "";
@@ -3052,8 +3182,9 @@ function renderProfile() {
       </select>
     </label>
   ` : "";
+  const displayRole = profile.editorPreviewRole || profile.jobRole || profile.role;
   const previewNote = isEditorSession() && profile.role !== "editor"
-    ? `<span class="editor-preview-note">${escapeHtml(t("viewMode"))}: ${escapeHtml(ROLE_ACCESS[profile.role]?.label || profile.role)}</span>`
+    ? `<span class="editor-preview-note">${escapeHtml(t("viewMode"))}: ${escapeHtml(ROLE_ACCESS[displayRole]?.label || displayRole)}</span>`
     : "";
   const languageSwitcher = `
     <label class="profile-language-switcher">
@@ -3062,7 +3193,7 @@ function renderProfile() {
     </label>
   `;
   ui.profileBar.innerHTML = `
-    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${ROLE_ACCESS[profile.role]?.label || profile.role}${area}${employeeId}${phone}</span>${previewNote}</div>
+    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${ROLE_ACCESS[displayRole]?.label || displayRole}${area}${employeeId}${phone}</span>${previewNote}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
@@ -3407,6 +3538,11 @@ async function handleIncomingNodeQrFromUrl() {
     clearIncomingNodeQrFromUrl();
     return false;
   }
+  if (profile?.jobRole === "forkliftDriver" && String(eq.name || "").trim().toLocaleLowerCase("ru-RU") !== "вилочные погрузчики") {
+    window.alert("Карщику доступен только журнал «Вилочные погрузчики».");
+    clearIncomingNodeQrFromUrl();
+    return false;
+  }
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   clearIncomingNodeQrFromUrl();
   if (alreadyDone) {
@@ -3441,6 +3577,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
   const eq = equipmentById(parsed.equipmentId);
   const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
   const pending = Boolean(openRemark?.entry?.resolutionPendingConfirmation);
+  const activeStop = activeDowntime(parsed.equipmentId, parsed.nodeIndex);
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay";
   overlay.innerHTML = `
@@ -3450,6 +3587,14 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
       <p class="qr-result-node">${escapeHtml(nodeName)}</p>
       ${openRemark ? `
         <div class="qr-already-done"><strong>Активное замечание</strong><br>${escapeHtml(openRemark.entry?.text || "")}</div>
+        ${!pending ? activeStop ? `
+          <div class="qr-downtime-status ${activeStop.type === "production" ? "production" : "breakdown"}">
+            <span>Остановка уже оформлена</span>
+            <strong>${activeStop.type === "production" ? "Производственная остановка" : "Аварийная остановка"}</strong>
+          </div>
+        ` : `
+          <button type="button" class="qr-create-downtime-button" data-qr-action-downtime>Оформить остановку</button>
+        ` : ""}
         ${pending ? `
           <p>Устранение уже отправлено руководителю на подтверждение. Если обнаружена новая проблема, запишите её ниже.</p>
           <label><span>Новое замечание по узлу</span><textarea rows="4" data-qr-action-text placeholder="Напишите новое замечание..."></textarea></label>
@@ -3493,7 +3638,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
         const photo = file ? await readPhotoFile(file) : "";
         if (!openRemark || action === "create") {
           const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
-          appendCommentEntry(item, text, photo);
+          appendCommentEntry(item, text, photo, { area: eq?.area || "" });
           syncItemRemarkSummary(item);
           saveState({ remote: false });
           await publishNodeUpdateNow(parsed.equipmentId, parsed.nodeIndex, shift.date);
@@ -3517,6 +3662,29 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
     overlay.querySelector("[data-qr-action-create]")?.addEventListener("click", event => submit(event.currentTarget, "create"));
     overlay.querySelector("[data-qr-action-update]")?.addEventListener("click", event => submit(event.currentTarget, "update"));
     overlay.querySelector("[data-qr-action-resolve]")?.addEventListener("click", event => submit(event.currentTarget, "resolve"));
+    overlay.querySelector("[data-qr-action-downtime]")?.addEventListener("click", async event => {
+      const button = event.currentTarget;
+      if (activeDowntime(parsed.equipmentId, parsed.nodeIndex)) {
+        showAppToast("Для этого узла уже оформлена остановка.");
+        finish("downtime-exists");
+        return;
+      }
+      const choice = await chooseDowntimeType();
+      if (!choice) return;
+      setButtonBusy(button, true, "Оформляем...");
+      try {
+        const opened = openDowntimeFromRemark(parsed.equipmentId, parsed.nodeIndex, choice.reason, choice.type, openRemark?.date || shift.date);
+        if (!opened) throw new Error("downtime_not_opened");
+        await publishNodeUpdateNow(parsed.equipmentId, parsed.nodeIndex, openRemark?.date || shift.date);
+        showAppToast(choice.type === "production" ? "Производственная остановка оформлена." : "Аварийная остановка оформлена.");
+        finish("downtime-opened");
+      } catch (downtimeError) {
+        console.error("QR downtime action failed", downtimeError);
+        const error = overlay.querySelector("[data-qr-action-error]");
+        if (error) error.textContent = "Не удалось оформить остановку. Попробуйте ещё раз.";
+        setButtonBusy(button, false);
+      }
+    });
     window.setTimeout(() => overlay.querySelector("[data-qr-action-text]")?.focus(), 50);
   });
 }
@@ -4004,7 +4172,7 @@ function promptQrWalkDecision(parsed) {
         const photo = file ? await readPhotoFile(file) : "";
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
-        appendCommentEntry(item, comment, photo);
+        appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
         item.updatedAt = new Date().toISOString();
         saveState();
@@ -4131,7 +4299,8 @@ function resolutionActor() {
     employeeId: String(user.employeeId || ""),
     phone: String(user.phone || ""),
     name: String(user.name || profile?.name || "Сотрудник"),
-    role: String(user.role || profile?.role || ""),
+    role: permissionBaseRole(String(user.role || profile?.role || "")),
+    jobRole: String(user.role || profile?.jobRole || profile?.role || ""),
     area: String(user.area || profile?.area || "")
   };
 }
@@ -4160,13 +4329,18 @@ function isResolutionParticipant(item, user = resolutionActor()) {
   return resolutionParticipants(item).some(participant => participant.key === key);
 }
 
-function remarkNotificationVisibleToCurrentUser(item) {
-  const participants = resolutionParticipants(item);
-  if (item?.resolutionPendingConfirmation) return canCurrentUserConfirmRemark(item);
-  if (item?.resolutionReturnedAt && item?.resolutionSubmittedByKey) {
-    return String(item.resolutionSubmittedByKey) === resolutionActor().key;
+function remarkNotificationVisibleToCurrentUser(item, eq = null) {
+  const actor = resolutionActor();
+  if (["shop", "operator"].includes(actor.role)) {
+    const equipmentArea = String(eq?.area || item?.confirmationArea || "");
+    if (!equipmentArea || !sameRemarkArea(actor.area, equipmentArea)) return false;
   }
-  return participants.length === 0 || participants.some(participant => participant.key === resolutionActor().key);
+  const participants = resolutionParticipants(item);
+  if (item?.resolutionPendingConfirmation) return canCurrentUserConfirmRemark(item, eq);
+  if (item?.resolutionReturnedAt && item?.resolutionSubmittedByKey) {
+    return String(item.resolutionSubmittedByKey) === actor.key;
+  }
+  return participants.length === 0 || participants.some(participant => participant.key === actor.key);
 }
 
 function canManageResolutionParticipants(item) {
@@ -4397,6 +4571,7 @@ function appendCommentEntry(item, text, photo = "", meta = {}) {
     authorPhone: actor.phone,
     at: now,
     type: meta.type || "remark",
+    area: String(meta.area || ""),
     resolved: meta.type === "downtime"
   };
   item.commentLog = [...(Array.isArray(item.commentLog) ? item.commentLog : []), entry];
@@ -4568,7 +4743,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         </div>
         <span class="remark-card-status">${cardStatus}</span>
       </header>
-      <p class="remark-card-text">${escapeHtml(entry.text || "")}</p>
+      <p class="remark-card-text">${userTextWithRussianHtml(entry.text || "")}</p>
       ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
       ${resolved ? `
         <div class="comment-resolution-detail">
@@ -5653,12 +5828,8 @@ function renderEngineerIncomingTmcPanel() {
 function renderEngineerIncomingBanner() {
   const banner = ui.engineerIncomingBanner;
   if (!banner) return;
-  const count = profile?.role === "engineer" ? engineerIncomingTmcItemCount() : 0;
-  banner.hidden = count <= 0;
-  banner.innerHTML = count > 0 ? `
-    <div><strong>Новые заявки инженеру: ${count}</strong><span>Ожидают проверки и формирования</span></div>
-    <button type="button" data-open-engineer-incoming>Открыть заявки</button>
-  ` : "";
+  banner.hidden = true;
+  banner.innerHTML = "";
 }
 
 function resetTmcRequestForm() {
@@ -5680,7 +5851,7 @@ function updateTmcRequestButtonLabels() {
   const quickLabel = ui.createTmcRequestButton?.querySelector("span");
   const quickBadge = ui.createTmcRequestButton?.querySelector("strong");
   const engineerCount = profile?.role === "engineer" ? engineerIncomingTmcItemCount() : 0;
-  if (quickLabel) quickLabel.textContent = engineerCount > 0 ? "Заявки" : submitLabel;
+  if (quickLabel) quickLabel.textContent = submitLabel;
   if (quickBadge) quickBadge.textContent = engineerCount > 0 ? engineerCount : workerSendsTmcRequestToEngineer() ? "→" : "+";
   ui.createTmcRequestButton?.classList.toggle("request-alert", engineerCount > 0);
   ui.createTmcRequestButton?.classList.toggle("has-count", engineerCount > 0);
@@ -6199,8 +6370,8 @@ function requestRoleLabel(role) {
     productionDirector: "Директор производства",
     accounting: "Ответственный",
     warehouse: "Складовщик",
-    mechanic: "Механик",
-    electrician: "Электрик",
+    mechanic: "Электромеханик",
+    electrician: "Электромеханик",
     operator: "Оператор"
   }[role] || role;
 }
@@ -6415,22 +6586,40 @@ function chooseDowntimeType() {
     overlay.className = "downtime-type-overlay";
     overlay.innerHTML = `
       <div class="downtime-type-dialog" role="dialog" aria-modal="true">
-        <strong>Тип остановки</strong>
-        <p>Выберите, почему остановлен узел.</p>
-        <button type="button" data-downtime-type="production">Производство</button>
-        <button type="button" data-downtime-type="breakdown">Поломка</button>
+        <strong>Оформить остановку</strong>
+        <p>Коротко укажите, что именно остановило узел.</p>
+        <textarea rows="3" data-downtime-reason placeholder="Причина остановки..."></textarea>
+        <div class="downtime-type-error" data-downtime-error></div>
+        <button type="button" data-downtime-type="breakdown">Аварийная остановка</button>
+        <button type="button" data-downtime-type="production">Производственная остановка</button>
         <button type="button" data-downtime-type="">Отмена</button>
       </div>
     `;
-    overlay.addEventListener("click", event => {
-      const button = event.target.closest("[data-downtime-type]");
-      if (!button) return;
-      const type = button.dataset.downtimeType || "";
+    const close = type => {
       overlay.remove();
       resolve(type);
+    };
+    overlay.querySelectorAll("[data-downtime-type]").forEach(button => button.addEventListener("click", () => {
+      const type = button.dataset.downtimeType || "";
+      if (!type) {
+        close(null);
+        return;
+      }
+      const reasonBox = overlay.querySelector("[data-downtime-reason]");
+      const reason = String(reasonBox?.value || "").trim();
+      if (!reason) {
+        const error = overlay.querySelector("[data-downtime-error]");
+        if (error) error.textContent = "Укажите причину остановки.";
+        reasonBox?.focus();
+        return;
+      }
+      close({ type, reason });
+    }));
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) close(null);
     });
     document.body.append(overlay);
-    overlay.querySelector("[data-downtime-type='production']")?.focus();
+    overlay.querySelector("[data-downtime-reason]")?.focus();
   });
 }
 
@@ -6606,12 +6795,12 @@ function openDowntime(equipmentId, nodeIndex, comment, type = "breakdown", saveO
   saveState(saveOptions);
 }
 
-function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdown") {
+function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdown", date = current.date) {
   const text = String(comment || "").trim();
   if (!text || activeDowntime(equipmentId, nodeIndex)) return null;
   openDowntime(equipmentId, nodeIndex, text, type, { remote: false });
   const opened = activeDowntime(equipmentId, nodeIndex);
-  appendDowntimeCommentToNode(equipmentId, nodeIndex, current.date, "Остановка", text);
+  appendDowntimeCommentToNode(equipmentId, nodeIndex, date, "Остановка", text);
   return opened;
 }
 
@@ -8420,6 +8609,7 @@ function scheduleRender(delay = 80) {
 
 function render() {
   renderProfile();
+  renderSystemBroadcastNotice();
   updateDirectorBadge();
   updateDowntimeBadge();
   updateRoleBadges();
@@ -8437,6 +8627,7 @@ function render() {
   if (current.view === "downtime") renderDowntime();
   if (current.view === "aggregateJournal") renderAggregateJournal();
   applyLanguage();
+  translateUserTextsForCurrentProfile();
   queueTranslateVisiblePage();
 }
 
@@ -8580,8 +8771,15 @@ function compressorJournalKey(area, date, compressor) {
 
 function compressorJournalBaseDate() {
   if (!current.compressorBaseDate) current.compressorBaseDate = todayISO();
-  if (String(current.compressorBaseDate) < todayISO()) current.compressorBaseDate = todayISO();
   return current.compressorBaseDate;
+}
+
+function compressorJournalSavedDates(area = COMPRESSOR_JOURNAL_AREA) {
+  return [...new Set(compressorJournalFilledRows(area).map(row => row.date).filter(Boolean))].sort().reverse();
+}
+
+function compressorJournalDateHasFilledRow(area, date) {
+  return compressorJournalDateRows(area, date).some(row => ["shiftTime", "airPressure", "airTemp", "oilPressureTemp", "leakGrounding", "blowTime", "checkedBy"].some(field => String(row[field] || "").trim()));
 }
 
 function compressorJournalSheetIndex() {
@@ -8811,6 +9009,20 @@ function gasJournalBaseDate(section) {
   return current[key];
 }
 
+function gasJournalSavedDates() {
+  return [...new Set(Object.values(state.gasJournal || {}).map(row => row?.date).filter(Boolean))].sort().reverse();
+}
+
+function gasJournalDateHasFilledRow(section, date) {
+  const row = gasJournalRecord(section, date);
+  const ignored = new Set(["id", "section", "date", "route", "updatedAt", "updatedByName", "updatedByRole"]);
+  return Object.entries(row).some(([key, value]) => !ignored.has(key) && String(value || "").trim());
+}
+
+function journalEntryLanguageNotice() {
+  return `<strong class="journal-language-rule" data-no-translate>${currentLanguage() === "kk" ? "Журнал тек орыс немесе қазақ тілінде толтырылады" : currentLanguage() === "uz" ? "Jurnal faqat rus yoki qozoq tilida to‘ldiriladi" : "Журнал заполняется только на русском или казахском языке"}</strong>`;
+}
+
 function gasJournalSheetIndex(section) {
   const key = section === "A" ? "gasSheetIndexA" : "gasSheetIndexB";
   if (!Number.isInteger(current[key]) || current[key] < 0) current[key] = 0;
@@ -8880,7 +9092,7 @@ function gasJournalSheetComplete(section) {
 
 function gasJournalSheetHasFilledDay(section) {
   const dates = gasJournalSheetDates(section);
-  return dates.some(date => section === "A" ? gasJournalRowCompleteA(date) : gasJournalRowCompleteB(date));
+  return dates.some(date => gasJournalDateHasFilledRow(section, date));
 }
 
 function gasJournalTodayNeedsAttention() {
@@ -8977,8 +9189,15 @@ function renderGasJournal() {
   const completeB = gasJournalSheetHasFilledDay("B");
   const sheetNoA = gasJournalSheetIndex("A") + 1;
   const sheetNoB = gasJournalSheetIndex("B") + 1;
+  const savedDates = gasJournalSavedDates();
 
   ui.aggregateJournalList.innerHTML = `
+    <div class="journal-date-navigation">
+      <button type="button" data-gas-all-today>Сегодня</button>
+      <label><span>Предыдущие записи</span><select data-gas-saved-date><option value="">Выберите дату</option>${savedDates.map(date => `<option value="${date}">${dateHuman(date)}</option>`).join("")}</select></label>
+      <small>Записи сохраняются по датам и не удаляются при наступлении нового дня.</small>
+      ${journalEntryLanguageNotice()}
+    </div>
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
       <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span>Лист раздела А № ${sheetNoA}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
@@ -8988,7 +9207,7 @@ function renderGasJournal() {
           <tbody>
             ${datesA.map(date => {
               const row = gasJournalRecord("A", date);
-              return `<tr class="gas-day-row">
+              return `<tr class="gas-day-row ${gasJournalDateHasFilledRow("A", date) ? "" : "print-empty-day"}">
                 <td>${dateHuman(date)}</td>
                 <td>${escapeHtml(row.time || "")}</td>
                 <td>${gasInputHtml("A", date, "inletMpa", row.inletMpa)}</td>
@@ -9019,7 +9238,7 @@ function renderGasJournal() {
             ${datesB.map(date => {
               const row = gasJournalRecord("B", date);
               const route = row.route || GAS_ROUTE_LIST.join("\n");
-              return `<tr class="gas-day-row gas-route-day-row">
+              return `<tr class="gas-day-row gas-route-day-row ${gasJournalDateHasFilledRow("B", date) ? "" : "print-empty-day"}">
                 <td>${dateHuman(date)}</td>
                 <td>${escapeHtml(row.time || "")}</td>
                 <td class="gas-route-cell">${escapeHtml(route).replace(/\n/g, "<br>")}</td>
@@ -9037,6 +9256,19 @@ function renderGasJournal() {
       ${gasSheetActionsHtml("B", completeB)}
     </div>
   `;
+  ui.aggregateJournalList.querySelector("[data-gas-all-today]")?.addEventListener("click", () => {
+    setGasJournalSheetToToday("A");
+    setGasJournalSheetToToday("B");
+  });
+  ui.aggregateJournalList.querySelector("[data-gas-saved-date]")?.addEventListener("change", event => {
+    const date = event.currentTarget.value;
+    if (!date) return;
+    current.gasBaseDateA = date;
+    current.gasBaseDateB = date;
+    current.gasSheetIndexA = 0;
+    current.gasSheetIndexB = 0;
+    renderGasJournal();
+  });
   ui.aggregateJournalList.querySelectorAll("[data-gas-section]").forEach(el => {
     el.addEventListener("change", () => {
       updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
@@ -9064,6 +9296,8 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   if (current.compressorSheetIndex > maxSheetIndex) current.compressorSheetIndex = maxSheetIndex;
   const activeSheetIndex = compressorJournalSheetIndex();
   const sheetRows = compressorJournalRows(area, activeSheetIndex);
+  const printableDays = [...new Set(sheetRows.filter(row => compressorJournalDateHasFilledRow(area, row.date)).map(row => row.date))];
+  const savedDates = compressorJournalSavedDates(area);
   const filled = compressorJournalFilledRows(area).length;
   ui.aggregateJournalTitle.textContent = `\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043d\u044b\u0439 \u0436\u0443\u0440\u043d\u0430\u043b: ${area}`;
   ui.aggregateJournalMeta.textContent = `${filled} \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0445 \u0441\u0442\u0440\u043e\u043a. \u0416\u0443\u0440\u043d\u0430\u043b \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f \u0432\u0440\u0443\u0447\u043d\u0443\u044e; \u0437\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u044f \u0441\u044e\u0434\u0430 \u043d\u0435 \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442.`;
@@ -9072,14 +9306,20 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       <div class="segmented">
         <button type="button" data-compressor-sheet-prev ${activeSheetIndex <= 0 ? "disabled" : ""}>\u2039</button>
         <strong>\u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</strong>
-        <button type="button" data-compressor-sheet-next ${activeSheetIndex >= maxSheetIndex || !compressorJournalSheetComplete(sheetRows) ? "disabled" : ""}>\u203a</button>
+        <button type="button" data-compressor-sheet-next ${activeSheetIndex >= maxSheetIndex ? "disabled" : ""}>\u203a</button>
       </div>
+    </div>
+    <div class="journal-date-navigation">
+      <button type="button" data-compressor-today>Сегодня</button>
+      <label><span>Предыдущие записи</span><select data-compressor-saved-date><option value="">Выберите дату</option>${savedDates.map(date => `<option value="${date}">${dateHuman(date)}</option>`).join("")}</select></label>
+      <small>Записи сохраняются по датам. В печать войдут только дни, где есть данные.</small>
+      ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
         <strong>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f</strong>
         <span>${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</span>
-        <button class="compressor-sheet-print" type="button" data-print-compressor-sheet="${activeSheetIndex}" ${compressorJournalSheetComplete(sheetRows) ? "" : "disabled"}>${printActionLabel(`Печать листа №${activeSheetIndex + 1}`, `PDF листа №${activeSheetIndex + 1}`)}</button>
+        <button class="compressor-sheet-print" type="button" data-print-compressor-sheet="${activeSheetIndex}" ${printableDays.length ? "" : "disabled"}>${printActionLabel(`Печать заполненных дней · лист №${activeSheetIndex + 1}`, `PDF заполненных дней · лист №${activeSheetIndex + 1}`)}</button>
       </div>
       <div class="aggregate-journal-table-wrap">
         <table class="aggregate-journal-table compressor-journal-table">
@@ -9100,7 +9340,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
             ${sheetRows.map((row, index) => {
               const compressorDayAttention = compressorJournalDateNeedsAttention(area, row.date);
               return `
-              <tr class="${compressorDayAttention ? "overdue-line-blink" : ""}">
+              <tr data-compressor-date="${row.date}" class="${compressorDayAttention ? "overdue-line-blink" : ""} ${compressorJournalDateHasFilledRow(area, row.date) ? "" : "print-empty-day"}">
                 ${index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? `<td rowspan="${COMPRESSOR_JOURNAL_COMPRESSORS.length}">${dateHuman(row.date)}</td>` : ""}
                 <td data-compressor-checked="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "")}</td>
                 <td>${escapeHtml(row.compressor)}</td>
@@ -9132,6 +9372,18 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     current.compressorSheetIndex = Math.min(compressorJournalSheetIndex() + 1, compressorJournalMaxSheetIndex());
     renderAggregateJournal();
   });
+  ui.aggregateJournalList.querySelector("[data-compressor-today]")?.addEventListener("click", () => {
+    current.compressorBaseDate = todayISO();
+    current.compressorSheetIndex = 0;
+    renderAggregateJournal();
+  });
+  ui.aggregateJournalList.querySelector("[data-compressor-saved-date]")?.addEventListener("change", event => {
+    const date = event.currentTarget.value;
+    if (!date) return;
+    current.compressorBaseDate = date;
+    current.compressorSheetIndex = 0;
+    renderAggregateJournal();
+  });
   ui.aggregateJournalList.querySelectorAll("[data-print-compressor-sheet]").forEach(button => {
     button.addEventListener("click", () => {
       const sheetIndex = button.dataset.printCompressorSheet || "";
@@ -9150,11 +9402,11 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     });
   });
   const refreshCompressorSheetControls = () => {
-    const complete = compressorJournalSheetComplete(compressorJournalRows(area, activeSheetIndex));
+    const hasFilledDay = compressorJournalSheetDates(activeSheetIndex).some(date => compressorJournalDateHasFilledRow(area, date));
     const printButton = ui.aggregateJournalList.querySelector(`[data-print-compressor-sheet="${activeSheetIndex}"]`);
     const nextButton = ui.aggregateJournalList.querySelector("[data-compressor-sheet-next]");
-    if (printButton) printButton.disabled = !complete;
-    if (nextButton) nextButton.disabled = activeSheetIndex >= maxSheetIndex || !complete;
+    if (printButton) printButton.disabled = !hasFilledDay;
+    if (nextButton) nextButton.disabled = activeSheetIndex >= maxSheetIndex;
   };
   ui.aggregateJournalList.querySelectorAll("[data-compressor-row]").forEach(input => {
     const commitCompressorValue = event => {
@@ -9167,6 +9419,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       if (shiftCell) shiftCell.textContent = savedRow.shiftTime || "";
       if (blowCell) blowCell.textContent = savedRow.blowTime || "";
       if (checkedCell) checkedCell.textContent = savedRow.checkedBy || "";
+      ui.aggregateJournalList.querySelectorAll(`[data-compressor-date="${CSS.escape(savedRow.date)}"]`).forEach(row => row.classList.toggle("print-empty-day", !compressorJournalDateHasFilledRow(area, savedRow.date)));
       refreshCompressorSheetControls();
     };
     input.addEventListener("input", commitCompressorValue);
@@ -9665,7 +9918,7 @@ function renderNodeWalkthrough(eq) {
         ${downtimeCommentEntries.map(entry => `
           <div class="comment-entry downtime-comment-entry">
             <strong>${escapeHtml(commentEntryAuthor(entry))}</strong>
-            <p>${escapeHtml(entry.text)}</p>
+            <p>${userTextWithRussianHtml(entry.text)}</p>
           </div>
         `).join("")}
       </div>
@@ -9860,7 +10113,7 @@ function renderNodeWalkthrough(eq) {
       try {
         // Любая остановка живёт только в журнале простоев. Предупреждение
         // создаём исключительно для варианта «Без остановки».
-        if (!sendChoice.downtime) appendCommentEntry(liveItem, text, liveItem.commentPhoto);
+        if (!sendChoice.downtime) appendCommentEntry(liveItem, text, liveItem.commentPhoto, { area: eq?.area || "" });
         if (sendChoice.downtime) openDowntimeFromRemark(eq.id, index, text, sendChoice.downtimeType);
         window.PPRModules?.comments?.clearComposer?.(liveItem);
         liveItem.nodeDraftText = "";
@@ -11124,7 +11377,7 @@ function directorRequestDetailRows(requests = directorActiveRequests(), archiveM
         <span class="traffic-dot"></span>
         <div>
           <strong>${escapeHtml(req.requestNumber || "Заявка")}${req.equipment ? ` · ${escapeHtml(req.equipment)}` : ""}</strong>
-          <p>${escapeHtml(req.text || "Описание отсутствует")}</p>
+          <p>${userTextWithRussianHtml(req.text || "Описание отсутствует")}</p>
           <small>${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}${req.dueDate ? ` · Срок ${dateHuman(req.dueDate)}` : ""}</small>
         </div>
         <div class="director-info-owner">
@@ -11146,7 +11399,7 @@ function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
         <span class="traffic-dot"></span>
         <div>
           <strong>${escapeHtml(remark.equipment)}${remark.node ? ` · ${escapeHtml(remark.node)}` : ""}</strong>
-          <p>${escapeHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
+          <p>${userTextWithRussianHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
           <small>${dateHuman(remark.date)}${author ? ` · Записал: ${escapeHtml(author)}` : ""}</small>
         </div>
         <div class="director-info-owner">
@@ -11345,9 +11598,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
     }
   }
   const workerMap = new Map();
-  const workerKey = (role, name) => `${role}:${String(name || "").trim().toLowerCase()}`;
+  const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
   const ensureWorker = (role, name) => {
     if (!["mechanic", "electrician"].includes(role)) return null;
+    role = canonicalWorkerRole(role);
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     const key = workerKey(role, cleanName);
     if (!workerMap.has(key)) {
@@ -11483,11 +11737,11 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
         <div><strong>${stats.totals.stops}</strong><span>остановок</span></div>
         <div><strong>${durationText(stats.totals.downtimeMs)}</strong><span>простоя за год</span></div>
       </div>
-      <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте механиков и электриков в пользователях</span></div><b>нет данных</b></div>`}</div>
+      <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте электромехаников в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
           <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
-          <tbody>${workerRows || `<tr><td colspan="8">Пока нет данных по механикам и электрикам</td></tr>`}</tbody>
+          <tbody>${workerRows || `<tr><td colspan="8">Пока нет данных по электромеханикам</td></tr>`}</tbody>
         </table>
       </div>
       <div class="annual-trend-note">
@@ -11530,10 +11784,11 @@ function reliabilityBand(score) {
 }
 
 function workerRatingKey(role, name) {
-  return `${role}:${String(name || "").trim().toLowerCase()}`;
+  return `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
 }
 
 function emptyWorkerRating(role, name) {
+  role = canonicalWorkerRole(role);
   const cleanName = String(name || "").trim() || requestRoleLabel(role);
   return {
     key: workerRatingKey(role, cleanName),
@@ -11833,8 +12088,8 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     if (worker) worker.points = Number(value || 0);
   });
   const monthLeaders = [...monthWorkers.values()].sort((a, b) => b.points - a.points || b.closed - a.closed || b.qrDone - a.qrDone);
-  const bestMechanic = monthLeaders.find(worker => worker.role === "mechanic") || null;
-  const bestElectrician = monthLeaders.find(worker => worker.role === "electrician") || null;
+  const bestMechanic = monthLeaders.find(worker => isElectromechanicRole(worker.role)) || null;
+  const bestElectrician = null;
   const bestOverall = monthLeaders[0] || list[0] || null;
   const totals = {
     workers: list.length,
@@ -11860,18 +12115,17 @@ function workerRatingHtml(stats = workerRatingStats()) {
   const detailed = !["mechanic", "electrician"].includes(profile?.role);
   const monthName = new Date(stats.year, stats.monthIndex, 1).toLocaleDateString("ru-RU", { month: "long" });
   const winner = stats.bestOverall;
-  const winnerFull = winner ? stats.workers.find(worker => worker.role === winner.role && worker.name === winner.name) : null;
+  const winnerFull = winner ? stats.workers.find(worker => sameWorkerRole(worker.role, winner.role) && worker.name === winner.name) : null;
   const winnerName = winner ? winner.name : "Пока нет победителя";
   const winnerRole = winner ? winner.roleLabel : "Нет закрытых работ";
   const winnerKpi = winnerFull ? ` · КПД ${winnerFull.efficiency}%` : "";
   const bestMechanic = stats.bestMechanic ? `${stats.bestMechanic.name} · ${stats.bestMechanic.points} баллов` : "нет данных";
-  const bestElectrician = stats.bestElectrician ? `${stats.bestElectrician.name} · ${stats.bestElectrician.points} баллов` : "нет данных";
   const maxPoints = Math.max(...stats.workers.map(worker => worker.points), 1);
   const graph = stats.workers.map(worker => {
     const height = Math.max(8, Math.round(worker.points / maxPoints * 100));
     const currentWorker = ["mechanic", "electrician"].includes(profile?.role)
       && String(worker.name || "").trim().toLowerCase() === String(profile?.name || "").trim().toLowerCase()
-      && worker.role === profile.role;
+      && sameWorkerRole(worker.role, profile.role);
     return `
       <div class="worker-graph-item ${workerRatingBand(worker)} ${currentWorker ? "current" : ""}">
         <div class="worker-graph-bar-wrap">
@@ -11951,8 +12205,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div><strong>${stats.totals.overdueOpen}</strong><span>просрочено</span></div>
     </section>
     <section class="worker-month-winners">
-      <div><span>Лучший механик месяца</span><strong>${escapeHtml(bestMechanic)}</strong></div>
-      <div><span>Лучший электрик месяца</span><strong>${escapeHtml(bestElectrician)}</strong></div>
+      <div><span>Лучший электромеханик месяца</span><strong>${escapeHtml(bestMechanic)}</strong></div>
       <div><span>${detailed ? "Как считается" : "Твоя цель"}</span><strong>${detailed ? "баллы только за принятую работу; возврат −1" : "качественно закрывать работы"}</strong></div>
     </section>
     <section class="worker-rating-graph">
@@ -11962,7 +12215,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
           <span>Чем выше колонка, тем выше место сотрудника</span>
         </div>
       </div>
-      <div class="worker-graph-grid">${graph || `<div class="empty-state">Пока нет механиков и электриков в списке сотрудников</div>`}</div>
+      <div class="worker-graph-grid">${graph || `<div class="empty-state">Пока нет электромехаников в списке сотрудников</div>`}</div>
     </section>
     ${detailed ? `
       <section class="worker-rating-explain">
@@ -11973,7 +12226,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>При совместном устранении каждый зафиксированный участник получает полные баллы после подтверждения.</span>
       </section>
       <section class="worker-rating-list">
-        ${rows || `<div class="empty-state">Пока нет механиков и электриков в списке сотрудников</div>`}
+        ${rows || `<div class="empty-state">Пока нет электромехаников в списке сотрудников</div>`}
       </section>
     ` : ""}
   `;
@@ -12826,7 +13079,7 @@ function directorDowntimeDetail(stats) {
       <div>
         <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
         <small>${escapeHtml(item.node || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</small>
-        <p>${escapeHtml(item.comment || "Причина не указана")}</p>
+        <p>${userTextWithRussianHtml(item.comment || "Причина не указана")}</p>
       </div>
       <div class="director-downtime-time">
         <b>${item.endedAt ? "Завершён" : "Идёт сейчас"}</b>
@@ -13159,6 +13412,30 @@ function renderDirector() {
     await loadRemoteUsers();
     renderDirector();
   }, "Обновляем..."));
+  ui.directorPanel.querySelector("[data-print-system-report]")?.addEventListener("click", printSystemArchiveReport);
+  ui.directorPanel.querySelector("[data-broadcast-print]")?.addEventListener("click", event => {
+    if (!window.confirm("Показать всем сотрудникам уведомление о необходимости распечатать или сохранить отчёт?")) return;
+    runButtonOperation(event.currentTarget, async () => {
+      state.systemBroadcasts ||= [];
+      state.systemBroadcasts.forEach(item => { item.active = false; item.updatedAt = new Date().toISOString(); });
+      state.systemBroadcasts.push({ id: `archive-${Date.now()}`, active: true, type: "print-archive", text: "Распечатайте или сохраните архивный отчёт ППР.", at: new Date().toISOString(), updatedAt: new Date().toISOString(), author: profile?.name || "Администратор" });
+      recordAudit("Отправил общее уведомление", "Всем сотрудникам", "", "Распечатать или сохранить архивный отчёт ППР");
+      saveState();
+      await publishStateNow();
+      renderDirector();
+      showAppToast("Уведомление отправлено всем сотрудникам.");
+    }, "Отправляем...");
+  });
+  ui.directorPanel.querySelector("[data-close-system-broadcast]")?.addEventListener("click", event => {
+    if (!window.confirm("Снять общее уведомление у всех сотрудников?")) return;
+    runButtonOperation(event.currentTarget, async () => {
+      state.systemBroadcasts ||= [];
+      state.systemBroadcasts.forEach(item => { item.active = false; item.updatedAt = new Date().toISOString(); });
+      saveState();
+      await publishStateNow();
+      renderDirector();
+    }, "Снимаем...");
+  });
   ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area]").forEach(select => {
     select.addEventListener("change", event => {
       const row = event.currentTarget.closest("[data-user-key]");
@@ -13207,6 +13484,39 @@ function renderDirector() {
         })
       }).then(loadRemoteUsers).catch(() => {});
       renderDirector();
+    });
+  });
+  ui.directorPanel.querySelectorAll("[data-save-user-role]").forEach(button => {
+    button.addEventListener("click", event => {
+      const userKey = event.currentTarget.dataset.saveUserRole || "";
+      const users = loadUsers();
+      const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
+      const row = event.currentTarget.closest(".director-user-row");
+      const role = row?.querySelector("[data-user-role]")?.value || "";
+      const area = row?.querySelector("[data-user-area]")?.value || "";
+      if (!user || !role) return;
+      if (needsArea(permissionBaseRole(role)) && !area) {
+        window.alert("Для этой должности сначала выберите участок.");
+        return;
+      }
+      if (!window.confirm(`Изменить должность сотрудника ${user.name || user.phone || ""} на «${ROLE_ACCESS[role]?.label || role}»?`)) return;
+      runButtonOperation(event.currentTarget, async () => {
+        const updatedUser = {
+          ...user,
+          role,
+          area: needsArea(permissionBaseRole(role)) ? area : "",
+          roleUpdatedAt: new Date().toISOString(),
+          roleUpdatedBy: authenticatedProfile?.name || profile?.name || "",
+          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+          actionId: nextActionId(),
+          clientId: CLIENT_ID
+        };
+        await apiJson("/api/users", { method: "POST", body: JSON.stringify(updatedUser) });
+        userApprovalDrafts.delete(userKey);
+        await loadRemoteUsers();
+        renderDirector();
+        showAppToast("Должность сотрудника изменена.");
+      }, "Сохраняем...");
     });
   });
   ui.directorPanel.querySelectorAll("[data-reset-user-password]").forEach(button => {
@@ -13338,7 +13648,7 @@ function renderDowntime() {
       <button type="button" class="downtime-entry ${item.endedAt ? "" : "active"}" data-open-downtime-comment="${escapeHtml(item.id)}">
         <strong>${escapeHtml(item.equipment)} · ${escapeHtml(item.node)}</strong>
         <span>${downtimeTypeLabel(item.type)} · ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "идет сейчас"} · ${durationText(downtimeDurationMs(item))}</span>
-        <p>${escapeHtml(item.comment || "Без комментария")}</p>
+        <p>${userTextWithRussianHtml(item.comment || "Без комментария")}</p>
         ${item.closeComment ? `<p>Пуск: ${escapeHtml(item.closeComment)}</p>` : ""}
         <small>${escapeHtml(item.authorName || "Сотрудник")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
       </button>
@@ -13512,6 +13822,83 @@ ____________________
   `;
 }
 
+function systemLoadMetrics() {
+  const serialized = JSON.stringify(state || {});
+  const bytes = new Blob([serialized]).size;
+  const photoCount = (serialized.match(/data:image\//g) || []).length;
+  const checks = Object.keys(state.checks || {}).length;
+  const requests = allRequests().length;
+  const inventory = inventoryItems().length;
+  const users = loadUsers().length;
+  const score = Math.min(100, Math.round((bytes / (25 * 1024 * 1024)) * 55 + (photoCount / 500) * 25 + (checks / 15000) * 20));
+  const level = score >= 80 ? "red" : score >= 55 ? "yellow" : "green";
+  const label = level === "red" ? "Высокая" : level === "yellow" ? "Средняя" : "Нормальная";
+  return { bytes, photoCount, checks, requests, inventory, users, score, level, label };
+}
+
+function formatStorageSize(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+}
+
+function activeSystemBroadcasts() {
+  return (Array.isArray(state.systemBroadcasts) ? state.systemBroadcasts : [])
+    .filter(item => item && item.active !== false)
+    .slice(-1);
+}
+
+function latestSystemBroadcast() {
+  return activeSystemBroadcasts()[0] || null;
+}
+
+function printSystemArchiveReport() {
+  const metrics = systemLoadMetrics();
+  const openRemarks = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentId] = recordKey.split(":");
+    const eq = equipmentById(Number(equipmentId));
+    openRemarkEntries(rec?.to || {}).forEach(entry => openRemarks.push({ equipment: eq?.name || equipmentId, area: eq?.area || "", text: entry.text || entry.comment || "" }));
+  });
+  const rows = (items, columns) => items.map(item => `<tr>${columns.map(column => `<td>${escapeHtml(column(item))}</td>`).join("")}</tr>`).join("");
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Архивный отчёт ППР</title><style>body{font-family:Arial,sans-serif;color:#111;margin:12mm}h1{font-size:20px}h2{font-size:15px;margin-top:18px}p{margin:4px 0}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #888;padding:4px;vertical-align:top}th{background:#eee}@media print{button{display:none}}</style></head><body>
+    <h1>Архивный отчёт ППР Контроль</h1><p>Сформирован: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p>
+    <h2>Состав данных</h2><p>Объём: ${formatStorageSize(metrics.bytes)} · Записей: ${metrics.checks} · Фото: ${metrics.photoCount} · Заявок: ${metrics.requests} · Складских позиций: ${metrics.inventory} · Сотрудников: ${metrics.users}</p>
+    <h2>Открытые замечания (${openRemarks.length})</h2><table><thead><tr><th>Цех</th><th>Оборудование</th><th>Замечание</th></tr></thead><tbody>${rows(openRemarks, [x => x.area, x => x.equipment, x => x.text]) || '<tr><td colspan="3">Нет</td></tr>'}</tbody></table>
+    <h2>Заявки (${allRequests().length})</h2><table><thead><tr><th>Номер</th><th>Цех</th><th>Состояние</th><th>Содержание</th></tr></thead><tbody>${rows(allRequests(), [x => x.requestNumber || x.id || "", x => x.area || "", x => x.done ? "Выполнена" : "Активна", x => x.text || requestItemsText(requestItems(x))]) || '<tr><td colspan="4">Нет</td></tr>'}</tbody></table>
+    <h2>Сотрудники (${loadUsers().length})</h2><table><thead><tr><th>ФИО</th><th>Должность</th><th>Цех</th></tr></thead><tbody>${rows(loadUsers(), [x => x.name || "", x => ROLE_ACCESS[x.role]?.label || x.role || "", x => x.area || ""])}</tbody></table>
+    <p style="margin-top:18px">Подпись ответственного: ____________________</p></body></html>`);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+function renderSystemLoadAdmin() {
+  const m = systemLoadMetrics();
+  const broadcast = latestSystemBroadcast();
+  return `<section class="system-load-card ${m.level}">
+    <div class="system-load-head"><div><strong>Нагрузка приложения</strong><span>${m.label} · ${m.score}%</span></div><i style="--load:${m.score}%"></i></div>
+    <div class="system-load-stats"><span>Данные <b>${formatStorageSize(m.bytes)}</b></span><span>Записи <b>${m.checks}</b></span><span>Фото <b>${m.photoCount}</b></span><span>Заявки <b>${m.requests}</b></span><span>Сотрудники <b>${m.users}</b></span></div>
+    <p>${m.level === "red" ? "Рекомендуется сформировать архивный отчёт и сохранить его." : "Система работает нормально. Отчёт можно подготовить в любое время."}</p>
+    <div class="system-load-actions"><button type="button" data-print-system-report>Распечатать отчёт</button><button type="button" class="secondary" data-broadcast-print>${broadcast ? "Обновить уведомление всем" : "Уведомить всех о печати"}</button>${broadcast ? '<button type="button" class="secondary" data-close-system-broadcast>Снять уведомление</button>' : ""}</div>
+  </section>`;
+}
+
+function renderSystemBroadcastNotice() {
+  document.querySelector("#systemBroadcastNotice")?.remove();
+  if (!profile || isEditorSession()) return;
+  const item = latestSystemBroadcast();
+  if (!item || localStorage.getItem(`ppr-broadcast-read-${item.id}`) === "1") return;
+  const notice = document.createElement("aside");
+  notice.id = "systemBroadcastNotice";
+  notice.className = "system-broadcast-notice";
+  notice.innerHTML = `<div><strong>Администратор просит сохранить информацию</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span></div><div><button type="button" data-print-broadcast-report>Распечатать отчёт</button><button type="button" class="secondary" data-read-system-broadcast>Ознакомлен</button></div>`;
+  document.body.append(notice);
+  notice.querySelector("[data-print-broadcast-report]")?.addEventListener("click", printSystemArchiveReport);
+  notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", () => { localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1"); notice.remove(); });
+}
+
 function renderDirectorUsers() {
   const users = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
   const canResetPasswords = ["director", "editor"].includes(profile?.role);
@@ -13521,13 +13908,17 @@ function renderDirectorUsers() {
     const digits = cleanPhone(phone);
     return digits ? `https://wa.me/${digits}` : "";
   };
-  const roleOptions = selected => `<option value="">Выберите должность</option>${Object.entries(ROLE_ACCESS)
-    .map(([role, access]) => `<option value="${role}" ${selected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
-    .join("")}`;
+  const roleOptions = selected => {
+    const normalizedSelected = canonicalWorkerRole(selected);
+    return `<option value="">Выберите должность</option>${visibleRoleEntries()
+      .map(([role, access]) => `<option value="${role}" ${normalizedSelected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
+      .join("")}`;
+  };
   const areaOptions = selected => `<option value="">Без участка</option>${AREAS
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `
+    ${renderSystemLoadAdmin()}
     <div class="director-users">
       <div class="director-users-head">
         <strong>Зарегистрированные сотрудники</strong>
@@ -13543,13 +13934,14 @@ function renderDirectorUsers() {
           <span>${escapeHtml(user.name || "")}</span>
           <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
-          ${user.approved === false || user.pendingApproval ? `
+          ${isEditorSession() ? `
             <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(draft.role ?? user.role ?? "")}</select></label>
             <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
           <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
           ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить</button>` : ""}
+          ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность</button>` : ""}
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
@@ -14256,9 +14648,9 @@ function requestCard(req) {
       ${req.stockOut && !req.stockOutAcknowledged ? `<div class="request-returned request-rejected-source"><strong>Запас закончился</strong><span class="manual-text">${escapeHtml(req.stockOutReason || "Склад не может выдать запрошенную позицию.")}</span><small>Запрошено: ${Number(req.stockOutRequestedQty || req.qtyIssued || req.qtyReceived || 0)} шт. · Доступно: ${Number(req.stockOutAvailableQty || 0)} шт.${req.stockOutRecipientMissing ? " · Автор не найден, уведомление показано замещающему по роли." : ""}</small></div>` : ""}
       ${req.returnedTo ? `<div class="request-returned"><strong>Возвращено: ${requestRoleLabel(req.returnedTo)}</strong><span class="manual-text">${escapeHtml(req.returnReason || "")}</span></div>` : ""}
       ${req.rejected ? `<div class="request-returned request-rejected-source"><strong>Заявка возвращена автору на исправление</strong><span class="manual-text">${escapeHtml(req.rejectionReason || "")}</span>${req.rejectedByName ? `<small>Отклонил: <span class="manual-text">${escapeHtml(req.rejectedByName)}</span> (${escapeHtml(requestRoleLabel(req.rejectedByRole))})</small>` : ""}</div>` : ""}
-      ${req.comment ? `<p class="manual-text">${escapeHtml(req.comment)}</p>` : ""}
+      ${req.comment ? `<p class="manual-text">${userTextWithRussianHtml(req.comment)}</p>` : ""}
       ${req.commentPhoto ? `<img class="request-photo" src="${req.commentPhoto}" alt="Фото замечания">` : ""}
-      <p class="request-text manual-text">${escapeHtml(req.text)}</p>
+      <p class="request-text manual-text">${userTextWithRussianHtml(req.text)}</p>
       ${requestItemsHtml(req, actionRole === "supply" && canActAsRole(actionRole) && requestWaitingForSupplyPrepare(req) && !requestFinanciallyLocked(req) ? "supply" : actionRole === "finance" && canActAsRole(actionRole) && req.supplyPrepared && !req.financeApproved && !req.done && !req.stock ? "finance" : ["shop", "engineer"].includes(actionRole) && canActAsRole(actionRole) && !requestFinanciallyLocked(req) && (requestWaitingForShopInitial(req) || requestWaitingForEngineerInitial(req)) ? "quantity" : "")}
       ${req.requestPhoto ? `<img class="request-photo" src="${req.requestPhoto}" alt="Фото заявки">` : ""}
       ${(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []).map((photo, index) => `<img class="request-photo" src="${photo}" alt="Дополнительное фото заявки ${index + 1}">`).join("")}

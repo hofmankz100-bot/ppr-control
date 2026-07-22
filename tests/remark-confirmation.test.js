@@ -349,7 +349,7 @@ test("the common warning hall excludes pending confirmations", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /function commonHallRemarkEntries[\s\S]*?!entry\.resolutionPendingConfirmation/);
   assert.match(source, /return commonHallRemarkEntries\(rec\?\.to \|\| \{\}\)\.map/);
-  assert.match(source, /if \(item\?\.resolutionPendingConfirmation\) return canCurrentUserConfirmRemark\(item\)/);
+  assert.match(source, /if \(item\?\.resolutionPendingConfirmation\) return canCurrentUserConfirmRemark\(item, eq\)/);
 });
 
 test("workers accumulate one server-side engineer draft that is editable and locks after formation", async () => {
@@ -496,7 +496,7 @@ test("repeat QR scans stay in an overlay on the main screen", () => {
   assert.match(source, /data-qr-action-resolve/);
   assert.match(source, /Если обнаружена новая проблема, запишите её ниже/);
   assert.match(source, /if \(!openRemark \|\| action === "create"\)/);
-  assert.match(source, /appendCommentEntry\(item, comment, photo\)/);
+  assert.match(source, /appendCommentEntry\(item, (?:comment|text), photo, \{ area: eq\?\.area \|\| "" \}\)/);
   assert.match(source, /finish\("comment-saved"\)/);
   assert.match(source, /Вы остались на главном экране/);
   assert.doesNotMatch(source, /Узел уже обойден — открыт комментарий узла/);
@@ -515,14 +515,16 @@ test("engineers receive visible counters and push notifications for incoming req
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  assert.match(appSource, /Новые заявки инженеру: \$\{count\}/);
+  assert.match(appSource, /function updateTmcRequestButtonLabels\(\)/);
+  assert.match(appSource, /classList\.toggle\("request-alert", engineerCount > 0\)/);
+  assert.match(appSource, /mobileRequestCount\.textContent = String\(engineerCount\)/);
   assert.match(appSource, /engineer-request\|\$\{req\.id\}/);
   assert.match(appSource, /requestedView === "requestCreate"/);
   assert.match(appSource, /function syncPushSubscriptionProfile\(\)/);
-  assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role\]/);
+  assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role, actor\.area, actor\.language \|\| currentLanguage\(\)\]/);
   assert.match(htmlSource, /data-mobile-request-count/);
   assert.match(serverSource, /sendEngineerRequestPushNotifications/);
-  assert.match(serverSource, /entry\.profile\?\.role === "engineer"/);
+  assert.match(serverSource, /permissionBaseRoleServer\(entry\.profile\?\.role\) === "engineer"/);
   assert.match(serverSource, /ALKZ — новая заявка инженеру/);
 });
 

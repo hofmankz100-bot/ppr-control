@@ -88,7 +88,7 @@ function isPublicStaticPath(relativePath = "") {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
 }
 
 function normalizeDb(db) {
@@ -106,6 +106,7 @@ function normalizeDb(db) {
   db.pprSheets ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
+  db.systemBroadcasts ||= [];
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
@@ -786,6 +787,7 @@ function publicState(db = readDb()) {
     pprSheets: db.pprSheets,
     journalDueSince: db.journalDueSince,
     auditHistory: db.auditHistory,
+    systemBroadcasts: db.systemBroadcasts,
     operationalResetAt: db.operationalResetAt || "",
     walkShiftCleanupVersion: db.walkShiftCleanupVersion || ""
   };
@@ -801,6 +803,40 @@ function openRemarkKeysServer(db = readDb()) {
   return keys;
 }
 
+function permissionBaseRoleServer(role) {
+  return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", technicalDirector: "director" })[role] || role;
+}
+
+function remarkEntryByKeyServer(db, key) {
+  const separator = String(key || "").lastIndexOf("|");
+  if (separator < 0) return null;
+  const recordKey = String(key).slice(0, separator);
+  const remarkId = String(key).slice(separator + 1);
+  const entry = ensureRemarkEntriesServer(db.checks?.[recordKey]?.to).find(item => String(item.id) === remarkId);
+  return entry ? { recordKey, remarkId, entry } : null;
+}
+
+function subscriptionMatchesRemarkServer(subscriptionEntry, entry) {
+  const profile = subscriptionEntry?.profile || {};
+  const actor = sanitizeResolutionParticipant(profile);
+  const participants = resolutionParticipantsServer(entry);
+  if (participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) return true;
+  const area = String(entry?.area || entry?.confirmationArea || "").trim();
+  const role = permissionBaseRoleServer(String(profile.role || ""));
+  if (["shop", "operator"].includes(role)) return Boolean(area && String(profile.area || "").trim() === area);
+  return role === permissionBaseRoleServer(String(entry?.role || ""));
+}
+
+async function localizedPushPayloadServer(payload, subscriptionEntry) {
+  const language = ["ru", "kk", "uz"].includes(String(subscriptionEntry?.profile?.language || "")) ? String(subscriptionEntry.profile.language) : "ru";
+  if (language === "ru") return JSON.stringify(payload);
+  const [title, body] = await Promise.all([
+    translateExternal(String(payload.title || ""), language),
+    translateExternal(String(payload.body || ""), language)
+  ]);
+  return JSON.stringify({ ...payload, title, body });
+}
+
 function ensurePushConfig(db) {
   db.pushNotifications ||= { subscriptions: [], vapid: null };
   db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
@@ -811,11 +847,12 @@ function ensurePushConfig(db) {
   return false;
 }
 
-async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general") {
+async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
   if (!added) return;
   const db = readDb();
   const configChanged = ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
+  const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(item, remark.entry || remark)));
   if (!subscriptions.length) {
     if (configChanged) writeDb(db, { action: "push_config_created" });
     return;
@@ -825,7 +862,7 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
     db.pushNotifications.vapid.publicKey,
     db.pushNotifications.vapid.privateKey
   );
-  const payload = JSON.stringify({
+  const payload = {
     type: "remark",
     title: "ALKZ — новое замечание",
     body: added === 1 ? `Открытых замечаний: ${total}` : `Новых замечаний: ${added}. Открытых: ${total}`,
@@ -833,12 +870,11 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
     url,
     entityId,
     tag: `remark:${entityId}`
-  });
+  };
   const expired = new Set();
-  await Promise.allSettled(subscriptions.map(async item => {
-    if (origin && item.clientId === origin) return;
+  await Promise.allSettled(targets.map(async item => {
     try {
-      await webPush.sendNotification(item.subscription, payload, { TTL: 3600, urgency: "high" });
+      await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
       else console.error(`Push notification failed: ${error?.message || error}`);
@@ -864,7 +900,7 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
   const added = Math.max(1, Number(submittedCount) || 1);
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && entry.profile?.role === "engineer");
+  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && permissionBaseRoleServer(entry.profile?.role) === "engineer");
   if (!targets.length) return;
   webPush.setVapidDetails(
     "https://ppr-control-ramazan.onrender.com",
@@ -872,7 +908,7 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
     db.pushNotifications.vapid.privateKey
   );
   const badgeCount = engineerIncomingRequestItemCountServer(db);
-  const payload = JSON.stringify({
+  const payload = {
     type: "engineer-request",
     title: "ALKZ — новая заявка инженеру",
     body: added === 1 ? "Поступила 1 новая позиция" : `Поступило новых позиций: ${added}`,
@@ -880,11 +916,11 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
     url: "/?view=requestCreate",
     entityId: request.id || "engineer-incoming",
     tag: "engineer-request-incoming"
-  });
+  };
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
-      await webPush.sendNotification(entry.subscription, payload, { TTL: 86400, urgency: "high" });
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
       else console.error(`Engineer request push failed: ${error?.message || error}`);
@@ -1093,7 +1129,9 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
         if (subscriptionActor.key === String(entry.resolutionSubmittedByKey)) count += 1;
         return;
       }
-      if (!participants.length || participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) count += 1;
+      if (participants.length
+        ? participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))
+        : subscriptionMatchesRemarkServer(subscriptionEntry, entry)) count += 1;
     });
   }
   return count;
@@ -1117,9 +1155,9 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     const badgeCount = openRemarkCountForSubscription(db, entry);
-    const payload = JSON.stringify({ type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` });
+    const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
     try {
-      await webPush.sendNotification(entry.subscription, payload, { TTL: 3600, urgency: "high" });
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
       else console.error(`Resolution push notification failed: ${error?.message || error}`);
@@ -1147,11 +1185,11 @@ async function sendDowntimePushNotifications(db, title, body, origin = "", parti
   );
   const badgeCount = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).length;
   const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
-  const payload = JSON.stringify({ type: "downtime", title, body, badgeCount, url: targetUrl, entityId: downtimeId || "general", tag: `downtime:${downtimeId || "general"}` });
+  const payload = { type: "downtime", title, body, badgeCount, url: targetUrl, entityId: downtimeId || "general", tag: `downtime:${downtimeId || "general"}` };
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
-      await webPush.sendNotification(entry.subscription, payload, { TTL: 3600, urgency: "high" });
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
       else console.error(`Downtime push notification failed: ${error?.message || error}`);
@@ -1874,7 +1912,7 @@ function changedStatePatch(before = {}, after = {}) {
   }
   const equipment = changedRecordPatch(before?.catalog?.equipment, after?.catalog?.equipment);
   if (Object.keys(equipment).length) patch.catalog = { equipment };
-  for (const key of ["directorMessages", "serviceCosts", "downtimes", "auditHistory"]) {
+  for (const key of ["directorMessages", "serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
     if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) patch[key] = after?.[key] || [];
   }
   for (const key of ["operationalResetAt", "walkShiftCleanupVersion"]) {
@@ -1909,7 +1947,8 @@ async function handleApi(req, res, pathname, url) {
         phone: String(body.profile?.phone || ""),
         name: String(body.profile?.name || ""),
         role: String(body.profile?.role || ""),
-        area: String(body.profile?.area || "")
+        area: String(body.profile?.area || ""),
+        language: ["ru", "kk", "uz"].includes(String(body.profile?.language || "")) ? String(body.profile.language) : "ru"
       },
       updatedAt: new Date().toISOString()
     };
@@ -1999,7 +2038,7 @@ async function handleApi(req, res, pathname, url) {
     const employeeId = String(body.employeeId || "").trim();
     const phone = String(body.phone || "").trim();
     const password = String(body.password || "");
-    const language = ["ru", "kk"].includes(String(body.language || "")) ? String(body.language) : "ru";
+    const language = ["ru", "kk", "uz"].includes(String(body.language || "")) ? String(body.language) : "ru";
     if (name.length < 3 || employeeId.length < 2 || phone.length < 5 || password.length < 6) {
       sendJson(res, 400, { ok: false, error: "Заполните ФИО, табельный номер, телефон и пароль не короче 6 символов." });
       return true;
@@ -2252,11 +2291,12 @@ async function handleApi(req, res, pathname, url) {
         db.pprSheets = {};
         db.journalDueSince = {};
         db.auditHistory = [];
+        db.systemBroadcasts = [];
         db.operationalResetAt = new Date().toISOString();
       }
       const operationalFields = [
         "checks", "requests", "directorMessages", "serviceCosts", "downtimes",
-        "compressorJournal", "gasJournal", "pprSheets", "journalDueSince", "auditHistory",
+        "compressorJournal", "gasJournal", "pprSheets", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
       const hasOperationalPayload = operationalFields.some(field => Object.prototype.hasOwnProperty.call(body, field));
@@ -2290,6 +2330,7 @@ async function handleApi(req, res, pathname, url) {
         db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
+        db.systemBroadcasts = mergeArrayById(db.systemBroadcasts, body.systemBroadcasts);
       }
       db.operationalResetAt = db.operationalResetAt || String(body.operationalResetAt || "");
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
@@ -2298,12 +2339,17 @@ async function handleApi(req, res, pathname, url) {
       const afterState = publicState(db);
       const afterRemarkKeys = openRemarkKeysServer(db);
       let newRemarkCount = 0;
+      const newRemarks = [];
       afterRemarkKeys.forEach(key => {
-        if (!beforeRemarkKeys.has(key)) newRemarkCount += 1;
+        if (!beforeRemarkKeys.has(key)) {
+          newRemarkCount += 1;
+          const found = remarkEntryByKeyServer(db, key);
+          if (found) newRemarks.push(found);
+        }
       });
       const changed = beforeState !== JSON.stringify(afterState);
       if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
-      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size };
+      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
     });
     if (result.error) {
       const status = result.error === "admin_required" ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;
@@ -2319,7 +2365,7 @@ async function handleApi(req, res, pathname, url) {
       ? broadcastState(result.origin, result.actionId, result.cleared ? result.fullState : result.patch, !result.cleared)
       : realtimeStateVersion();
     if (result.newRemarkCount > 0) {
-      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin).catch(error => {
+      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin, "/?view=remarks", "general", result.newRemarks).catch(error => {
         console.error(`Push delivery failed: ${error?.message || error}`);
       });
     }
@@ -3089,14 +3135,17 @@ async function handleApi(req, res, pathname, url) {
       const afterRemarkKeys = openRemarkKeysServer(db);
       let newRemarkCount = 0;
       const newRemarkKeys = [];
+      const newRemarks = [];
       afterRemarkKeys.forEach(key => {
         if (!beforeRemarkKeys.has(key)) {
           newRemarkCount += 1;
           newRemarkKeys.push(key);
+          const found = remarkEntryByKeyServer(db, key);
+          if (found) newRemarks.push(found);
         }
       });
       const newDowntimes = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt && !beforeActiveDowntimeIds.has(item.id));
-      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarkKeys, newDowntimes };
+      return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarkKeys, newRemarks, newDowntimes };
     });
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.patch, true)
@@ -3109,7 +3158,7 @@ async function handleApi(req, res, pathname, url) {
       const targetUrl = targetRecord && targetRemark
         ? `/?record=${encodeURIComponent(targetRecord)}&remark=${encodeURIComponent(targetRemark)}`
         : "/?view=remarks";
-      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin, targetUrl, targetRemark || "general").catch(error => {
+      sendRemarkPushNotifications(result.newRemarkCount, result.openRemarkCount, result.origin, targetUrl, targetRemark || "general", result.newRemarks).catch(error => {
         console.error(`Push delivery failed: ${error?.message || error}`);
       });
     }
