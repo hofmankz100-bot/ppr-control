@@ -680,3 +680,15 @@ test("admin operational clear preserves inventory and warehouse records", async 
   assert.equal(state.requests["ordinary-request"], undefined);
   assert.deepEqual(state.checks, {});
 });
+
+test("collaborative resolution UI batches checked participants and shows every resolver", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(appSource, /type="checkbox" data-remark-user/);
+  assert.match(appSource, /participants: participantsToAdd/);
+  assert.match(appSource, /Устранили: \$\{escapeHtml\(completedBy\)\}/);
+  assert.match(appSource, /resolutionCompletedParticipants: completedResolutionParticipants\(entry\)/);
+  assert.match(appSource, /Устранили: \$\{resolver\}/);
+  assert.match(serverSource, /Array\.isArray\(body\.participants\)/);
+  assert.match(serverSource, /notifyParticipants = addedParticipants/);
+});

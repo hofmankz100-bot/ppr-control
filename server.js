@@ -2996,17 +2996,22 @@ async function handleApi(req, res, pathname, url) {
 
       if (action === "add") {
         if (!canManage) return { error: "remark_participant_manage_forbidden" };
-        const requestedKey = resolutionUserKeyServer(body.participant || {});
-        const registeredUser = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedKey);
-        if (!registeredUser || registeredUser.approved === false || registeredUser.pendingApproval === true || !allowedRoles.has(registeredUser.role)) {
+        const requestedParticipants = Array.isArray(body.participants) && body.participants.length
+          ? body.participants
+          : [body.participant || {}];
+        if (requestedParticipants.length > 100) return { error: "remark_participant_invalid" };
+        const registeredParticipants = requestedParticipants.map(requested => {
+          const requestedKey = resolutionUserKeyServer(requested);
+          return (db.users || []).find(user => resolutionUserKeyServer(user) === requestedKey);
+        });
+        if (registeredParticipants.some(user => !user || user.approved === false || user.pendingApproval === true || !allowedRoles.has(user.role))) {
           return { error: "remark_participant_invalid" };
         }
-        const participant = sanitizeResolutionParticipant(registeredUser);
-        if (!participants.some(entry => entry.key === participant.key)) {
+        const addedParticipants = [];
+        registeredParticipants.map(sanitizeResolutionParticipant).forEach(participant => {
+          if (participants.some(entry => entry.key === participant.key)) return;
           participants.push(participant);
-          notifyParticipants = [participant];
-          pushTitle = "Вас добавили к устранению";
-          pushBody = "Откройте ALKZ — работа ведётся в общей карточке замечания";
+          addedParticipants.push(participant);
           remark.resolutionEvents.push({
             id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
             action: "added",
@@ -3017,7 +3022,10 @@ async function handleApi(req, res, pathname, url) {
             targetName: participant.name,
             at: now
           });
-        }
+        });
+        notifyParticipants = addedParticipants;
+        pushTitle = addedParticipants.length > 1 ? "Вас добавили к совместному устранению" : "Вас добавили к устранению";
+        pushBody = "Откройте ALKZ — работа ведётся в общей карточке замечания";
         remark.resolutionStartedAt ||= now;
       }
 
