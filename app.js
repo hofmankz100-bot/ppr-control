@@ -6860,7 +6860,48 @@ function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdo
   return opened;
 }
 
-async function publishDowntimeClose(downtimeId, comment) {
+function selectDowntimeCloser() {
+  const currentActor = resolutionActor();
+  if (profile?.role !== "editor") return currentActor;
+  const workers = loadUsers()
+    .filter(user => user.approved !== false && user.pendingApproval !== true)
+    .filter(user => ["mechanic", "electrician"].includes(user.role))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+  if (!workers.length) {
+    window.alert("Нет зарегистрированных электриков или механиков. Пуск не закрыт.");
+    return null;
+  }
+  const answer = window.prompt("Кто фактически устранил простой?\nВведите имя или табельный номер сотрудника.");
+  if (answer === null) return null;
+  const query = String(answer).trim().toLocaleLowerCase("ru-RU");
+  const exact = workers.filter(user =>
+    String(user.name || "").trim().toLocaleLowerCase("ru-RU") === query
+    || String(user.employeeId || "").trim().toLocaleLowerCase("ru-RU") === query
+    || String(user.phone || "").trim().toLocaleLowerCase("ru-RU") === query
+  );
+  const partial = exact.length ? exact : workers.filter(user =>
+    String(user.name || "").trim().toLocaleLowerCase("ru-RU").includes(query)
+  );
+  if (!query || partial.length !== 1) {
+    const hint = partial.length > 1
+      ? `Найдено несколько сотрудников: ${partial.map(user => user.name).join(", ")}. Введите полное имя или табельный номер.`
+      : "Сотрудник не найден. Проверьте имя или табельный номер.";
+    window.alert(`${hint}\nПуск не закрыт.`);
+    return null;
+  }
+  const worker = partial[0];
+  return {
+    key: resolutionUserKey(worker),
+    id: worker.id || "",
+    employeeId: worker.employeeId || "",
+    phone: worker.phone || "",
+    name: worker.name || "",
+    role: worker.role || "",
+    area: worker.area || ""
+  };
+}
+
+async function publishDowntimeClose(downtimeId, comment, actor = resolutionActor()) {
   const result = await apiJson("/api/downtime-close", {
     method: "POST",
     timeout: 20000,
@@ -6869,7 +6910,7 @@ async function publishDowntimeClose(downtimeId, comment) {
       clientId: CLIENT_ID,
       downtimeId,
       comment: String(comment || "").trim(),
-      actor: resolutionActor()
+      actor
     })
   });
   if (result?.state) mergeRealtimePatch(result.state);
@@ -10202,17 +10243,25 @@ function renderNodeWalkthrough(eq) {
       const comment = window.prompt(promptText);
       if (!String(comment || "").trim()) return;
       if (!window.confirm("Оборудование фактически запущено? Закрыть простой?")) return;
+      const closer = selectDowntimeCloser();
+      if (!closer) return;
       setButtonBusy(button, true, "Сохраняем пуск...");
       try {
-        const result = await publishDowntimeClose(liveStop.id, comment);
+        const result = await publishDowntimeClose(liveStop.id, comment, closer);
         const closed = result?.downtime;
         if (!closed?.endedAt) throw new Error("downtime_close_not_confirmed");
-        showAppToast(`Простой закрыт. Длительность: ${durationText(downtimeDurationMs(closed))}`);
+        showAppToast(`Простой закрыт. Исполнитель: ${closed.closedByName}. Длительность: ${durationText(downtimeDurationMs(closed))}`);
         renderNodeWalkthrough(equipmentById(eq.id));
       } catch (error) {
         console.error("Downtime close failed", error);
-        window.alert("Пуск не подтверждён сервером. Простой остался активным.");
         await loadRemoteState();
+        const confirmed = downtimes().find(item => item.id === liveStop.id && item.endedAt);
+        if (confirmed) {
+          showAppToast(`Пуск сохранён сервером. Исполнитель: ${confirmed.closedByName}.`);
+          renderNodeWalkthrough(equipmentById(eq.id));
+          return;
+        }
+        window.alert("Пуск не подтверждён сервером. Простой остался активным — попробуйте ещё раз.");
       } finally {
         if (button.isConnected) setButtonBusy(button, false);
       }

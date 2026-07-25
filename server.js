@@ -3402,7 +3402,34 @@ function serveStatic(req, res, pathname) {
       res.end("Not found");
       return;
     }
-    res.writeHead(200, { "Content-Type": contentTypes[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" });
+    const extension = path.extname(file).toLowerCase();
+    const contentType = contentTypes[extension] || "application/octet-stream";
+    const versioned = Boolean(new URL(req.url || "/", "http://localhost").searchParams.get("v"));
+    const cacheControl = pathname === "/" || extension === ".html"
+      ? "no-cache"
+      : versioned
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=3600";
+    const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(req.headers["accept-encoding"] || ""));
+    const compressible = [".html", ".js", ".css", ".json", ".svg", ".webmanifest"].includes(extension);
+    if (acceptsGzip && compressible && data.length >= 1024) {
+      const compressed = zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED });
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": cacheControl,
+        "Content-Encoding": "gzip",
+        "Content-Length": compressed.length,
+        "Vary": "Accept-Encoding"
+      });
+      res.end(compressed);
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": cacheControl,
+      "Content-Length": data.length,
+      "Vary": "Accept-Encoding"
+    });
     res.end(data);
   });
 }
