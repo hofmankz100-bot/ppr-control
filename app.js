@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v245-simple-remark-team";
+const APP_VERSION = "v246-admin-close-legacy-remark";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -8891,6 +8891,8 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
+        recordKey,
+        remarkId: entry.id || stableRemarkId(entry),
         kind: "Замечание",
         equipmentId,
         nodeIndex,
@@ -8905,6 +8907,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         resolvedAt: entry.resolvedAt || "",
         resolvedByName: entry.resolvedByName || "",
         resolvedByRole: entry.resolvedByRole || "",
+        resolutionParticipants: resolutionParticipants(entry),
         resolutionCompletedParticipants: completedResolutionParticipants(entry),
         resolvedComment: entry.resolvedComment || "",
         confirmedAt: entry.confirmedAt || "",
@@ -14012,7 +14015,14 @@ function renderAggregateJournal() {
                 <td>${escapeHtml(partNames || "")}</td>
                 <td>${escapeHtml(partQty || "")}</td>
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
-                <td>${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}</td>
+                <td>
+                  ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
+                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved && item.resolutionParticipants.length === 1 ? `
+                    <button type="button" class="mini-action no-print" data-admin-close-legacy-remark="${escapeHtml(item.recordKey)}" data-remark-id="${escapeHtml(item.remarkId)}">
+                      Закрыть за ${escapeHtml(item.resolutionParticipants[0].name)}
+                    </button>
+                  ` : ""}
+                </td>
               </tr>
             `;
           }).join("") : `
@@ -14029,6 +14039,15 @@ function renderAggregateJournal() {
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
   ui.aggregateJournalList.querySelectorAll("[data-print-aggregate-sheet]").forEach(button => {
     button.addEventListener("click", () => printAggregateJournal(journalName, Number(button.dataset.printAggregateSheet)));
+  });
+  ui.aggregateJournalList.querySelectorAll("[data-admin-close-legacy-remark]").forEach(button => {
+    button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      const recordKey = event.currentTarget.dataset.adminCloseLegacyRemark || "";
+      const remarkId = event.currentTarget.dataset.remarkId || "";
+      const [equipmentId, nodeIndex, date] = recordKey.split(":");
+      await publishRemarkCollaborationAction(Number(equipmentId), Number(nodeIndex), date, "admin-close", { remarkId });
+      renderAggregateJournal();
+    }, "Закрываем..."));
   });
 }
 

@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v245-simple-remark-team";
+const SERVER_VERSION = "v246-admin-close-legacy-remark";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -3388,7 +3388,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -3439,7 +3439,7 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         };
       }
-      if (remark.resolutionPendingConfirmation && !["confirm", "return"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
@@ -3605,6 +3605,46 @@ async function handleApi(req, res, pathname, url) {
         notifyParticipants = confirmationRule.users;
         pushTitle = "Устранение ждёт подтверждения";
         pushBody = `${actor.name}: ${text.slice(0, 120)}`;
+      }
+
+      if (action === "admin-close") {
+        if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
+        if (participants.length !== 1 || !isResolutionExecutorRoleServer(participants[0].role)) {
+          return { error: "remark_participant_invalid" };
+        }
+        const performer = participants[0];
+        const createdMs = Date.parse(remark.at || "");
+        const completedAt = now;
+        remark.resolved = true;
+        remark.resolvedAt = completedAt;
+        remark.resolvedDurationMs = Number.isFinite(createdMs) ? Math.max(0, Date.parse(completedAt) - createdMs) : 0;
+        remark.resolvedByKey = performer.key;
+        remark.resolvedByName = performer.name;
+        remark.resolvedByRole = performer.role;
+        remark.resolvedComment = remark.resolutionSubmittedComment || "Устранено; подтверждено администратором";
+        remark.resolutionPendingConfirmation = false;
+        remark.resolutionSubmittedAt ||= completedAt;
+        remark.resolutionSubmittedByKey ||= performer.key;
+        remark.resolutionSubmittedByName ||= performer.name;
+        remark.resolutionSubmittedByRole ||= performer.role;
+        remark.resolutionCompletedParticipants = [performer];
+        remark.confirmedAt = now;
+        remark.confirmedByKey = actor.key;
+        remark.confirmedByName = actor.name;
+        remark.confirmedByRole = actor.role;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "confirmed",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          targetKey: performer.key,
+          targetName: performer.name,
+          at: now
+        });
+        notifyParticipants = [performer];
+        pushTitle = "Устранение подтверждено";
+        pushBody = `${actor.name} подтвердил устранение`;
       }
 
       if (action === "confirm") {

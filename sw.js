@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v245-simple-remark-team";
+const CACHE_NAME = "ppr-v246-admin-close-legacy-remark";
 const ASSETS = [
   "./",
   "./index.html",
