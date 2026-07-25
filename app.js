@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v259-qr-action-choice";
+const APP_VERSION = "v260-mobile-gas-journal-cards";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -9725,18 +9725,18 @@ function renderGasJournal() {
             ${datesA.map(date => {
               const row = gasJournalRecord("A", date);
               return `<tr class="gas-day-row ${gasJournalDateHasFilledRow("A", date) ? "" : "print-empty-day"}">
-                <td>${dateHuman(date)}</td>
-                <td>${escapeHtml(row.time || "")}</td>
-                <td>${gasInputHtml("A", date, "inletMpa", row.inletMpa)}</td>
-                <td>${gasInputHtml("A", date, "outletMpa", row.outletMpa)}</td>
-                <td>${gasInputHtml("A", date, "tempInC", row.tempInC ?? row.tempC)}</td>
-                <td>${gasInputHtml("A", date, "tempOutC", row.tempOutC)}</td>
-                <td>${gasInputHtml("A", date, "pressureDeltaMpa", row.pressureDeltaMpa ?? row.filterDelta)}</td>
-                <td>${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["Исправно", "Неисправно"])}</td>
-                <td>${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
-                <td>${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
-                <td>${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
-                <td>${escapeHtml(row.checkedBy || "")}</td>
+                <td data-mobile-label="Дата">${dateHuman(date)}</td>
+                <td data-mobile-label="Время">${escapeHtml(row.time || "")}</td>
+                <td data-mobile-label="Давление входное, МПа">${gasInputHtml("A", date, "inletMpa", row.inletMpa)}</td>
+                <td data-mobile-label="Давление выходное, МПа">${gasInputHtml("A", date, "outletMpa", row.outletMpa)}</td>
+                <td data-mobile-label="Температура входная, °C">${gasInputHtml("A", date, "tempInC", row.tempInC ?? row.tempC)}</td>
+                <td data-mobile-label="Температура выходная, °C">${gasInputHtml("A", date, "tempOutC", row.tempOutC)}</td>
+                <td data-mobile-label="Перепад давления, МПа">${gasInputHtml("A", date, "pressureDeltaMpa", row.pressureDeltaMpa ?? row.filterDelta)}</td>
+                <td data-mobile-label="Оборудование">${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["Исправно", "Неисправно"])}</td>
+                <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
+                <td data-mobile-label="Техобслуживание">${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
+                <td data-mobile-label="Замечания">${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
+                <td data-mobile-label="Подпись">${escapeHtml(row.checkedBy || "")}</td>
               </tr>`;
             }).join("")}
           </tbody>
@@ -9756,15 +9756,15 @@ function renderGasJournal() {
               const row = gasJournalRecord("B", date);
               const route = row.route || GAS_ROUTE_LIST.join("\n");
               return `<tr class="gas-day-row gas-route-day-row ${gasJournalDateHasFilledRow("B", date) ? "" : "print-empty-day"}">
-                <td>${dateHuman(date)}</td>
-                <td>${escapeHtml(row.time || "")}</td>
-                <td class="gas-route-cell">${escapeHtml(route).replace(/\n/g, "<br>")}</td>
-                <td>${gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"])}</td>
-                <td>${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Нет", "Есть"])}</td>
-                <td>${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"])}</td>
-                <td>${gasInputHtml("B", date, "remarks", row.remarks)}</td>
-                <td>${gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"])}</td>
-                <td>${escapeHtml(row.checkedBy || "")}</td>
+                <td data-mobile-label="Дата">${dateHuman(date)}</td>
+                <td data-mobile-label="Время">${escapeHtml(row.time || "")}</td>
+                <td class="gas-route-cell" data-mobile-label="Участок">${escapeHtml(route).replace(/\n/g, "<br>")}</td>
+                <td data-mobile-label="Трубопровод и колодцы">${gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"])}</td>
+                <td data-mobile-label="Запах газа">${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Нет", "Есть"])}</td>
+                <td data-mobile-label="Охранная зона">${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"])}</td>
+                <td data-mobile-label="Замечания">${gasInputHtml("B", date, "remarks", row.remarks)}</td>
+                <td data-mobile-label="Принятые меры">${gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"])}</td>
+                <td data-mobile-label="Подпись">${escapeHtml(row.checkedBy || "")}</td>
               </tr>`;
             }).join("")}
           </tbody>
