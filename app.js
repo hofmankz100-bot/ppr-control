@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v230-ppr-engineer-confirmation";
+const APP_VERSION = "v231-aggregate-print-pages";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -90,7 +90,7 @@ const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply"
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
 const PPR_RECOMMENDED_START_DATE = "2026-06-22";
 const ASSET_CACHE_VERSION_KEY = "ppr-asset-cache-version";
-const AGGREGATE_JOURNAL_ROWS_PER_SHEET = 18;
+const AGGREGATE_JOURNAL_ROWS_PER_SHEET = 10;
 const LANGUAGE_KEY = "ppr-user-language-v1";
 const TRANSLATION_CACHE_KEY = "ppr-translation-cache-v1";
 const TRANSLATION_SOURCE_LANG = "ru";
@@ -13980,6 +13980,9 @@ function renderAggregateJournal() {
         </div>
         <div class="aggregate-journal-table-wrap">
           <table class="aggregate-journal-table">
+        <colgroup>
+          ${[3, 12, 8, 14, 9, 8, 13, 8, 5, 7, 13].map(width => `<col style="width:${width}%">`).join("")}
+        </colgroup>
         <thead>
           <tr>
             <th rowspan="2">№ п/п</th>
@@ -14037,7 +14040,64 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
-  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printCurrentDocument(`ППР - Агрегатный журнал - ${selectedArea}`));
+  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(selectedArea));
+}
+
+function printAggregateJournal(area) {
+  const sheets = [...ui.aggregateJournalList.querySelectorAll(".aggregate-journal-sheet")];
+  if (!sheets.length) return;
+  const popup = window.open("", "_blank", "width=1400,height=900");
+  if (!popup) {
+    window.alert("Браузер заблокировал окно печати. Разрешите всплывающие окна для приложения и повторите.");
+    return;
+  }
+  const pages = sheets.map(sheet => `<section class="print-sheet">${sheet.innerHTML}</section>`).join("");
+  popup.document.write(`<!doctype html>
+    <html lang="ru">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Агрегатный журнал — ${escapeHtml(area)}</title>
+        <style>
+          @page { size: A4 landscape; margin: 7mm; }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: Arial, sans-serif; }
+          .print-sheet { width: 283mm; min-height: 196mm; break-after: page; page-break-after: always; }
+          .print-sheet:last-of-type { break-after: auto; page-break-after: auto; }
+          .aggregate-sheet-head { display: flex; justify-content: space-between; gap: 8mm; margin: 0 0 3mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; font-size: 10pt; }
+          .aggregate-journal-table-wrap { width: 100%; overflow: visible; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          thead { display: table-header-group; }
+          tbody { display: table-row-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          th, td { border: .35mm solid #000; padding: 1.1mm; vertical-align: top; font-size: 6.8pt; line-height: 1.16; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+          th { text-align: center; font-weight: 700; vertical-align: middle; }
+          th:nth-child(1), td:nth-child(1) { width: 3%; text-align: center; }
+          th:nth-child(2), td:nth-child(2) { width: 12%; }
+          th:nth-child(3), td:nth-child(3) { width: 8%; }
+          th:nth-child(4), td:nth-child(4) { width: 14%; }
+          th:nth-child(5), td:nth-child(5) { width: 9%; }
+          th:nth-child(6), td:nth-child(6) { width: 8%; }
+          th:nth-child(7), td:nth-child(7) { width: 13%; }
+          th:nth-child(8), td:nth-child(8) { width: 8%; }
+          th:nth-child(9), td:nth-child(9) { width: 5%; text-align: center; }
+          th:nth-child(10), td:nth-child(10) { width: 7%; }
+          th:nth-child(11), td:nth-child(11) { width: 13%; }
+          .actions { position: sticky; bottom: 0; display: flex; justify-content: center; padding: 12px; background: #eef3f6; }
+          button { border: 0; border-radius: 8px; background: #14324a; color: #fff; padding: 11px 22px; font-weight: 800; cursor: pointer; }
+          @media print {
+            .actions { display: none !important; }
+            .print-sheet { width: auto; min-height: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${pages}
+        <div class="actions"><button type="button" onclick="window.print()">Печатать журнал</button></div>
+        <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script>
+      </body>
+    </html>`);
+  popup.document.close();
 }
 
 function printDirectorMemo(msg) {

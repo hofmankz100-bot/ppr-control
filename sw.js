@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v230-ppr-engineer-confirmation";
+const CACHE_NAME = "ppr-v231-aggregate-print-pages";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=230-ppr-engineer-confirmation",
+  "./styles.css?v=231-aggregate-print-pages",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=230-ppr-engineer-confirmation",
+  "./app.js?v=231-aggregate-print-pages",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
