@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v235-filled-journal-print";
+const CACHE_NAME = "ppr-v236-request-auto-archive";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=235-filled-journal-print",
+  "./styles.css?v=236-request-auto-archive",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=235-filled-journal-print",
+  "./app.js?v=236-request-auto-archive",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

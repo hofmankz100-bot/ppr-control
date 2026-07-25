@@ -748,3 +748,14 @@ test("gas and compressor printing gathers filled days without date selectors", (
   assert.doesNotMatch(appSource, /data-compressor-saved-date/);
   assert.doesNotMatch(appSource, /data-print-compressor-sheet/);
 });
+
+test("request output archives only after mobile share or desktop print starts", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /async function archiveTmcRequestAfterOutput\(req, action\)/);
+  assert.match(appSource, /const outputStarted = await sendRequestByDevice\(req\)/);
+  assert.match(appSource, /if \(!outputStarted\) return false/);
+  assert.match(appSource, /req\.archivedAt \|\|= now/);
+  assert.match(appSource, /Отправлено в WhatsApp и сохранено в архив/);
+  assert.match(appSource, /Отправлено на печать и сохранено в архив/);
+  assert.match(appSource, /if \(error\?\.name === "AbortError"\) return false/);
+});

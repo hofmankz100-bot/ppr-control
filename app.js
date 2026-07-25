@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v235-filled-journal-print";
+const APP_VERSION = "v236-request-auto-archive";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -5679,34 +5679,51 @@ async function shareRequestPrintFile(req) {
     if (!file) throw new Error("print-file-not-created");
     if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
       await navigator.share({ title: req.requestNumber || "Заявка", text: "Файл заявки для печати", files: [file] });
-      return;
+      return true;
     }
   } catch (error) {
-    if (error?.name === "AbortError") return;
+    if (error?.name === "AbortError") return false;
   }
-  printRequestSheet(req);
+  return Boolean(printRequestSheet(req));
 }
 
-function sendRequestByDevice(req) {
-  if (mobileShareMode()) shareRequestPrintFile(req);
-  else printRequestSheet(req);
+async function sendRequestByDevice(req) {
+  if (mobileShareMode()) return shareRequestPrintFile(req);
+  return Boolean(printRequestSheet(req));
+}
+
+async function archiveTmcRequestAfterOutput(req, action) {
+  if (!req) return false;
+  const outputStarted = await sendRequestByDevice(req);
+  if (!outputStarted) return false;
+  const now = new Date().toISOString();
+  req.done = true;
+  req.stock = false;
+  req.status = "done";
+  req.whatsappOnly = mobileShareMode();
+  req.whatsappSent = mobileShareMode();
+  req.reportOnly = req.reportOnly || mobileShareMode();
+  req.updatedAt = now;
+  req.archivedAt ||= now;
+  requestAddHistory(req, action, profile?.name || "");
+  syncRequestToRecord(req);
+  saveState();
+  await publishStateNow().catch(error => {
+    scheduleRemoteRetry(error);
+  });
+  return true;
 }
 
 function bindTmcArchiveActions(root = document) {
   root.querySelectorAll("[data-save-print-request-archive]").forEach(button => {
-    button.addEventListener("click", event => {
+    button.addEventListener("click", async event => {
       const req = state.requests?.[event.currentTarget.dataset.savePrintRequestArchive || ""];
       if (!req) return;
-      req.done = true;
-      req.stock = false;
-      req.status = "done";
-      req.updatedAt = new Date().toISOString();
-      requestAddHistory(req, "Сохранено в архив и отправлено на печать", profile?.name || "");
-      syncRequestToRecord(req);
-      saveState();
-      publishStateNow().catch(scheduleRemoteRetry);
-      sendRequestByDevice(req);
-      renderTmcRequestArchivePanel();
+      const archived = await archiveTmcRequestAfterOutput(
+        req,
+        mobileShareMode() ? "Отправлено в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
+      );
+      if (archived) renderTmcRequestArchivePanel();
     });
   });
   root.querySelectorAll("[data-print-archived-request]").forEach(button => {
@@ -6154,13 +6171,13 @@ function buildMobileTmcRequestDraft() {
     sourcePhone: profile?.phone || "",
     requestedQty: requestItemsTotal(items) || 1,
     kind: "tmc",
-    status: "whatsapp",
+    status: "created",
     whatsappOnly: true,
-    whatsappSent: true,
+    whatsappSent: false,
     reportOnly: true,
-    done: true,
+    done: false,
     sourceKey: profileKey(),
-    history: [{ at: now, action: "Отправлено через WhatsApp", details: items.map(item => item.name).filter(Boolean).join("; "), status: "whatsapp", role: profile?.role || "", name: profile?.name || "" }],
+    history: [{ at: now, action: "Заявка создана", details: items.map(item => item.name).filter(Boolean).join("; "), status: "created", role: profile?.role || "", name: profile?.name || "" }],
     approvals: {}
   });
 }
@@ -14979,6 +14996,7 @@ function printRequestSheet(req, options = {}) {
     const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
     return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
   }
+  return true;
 }
 
 function renderAccountingWrittenOffList() {
@@ -15963,9 +15981,14 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
       state.requests[draft.id] = draft;
       saveState();
       await publishStateNow();
-      await shareRequestPrintFile(draft);
-      resetTmcRequestForm();
-      ui.tmcRequestStatus.textContent = "Заявка сохранена в отчётах ППР и передана для отправки в WhatsApp";
+      const archived = await archiveTmcRequestAfterOutput(draft, "Отправлено в WhatsApp и сохранено в архив");
+      if (archived) {
+        resetTmcRequestForm();
+        ui.tmcRequestStatus.textContent = "Заявка отправлена и автоматически сохранена в архиве";
+      } else {
+        ui.tmcRequestStatus.textContent = "Отправка отменена. Заявка сохранена в текущих — её можно отправить повторно";
+      }
+      renderTmcRequestArchivePanel();
       return;
     }
     const req = createStandaloneTmcRequest();
