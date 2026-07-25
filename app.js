@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v238-login-retry-window";
+const APP_VERSION = "v239-engineer-only-requests";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -86,7 +86,7 @@ const DEVICE_DB_NAME = "ppr-control-device";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
 const MANUAL_REQUEST_WORKFLOW = true;
-const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply"]);
+const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply", "warehouse"]);
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
 const PPR_RECOMMENDED_START_DATE = "2026-06-22";
 const ASSET_CACHE_VERSION_KEY = "ppr-asset-cache-version";
@@ -253,24 +253,23 @@ const WALK_SHIFT_LABELS = {
   night: "Ночная смена"
 };
 const ROLE_ACCESS = {
-  mechanic: { label: "Электромеханик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
-  electrician: { label: "Электромеханик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
-  welder: { label: "Сварщик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
-  turner: { label: "Токарь", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "all", checklist: true },
-  forkliftDriver: { label: "Карщик", requestRoles: ["warehouse", "mechanic", "electrician"], equipment: "forklifts", checklist: true },
-  operator: { label: "Оператор", requestRoles: ["warehouse", "operator"], equipment: "area", checklist: true },
-  shop: { label: "Начальник цеха", requestRoles: ["all", "shop", "warehouse"], equipment: "area", checklist: true },
-  engineer: { label: "Инженер", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  safetyEngineer: { label: "Инженер по технике безопасности", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  energyEngineer: { label: "Инженер-энергетик", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  designEngineer: { label: "Инженер-конструктор", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  mechanicalEngineer: { label: "Инженер-механик", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  instrumentationEngineer: { label: "Инженер КИПиА", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true },
-  warehouse: { label: "Складовщик", requestRoles: ["warehouse"], equipment: "none", checklist: false },
-  productionDirector: { label: "Директор производства", requestRoles: ["all", "warehouse", "productionDirector"], equipment: "all", checklist: true },
+  mechanic: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
+  electrician: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
+  welder: { label: "Сварщик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
+  turner: { label: "Токарь", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
+  forkliftDriver: { label: "Карщик", requestRoles: ["mechanic", "electrician"], equipment: "forklifts", checklist: true },
+  operator: { label: "Оператор", requestRoles: ["operator"], equipment: "area", checklist: true },
+  shop: { label: "Начальник цеха", requestRoles: ["all", "shop"], equipment: "area", checklist: true },
+  engineer: { label: "Инженер", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  safetyEngineer: { label: "Инженер по технике безопасности", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  energyEngineer: { label: "Инженер-энергетик", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  designEngineer: { label: "Инженер-конструктор", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  mechanicalEngineer: { label: "Инженер-механик", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  instrumentationEngineer: { label: "Инженер КИПиА", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
+  productionDirector: { label: "Директор производства", requestRoles: [], equipment: "all", checklist: true },
   director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
   technicalDirector: { label: "Технический директор", requestRoles: [], equipment: "none", checklist: false },
-  editor: { label: "Админ", requestRoles: ["all", "shop", "engineer", "warehouse", "mechanic", "electrician", "operator", "productionDirector"], equipment: "all", checklist: true }
+  editor: { label: "Админ", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true }
 };
 
 const ROLE_PERMISSION_BASE = {
@@ -816,6 +815,24 @@ function clearLegacyWalkCompletions(parsed) {
   return { changed };
 }
 
+function removeWarehouseStateLocal(targetState) {
+  let changed = Object.keys(targetState.inventory || {}).length > 0 || (targetState.serviceCosts || []).length > 0;
+  targetState.inventory = {};
+  targetState.serviceCosts = [];
+  Object.entries(targetState.requests || {}).forEach(([id, req]) => {
+    if (!req || typeof req !== "object") return;
+    if (String(id).startsWith("warehouse-ask:")
+      || String(id).startsWith("manual-warehouse:")
+      || String(id).startsWith("stock-issue:")
+      || req.route === "stock"
+      || req.warehouseAsk) {
+      delete targetState.requests[id];
+      changed = true;
+    }
+  });
+  return { changed };
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -838,9 +855,9 @@ function loadState() {
     const walkCleanup = clearLegacyWalkCompletions(parsed);
     const migration = mergeLegacyOpenJournalRequests(parsed);
     const journalCleanup = removeJournalRequestsLocal(parsed);
-    const articleMigration = migrateInventoryArticles(parsed);
-    const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed;
-    if (remoteMigrationChanged || articleMigration.changed) {
+    const warehouseCleanup = removeWarehouseStateLocal(parsed);
+    const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed || warehouseCleanup.changed;
+    if (remoteMigrationChanged) {
       parsed.journalRequestCleanupVersion = APP_VERSION;
       persistStateLocally(parsed);
     }
@@ -1610,13 +1627,13 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.requests = preferRemote
     ? { ...(remote.requests || {}) }
     : mergeObjectByFreshnessLocal(state.requests, remote.requests);
-  Object.assign(state.inventory, remote.inventory || {});
+  state.inventory = {};
   state.catalog ||= { equipment: {} };
   state.catalog.equipment = isEditorSession()
     ? { ...(state.catalog.equipment || {}), ...(remote.catalog?.equipment || {}) }
     : { ...(remote.catalog?.equipment || {}) };
   state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
-  state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
+  state.serviceCosts = [];
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   state.compressorJournal = preferRemote
     ? { ...(remote.compressorJournal || {}) }
@@ -1633,7 +1650,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
   const migration = mergeLegacyOpenJournalRequests(state);
   const journalCleanup = removeJournalRequestsLocal(state);
-  const articleMigration = migrateInventoryArticles(state);
+  removeWarehouseStateLocal(state);
   if (migration.changed) {
     state.journalRequestCleanupVersion = APP_VERSION;
     localStorage.setItem(`${STORE_KEY}-pending`, "1");
@@ -1651,7 +1668,7 @@ function mergeRealtimePatch(remote = {}) {
     state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
   }
   if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
-  if (remote.inventory) state.inventory = mergeObjectByFreshnessLocal(state.inventory, remote.inventory);
+  state.inventory = {};
   if (remote.catalog?.equipment) {
     state.catalog ||= { equipment: {} };
     state.catalog.equipment = { ...(state.catalog.equipment || {}), ...remote.catalog.equipment };
@@ -2579,7 +2596,6 @@ async function finishAuthOnCurrentPage() {
 }
 
 function defaultRequestRole(role = profile?.role) {
-  if (MANUAL_REQUEST_WORKFLOW && role === "warehouse") return "warehouse";
   if (MANUAL_REQUEST_WORKFLOW) return "all";
   const access = ROLE_ACCESS[role] || ROLE_ACCESS.mechanic;
   if (access.requestRoles.includes(role)) return role;
@@ -2588,7 +2604,6 @@ function defaultRequestRole(role = profile?.role) {
 }
 
 function homeViewForProfile(role = profile?.role) {
-  if (role === "warehouse") return "requests";
   if (role === "director") return "directorControl";
   return "equipment";
 }
@@ -2607,7 +2622,6 @@ function roleAccess() {
 }
 
 function canOpenView(view) {
-  if (profile?.role === "warehouse") return view === "requests";
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return isProfileReady();
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
@@ -2641,13 +2655,10 @@ function isFieldWorkerRole(role = profile?.role) {
 function canOpenRequestRole(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
     if (profile?.role === "editor") return role === "all" || Boolean(ROLE_ACCESS[role]);
-    if (role === "all") return profile?.role !== "warehouse";
-    if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
+    if (role === "all") return true;
     return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
-  if (profile?.role === "warehouse") return role === "warehouse";
-  if (role === "warehouse") return roleAccess().requestRoles.includes("warehouse");
   return role === profile?.role && roleAccess().requestRoles.includes(role);
 }
 
@@ -2657,7 +2668,6 @@ function canSeeRequestRoleIndicator(role) {
     return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
-  if (profile?.role === "warehouse") return role === "warehouse";
   if (role === "all") return false;
   return Boolean(ROLE_ACCESS[role]);
 }
@@ -5436,7 +5446,7 @@ function createDirectRequestFromCurrent() {
 }
 
 function blankTmcRequestRow() {
-  return { name: "", article: "", stockRemainder: "", unit: "шт", requestedQty: 1, requiredQty: 1, note: "", photo: "" };
+  return { name: "", article: "", unit: "шт", requestedQty: 1, requiredQty: 1, note: "", photo: "" };
 }
 
 function tmcRowPhotoPreviewHtml(photo = "") {
@@ -5453,7 +5463,6 @@ function tmcRequestRowHtml(row = blankTmcRequestRow(), index = 0) {
     <tr data-tmc-row data-tmc-row-photo="${escapeHtml(row.photo || "")}">
       <td>${index + 1}</td>
       <td><textarea data-tmc-name rows="2" placeholder="Наименование ТМЦ или услуги">${escapeHtml(row.name || "")}</textarea></td>
-      <td><input data-tmc-stock type="text" value="${escapeHtml(row.stockRemainder || "")}" placeholder="Остаток"></td>
       <td><input data-tmc-unit type="text" value="${escapeHtml(row.unit || "шт")}" placeholder="шт"></td>
       <td><input data-tmc-requested type="number" min="0" step="1" value="${Number(row.requestedQty || 1)}"></td>
       <td><input data-tmc-required type="number" min="0" step="1" value="${Number(row.requiredQty || row.requestedQty || 1)}"></td>
@@ -5499,14 +5508,13 @@ function ensureTmcRequestRows() {
 }
 
 function readTmcRequestRows() {
-  const area = ui.tmcRequestArea?.value || profile?.area || COMMON_WAREHOUSE;
+  const area = ui.tmcRequestArea?.value || profile?.area || "";
   const reserved = new Set();
   return [...(ui.tmcRequestRows?.querySelectorAll("[data-tmc-row]") || [])]
     .map((row, index) => ({
       number: index + 1,
       name: row.querySelector("[data-tmc-name]")?.value.trim() || "",
       article: "",
-      stockRemainder: row.querySelector("[data-tmc-stock]")?.value.trim() || "",
       unit: row.querySelector("[data-tmc-unit]")?.value.trim() || "шт",
       requestedQty: Number(row.querySelector("[data-tmc-requested]")?.value || 0),
       requiredQty: Number(row.querySelector("[data-tmc-required]")?.value || 0),
@@ -5909,7 +5917,6 @@ function saveEngineerIncomingTmcRow(req, index, row) {
     ...items[index],
     name: row.querySelector("[data-engineer-item-name]")?.value.trim() || "",
     article: row.querySelector("[data-engineer-item-article]")?.value.trim() || "",
-    stockRemainder: row.querySelector("[data-engineer-item-stock]")?.value.trim() || "",
     unit: row.querySelector("[data-engineer-item-unit]")?.value.trim() || "шт",
     requestedQty: Number(row.querySelector("[data-engineer-item-requested]")?.value || 0),
     requiredQty: Number(row.querySelector("[data-engineer-item-required]")?.value || 0),
@@ -5967,7 +5974,7 @@ function renderEngineerIncomingTmcPanel() {
         </header>
         <div class="engineer-incoming-table-wrap">
           <table class="engineer-incoming-table">
-            <thead><tr><th>№</th><th>Кто отправил</th><th>Наименование</th><th>Артикул</th><th>Остаток</th><th>Ед.</th><th>Заяв.</th><th>Необх.</th><th>Примечание</th><th></th></tr></thead>
+            <thead><tr><th>№</th><th>Кто отправил</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Заяв.</th><th>Необх.</th><th>Примечание</th><th></th></tr></thead>
             <tbody>
               ${requestItems(req).map((item, index) => `
                 <tr data-engineer-req-row="${escapeHtml(req.id)}" data-engineer-item-index="${index}" data-engineer-item-id="${escapeHtml(item.id || "")}">
@@ -5977,7 +5984,6 @@ function renderEngineerIncomingTmcPanel() {
                     : [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · "))}</span></td>
                   <td><textarea data-engineer-item-name rows="2">${escapeHtml(item.name || "")}</textarea></td>
                   <td><input data-engineer-item-article type="text" value="${escapeHtml(item.article || "")}"></td>
-                  <td><input data-engineer-item-stock type="text" value="${escapeHtml(item.stockRemainder || "")}"></td>
                   <td><input data-engineer-item-unit type="text" value="${escapeHtml(item.unit || "шт")}"></td>
                   <td><input data-engineer-item-requested type="number" min="0" step="1" value="${Number(item.requestedQty || 0)}"></td>
                   <td><input data-engineer-item-required type="number" min="0" step="1" value="${Number(item.requiredQty || item.requestedQty || 0)}"></td>
@@ -7953,9 +7959,10 @@ function requestIsOverdue(req) {
 function requestStageItems(req) {
   if (MANUAL_REQUEST_WORKFLOW) {
     return [
-      { key: "created", label: "Создана", done: true, current: false },
-      { key: "print", label: "Печать", done: false, current: false },
-      { key: "manual", label: "Ручной обход", done: false, current: !req.done && !req.stock }
+      { key: "created", label: "Создана сотрудником", done: true, current: false },
+      { key: "engineer", label: "Проверка инженером", done: Boolean(req.formedAt || req.engineerApproved || req.done), current: !req.formedAt && !req.engineerApproved && !req.done },
+      { key: "formed", label: "Итоговая заявка", done: Boolean(req.formedAt || req.engineerApproved || req.done), current: Boolean((req.formedAt || req.engineerApproved) && !req.done) },
+      { key: "archive", label: "Архив", done: Boolean(req.done), current: false }
     ];
   }
   const purchase = [
@@ -10580,64 +10587,23 @@ function renderRequests() {
   if (!canOpenRequestRole(current.requestRole)) current.requestRole = defaultRequestRole();
   renderRolePersonalInbox();
   const list = document.querySelector("#requestList");
-  if (current.requestRole === "warehouse") {
-    ui.requestsMeta.textContent = "Склад: приход, остатки и выдача.";
-    if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
-    updateTmcRequestButtonLabels();
-    renderEngineerIncomingBanner();
-    renderWarehousePanel();
-    list.innerHTML = "";
-    applyLanguage();
-    queueTranslateVisiblePage();
-    return;
-  }
   updateRoleBadges();
   document.querySelectorAll(".request-tabs .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.role === current.requestRole));
   const all = allRequests();
   const visible = all.filter(req => requestAllowedByUser(req));
   const waitingHere = visible.filter(req => requestNeedsRole(req, current.requestRole)).length;
   ui.requestsMeta.textContent = MANUAL_REQUEST_WORKFLOW
-    ? current.requestRole === "warehouse"
-      ? `Склад: приход, остатки и выдача.`
-      : `Всего заявок: ${visible.length}`
+    ? `Всего заявок: ${visible.length}`
     : `Всего доступно: ${visible.length} · Требуют вашего действия: ${waitingHere}`;
   if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
-  renderWarehousePanel();
   let rows = all.filter(req => requestVisibleForRole(req, current.requestRole));
   rows = rows.filter(requestMatchesFilters);
-  if (current.requestRole === "warehouse") {
-    const folderArea = warehouseFolderArea();
-    rows = rows.filter(req => (req.stockArea || req.area || "") === folderArea);
-    rows = rows.filter(req => !(req.transferredToWarehouse && !req.warehouseReceived && !req.issued && !req.stock && !req.done));
-  }
-  if (current.requestRole === "warehouse" && current.warehouseSearch.trim()) {
-    rows = rows.filter(req => requestMatchesWarehouseSearch(req, current.warehouseSearch));
-  }
-  if (current.requestRole === "warehouse") {
-    rows.sort((a, b) => {
-      const aNew = a.transferredToWarehouse && !a.warehouseReceived ? 1 : 0;
-      const bNew = b.transferredToWarehouse && !b.warehouseReceived ? 1 : 0;
-      if (aNew !== bNew) return bNew - aNew;
-      return String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date));
-    });
-    if (!current.warehouseSearch.trim()) rows = rows.slice(0, 40);
-  }
   list.innerHTML = "";
-  if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">${current.requestRole === "warehouse" ? `В складе "${escapeHtml(warehouseFolderArea())}" нет заявок` : "Нет заявок для этого раздела"}</div>`);
+  if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">Нет заявок для этого раздела</div>`);
   rows.forEach(req => list.append(requestCard(req)));
   if (current.requestRole === "accounting") {
     list.insertAdjacentHTML("beforeend", renderAccountingWrittenOffList());
     list.querySelector("[data-print-accounting]")?.addEventListener("click", printAccountingWrittenOffReport);
-  }
-  if (current.requestRole === "warehouse" && current.warehouseSearch.trim()) {
-    window.setTimeout(() => {
-      const stockHit = ui.warehousePanel.querySelector(".warehouse-stock-row.search-hit");
-      const confirmHit = ui.warehousePanel.querySelector(".warehouse-confirm-list .request-card.search-hit");
-      const pendingHit = ui.warehousePanel.querySelector(".warehouse-pending-list .request-card.search-hit");
-      const requestHit = list.querySelector(".request-card.search-hit");
-      (confirmHit || pendingHit || stockHit || requestHit)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      (confirmHit || pendingHit || stockHit || requestHit)?.classList.add("focus-comment");
-    }, 50);
   }
   applyLanguage();
   queueTranslateVisiblePage();
@@ -12918,37 +12884,10 @@ function engineerAnnualAnalysis(year) {
     .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
     .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
     .slice(0, 12);
-  const warehouseCosts = annualRequestCostEntries(year);
-  const serviceCostsForYear = annualServiceCostEntries(year);
-  const costs = [...warehouseCosts, ...serviceCostsForYear];
-  const equipmentCostMap = new Map();
-  costs.forEach(entry => {
-    const key = `${entry.area || ""}|${entry.equipment || ""}`;
-    const item = equipmentCostMap.get(key) || {
-      area: entry.area || "",
-      equipment: entry.equipment || "Без оборудования",
-      total: 0,
-      count: 0,
-      lastItem: ""
-    };
-    item.total += entry.total;
-    item.count += 1;
-    item.lastItem = entry.name || item.lastItem;
-    equipmentCostMap.set(key, item);
-  });
-  const equipmentCosts = [...equipmentCostMap.values()]
-    .sort((a, b) => b.total - a.total || a.equipment.localeCompare(b.equipment, "ru"))
-    .slice(0, 12);
   return {
     year,
     repeatedBreakdowns,
-    employeeRating,
-    equipmentCosts,
-    totalCost: costs.reduce((sum, item) => sum + item.total, 0),
-    warehouseCost: warehouseCosts.reduce((sum, item) => sum + item.total, 0),
-    serviceCost: serviceCostsForYear.reduce((sum, item) => sum + item.total, 0),
-    costCount: costs.length,
-    serviceCosts: serviceCostsForYear
+    employeeRating
   };
 }
 
@@ -13093,27 +13032,6 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   const band = reliabilityBand(stats.reliabilityScore);
   const annual = stats.annualAnalysis;
   const bestEmployee = annual.employeeRating[0];
-  ensureServiceCostSelection();
-  const serviceAreas = serviceCostAreas();
-  const serviceEquipment = serviceCostEquipmentForArea(current.serviceCostArea);
-  const selectedServiceEquipment = equipmentById(Number(current.serviceCostEquipmentId));
-  const serviceItemsMonth = serviceCosts()
-    .filter(item => String(item.date || item.createdAt || "").slice(0, 7) === stats.key)
-    .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
-  const serviceRows = engineerReportRows(
-    serviceItemsMonth,
-    "За выбранный месяц услуги не записаны",
-    item => `
-      <tr>
-        <td>${escapeHtml(item.date ? dateHuman(item.date) : dateTimeHuman(item.createdAt))}</td>
-        <td>${escapeHtml(item.area || "-")}</td>
-        <td>${escapeHtml(item.equipment || "-")}</td>
-        <td>${escapeHtml(item.node || "-")}</td>
-        <td>${formatMoney(item.amount)}</td>
-        <td>${escapeHtml(item.comment || "-")}</td>
-      </tr>
-    `
-  );
   const pprRows = engineerReportRows(
     stats.pprSheets,
     "За выбранный месяц листы ППР не заполнялись",
@@ -13244,20 +13162,6 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </tr>
     `
   );
-  const costRows = engineerReportRows(
-    annual.equipmentCosts,
-    "За год нет складских позиций с указанной ценой",
-    item => `
-      <tr>
-        <td>${escapeHtml(item.area || "-")}</td>
-        <td>${escapeHtml(item.equipment || "-")}</td>
-        <td>${item.count}</td>
-        <td>${formatMoney(item.total)}</td>
-        <td>${escapeHtml(item.lastItem || "-")}</td>
-        <td>${item.total ? "Контроль затрат по оборудованию" : "-"}</td>
-      </tr>
-    `
-  );
   return `
     <article class="engineer-report ${printable ? "printable" : ""}">
       ${printable ? "" : `<div class="engineer-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`}
@@ -13284,33 +13188,10 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       <div class="engineer-report-year-strip">
         <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за ${annual.year}</span></div>
         <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер по выполненным работам${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
-        <div><strong>${formatMoney(annual.totalCost)}</strong><span>затраты всего: склад ${formatMoney(annual.warehouseCost)} · услуги ${formatMoney(annual.serviceCost)}</span></div>
       </div>
-      ${!printable && ["engineer", "editor"].includes(profile?.role) ? `
-        <section class="engineer-service-form">
-          <div>
-            <strong>Услуги / работы за сегодня</strong>
-            <span>Если сегодня услуг не было, ничего заполнять не нужно.</span>
-          </div>
-          <div class="engineer-service-grid">
-            <select id="serviceCostArea">
-              ${serviceAreas.map(area => `<option value="${escapeHtml(area)}" ${area === current.serviceCostArea ? "selected" : ""}>${escapeHtml(area)}</option>`).join("")}
-            </select>
-            <select id="serviceCostEquipment">
-              ${serviceEquipment.map(eq => `<option value="${eq.id}" ${String(eq.id) === String(current.serviceCostEquipmentId) ? "selected" : ""}>${escapeHtml(eq.name)}</option>`).join("")}
-            </select>
-            <select id="serviceCostNode">
-              ${(selectedServiceEquipment?.nodes || []).map((node, index) => `<option value="${index}" ${String(index) === String(current.serviceCostNodeIndex) ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}
-            </select>
-            <input id="serviceCostAmount" type="text" inputmode="decimal" placeholder="Цена услуги">
-            <input id="serviceCostComment" type="text" placeholder="Комментарий по работе / услуге">
-            <button type="button" id="addServiceCostButton">Добавить услугу</button>
-          </div>
-        </section>
-      ` : ""}
       <section class="engineer-report-note">
         <strong>Как объяснить директору:</strong>
-        <span>Если индекс высокий и простои падают - оборудование под контролем. Если индекс падает, смотрим простои, открытые замечания и повторные поломки. Деньги считаются по ценам склада и записанным инженером услугам.</span>
+        <span>Если индекс высокий и простои падают — оборудование под контролем. Если индекс падает, смотрим простои, открытые замечания и повторные поломки.</span>
       </section>
       <section class="engineer-report-block">
         <h3>1. Что произошло за месяц</h3>
@@ -13339,14 +13220,6 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       <section class="engineer-report-block">
         <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
         <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
-      </section>
-      <section class="engineer-report-block">
-        <h3>7. Затраты по складу за ${annual.year}</h3>
-        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Позиций</th><th>Сумма</th><th>Последняя позиция</th><th>Вывод</th></tr></thead><tbody>${costRows}</tbody></table>
-      </section>
-      <section class="engineer-report-block">
-        <h3>8. Услуги и работы инженера за выбранный месяц</h3>
-        <table><thead><tr><th>Дата</th><th>Цех</th><th>Оборудование</th><th>Узел</th><th>Сумма</th><th>Комментарий</th></tr></thead><tbody>${serviceRows}</tbody></table>
       </section>
       <div class="engineer-report-signatures">
         <div>Инженер: ____________________</div>
@@ -14865,7 +14738,6 @@ function requestPrintColumns(items) {
     { key: "number", label: "№", className: "num", show: true, value: (item, index) => index + 1 },
     { key: "name", label: "Наименование закупаемой ТМЦ и услуг", className: "name", show: true, value: item => item.name || "" },
     { key: "article", label: "Артикул", className: "article", show: true, value: item => item.article || "" },
-    { key: "stock", label: "Остаток на складе", className: "stock", show: true, value: item => item.stockRemainder || 0 },
     { key: "unit", label: "Ед. измерения", className: "unit", show: true, value: item => item.unit || "" },
     { key: "requested", label: "Заявочное количество", className: "qty", show: true, value: item => Number(item.requestedQty || 0) || "" },
     { key: "required", label: "Необходимое", className: "qty", show: true, value: item => Number(item.requiredQty || item.requestedQty || 0) || "" },
@@ -14895,11 +14767,8 @@ function requestPrintSignatures(req, sourceRole) {
   return `
     <section class="excel-signatures">
       <div>Заявитель <strong>${escapeHtml(req.sourceName || "________________________")}</strong></div>
-      <div>Начальник цеха РКС <strong>________________________</strong></div>
-      <div>Финансист <strong>________________________</strong></div>
-      <div>Главный инженер <strong>________________________</strong></div>
-      <div>Зам. директора <strong>________________________</strong></div>
-      <div class="delivery-line">Срок доставки <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "_____ дней"}</strong> · Снабженец <strong>________________________</strong></div>
+      <div>Проверил инженер <strong>${escapeHtml(req.formedByName || "________________________")}</strong></div>
+      <div class="delivery-line">Требуемый срок <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "не указан"}</strong></div>
     </section>
   `;
 }

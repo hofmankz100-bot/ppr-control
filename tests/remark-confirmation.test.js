@@ -100,6 +100,7 @@ test.before(async () => {
     },
     requests: {
       "ordinary-request": { id: "ordinary-request", kind: "tmc", text: "Обычная заявка", createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" },
+      "legacy-warehouse-request": { id: "legacy-warehouse-request", kind: "tmc", text: "Старая активная заявка", status: "warehouse", cashApproved: true, transferredToWarehouse: true, done: false, stock: false, createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" },
       "stock-issue:preserve": { id: "stock-issue:preserve", kind: "stock", text: "Складская операция", issued: true, createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" }
     },
     inventory: {
@@ -699,16 +700,18 @@ test("an admin can delete a legacy employee that has no internal id", async () =
   assert.equal(users.some(item => item.employeeId === "legacy-77"), false);
 });
 
-test("admin operational clear preserves inventory and warehouse records", async () => {
+test("warehouse data is removed from the simplified request workflow", async () => {
   const before = await (await fetch(`${baseUrl}/api/state`)).json();
-  assert.ok(Object.keys(before.inventory || {}).length > 0);
-  const warehouseRequestId = Object.keys(before.requests || {}).find(id => id.startsWith("stock-issue:"));
-  assert.ok(warehouseRequestId);
+  assert.deepEqual(before.inventory, {});
+  assert.equal(Object.keys(before.requests || {}).some(id => id.startsWith("stock-issue:")), false);
+  assert.equal(before.requests["legacy-warehouse-request"].status, "engineer");
+  assert.equal(before.requests["legacy-warehouse-request"].engineerCombinedBatch, true);
+  assert.equal(before.requests["legacy-warehouse-request"].transferredToWarehouse, false);
   const response = await fetch(`${baseUrl}/api/state`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      actionId: "warehouse-safe-clear-test",
+      actionId: "warehouse-removed-clear-test",
       clientId: "admin-test",
       clearRecordedData: true,
       clearConfirm: "ОЧИСТИТЬ",
@@ -719,8 +722,8 @@ test("admin operational clear preserves inventory and warehouse records", async 
   const body = await response.json();
   assert.equal(response.status, 200, JSON.stringify(body));
   const state = await (await fetch(`${baseUrl}/api/state`)).json();
-  assert.deepEqual(state.inventory, before.inventory);
-  assert.ok(state.requests[warehouseRequestId]);
+  assert.deepEqual(state.inventory, {});
+  assert.equal(Object.keys(state.requests || {}).some(id => id.startsWith("stock-issue:")), false);
   assert.equal(state.requests["ordinary-request"], undefined);
   assert.deepEqual(state.checks, {});
 });
@@ -761,4 +764,26 @@ test("request output archives only after mobile share or desktop print starts", 
   assert.match(appSource, /function downloadRequestPrintFile\(req\)/);
   assert.match(appSource, /data-save-download-request-archive/);
   assert.match(appSource, /Скачано на компьютер и сохранено в архив/);
+});
+
+test("warehouse role, screen, endpoint, and money report blocks are removed", async () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.doesNotMatch(html, /data-open-role="warehouse"/);
+  assert.doesNotMatch(html, /id="warehousePanel"/);
+  assert.doesNotMatch(html, /Цех \/ склад/);
+  const roles = appSource.slice(appSource.indexOf("const ROLE_ACCESS"), appSource.indexOf("const ROLE_PERMISSION_BASE"));
+  assert.doesNotMatch(roles, /warehouse:/);
+  const report = appSource.slice(appSource.indexOf("function engineerMonthlyReportHtml"), appSource.indexOf("function renderEngineerReport"));
+  assert.doesNotMatch(report, /Затраты по складу|Цена услуги|formatMoney/);
+  assert.match(serverSource, /function removeWarehouseWorkflow\(db\)/);
+  assert.match(serverSource, /db\.inventory = \{\}/);
+  assert.match(serverSource, /filter\(user => user\?\.role !== "warehouse"\)/);
+  const removedEndpoint = await fetch(`${baseUrl}/api/warehouse/issue`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}"
+  });
+  assert.equal(removedEndpoint.status, 410);
 });

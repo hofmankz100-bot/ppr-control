@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v238-login-retry-window";
+const SERVER_VERSION = "v239-engineer-only-requests";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -103,6 +103,76 @@ function emptyDb() {
   return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {} };
 }
 
+function removeWarehouseWorkflow(db) {
+  db.inventory = {};
+  db.serviceCosts = [];
+  const removedUserIds = new Set(
+    (db.users || [])
+      .filter(user => user?.role === "warehouse")
+      .flatMap(user => [user.id, user.employeeId, user.phone].filter(Boolean).map(String))
+  );
+  db.users = (db.users || []).filter(user => user?.role !== "warehouse");
+  db.authSessions = (db.authSessions || []).filter(session =>
+    !removedUserIds.has(String(session?.userId || session?.employeeId || session?.phone || ""))
+  );
+  const now = new Date().toISOString();
+  for (const [id, req] of Object.entries(db.requests || {})) {
+    if (!req || typeof req !== "object") continue;
+    const warehouseOnly = String(id).startsWith("warehouse-ask:")
+      || String(id).startsWith("manual-warehouse:")
+      || String(id).startsWith("stock-issue:")
+      || req.route === "stock"
+      || req.warehouseAsk;
+    if (warehouseOnly) {
+      delete db.requests[id];
+      continue;
+    }
+    const isTmc = req.kind === "tmc" || String(id).startsWith("tmc-request:") || String(id).startsWith("engineer-batch:");
+    if (!isTmc || req.deleted || req.done || req.stock) continue;
+    const oldStatus = String(req.status || req.requestStatus || "");
+    const hadOldWorkflow = Boolean(
+      req.financePreApproved
+      || req.supplyPrepared
+      || req.financeApproved
+      || req.cashApproved
+      || req.transferredToWarehouse
+      || req.warehouseReceived
+      || req.issued
+      || req.accountingWrittenOff
+      || ["financePre", "supply", "finance", "cash", "warehouse", "accounting", "confirmInstall"].includes(oldStatus)
+    );
+    if (!hadOldWorkflow) continue;
+    req.engineerCombinedBatch = true;
+    req.formedAt = "";
+    req.status = "engineer";
+    req.requestStatus = "engineer";
+    req.engineerApproved = false;
+    req.productionDirectorRequestApproved = false;
+    req.financePreApproved = false;
+    req.supplyPrepared = false;
+    req.financeApproved = false;
+    req.cashApproved = false;
+    req.transferredToWarehouse = false;
+    req.warehouseReceived = false;
+    req.issued = false;
+    req.accountingWrittenOff = false;
+    req.returnedTo = "";
+    req.route = "request";
+    req.updatedAt = now;
+    req.history = Array.isArray(req.history) ? req.history : [];
+    if (!req.history.some(entry => entry?.action === "Переведено инженеру без склада")) {
+      req.history.push({
+        at: now,
+        action: "Переведено инженеру без склада",
+        details: "Старый маршрут согласований и склада удалён.",
+        status: "engineer",
+        role: "system",
+        name: "Система"
+      });
+    }
+  }
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -126,6 +196,7 @@ function normalizeDb(db) {
   db.translationCache ||= {};
   db.pushNotifications ||= { subscriptions: [], vapid: null };
   db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
+  removeWarehouseWorkflow(db);
   return db;
 }
 
@@ -3098,6 +3169,11 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/warehouse/issue" && req.method === "POST") {
+    sendJson(res, 410, { ok: false, error: "warehouse_removed" });
+    return true;
+  }
+
+  if (false && pathname === "/api/warehouse/issue" && req.method === "POST") {
     const body = await readBody(req);
     if (!new Set(["warehouse", "editor"]).has(String(body.user?.role || ""))) {
       sendJson(res, 403, { ok: false, error: "warehouse_role_required" });
