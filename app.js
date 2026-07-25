@@ -75,7 +75,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v261-distinct-reserve-journal-colors";
+const APP_VERSION = "v262-personal-admin-engineer";
+const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -293,6 +294,17 @@ const ROLE_PERMISSION_BASE = {
 
 function permissionBaseRole(role) {
   return ROLE_PERMISSION_BASE[role] || role;
+}
+
+function isPrimaryAdminEngineer(user = null) {
+  return [user, authenticatedProfile, profile].filter(Boolean).some(candidate =>
+    String(candidate.employeeId || "").trim() === PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID
+    && ["editor", "engineer"].includes(String(candidate.editorOriginalRole || candidate.role || ""))
+  );
+}
+
+function hasEngineerInboxAccess(user = profile) {
+  return permissionBaseRole(user?.role) === "engineer" || isPrimaryAdminEngineer(user);
 }
 
 function canonicalWorkerRole(role) {
@@ -1369,7 +1381,7 @@ function currentAppNotificationKeys() {
       if (remarkNotificationVisibleToCurrentUser(entry, eq)) keys.add(`comment|${recordKey}|${entry.id}`);
     });
   });
-  if (profile?.role === "engineer") {
+  if (hasEngineerInboxAccess()) {
     engineerIncomingTmcRequests().forEach(req => {
       const items = requestItems(req);
       if (items.length) items.forEach(item => keys.add(`engineer-request|${req.id}|${item.id || item.name || "item"}`));
@@ -3390,6 +3402,9 @@ function renderProfile() {
     </label>
   ` : "";
   const displayRole = profile.editorPreviewRole || profile.jobRole || profile.role;
+  const displayRoleLabel = isPrimaryAdminEngineer()
+    ? "Админ + Инженер"
+    : ROLE_ACCESS[displayRole]?.label || displayRole;
   const previewNote = isEditorSession() && profile.role !== "editor"
     ? `<span class="editor-preview-note">${escapeHtml(t("viewMode"))}: ${escapeHtml(ROLE_ACCESS[displayRole]?.label || displayRole)}</span>`
     : "";
@@ -3400,7 +3415,7 @@ function renderProfile() {
     </label>
   `;
   ui.profileBar.innerHTML = `
-    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${ROLE_ACCESS[displayRole]?.label || displayRole}${area}${employeeId}${phone}</span>${previewNote}</div>
+    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
@@ -4738,7 +4753,7 @@ function canCurrentUserConfirmRemark(entry = {}, eq = null) {
   const actor = resolutionActor();
   const rule = remarkConfirmationRule(entry, eq);
   if (rule.mode === "shop") return actor.role === "shop" && sameRemarkArea(actor.area, rule.area);
-  if (rule.mode === "engineer") return actor.role === "engineer";
+  if (rule.mode === "engineer") return actor.role === "engineer" || isPrimaryAdminEngineer();
   return false;
 }
 
@@ -6173,7 +6188,7 @@ function renderEngineerIncomingTmcPanel() {
   const panel = ui.engineerIncomingTmcPanel;
   if (!panel) return;
   const requests = engineerIncomingTmcRequests();
-  panel.hidden = !(profile?.role === "engineer" && requests.length);
+  panel.hidden = !(hasEngineerInboxAccess() && requests.length);
   if (panel.hidden) {
     panel.innerHTML = "";
     return;
@@ -6250,7 +6265,7 @@ function updateTmcRequestButtonLabels() {
   const submitLabel = tmcRequestSubmitLabel();
   const quickLabel = ui.createTmcRequestButton?.querySelector("span");
   const quickBadge = ui.createTmcRequestButton?.querySelector("strong");
-  const engineerCount = profile?.role === "engineer" ? engineerIncomingTmcItemCount() : 0;
+  const engineerCount = hasEngineerInboxAccess() ? engineerIncomingTmcItemCount() : 0;
   if (quickLabel) quickLabel.textContent = submitLabel;
   if (quickBadge) quickBadge.textContent = engineerCount > 0 ? engineerCount : workerSendsTmcRequestToEngineer() ? "→" : "+";
   ui.createTmcRequestButton?.classList.toggle("request-alert", engineerCount > 0);
@@ -6955,7 +6970,7 @@ function handleIncomingNotificationLink() {
   } else if (requestedView === "downtime") {
     show("downtime");
     handled = true;
-  } else if (requestedView === "requestCreate" && profile?.role === "engineer") {
+  } else if (requestedView === "requestCreate" && hasEngineerInboxAccess()) {
     show("requestCreate");
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     handled = true;
@@ -11532,7 +11547,7 @@ function personalRemarkMessages() {
       });
     });
   });
-  if (permissionBaseRole(profile?.role) === "engineer") {
+  if (hasEngineerInboxAccess()) {
     Object.entries(state.pprSheets || {}).forEach(([date, sheet]) => {
       const completion = pprSheetCompletion(date);
       if (!completion.awaitingApproval || sheet?.approvedAt) return;
@@ -15875,7 +15890,7 @@ document.querySelectorAll("[data-mobile-view]").forEach(button => {
     document.body.classList.remove("mobile-profile-focus");
     if (target === "requestCreate") {
       show("requestCreate");
-      if (profile?.role === "engineer" && engineerIncomingTmcItemCount() > 0) {
+      if (hasEngineerInboxAccess() && engineerIncomingTmcItemCount() > 0) {
         window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
       }
       return;
@@ -15924,7 +15939,7 @@ ui.alertCounter?.addEventListener("click", openAllRemarkCards);
 
 ui.createTmcRequestButton?.addEventListener("click", () => {
   show("requestCreate");
-  if (profile?.role === "engineer" && engineerIncomingTmcItemCount() > 0) {
+  if (hasEngineerInboxAccess() && engineerIncomingTmcItemCount() > 0) {
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 });

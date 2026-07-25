@@ -46,7 +46,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v261-distinct-reserve-journal-colors";
+const SERVER_VERSION = "v262-personal-admin-engineer";
+const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1025,6 +1026,15 @@ function permissionBaseRoleServer(role) {
   return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", technicalDirector: "director" })[role] || role;
 }
 
+function isPrimaryAdminEngineerServer(profile = {}) {
+  return String(profile.employeeId || "").trim() === PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID
+    && String(profile.role || "") === "editor";
+}
+
+function engineerPermissionRoleServer(profile = {}) {
+  return isPrimaryAdminEngineerServer(profile) ? "engineer" : permissionBaseRoleServer(profile.role);
+}
+
 function samePermissionRoleServer(left, right) {
   return permissionBaseRoleServer(String(left || "")) === permissionBaseRoleServer(String(right || ""));
 }
@@ -1141,7 +1151,7 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
   const added = Math.max(1, Number(submittedCount) || 1);
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && permissionBaseRoleServer(entry.profile?.role) === "engineer");
+  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && engineerPermissionRoleServer(entry.profile) === "engineer");
   if (!targets.length) return;
   webPush.setVapidDetails(
     "https://ppr-control-ramazan.onrender.com",
@@ -1177,7 +1187,7 @@ async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
   const subscriptions = db.pushNotifications.subscriptions || [];
   const targets = subscriptions.filter(entry =>
     (!origin || entry.clientId !== origin)
-    && permissionBaseRoleServer(entry.profile?.role) === "engineer"
+    && engineerPermissionRoleServer(entry.profile) === "engineer"
   );
   if (!targets.length) return;
   webPush.setVapidDetails(
@@ -1217,7 +1227,7 @@ async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
   const subscriptions = db.pushNotifications.subscriptions || [];
   const targets = subscriptions.filter(entry =>
     (!origin || entry.clientId !== origin)
-    && permissionBaseRoleServer(entry.profile?.role) === "engineer"
+    && engineerPermissionRoleServer(entry.profile) === "engineer"
   );
   if (!targets.length) return;
   webPush.setVapidDetails(
@@ -1366,11 +1376,11 @@ function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   const area = String(equipmentArea || remark.confirmationArea || "").trim().slice(0, 200);
   const shopUsers = area ? users.filter(user => permissionBaseRoleServer(user.role) === "shop" && sameRemarkAreaServer(user.area, area)) : [];
   if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
-  return { mode: "engineer", role: "engineer", area, users: users.filter(user => permissionBaseRoleServer(user.role) === "engineer") };
+  return { mode: "engineer", role: "engineer", area, users: users.filter(user => engineerPermissionRoleServer(user) === "engineer") };
 }
 
 function actorCanConfirmRemarkServer(actor, remark, rule) {
-  const role = permissionBaseRoleServer(actor.role);
+  const role = engineerPermissionRoleServer(actor);
   if (rule.mode === "shop") return role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
   if (rule.mode === "engineer") return role === "engineer";
   return false;
@@ -1453,7 +1463,7 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
 }
 
 function pendingPprCountForSubscription(db, subscriptionEntry) {
-  if (permissionBaseRoleServer(subscriptionEntry?.profile?.role) !== "engineer") return 0;
+  if (engineerPermissionRoleServer(subscriptionEntry?.profile) !== "engineer") return 0;
   return Object.values(db.pprSheets || {}).filter(sheet =>
     sheet
     && sheet.approvalRequestedAt
@@ -1482,7 +1492,7 @@ function activeDowntimeCountForSubscription(db, subscriptionEntry) {
 }
 
 function personalNotificationBreakdownServer(db, subscriptionEntry) {
-  const requests = permissionBaseRoleServer(subscriptionEntry?.profile?.role) === "engineer"
+  const requests = engineerPermissionRoleServer(subscriptionEntry?.profile) === "engineer"
     ? engineerIncomingRequestItemCountServer(db)
     : 0;
   const remarks = openRemarkCountForSubscription(db, subscriptionEntry);

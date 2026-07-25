@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v261-distinct-reserve-journal-colors";
+const CACHE_NAME = "ppr-v262-personal-admin-engineer";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=261-distinct-reserve-journal-colors",
+  "./styles.css?v=262-personal-admin-engineer",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=261-distinct-reserve-journal-colors",
+  "./app.js?v=262-personal-admin-engineer",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

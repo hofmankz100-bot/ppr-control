@@ -599,7 +599,7 @@ test("completed PPR is sent to every engineer and only the first confirmation wi
   assert.match(server, /sendPprApprovalPushNotifications/);
   assert.match(server, /clearPprApprovalPushNotifications/);
   assert.match(server, /silentUpdate:\s*true/);
-  assert.match(server, /permissionBaseRoleServer\(entry\.profile\?\.role\) === "engineer"/);
+  assert.match(server, /engineerPermissionRoleServer\(entry\.profile\) === "engineer"/);
   assert.match(server, /if \(sheet\.approvedAt\) return \{ error: "ppr_sheet_locked" \}/);
 });
 
@@ -753,7 +753,7 @@ test("engineers receive visible counters and push notifications for incoming req
   assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role, actor\.area, actor\.language \|\| currentLanguage\(\)\]/);
   assert.match(htmlSource, /data-mobile-request-count/);
   assert.match(serverSource, /sendEngineerRequestPushNotifications/);
-  assert.match(serverSource, /permissionBaseRoleServer\(entry\.profile\?\.role\) === "engineer"/);
+  assert.match(serverSource, /engineerPermissionRoleServer\(entry\.profile\) === "engineer"/);
   assert.match(serverSource, /ALKZ — новая заявка инженеру/);
 });
 
@@ -766,6 +766,17 @@ test("the gas journal becomes readable date cards on phones", () => {
   assert.match(styleSource, /\.gas-journal-table\.gas-sheet-table tbody tr \{[\s\S]*?border-radius: 11px/);
   assert.match(styleSource, /content: attr\(data-mobile-label\)/);
   assert.match(styleSource, /touch-action: manipulation/);
+});
+
+test("only the primary admin also receives the engineer workflow", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893"/);
+  assert.match(client, /function hasEngineerInboxAccess\(user = profile\)/);
+  assert.match(client, /"Админ \+ Инженер"/);
+  assert.match(server, /PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893"/);
+  assert.match(server, /function engineerPermissionRoleServer\(profile = \{\}\)/);
+  assert.match(server, /isPrimaryAdminEngineerServer\(profile\) \? "engineer"/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
