@@ -844,6 +844,9 @@ test("request output archives before mobile share or desktop print starts", () =
   assert.match(appSource, /Зам\. директора __________________/);
   assert.match(appSource, /function downloadRequestPrintFile\(req\)/);
   assert.match(appSource, /data-save-download-request-archive/);
+  assert.doesNotMatch(appSource, />Сохранить и WhatsApp</);
+  assert.doesNotMatch(appSource, />Сохранить и печатать</);
+  assert.doesNotMatch(appSource, /data-print-request-archive-all/);
   assert.match(appSource, /Скачано на компьютер и сохранено в архив/);
 });
 

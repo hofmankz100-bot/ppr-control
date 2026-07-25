@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v243-archive-before-output";
+const APP_VERSION = "v244-simple-request-actions";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -5626,8 +5626,8 @@ function compactTmcArchiveCard(req, archiveMode = false) {
         ${requestHistoryHtml(req)}
         <div class="archive-request-actions">
           ${archiveMode
-            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>${mobileShareMode() ? "" : `<button type="button" class="action-button secondary" data-download-archived-request="${escapeHtml(req.id)}">Скачать файл</button>`}`
-            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "Сохранить и WhatsApp" : "Сохранить и печатать"}</button>${mobileShareMode() ? "" : `<button type="button" class="action-button secondary" data-save-download-request-archive="${escapeHtml(req.id)}">Скачать и сохранить в архив</button>`}`}
+            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить повторно" : "Распечатать повторно"}</button>${mobileShareMode() ? "" : `<button type="button" class="action-button secondary" data-download-archived-request="${escapeHtml(req.id)}">Скачать заявку</button>`}`
+            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить в WhatsApp" : "Печатать"}</button>`}
         </div>
       </div>
     </article>
@@ -5855,13 +5855,10 @@ function openTmcArchiveDialog() {
       <header>
         <div>
           <strong>${profile?.role === "shop" ? "Архив заявок участка" : "Архив заявок инженеру"}</strong>
-          <span>${requests.length} записей для просмотра и отчёта</span>
+          <span>${requests.length} готовых заявок</span>
         </div>
         <button type="button" data-close-request-archive>Закрыть</button>
       </header>
-      <div class="archive-request-actions archive-dialog-actions">
-        <button type="button" class="action-button" data-print-request-archive-all ${requests.length ? "" : "disabled"}>${mobileShareMode() ? "Отправить архив WhatsApp" : "Печатать архив по листам"}</button>
-      </div>
       <div class="request-archive-dialog-list">${requests.length ? requests.map(req => compactTmcArchiveCard(req, true)).join("") : `<div class="empty-state">Архив пока пуст</div>`}</div>
     </section>
   `;
@@ -5870,10 +5867,6 @@ function openTmcArchiveDialog() {
     if (event.target === overlay) close();
   });
   overlay.querySelector("[data-close-request-archive]")?.addEventListener("click", close);
-  overlay.querySelector("[data-print-request-archive-all]")?.addEventListener("click", () => {
-    if (mobileShareMode()) shareTmcArchive(requests);
-    else printTmcArchiveSheet(requests);
-  });
   bindTmcArchiveActions(overlay);
   document.body.append(overlay);
 }
@@ -5999,7 +5992,7 @@ function renderEngineerIncomingTmcPanel() {
         </div>
         <footer class="engineer-incoming-actions">
           <button type="button" class="secondary" data-merge-engineer-req="${escapeHtml(req.id)}">Объединить одинаковые</button>
-          <button type="button" class="action-button" data-form-engineer-req="${escapeHtml(req.id)}">Сформировать заявку</button>
+          <button type="button" class="action-button" data-form-engineer-req="${escapeHtml(req.id)}">${mobileShareMode() ? "Сформировать и отправить" : "Сформировать и печатать"}</button>
         </footer>
       </section>
     `).join("")}
