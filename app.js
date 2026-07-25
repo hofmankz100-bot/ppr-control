@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v258-fast-reliable-qr-walk";
+const APP_VERSION = "v259-qr-action-choice";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -3827,6 +3827,18 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
       <div class="qr-result-progress">Обход этой смены уже выполнен</div>
       <h2>${escapeHtml(eq?.name || "Оборудование")}</h2>
       <p class="qr-result-node">${escapeHtml(nodeName)}</p>
+      <div data-qr-repeat-gate>
+        <div class="qr-already-done">${openRemark
+          ? "По этому узлу есть активное замечание. Откройте действия только если хотите добавить запись или отметить устранение."
+          : "Узел уже проверен. Дополнительных действий не требуется."}</div>
+        <div class="qr-result-actions single">
+          ${openRemark
+            ? `<button type="button" class="qr-remark-button" data-qr-repeat-open>Открыть действия по замечанию</button>`
+            : `<button type="button" class="qr-remark-button" data-qr-repeat-open>Есть новое замечание</button>`}
+          <button type="button" class="qr-finish-button" data-qr-action-close>Закрыть</button>
+        </div>
+      </div>
+      <div data-qr-repeat-details hidden>
       ${openRemark ? `
         <div class="qr-already-done"><strong>Активное замечание</strong><br>${escapeHtml(openRemark.entry?.text || "")}</div>
         ${!pending ? activeStop ? `
@@ -3855,6 +3867,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
           ? `<button type="button" class="qr-good-button" data-qr-action-update>Добавить запись</button><button type="button" class="qr-remark-button" data-qr-action-resolve>Устранено</button>`
           : `<button type="button" class="qr-save-remark-button" data-qr-action-create>Отправить</button>`}
         <button type="button" class="qr-finish-button" data-qr-action-close>Закрыть</button>
+      </div>
       </div>
     </section>`;
   document.body.append(overlay);
@@ -3900,7 +3913,16 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
         setButtonBusy(button, false);
       }
     };
-    overlay.querySelector("[data-qr-action-close]")?.addEventListener("click", () => finish("closed"));
+    overlay.querySelectorAll("[data-qr-action-close]").forEach(button => {
+      button.addEventListener("click", () => finish("closed"));
+    });
+    overlay.querySelector("[data-qr-repeat-open]")?.addEventListener("click", () => {
+      const gate = overlay.querySelector("[data-qr-repeat-gate]");
+      const details = overlay.querySelector("[data-qr-repeat-details]");
+      if (gate) gate.hidden = true;
+      if (details) details.hidden = false;
+      window.setTimeout(() => overlay.querySelector("[data-qr-action-text]")?.focus(), 50);
+    });
     overlay.querySelector("[data-qr-action-create]")?.addEventListener("click", event => submit(event.currentTarget, "create"));
     overlay.querySelector("[data-qr-action-update]")?.addEventListener("click", event => submit(event.currentTarget, "update"));
     overlay.querySelector("[data-qr-action-resolve]")?.addEventListener("click", event => submit(event.currentTarget, "resolve"));
@@ -3927,7 +3949,6 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
         setButtonBusy(button, false);
       }
     });
-    window.setTimeout(() => overlay.querySelector("[data-qr-action-text]")?.focus(), 50);
   });
 }
 

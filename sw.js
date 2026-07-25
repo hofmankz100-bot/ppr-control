@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v258-fast-reliable-qr-walk";
+const CACHE_NAME = "ppr-v259-qr-action-choice";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=258-fast-reliable-qr-walk",
+  "./styles.css?v=259-qr-action-choice",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=258-fast-reliable-qr-walk",
+  "./app.js?v=259-qr-action-choice",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
