@@ -584,7 +584,8 @@ test("completed PPR is sent to every engineer and only the first confirmation wi
 test("aggregate journal prints as complete landscape A4 pages", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /AGGREGATE_JOURNAL_ROWS_PER_SHEET = 10/);
-  assert.match(source, /function printAggregateJournal\(area\)/);
+  assert.match(source, /function printAggregateJournal\(area, selectedSheetIndex = null\)/);
+  assert.match(source, /data-print-aggregate-sheet/);
   assert.match(source, /@page \{ size: A4 landscape; margin: 7mm; \}/);
   assert.match(source, /thead \{ display: table-header-group; \}/);
   assert.match(source, /page-break-inside: avoid/);

@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v231-aggregate-print-pages";
+const CACHE_NAME = "ppr-v232-print-individual-aggregate-sheet";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=231-aggregate-print-pages",
+  "./styles.css?v=232-print-individual-aggregate-sheet",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=231-aggregate-print-pages",
+  "./app.js?v=232-print-individual-aggregate-sheet",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

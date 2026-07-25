@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v231-aggregate-print-pages";
+const APP_VERSION = "v232-print-individual-aggregate-sheet";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -13977,6 +13977,7 @@ function renderAggregateJournal() {
         <div class="aggregate-sheet-head">
           <strong>Агрегатный журнал: ${escapeHtml(selectedArea)}</strong>
           <span>Лист № ${sheetIndex + 1}</span>
+          <button type="button" class="aggregate-sheet-print" data-print-aggregate-sheet="${sheetIndex}">Печатать этот лист</button>
         </div>
         <div class="aggregate-journal-table-wrap">
           <table class="aggregate-journal-table">
@@ -14041,10 +14042,14 @@ function renderAggregateJournal() {
     `).join("")}
   `;
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(selectedArea));
+  ui.aggregateJournalList.querySelectorAll("[data-print-aggregate-sheet]").forEach(button => {
+    button.addEventListener("click", () => printAggregateJournal(selectedArea, Number(button.dataset.printAggregateSheet)));
+  });
 }
 
-function printAggregateJournal(area) {
-  const sheets = [...ui.aggregateJournalList.querySelectorAll(".aggregate-journal-sheet")];
+function printAggregateJournal(area, selectedSheetIndex = null) {
+  const allSheets = [...ui.aggregateJournalList.querySelectorAll(".aggregate-journal-sheet")];
+  const sheets = Number.isInteger(selectedSheetIndex) ? allSheets.slice(selectedSheetIndex, selectedSheetIndex + 1) : allSheets;
   if (!sheets.length) return;
   const popup = window.open("", "_blank", "width=1400,height=900");
   if (!popup) {
@@ -14065,6 +14070,7 @@ function printAggregateJournal(area) {
           .print-sheet { width: 283mm; min-height: 196mm; break-after: page; page-break-after: always; }
           .print-sheet:last-of-type { break-after: auto; page-break-after: auto; }
           .aggregate-sheet-head { display: flex; justify-content: space-between; gap: 8mm; margin: 0 0 3mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; font-size: 10pt; }
+          .aggregate-sheet-print { display: none !important; }
           .aggregate-journal-table-wrap { width: 100%; overflow: visible; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           thead { display: table-header-group; }
