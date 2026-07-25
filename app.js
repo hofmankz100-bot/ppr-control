@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v255-push-edge-cases";
+const APP_VERSION = "v256-push-counter-breakdown";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1081,6 +1081,7 @@ async function openPushDiagnostics() {
               <strong>${escapeHtml(device.name)}</strong>
               <span>${escapeHtml(ROLE_ACCESS[device.role]?.label || device.role || "Без роли")}${device.area ? ` · ${escapeHtml(device.area)}` : ""}</span>
               <small>${escapeHtml(pushDeviceStatusText(device))} · личный счётчик ${Number(device.badgeCount || 0)}</small>
+              <small>Замечания ${Number(device.counts?.remarks || 0)} · ППР ${Number(device.counts?.ppr || 0)} · Заявки ${Number(device.counts?.requests || 0)} · Простои ${Number(device.counts?.downtimes || 0)}</small>
               <small>${escapeHtml(device.device || "Устройство не определено")}</small>
             </div>
             <button type="button" data-test-push-device="${escapeHtml(device.id)}">Проверить</button>

@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v255-push-edge-cases";
+const CACHE_NAME = "ppr-v256-push-counter-breakdown";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=255-push-edge-cases",
+  "./styles.css?v=256-push-counter-breakdown",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=255-push-edge-cases",
+  "./app.js?v=256-push-counter-breakdown",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

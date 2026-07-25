@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v255-push-edge-cases";
+const SERVER_VERSION = "v256-push-counter-breakdown";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1481,14 +1481,18 @@ function activeDowntimeCountForSubscription(db, subscriptionEntry) {
   }).length;
 }
 
-function personalNotificationCountServer(db, subscriptionEntry) {
-  const engineerRequests = permissionBaseRoleServer(subscriptionEntry?.profile?.role) === "engineer"
+function personalNotificationBreakdownServer(db, subscriptionEntry) {
+  const requests = permissionBaseRoleServer(subscriptionEntry?.profile?.role) === "engineer"
     ? engineerIncomingRequestItemCountServer(db)
     : 0;
-  return openRemarkCountForSubscription(db, subscriptionEntry)
-    + pendingPprCountForSubscription(db, subscriptionEntry)
-    + activeDowntimeCountForSubscription(db, subscriptionEntry)
-    + engineerRequests;
+  const remarks = openRemarkCountForSubscription(db, subscriptionEntry);
+  const ppr = pendingPprCountForSubscription(db, subscriptionEntry);
+  const downtimes = activeDowntimeCountForSubscription(db, subscriptionEntry);
+  return { remarks, ppr, requests, downtimes, total: remarks + ppr + requests + downtimes };
+}
+
+function personalNotificationCountServer(db, subscriptionEntry) {
+  return personalNotificationBreakdownServer(db, subscriptionEntry).total;
 }
 
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
@@ -2579,16 +2583,20 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const db = readDb();
-    const devices = (db.pushNotifications?.subscriptions || []).map(entry => ({
-      id: crypto.createHash("sha256").update(String(entry.subscription?.endpoint || "")).digest("hex").slice(0, 16),
-      name: String(entry.profile?.name || "Неизвестный сотрудник"),
-      role: String(entry.profile?.role || ""),
-      area: String(entry.profile?.area || ""),
-      language: String(entry.profile?.language || "ru"),
-      updatedAt: String(entry.updatedAt || ""),
-      device: String(entry.userAgent || "").slice(0, 160),
-      badgeCount: personalNotificationCountServer(db, entry)
-    }));
+    const devices = (db.pushNotifications?.subscriptions || []).map(entry => {
+      const counts = personalNotificationBreakdownServer(db, entry);
+      return {
+        id: crypto.createHash("sha256").update(String(entry.subscription?.endpoint || "")).digest("hex").slice(0, 16),
+        name: String(entry.profile?.name || "Неизвестный сотрудник"),
+        role: String(entry.profile?.role || ""),
+        area: String(entry.profile?.area || ""),
+        language: String(entry.profile?.language || "ru"),
+        updatedAt: String(entry.updatedAt || ""),
+        device: String(entry.userAgent || "").slice(0, 160),
+        badgeCount: counts.total,
+        counts
+      };
+    });
     sendJson(res, 200, { ok: true, devices });
     return true;
   }
