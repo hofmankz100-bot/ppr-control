@@ -9872,11 +9872,21 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   overflow: hidden;
 }
 
-.resolution-user-picker > summary {
+.resolution-user-picker > summary,
+.resolution-user-picker > strong {
+  display: block;
   padding: 11px 13px;
-  cursor: pointer;
   font-weight: 800;
   user-select: none;
+}
+
+.resolution-user-picker > summary {
+  cursor: pointer;
+}
+
+.resolution-user-picker > input[type="search"] {
+  width: calc(100% - 20px);
+  margin: 0 10px 8px;
 }
 
 .resolution-user-options {
@@ -9916,6 +9926,15 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .resolution-user-picker > button {
   margin: 0 10px 10px;
   width: calc(100% - 20px);
+}
+
+.resolution-score-recipients {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--nav-soft);
+  color: var(--text);
+  font-size: 13px;
 }
 
 .resolution-add-row select {

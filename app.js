@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v244-simple-request-actions";
+const APP_VERSION = "v245-simple-remark-team";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -295,6 +295,12 @@ function canonicalWorkerRole(role) {
 
 function isElectromechanicRole(role) {
   return role === "mechanic" || role === "electrician";
+}
+
+const RESOLUTION_EXECUTOR_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
+
+function isResolutionExecutorRole(role) {
+  return RESOLUTION_EXECUTOR_ROLES.has(String(role || ""));
 }
 
 function sameWorkerRole(left, right) {
@@ -4470,16 +4476,15 @@ function canManageResolutionParticipants(item) {
 }
 
 function canCompleteCollaborativeResolution(item) {
-  const participants = resolutionParticipants(item);
-  if (!participants.length) return true;
-  return isResolutionParticipant(item) || ["editor", "engineer", "shop"].includes(resolutionActor().role);
+  const actor = resolutionActor();
+  if (!isResolutionExecutorRole(actor.jobRole || actor.role)) return false;
+  return isResolutionParticipant(item, actor);
 }
 
 function eligibleResolutionUsers(eq) {
   const actor = resolutionActor();
   const users = [...loadUsers(), actor]
-    .filter(user => user && user.approved !== false && user.pendingApproval !== true && ROLE_ACCESS[user.role]?.checklist)
-    .filter(user => user.role !== "operator" && user.role !== "shop" || !user.area || user.area === eq.area);
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRole(user.role));
   const byKey = new Map();
   users.forEach(user => byKey.set(resolutionUserKey(user), resolutionParticipantFromUser(user)));
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -4841,7 +4846,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const participantOptions = eligibleResolutionUsers(eq).filter(user => !participantKeys.has(user.key));
   const resolutionUpdates = (Array.isArray(entry.resolutionUpdates) ? entry.resolutionUpdates : []).slice().reverse();
   const resolutionEvents = (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).slice().reverse();
-  const resolutionStartedText = entry.resolutionStartedAt ? `В работе с ${dateTimeHuman(entry.resolutionStartedAt)}` : "Можно устранять вместе";
+  const resolutionStartedText = entry.resolutionStartedAt ? `В работе с ${dateTimeHuman(entry.resolutionStartedAt)}` : "Нажмите «Начать устранение»";
   const photoKey = `${key(eq.id, nodeIndex, current.date)}:${remarkId}`;
   const draftPhoto = remarkResolutionPhotoDrafts.get(photoKey) || "";
   const canResolve = canCompleteCollaborativeResolution(entry);
@@ -4855,6 +4860,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const cardStatus = resolved ? "Подтверждено" : pendingConfirmation ? "Ждёт подтверждения" : returnedToRework ? "Возвращено" : "Открыто";
   const completedBy = resolutionParticipantsText(entry, resolvedBy || "Сотрудник");
   const submittedParticipants = resolutionParticipantsText(entry, submittedBy || "Сотрудник");
+  const actorCanJoin = isResolutionExecutorRole(resolutionActor().jobRole || resolutionActor().role);
 
   return `
     <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
@@ -4902,7 +4908,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         <section class="remark-collaboration">
           <div class="remark-collaboration-head">
             <div><strong>Совместное устранение</strong><span>${escapeHtml(resolutionStartedText)}</span></div>
-            ${!currentParticipant ? `<button type="button" data-remark-join>${participants.length ? "Присоединиться" : "Начать устранение"}</button>` : `<span class="resolution-participating">Вы участвуете</span>`}
+            ${!currentParticipant && actorCanJoin ? `<button type="button" data-remark-join>${participants.length ? "Присоединиться" : "Начать устранение"}</button>` : currentParticipant ? `<span class="resolution-participating">Вы участвуете</span>` : `<span class="resolution-participating">Контроль и подтверждение</span>`}
           </div>
           <div class="resolution-participants">
             ${participants.length ? participants.map(participant => `
@@ -4913,8 +4919,9 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             `).join("") : `<span class="resolution-empty">Участники ещё не добавлены</span>`}
           </div>
           ${canManageParticipants && participantOptions.length ? `
-            <details class="resolution-user-picker">
-              <summary>Выбрать участников</summary>
+            <div class="resolution-user-picker">
+              <strong>Добавить исполнителей</strong>
+              <input type="search" data-remark-user-search placeholder="Найти сотрудника">
               <div class="resolution-user-options">
                 ${participantOptions.map(user => `
                   <label>
@@ -4924,8 +4931,8 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
                   </label>
                 `).join("")}
               </div>
-              <button type="button" data-remark-add disabled>Добавить выбранных</button>
-            </details>
+              <button type="button" data-remark-add disabled>Добавить</button>
+            </div>
           ` : ""}
           ${resolutionUpdates.length ? `
             <div class="resolution-updates">
@@ -4941,6 +4948,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             </div>
           ` : ""}
           <div class="remark-action-composer">
+            <p class="resolution-score-recipients"><strong>Баллы получат:</strong> ${escapeHtml(participants.length ? participants.map(resolutionParticipantLabel).join(", ") : currentParticipant ? resolutionParticipantLabel(resolutionActor()) : "сначала начните устранение")}</p>
             <textarea data-remark-action-text rows="2" placeholder="Что сделано по этому замечанию"></textarea>
             <input data-remark-action-photo type="file" accept="image/*" capture="environment">
             <div class="photo-preview remark-action-preview">${draftPhoto ? `<img src="${draftPhoto}" alt="Фото работы"><button type="button" data-clear-remark-photo>Удалить фото</button>` : ""}</div>
@@ -10281,6 +10289,13 @@ function renderNodeWalkthrough(eq) {
       }, resolutionParticipants(remarkEntry).length ? "Присоединяем..." : "Начинаем..."));
       const participantChecks = [...card.querySelectorAll("[data-remark-user]")];
       const addParticipantsButton = card.querySelector("[data-remark-add]");
+      card.querySelector("[data-remark-user-search]")?.addEventListener("input", event => {
+        const query = String(event.currentTarget.value || "").trim().toLocaleLowerCase("ru-RU");
+        participantChecks.forEach(input => {
+          const option = input.closest("label");
+          if (option) option.hidden = Boolean(query) && !option.textContent.toLocaleLowerCase("ru-RU").includes(query);
+        });
+      });
       participantChecks.forEach(check => check.addEventListener("change", () => {
         if (addParticipantsButton) addParticipantsButton.disabled = !participantChecks.some(input => input.checked);
       }));
@@ -11866,7 +11881,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
   allRequests().forEach(req => {
     if (!req.mechanicInstalled && !req.done) return;
     const targetRole = req.issueTargetRole || "";
-    if (!["mechanic", "electrician"].includes(targetRole)) return;
+    if (!isResolutionExecutorRole(targetRole)) return;
     const resolvedAt = req.updatedAt || req.createdAt || req.date || "";
     const resolved = dateYearMonth(resolvedAt);
     if (resolved?.year !== year) return;
@@ -11925,7 +11940,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
   const workerMap = new Map();
   const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
   const ensureWorker = (role, name) => {
-    if (!["mechanic", "electrician"].includes(role)) return null;
+    if (!isResolutionExecutorRole(role)) return null;
     role = canonicalWorkerRole(role);
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     const key = workerKey(role, cleanName);
@@ -11945,7 +11960,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
     return workerMap.get(key);
   };
   loadUsers()
-    .filter(user => ["mechanic", "electrician"].includes(user.role))
+    .filter(user => isResolutionExecutorRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
   repairEvents.forEach(event => {
     const worker = ensureWorker(event.resolvedByRole, event.resolvedByName);
@@ -11955,7 +11970,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
       if (event.type === "install") worker.installs += 1;
       if (event.durationMs > 0) worker.durations.push(event.durationMs);
     }
-    if (event.open && ["mechanic", "electrician"].includes(event.authorRole)) {
+    if (event.open && isResolutionExecutorRole(event.authorRole)) {
       const started = Date.parse(event.createdAt || "");
       if (Number.isFinite(started) && Date.now() - started >= 3 * 86400000) {
         const openWorker = ensureWorker(event.authorRole, event.resolvedByName || event.authorName);
@@ -12164,7 +12179,7 @@ function workerRatingPointMap(year, monthIndex = null) {
     return parsed?.year === year && (monthIndex === null || parsed.month === monthIndex);
   };
   const add = (role, name, value) => {
-    if (!["mechanic", "electrician"].includes(role)) return;
+    if (!isResolutionExecutorRole(role)) return;
     const cleanName = String(name || "").trim();
     if (!cleanName) return;
     const key = workerRatingKey(role, cleanName);
@@ -12177,7 +12192,7 @@ function workerRatingPointMap(year, monthIndex = null) {
         const registered = usersByResolutionKey.get(participant.key || resolutionUserKey(participant));
         return registered || participant;
       })
-      .filter(participant => ["mechanic", "electrician"].includes(participant?.role) && String(participant?.name || "").trim());
+      .filter(participant => isResolutionExecutorRole(participant?.role) && String(participant?.name || "").trim());
     if (normalized.length) return [...new Map(normalized.map(participant => [workerRatingKey(participant.role, participant.name), participant])).values()];
     return [{ role: event.resolvedByRole, name: event.resolvedByName }];
   };
@@ -12195,7 +12210,7 @@ function workerRatingPointMap(year, monthIndex = null) {
         const role = item.role || registered?.role || "";
         const name = item.name || registered?.name || "";
         const key = workerRatingKey(role, name);
-        if (!["mechanic", "electrician"].includes(role) || !name || Number(penaltiesByWorker.get(key) || 0) >= 2) return;
+        if (!isResolutionExecutorRole(role) || !name || Number(penaltiesByWorker.get(key) || 0) >= 2) return;
         penaltiesByWorker.set(key, Number(penaltiesByWorker.get(key) || 0) + 1);
         add(role, name, WORK_RATING_POINTS.returnPenalty);
       });
@@ -12230,7 +12245,7 @@ function workerRatingPointMap(year, monthIndex = null) {
 
   const journalAwards = new Map();
   const addJournal = (role, name, date, journalKey) => {
-    if (!["mechanic", "electrician"].includes(role) || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !inPeriod(`${date}T12:00:00`)) return;
+    if (!isResolutionExecutorRole(role) || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !inPeriod(`${date}T12:00:00`)) return;
     const workerKey = workerRatingKey(role, name);
     const awardKey = `${workerKey}:${date}:${journalKey}`;
     if (journalAwards.has(awardKey)) return;
@@ -12263,7 +12278,7 @@ function workerRatingPointMap(year, monthIndex = null) {
 function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   const workers = new Map();
   const ensureWorker = (role, name) => {
-    if (!["mechanic", "electrician"].includes(role)) return null;
+    if (!isResolutionExecutorRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     const key = workerRatingKey(role, cleanName);
     if (!workers.has(key)) workers.set(key, emptyWorkerRating(role, cleanName));
@@ -12271,7 +12286,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   };
 
   loadUsers()
-    .filter(user => ["mechanic", "electrician"].includes(user.role))
+    .filter(user => isResolutionExecutorRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
 
   const resolvedRemarkKeys = new Set();
@@ -12302,7 +12317,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
         if (event.type !== "install") worker.repairDurations.push(event.durationMs);
       }
     }
-    if (event.open && ["mechanic", "electrician"].includes(event.authorRole)) {
+    if (event.open && isResolutionExecutorRole(event.authorRole)) {
       if (event.type === "remark" && event.resolutionKey) {
         if (overdueRemarkKeys.has(event.resolutionKey)) return;
         overdueRemarkKeys.add(event.resolutionKey);
@@ -12366,7 +12381,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   const monthIndex = Math.min(new Date().getMonth(), 11);
   const monthWorkers = new Map();
   const ensureMonthWorker = (role, name) => {
-    if (!["mechanic", "electrician"].includes(role)) return null;
+    if (!isResolutionExecutorRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     const key = workerRatingKey(role, cleanName);
     if (!monthWorkers.has(key)) monthWorkers.set(key, { role, name: cleanName, roleLabel: requestRoleLabel(role), points: 0, closed: 0, qrDone: 0, breakdownClosed: 0, remarksFound: 0, remarksResolved: 0 });
@@ -12437,7 +12452,7 @@ function workerRatingBand(worker) {
 }
 
 function workerRatingHtml(stats = workerRatingStats()) {
-  const detailed = !["mechanic", "electrician"].includes(profile?.role);
+  const detailed = !isResolutionExecutorRole(profile?.role);
   const monthName = new Date(stats.year, stats.monthIndex, 1).toLocaleDateString("ru-RU", { month: "long" });
   const winner = stats.bestOverall;
   const winnerFull = winner ? stats.workers.find(worker => sameWorkerRole(worker.role, winner.role) && worker.name === winner.name) : null;
@@ -12448,7 +12463,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
   const maxPoints = Math.max(...stats.workers.map(worker => worker.points), 1);
   const graph = stats.workers.map(worker => {
     const height = Math.max(8, Math.round(worker.points / maxPoints * 100));
-    const currentWorker = ["mechanic", "electrician"].includes(profile?.role)
+    const currentWorker = isResolutionExecutorRole(profile?.role)
       && String(worker.name || "").trim().toLowerCase() === String(profile?.name || "").trim().toLowerCase()
       && sameWorkerRole(worker.role, profile.role);
     return `

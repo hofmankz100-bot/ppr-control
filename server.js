@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v244-simple-request-actions";
+const SERVER_VERSION = "v245-simple-remark-team";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1027,6 +1027,12 @@ function permissionBaseRoleServer(role) {
 
 function samePermissionRoleServer(left, right) {
   return permissionBaseRoleServer(String(left || "")) === permissionBaseRoleServer(String(right || ""));
+}
+
+const RESOLUTION_EXECUTOR_ROLES_SERVER = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
+
+function isResolutionExecutorRoleServer(role) {
+  return RESOLUTION_EXECUTOR_ROLES_SERVER.has(String(role || ""));
 }
 
 function remarkEntryByKeyServer(db, key) {
@@ -3317,7 +3323,11 @@ async function handleApi(req, res, pathname, url) {
     const downtimeId = String(body.downtimeId || "").trim();
     const comment = String(body.comment || "").trim().slice(0, 4000);
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
+    const allowedRoles = new Set([
+      "mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator", "shop",
+      "engineer", "safetyEngineer", "energyEngineer", "designEngineer", "mechanicalEngineer",
+      "instrumentationEngineer", "editor", "productionDirector"
+    ]);
     if (!downtimeId || !comment || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "downtime_close_invalid" });
       return true;
@@ -3454,6 +3464,7 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "start") {
+        if (!isResolutionExecutorRoleServer(actor.role)) return { error: "remark_participant_required" };
         if (!actorIsParticipant) {
           participants.push(actor);
           remark.resolutionEvents.push({
@@ -3482,7 +3493,7 @@ async function handleApi(req, res, pathname, url) {
           const requestedKey = resolutionUserKeyServer(requested);
           return (db.users || []).find(user => resolutionUserKeyServer(user) === requestedKey);
         });
-        if (registeredParticipants.some(user => !user || user.approved === false || user.pendingApproval === true || !allowedRoles.has(user.role))) {
+        if (registeredParticipants.some(user => !user || user.approved === false || user.pendingApproval === true || !isResolutionExecutorRoleServer(user.role))) {
           return { error: "remark_participant_invalid" };
         }
         const addedParticipants = [];
@@ -3510,9 +3521,13 @@ async function handleApi(req, res, pathname, url) {
       if (action === "remove") {
         if (!canManage) return { error: "remark_participant_manage_forbidden" };
         const participantKey = String(body.participantKey || "").trim();
-        if (!participantKey || participantKey === remark.resolutionLeadKey) return { error: "remark_participant_remove_forbidden" };
+        if (!participantKey) return { error: "remark_participant_remove_forbidden" };
         const removed = participants.find(participant => participant.key === participantKey);
         participants = participants.filter(participant => participant.key !== participantKey);
+        if (removed && participantKey === remark.resolutionLeadKey) {
+          remark.resolutionLeadKey = participants[0]?.key || "";
+          remark.resolutionLeadName = participants[0]?.name || "";
+        }
         if (removed) {
           remark.resolutionEvents.push({
             id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
@@ -3547,7 +3562,7 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "resolve") {
-        if (participants.length && !actorIsParticipant && !["editor", "engineer", "shop"].includes(actorPermissionRole)) {
+        if (participants.length && (!isResolutionExecutorRoleServer(actor.role) || !actorIsParticipant)) {
           return { error: "remark_participant_required" };
         }
         const text = String(body.text || "").trim().slice(0, 4000);

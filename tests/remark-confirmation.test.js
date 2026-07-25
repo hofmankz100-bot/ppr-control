@@ -136,6 +136,7 @@ test.before(async () => {
     operationalResetAt: "",
     walkShiftCleanupVersion: "",
     users: [
+      user("welder-1", "Сварщик Один", "welder"),
       user("electrician-1", "Электрик Один", "electrician"),
       user("mechanic-1", "Механик Один", "mechanic"),
       user("shop-a", "Начальник А", "shop", "Цех А"),
@@ -347,6 +348,13 @@ test("falls back to the engineer, returns only to the last performer, and accept
 
   await postRemark("2:0:2026-07-16", "remark-engineer", "start", mechanic);
   await postRemark("2:0:2026-07-16", "remark-engineer", "add", mechanic, { participant: electrician });
+  const withWelder = await postRemark("2:0:2026-07-16", "remark-engineer", "add", mechanic, {
+    participant: user("welder-1", "Сварщик Один", "welder")
+  });
+  assert.deepEqual(
+    patchedRemark(withWelder, "2:0:2026-07-16", "remark-engineer").resolutionParticipants.map(item => item.role).sort(),
+    ["electrician", "mechanic", "welder"]
+  );
   const firstResolve = await postRemark("2:0:2026-07-16", "remark-engineer", "resolve", mechanic, {
     text: "Первая попытка",
     equipmentArea: "Цех А"
@@ -413,7 +421,7 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.equal(finalRemark.resolvedByName, "Электрик Один");
   assert.equal(finalRemark.resolvedComment, "Повторно устранено другим сотрудником");
   assert.equal(finalRemark.confirmedByName, "Инженер Один");
-  assert.deepEqual(finalRemark.resolutionCompletedParticipants.map(item => item.key).sort(), ["id:electrician-1", "id:mechanic-1"]);
+  assert.deepEqual(finalRemark.resolutionCompletedParticipants.map(item => item.key).sort(), ["id:electrician-1", "id:mechanic-1", "id:welder-1"]);
 
   const reportResponse = await fetch(`${baseUrl}/api/export/month.xls?month=2026-07`);
   assert.equal(reportResponse.status, 200);
@@ -806,12 +814,15 @@ test("collaborative resolution UI batches checked participants and shows every r
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(appSource, /type="checkbox" data-remark-user/);
+  assert.match(appSource, /data-remark-user-search/);
+  assert.match(appSource, /resolution-score-recipients/);
   assert.match(appSource, /participants: participantsToAdd/);
   assert.match(appSource, /Устранили: \$\{escapeHtml\(completedBy\)\}/);
   assert.match(appSource, /resolutionCompletedParticipants: completedResolutionParticipants\(entry\)/);
   assert.match(appSource, /Устранили: \$\{resolver\}/);
   assert.match(serverSource, /Array\.isArray\(body\.participants\)/);
   assert.match(serverSource, /notifyParticipants = addedParticipants/);
+  assert.match(serverSource, /RESOLUTION_EXECUTOR_ROLES_SERVER/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {
