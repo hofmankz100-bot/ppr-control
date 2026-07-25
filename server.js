@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v225-controlled-node-editing";
+const SERVER_VERSION = "v226-node-editors-only";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const loginAttempts = new Map();
 let postgresPool = null;
@@ -2603,15 +2603,16 @@ async function handleApi(req, res, pathname, url) {
           const editingEnabled = authenticatedRole === "editor"
             ? (hasEditingPermissionField ? requestedEditingEnabled : currentItem.editingEnabled === true)
             : currentItem.editingEnabled === true;
+          const canEditLockedCatalogContent = editingEnabled && ["engineer", "shop"].includes(authenticatedRole);
           // The two approved press catalogs can be edited only during an
           // explicit window opened by an administrator.
           if (lockedCatalog && !editingEnabled && !(authenticatedRole === "editor" && hasEditingPermissionField)) return;
           const item = lockedCatalog ? { ...currentItem } : {};
-          if ((!lockedCatalog || editingEnabled) && String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
-          if ((!lockedCatalog || editingEnabled) && Array.isArray(rawItem.nodes)) {
+          if ((!lockedCatalog || canEditLockedCatalogContent) && String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
+          if ((!lockedCatalog || canEditLockedCatalogContent) && Array.isArray(rawItem.nodes)) {
             item.nodes = rawItem.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean).slice(0, 200);
           }
-          if ((!lockedCatalog || editingEnabled) && rawItem.reminders && typeof rawItem.reminders === "object") {
+          if ((!lockedCatalog || canEditLockedCatalogContent) && rawItem.reminders && typeof rawItem.reminders === "object") {
             item.reminders = {};
             Object.entries(rawItem.reminders).forEach(([nodeIndex, lines]) => {
               if (!Array.isArray(lines)) return;

@@ -76,7 +76,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v225-controlled-node-editing";
+const APP_VERSION = "v226-node-editors-only";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -2722,7 +2722,10 @@ function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
   if (!["editor", "engineer", "shop"].includes(role)) return false;
   const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
   if (!eq) return false;
-  if (isEquipmentCatalogLocked(eq) && !isEquipmentCatalogEditingEnabled(eq)) return false;
+  if (isEquipmentCatalogLocked(eq)) {
+    if (role === "editor") return false;
+    if (!isEquipmentCatalogEditingEnabled(eq)) return false;
+  }
   if (role !== "shop") return true;
   const actorArea = authenticatedProfile?.area || profile?.area || "";
   return Boolean(actorArea && eq.area === actorArea);
