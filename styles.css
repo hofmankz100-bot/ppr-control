@@ -947,6 +947,10 @@ body.global-reminder-open {
   display: none;
 }
 
+.login-overlay:not([hidden]) ~ .app-shell {
+  display: none;
+}
+
 .login-card {
   width: min(420px, 100%);
   display: grid;

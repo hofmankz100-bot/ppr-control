@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "esbuild app.js --minify --outfile=app.min.js && esbuild styles.css --minify --loader:.css=css --outfile=styles.min.css",
     "start": "node server.js",
     "test": "node --test"
   },
@@ -15,5 +16,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.6"
   }
 }

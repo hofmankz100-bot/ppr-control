@@ -1,16 +1,15 @@
-const CACHE_NAME = "ppr-v210-collaborative-participants";
+const CACHE_NAME = "ppr-v220-stability-security";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=209-tested-fixes",
+  "./styles.min.css?v=220-stability-security",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=210-collaborative-participants",
-  "./node_modules/jsqr/dist/jsQR.js?v=313-spelling-fixes",
+  "./app.min.js?v=220-stability-security",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

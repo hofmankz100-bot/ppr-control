@@ -71,11 +71,12 @@ const EQUIPMENT = [
 ];
 
 const STORE_KEY = "ppr-pwa-state-v2";
+const PENDING_ACTION_ID_KEY = `${STORE_KEY}-pending-action-id`;
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v210-collaborative-participants";
+const APP_VERSION = "v220-stability-security";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -965,6 +966,9 @@ function saveState(options = {}) {
     return;
   }
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  if (remoteSaveInFlight || !localStorage.getItem(PENDING_ACTION_ID_KEY)) {
+    localStorage.setItem(PENDING_ACTION_ID_KEY, nextActionId());
+  }
   queueRemoteStateSave();
   window.queueMicrotask(updateGlobalReminderBadge);
   window.queueMicrotask(syncAppIconBadge);
@@ -2004,11 +2008,13 @@ async function saveRemoteState() {
   remoteSavePromise = (async () => {
   try {
     const changedSections = changedRemoteStateSections();
+    const actionId = localStorage.getItem(PENDING_ACTION_ID_KEY) || nextActionId();
+    localStorage.setItem(PENDING_ACTION_ID_KEY, actionId);
     const result = await apiJson("/api/state", {
       method: "PUT",
       timeout: 60000,
       body: JSON.stringify({
-        actionId: nextActionId(),
+        actionId,
         clientId: CLIENT_ID,
         // The reset marker is a concurrency guard, not a changed state section.
         // Send it with every save so the server can safely accept operational
@@ -2029,7 +2035,10 @@ async function saveRemoteState() {
     });
     rememberRemoteStateBaseline({}, changedSections.fingerprints);
     const hasNewLocalChanges = remoteSavePending;
-    if (!hasNewLocalChanges) localStorage.removeItem(`${STORE_KEY}-pending`);
+    if (!hasNewLocalChanges) {
+      localStorage.removeItem(`${STORE_KEY}-pending`);
+      localStorage.removeItem(PENDING_ACTION_ID_KEY);
+    }
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
     if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
@@ -2043,6 +2052,7 @@ async function saveRemoteState() {
       // A reset made this local snapshot obsolete. Reload instead of retrying
       // forever or pretending that the rejected operation was saved.
       localStorage.removeItem(`${STORE_KEY}-pending`);
+      localStorage.removeItem(PENDING_ACTION_ID_KEY);
       localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
       localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
       await loadRemoteState();
@@ -2515,6 +2525,28 @@ async function loginEmployee(identifier, password) {
   if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
   localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
   return result.user;
+}
+
+async function restoreServerSession() {
+  const stored = loadProfile();
+  if (!stored) return false;
+  try {
+    const result = await apiJson("/api/auth/session", { timeout: 8000 });
+    if (!result?.user) throw new Error("authentication_required");
+    authenticatedProfile = result.user;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
+    profile = activeProfileFromSession(authenticatedProfile);
+    return true;
+  } catch {
+    authenticatedProfile = null;
+    profile = null;
+    localStorage.removeItem(PROFILE_KEY);
+    localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
+    if (ui.loginOverlay) ui.loginOverlay.hidden = false;
+    if (ui.loginForm) ui.loginForm.hidden = false;
+    if (ui.loginError) ui.loginError.textContent = "Сессия завершена. Войдите снова.";
+    return false;
+  }
 }
 
 async function finishAuthOnCurrentPage() {
@@ -3261,8 +3293,9 @@ function renderProfile() {
       render();
     }, "Очищается...");
   });
-  ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", () => {
+  ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
+    await apiJson("/api/auth/logout", { method: "POST", timeout: 5000 }).catch(() => {});
     localStorage.removeItem(PROFILE_KEY);
     localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
     location.reload();
@@ -3856,12 +3889,21 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const ensureJsQr = async () => {
     if (typeof window.jsQR === "function") return true;
     try {
-      const response = await fetch(`node_modules/jsqr/dist/jsQR.js?v=${APP_VERSION}`, { cache: "no-store" });
-      const source = await response.text();
-      const module = { exports: {} };
-      const exports = module.exports;
-      new Function("module", "exports", source)(module, exports);
-      window.jsQR = module.exports?.default || module.exports;
+      await new Promise((resolve, reject) => {
+        const existing = document.querySelector("script[data-jsqr-loader]");
+        if (existing) {
+          existing.addEventListener("load", resolve, { once: true });
+          existing.addEventListener("error", reject, { once: true });
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = `node_modules/jsqr/dist/jsQR.js?v=${APP_VERSION}`;
+        script.async = true;
+        script.dataset.jsqrLoader = "1";
+        script.addEventListener("load", resolve, { once: true });
+        script.addEventListener("error", reject, { once: true });
+        document.head.append(script);
+      });
     } catch {}
     return typeof window.jsQR === "function";
   };
@@ -6501,6 +6543,14 @@ function readPhotoFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
       resolve("");
+      return;
+    }
+    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(String(file.type || ""))) {
+      reject(new Error("Поддерживаются только фотографии JPEG, PNG и WebP."));
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      reject(new Error("Фотография слишком большая. Максимальный исходный размер — 20 МБ."));
       return;
     }
     const reader = new FileReader();
@@ -15762,6 +15812,29 @@ window.addEventListener("online", () => {
   pollRemoteUsers(true);
 });
 
+function reportClientError(message, source = "", line = 0, column = 0) {
+  if (!isProfileReady() || !navigator.onLine) return;
+  fetch("/api/client-error", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({
+      message: String(message || "Unknown client error").slice(0, 1000),
+      source: String(source || "").slice(0, 500),
+      line: Number(line || 0),
+      column: Number(column || 0),
+      appVersion: APP_VERSION
+    })
+  }).catch(() => {});
+}
+
+window.addEventListener("error", event => {
+  reportClientError(event.message, event.filename, event.lineno, event.colno);
+});
+window.addEventListener("unhandledrejection", event => {
+  reportClientError(event.reason?.message || String(event.reason || "Unhandled promise rejection"));
+});
+
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     if (serviceWorkerUpdateReady && !isUserEditingForm()) {
@@ -15803,6 +15876,8 @@ setupTheme();
 setupLogin();
 resetAppNotificationsForOpen();
 (async () => {
+  if (!loadProfile()) return;
+  if (!await restoreServerSession()) return;
   const deviceState = await loadStateFromDevice();
   if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
   if (isProfileReady()) {

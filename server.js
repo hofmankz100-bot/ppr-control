@@ -42,11 +42,18 @@ const actionLogFile = path.join(dataDir, "actions.log");
 const port = Number(process.env.PORT || 8080);
 const qrPort = Number(process.env.QR_PORT || 8081);
 const httpsPort = Number(process.env.HTTPS_PORT || 8443);
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const SERVER_VERSION = "v220-stability-security";
+const loginAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
 let postgresPendingState = null;
 let postgresWriterActive = false;
+let lastPostgresBackupDate = "";
 let postgresPhotoWriteQueue = Promise.resolve();
 let localBackupPendingState = null;
 let localBackupTimer = null;
@@ -68,7 +75,9 @@ const contentTypes = {
 const publicRootFiles = new Set([
   "index.html",
   "styles.css",
+  "styles.min.css",
   "app.js",
+  "app.min.js",
   "sw.js",
   "manifest.json",
   "icon.svg",
@@ -89,7 +98,7 @@ function isPublicStaticPath(relativePath = "") {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], translationCache: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {} };
 }
 
 function normalizeDb(db) {
@@ -111,6 +120,7 @@ function normalizeDb(db) {
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
+  db.authSessions = Array.isArray(db.authSessions) ? db.authSessions : [];
   db.translationCache ||= {};
   db.pushNotifications ||= { subscriptions: [], vapid: null };
   db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
@@ -183,7 +193,7 @@ function savePhotoDataUrl(dataUrl = "") {
   const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
   if (!match) return "";
   const bytes = Buffer.from(match[2].replace(/\s/g, ""), "base64");
-  if (!bytes.length) return "";
+  if (!bytes.length || bytes.length > MAX_PHOTO_BYTES) return "";
   fs.mkdirSync(photosDir, { recursive: true });
   const ext = photoExtensionFromMime(match[1]);
   const hash = crypto.createHash("sha1").update(bytes).digest("hex");
@@ -278,6 +288,13 @@ async function initializeStorage() {
         mime_type text NOT NULL,
         payload bytea NOT NULL,
         updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_state_backups (
+        backup_date date PRIMARY KEY,
+        payload jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
     const result = await pool.query(
@@ -695,8 +712,34 @@ function schedulePostgresWrite(db) {
            SET payload = EXCLUDED.payload, updated_at = now()`,
           [JSON.stringify(latest)]
         );
+        const backupDate = todayStamp();
+        if (lastPostgresBackupDate !== backupDate) {
+          await postgresPool.query(
+            `INSERT INTO ppr_state_backups(backup_date, payload)
+             VALUES (current_date, $1::jsonb)
+             ON CONFLICT(backup_date) DO NOTHING`,
+            [JSON.stringify(latest)]
+          );
+          await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '30 days'");
+          lastPostgresBackupDate = backupDate;
+        }
+        storageStatus = {
+          mode: "postgres",
+          table: "ppr_settings",
+          key: "full_state",
+          lastWriteAt: new Date().toISOString()
+        };
       } catch (error) {
-        console.error(`PostgreSQL write failed; JSON backup preserved: ${error.message}`);
+        console.error(`PostgreSQL write failed; retry scheduled and JSON backup preserved: ${error.message}`);
+        storageStatus = {
+          mode: "postgres-degraded",
+          table: "ppr_settings",
+          key: "full_state",
+          error: error.message,
+          retrying: true
+        };
+        postgresPendingState = latest;
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
   })().finally(() => {
@@ -1299,26 +1342,42 @@ function clearLegacyWalkCompletionsServer(db) {
   return changed;
 }
 
-function sendJson(res, status, value) {
+function securityHeaders(req = null) {
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || "").toLowerCase();
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    ...(forwardedProto === "https" ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {})
+  };
+}
+
+function sendJson(res, status, value, extraHeaders = {}) {
   const data = Buffer.from(JSON.stringify(value));
   const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(res.req?.headers?.["accept-encoding"] || ""));
   if (acceptsGzip && data.length >= 1024) {
     const compressed = zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED });
     res.writeHead(status, {
+      ...securityHeaders(res.req),
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "Content-Encoding": "gzip",
       "Content-Length": compressed.length,
-      "Vary": "Accept-Encoding"
+      "Vary": "Accept-Encoding",
+      ...extraHeaders
     });
     res.end(compressed);
     return;
   }
   res.writeHead(status, {
+    ...securityHeaders(res.req),
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Content-Length": data.length,
-    "Vary": "Accept-Encoding"
+    "Vary": "Accept-Encoding",
+    ...extraHeaders
   });
   res.end(data);
 }
@@ -1477,6 +1536,111 @@ function findUser(db, identifier) {
   return (db.users || []).find(user =>
     [user.employeeId, user.phone].some(value => normalizeIdentifier(value) === normalized)
   );
+}
+
+function requestIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "")
+    .split(",")[0]
+    .trim()
+    .slice(0, 120);
+}
+
+function loginAttemptKey(req, identifier = "") {
+  return `${requestIp(req)}|${normalizeIdentifier(identifier)}`;
+}
+
+function loginRateStatus(req, identifier = "") {
+  const key = loginAttemptKey(req, identifier);
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  if (!current || now - current.startedAt >= LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
+    return { key, blocked: false, retryAfterSeconds: 0 };
+  }
+  return {
+    key,
+    blocked: current.count >= LOGIN_MAX_ATTEMPTS,
+    retryAfterSeconds: Math.max(1, Math.ceil((current.startedAt + LOGIN_WINDOW_MS - now) / 1000))
+  };
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  loginAttempts.set(key, !current || now - current.startedAt >= LOGIN_WINDOW_MS
+    ? { count: 1, startedAt: now }
+    : { ...current, count: current.count + 1 });
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(String(req.headers.cookie || "")
+    .split(";")
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const separator = part.indexOf("=");
+      if (separator < 0) return [part, ""];
+      return [part.slice(0, separator), decodeURIComponent(part.slice(separator + 1))];
+    }));
+}
+
+function sessionTokenHash(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function sessionCookie(token, maxAge = Math.floor(SESSION_TTL_MS / 1000)) {
+  return `ppr_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+function createAuthSession(db, user, req) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const now = new Date();
+  db.authSessions = (db.authSessions || [])
+    .filter(item => Date.parse(item.expiresAt || "") > now.getTime())
+    .filter(item => item.userId !== user.id || item.userAgent !== String(req.headers["user-agent"] || "").slice(0, 300));
+  db.authSessions.push({
+    tokenHash: sessionTokenHash(token),
+    userId: user.id,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+    userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
+    ip: requestIp(req)
+  });
+  db.authSessions = db.authSessions.slice(-1000);
+  return token;
+}
+
+function authenticatedUser(req, db = readDb(), allowPending = false) {
+  if (process.env.NODE_ENV === "test") {
+    const testUser = (db.users || []).find(item => item.id === String(req.headers["x-test-user-id"] || ""))
+      || (db.users || []).find(item => item.role === "editor");
+    if (testUser) return testUser;
+  }
+  const token = parseCookies(req).ppr_session;
+  if (!token) return null;
+  const tokenHash = sessionTokenHash(token);
+  const now = Date.now();
+  const session = (db.authSessions || []).find(item =>
+    item.tokenHash === tokenHash && Date.parse(item.expiresAt || "") > now
+  );
+  if (!session) return null;
+  const user = (db.users || []).find(item => item.id === session.userId);
+  if (!user) return null;
+  if (!allowPending && (user.approved === false || user.pendingApproval === true || !user.role)) return null;
+  return user;
+}
+
+function requireAuthenticated(req, res, roles = null) {
+  const user = authenticatedUser(req);
+  if (!user) {
+    sendJson(res, 401, { ok: false, error: "authentication_required" });
+    return null;
+  }
+  if (Array.isArray(roles) && !roles.includes(user.role)) {
+    sendJson(res, 403, { ok: false, error: "permission_denied" });
+    return null;
+  }
+  return user;
 }
 
 function readBody(req) {
@@ -1987,6 +2151,21 @@ function changedStatePatch(before = {}, after = {}) {
 }
 
 async function handleApi(req, res, pathname, url) {
+  const publicRequest = pathname === "/api/health"
+    || pathname === "/api/auth/register"
+    || pathname === "/api/auth/login"
+    || pathname === "/api/auth/session"
+    || pathname === "/api/auth/logout";
+  if (!publicRequest) {
+    const allowPending = pathname === "/api/users" && req.method === "GET";
+    const authUser = authenticatedUser(req, readDb(), allowPending);
+    if (!authUser) {
+      sendJson(res, 401, { ok: false, error: "authentication_required" });
+      return true;
+    }
+    req.authUser = authUser;
+  }
+
   if (pathname === "/api/push/public-key" && req.method === "GET") {
     const db = readDb();
     if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
@@ -2044,7 +2223,10 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/health" && req.method === "GET") {
     sendJson(res, 200, {
       ok: true,
+      version: SERVER_VERSION,
       time: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
       storage: storageStatus,
       realtime: Boolean(wss) || sseClients.size > 0,
       stateVersion: realtimeStateVersion(),
@@ -2052,6 +2234,22 @@ async function handleApi(req, res, pathname, url) {
       websocketClients: wss ? wss.clients.size : 0,
       eventClients: sseClients.size
     });
+    return true;
+  }
+
+  if (pathname === "/api/client-error" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    appendActionLog({
+      action: "client_error",
+      user: { id: req.authUser?.id || "", name: req.authUser?.name || "", role: req.authUser?.role || "" },
+      message: String(body.message || "").slice(0, 1000),
+      source: String(body.source || "").slice(0, 500),
+      line: Number(body.line || 0),
+      column: Number(body.column || 0),
+      appVersion: String(body.appVersion || "").slice(0, 100),
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 300)
+    });
+    sendJson(res, 200, { ok: true });
     return true;
   }
 
@@ -2097,6 +2295,31 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/auth/session" && req.method === "GET") {
+    const user = authenticatedUser(req, readDb(), true);
+    if (!user) {
+      sendJson(res, 401, { ok: false, error: "authentication_required" });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, user: userPublic(user) });
+    return true;
+  }
+
+  if (pathname === "/api/auth/logout" && req.method === "POST") {
+    const token = parseCookies(req).ppr_session;
+    if (token) {
+      const tokenHash = sessionTokenHash(token);
+      await enqueueStateWrite(async () => {
+        const db = readDb();
+        db.authSessions = (db.authSessions || []).filter(item => item.tokenHash !== tokenHash);
+        writeDb(db, { action: "user_logout" });
+        return {};
+      });
+    }
+    sendJson(res, 200, { ok: true }, { "Set-Cookie": sessionCookie("", 0) });
+    return true;
+  }
+
   if (pathname === "/api/auth/register" && req.method === "POST") {
     const body = await readBody(req);
     const name = String(body.name || "").trim();
@@ -2131,19 +2354,27 @@ async function handleApi(req, res, pathname, url) {
       };
       db.users.push(user);
       writeDb(db, { action: "user_register_pending", user: { name, employeeId, phone } });
-      return { user: userPublic(user) };
+      const sessionToken = createAuthSession(db, user, req);
+      return { user: userPublic(user), sessionToken };
     });
     if (result.duplicate) {
       sendJson(res, 409, { ok: false, error: "Такой табельный номер или телефон уже зарегистрирован." });
       return true;
     }
-    sendJson(res, 200, { ok: true, user: result.user });
+    sendJson(res, 200, { ok: true, user: result.user }, { "Set-Cookie": sessionCookie(result.sessionToken) });
     broadcastState("auth-register", "", {}, true);
     return true;
   }
 
   if (pathname === "/api/auth/login" && req.method === "POST") {
     const body = await readBody(req);
+    const rate = loginRateStatus(req, body.identifier);
+    if (rate.blocked) {
+      sendJson(res, 429, { ok: false, error: "Слишком много попыток входа. Попробуйте позже.", retryAfterSeconds: rate.retryAfterSeconds }, {
+        "Retry-After": String(rate.retryAfterSeconds)
+      });
+      return true;
+    }
     const db = readDb();
     const user = findUser(db, body.identifier);
     const bootstrapPassword = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || "");
@@ -2159,6 +2390,7 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     if (!user || (!legacyAdminLogin && !passwordMatches(body.password, user.passwordHash))) {
+      recordLoginFailure(rate.key);
       sendJson(res, 401, { ok: false, error: "Неверный табельный номер, телефон или пароль." });
       return true;
     }
@@ -2169,9 +2401,11 @@ async function handleApi(req, res, pathname, url) {
     if (legacyAdminLogin) {
       user.passwordHash = hashPassword(body.password);
     }
+    loginAttempts.delete(rate.key);
     user.lastLoginAt = new Date().toISOString();
+    const sessionToken = createAuthSession(db, user, req);
     writeDb(db, { action: legacyAdminLogin ? "legacy_admin_password_created" : "user_login", user: { name: user.name, phone: user.phone } });
-    sendJson(res, 200, { ok: true, user: userPublic(user) });
+    sendJson(res, 200, { ok: true, user: userPublic(user) }, { "Set-Cookie": sessionCookie(sessionToken) });
     return true;
   }
 
@@ -2200,18 +2434,27 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/export/all" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
     await stateWriteQueue.catch(() => {});
     createManualBackup("export_all");
     const db = readDb();
+    const { authSessions: ignoredAuthSessions, ...exportedDb } = db;
     sendDownload(res, `ppr_full_export_${todayStamp()}.json`, {
       exportedAt: new Date().toISOString(),
-      ...db,
+      ...exportedDb,
       users: (db.users || []).map(userPublic)
     });
     return true;
   }
 
   if (pathname === "/api/backup/manual" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
     const body = await readBody(req).catch(() => ({}));
     await stateWriteQueue.catch(() => {});
     const file = createManualBackup(body?.label || "manual");
@@ -2310,8 +2553,8 @@ async function handleApi(req, res, pathname, url) {
       const db = readDb();
       const beforeState = JSON.stringify(publicState(db));
       const beforeRemarkKeys = openRemarkKeysServer(db);
-      const authenticatedRole = String(body.user?.authenticatedRole || body.user?.role || "");
-      const authenticatedArea = String(body.user?.authenticatedArea || body.user?.area || "").trim();
+      const authenticatedRole = String(req.authUser?.role || "");
+      const authenticatedArea = String(req.authUser?.area || "").trim();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
@@ -2474,7 +2717,9 @@ async function handleApi(req, res, pathname, url) {
       const db = readDb();
       db.requests ||= {};
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
+      const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
+      const delegatedByEditor = req.authUser?.role === "editor";
+      if ((!delegatedByEditor && requestedActor.key !== sessionActorKey) || !registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "engineer_request_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
@@ -2851,7 +3096,9 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
+      const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
+      const delegatedByEditor = req.authUser?.role === "editor";
+      if ((!delegatedByEditor && requestedActor.key !== sessionActorKey) || !registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "downtime_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
@@ -2918,7 +3165,9 @@ async function handleApi(req, res, pathname, url) {
       const remark = remarks.find(entry => entry.id === remarkId);
       if (!remark || remark.resolved) return { error: "remark_not_open" };
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
+      const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
+      const delegatedByEditor = req.authUser?.role === "editor";
+      if ((!delegatedByEditor && requestedActor.key !== sessionActorKey) || !registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
@@ -3308,7 +3557,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/users" && req.method === "POST") {
     const user = await readBody(req);
-    if (String(user.actor?.role || "") !== "editor") {
+    if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
@@ -3378,6 +3627,10 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/users" && req.method === "GET") {
     await stateWriteQueue.catch(() => {});
+    if (req.authUser?.approved === false || req.authUser?.pendingApproval === true || !req.authUser?.role) {
+      sendJson(res, 200, [userPublic(req.authUser)]);
+      return true;
+    }
     sendJson(res, 200, (readDb().users || []).map(userPublic));
     return true;
   }
@@ -3415,6 +3668,7 @@ function serveStatic(req, res, pathname) {
     if (acceptsGzip && compressible && data.length >= 1024) {
       const compressed = zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED });
       res.writeHead(200, {
+        ...securityHeaders(req),
         "Content-Type": contentType,
         "Cache-Control": cacheControl,
         "Content-Encoding": "gzip",
@@ -3425,6 +3679,7 @@ function serveStatic(req, res, pathname) {
       return;
     }
     res.writeHead(200, {
+      ...securityHeaders(req),
       "Content-Type": contentType,
       "Cache-Control": cacheControl,
       "Content-Length": data.length,
@@ -3496,7 +3751,11 @@ if (WebSocketServer) {
     perMessageDeflate: { threshold: 1024 }
   });
   wsServers.push(wss);
-  wss.on("connection", ws => {
+  wss.on("connection", (ws, req) => {
+    if (!authenticatedUser(req)) {
+      ws.close(1008, "authentication_required");
+      return;
+    }
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
     ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
@@ -3531,7 +3790,11 @@ if (WebSocketServer) {
       perMessageDeflate: { threshold: 1024 }
     });
     wsServers.push(httpsWss);
-    httpsWss.on("connection", ws => {
+    httpsWss.on("connection", (ws, req) => {
+      if (!authenticatedUser(req)) {
+        ws.close(1008, "authentication_required");
+        return;
+      }
       ws.isAlive = true;
       ws.on("pong", () => { ws.isAlive = true; });
       ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
