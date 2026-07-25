@@ -91,7 +91,7 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie } })).status, 200);
     assert.equal((await fetch(`${baseUrl}/api/export/all`)).status, 401);
 
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < 15; index += 1) {
       const failed = await fetch(`${baseUrl}/api/auth/login`, {
         method: "POST",
         headers: { "content-type": "application/json" },
