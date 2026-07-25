@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v226-node-editors-only";
+const SERVER_VERSION = "v227-per-equipment-node-permissions";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const loginAttempts = new Map();
 let postgresPool = null;
@@ -2590,29 +2590,22 @@ async function handleApi(req, res, pathname, url) {
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
-      const lockedEquipmentCatalogIds = new Set(["1", "2"]);
       if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
-          const lockedCatalog = lockedEquipmentCatalogIds.has(String(equipmentId));
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
           const requestedEditingEnabled = rawItem.editingEnabled === true;
-          const editingEnabled = authenticatedRole === "editor"
-            ? (hasEditingPermissionField ? requestedEditingEnabled : currentItem.editingEnabled === true)
-            : currentItem.editingEnabled === true;
-          const canEditLockedCatalogContent = editingEnabled && ["engineer", "shop"].includes(authenticatedRole);
-          // The two approved press catalogs can be edited only during an
-          // explicit window opened by an administrator.
-          if (lockedCatalog && !editingEnabled && !(authenticatedRole === "editor" && hasEditingPermissionField)) return;
-          const item = lockedCatalog ? { ...currentItem } : {};
-          if ((!lockedCatalog || canEditLockedCatalogContent) && String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
-          if ((!lockedCatalog || canEditLockedCatalogContent) && Array.isArray(rawItem.nodes)) {
+          const editingEnabled = currentItem.editingEnabled === true;
+          if (authenticatedRole !== "editor" && !editingEnabled) return;
+          const item = { ...currentItem };
+          if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
+          if (Array.isArray(rawItem.nodes)) {
             item.nodes = rawItem.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean).slice(0, 200);
           }
-          if ((!lockedCatalog || canEditLockedCatalogContent) && rawItem.reminders && typeof rawItem.reminders === "object") {
+          if (rawItem.reminders && typeof rawItem.reminders === "object") {
             item.reminders = {};
             Object.entries(rawItem.reminders).forEach(([nodeIndex, lines]) => {
               if (!Array.isArray(lines)) return;
@@ -2620,13 +2613,13 @@ async function handleApi(req, res, pathname, url) {
             });
           }
           if (equipmentArea) item.area = equipmentArea;
-          if (lockedCatalog) {
-            item.editingEnabled = authenticatedRole === "editor" && hasEditingPermissionField ? requestedEditingEnabled : true;
+          if (authenticatedRole === "editor" && hasEditingPermissionField) {
+            item.editingEnabled = requestedEditingEnabled;
             item.editingEnabledAt = String(
-              (authenticatedRole === "editor" && hasEditingPermissionField ? rawItem.editingEnabledAt : currentItem.editingEnabledAt) || ""
+              rawItem.editingEnabledAt || currentItem.editingEnabledAt || ""
             ).slice(0, 50);
             item.editingEnabledBy = String(
-              (authenticatedRole === "editor" && hasEditingPermissionField ? rawItem.editingEnabledBy : currentItem.editingEnabledBy) || ""
+              rawItem.editingEnabledBy || currentItem.editingEnabledBy || ""
             ).trim().slice(0, 200);
           }
           item.updatedAt = String(rawItem.updatedAt || new Date().toISOString());

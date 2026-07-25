@@ -76,7 +76,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v226-node-editors-only";
+const APP_VERSION = "v227-per-equipment-node-permissions";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -2679,13 +2679,6 @@ function catalogEditorRole() {
   return authenticatedProfile?.role || profile?.role || "";
 }
 
-const LOCKED_EQUIPMENT_CATALOG_IDS = new Set([1, 2]);
-
-function isEquipmentCatalogLocked(equipmentOrId = current.equipmentId) {
-  const equipmentId = typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId;
-  return LOCKED_EQUIPMENT_CATALOG_IDS.has(Number(equipmentId));
-}
-
 function isEquipmentCatalogEditingEnabled(equipmentOrId = current.equipmentId) {
   const equipmentId = typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId;
   return state.catalog?.equipment?.[equipmentId]?.editingEnabled === true;
@@ -2694,7 +2687,7 @@ function isEquipmentCatalogEditingEnabled(equipmentOrId = current.equipmentId) {
 function setEquipmentCatalogEditingEnabled(equipmentId, enabled) {
   if (catalogEditorRole() !== "editor") return false;
   const eq = equipmentById(Number(equipmentId));
-  if (!eq || !isEquipmentCatalogLocked(eq)) return false;
+  if (!eq) return false;
   const item = equipmentOverride(eq.id);
   item.name ||= eq.name;
   item.area ||= eq.area;
@@ -2722,10 +2715,8 @@ function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
   if (!["editor", "engineer", "shop"].includes(role)) return false;
   const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
   if (!eq) return false;
-  if (isEquipmentCatalogLocked(eq)) {
-    if (role === "editor") return false;
-    if (!isEquipmentCatalogEditingEnabled(eq)) return false;
-  }
+  if (role === "editor") return true;
+  if (!isEquipmentCatalogEditingEnabled(eq)) return false;
   if (role !== "shop") return true;
   const actorArea = authenticatedProfile?.area || profile?.area || "";
   return Boolean(actorArea && eq.area === actorArea);
@@ -10001,7 +9992,7 @@ function renderNodeWalkthrough(eq) {
     backRow.querySelector("[data-node-screen-back]")?.addEventListener("click", goBack);
     list.append(backRow);
   }
-  if (selectedNodeIndex === null && isEquipmentCatalogLocked(eq) && catalogEditorRole() === "editor") {
+  if (selectedNodeIndex === null && catalogEditorRole() === "editor") {
     const editingEnabled = isEquipmentCatalogEditingEnabled(eq);
     const permissionPanel = document.createElement("div");
     permissionPanel.className = "node-catalog-admin";

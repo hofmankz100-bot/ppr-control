@@ -530,10 +530,10 @@ test("every signed-in role sees only the factory reliability graph while enginee
   assert.match(source, /if \(controls\) controls\.hidden = !detailed/);
 });
 
-test("the approved press catalogs stay locked until an admin opens editing", async () => {
+test("node editing permission is selective per equipment and admin keeps full access", async () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(source, /LOCKED_EQUIPMENT_CATALOG_IDS = new Set\(\[1, 2\]\)/);
-  assert.match(source, /if \(isEquipmentCatalogLocked\(eq\)\) \{[\s\S]*?if \(role === "editor"\) return false;[\s\S]*?if \(!isEquipmentCatalogEditingEnabled\(eq\)\) return false;/);
+  assert.match(source, /if \(role === "editor"\) return true;/);
+  assert.match(source, /if \(!isEquipmentCatalogEditingEnabled\(eq\)\) return false;/);
   assert.match(source, /catalogEditorRole\(\) !== "editor"/);
   assert.match(source, /Разрешить редактирование/);
 
@@ -555,8 +555,10 @@ test("the approved press catalogs stay locked until an admin opens editing", asy
   });
   assert.equal(response.status, 200);
   const after = await (await fetch(`${baseUrl}/api/state`)).json();
-  assert.deepEqual(after.catalog.equipment["1"], before.catalog.equipment["1"]);
-  assert.deepEqual(after.catalog.equipment["2"], before.catalog.equipment["2"]);
+  assert.equal(after.catalog.equipment["1"].name, "Changed press");
+  assert.deepEqual(after.catalog.equipment["1"].nodes, ["Changed node"]);
+  assert.equal(after.catalog.equipment["2"].name, "Changed press 2");
+  assert.deepEqual(after.catalog.equipment["2"].nodes, ["Changed node 2"]);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

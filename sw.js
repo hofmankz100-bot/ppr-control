@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v226-node-editors-only";
+const CACHE_NAME = "ppr-v227-per-equipment-node-permissions";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=226-node-editors-only",
+  "./styles.css?v=227-per-equipment-node-permissions",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=226-node-editors-only",
+  "./app.js?v=227-per-equipment-node-permissions",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
