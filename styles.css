@@ -683,6 +683,7 @@ table {
 html,
 body {
   max-width: 100%;
+  overflow-x: hidden;
 }
 
 button,
@@ -939,6 +940,7 @@ body.global-reminder-open {
     radial-gradient(circle at 90% 90%, rgba(24, 101, 133, .35), transparent 38%),
     linear-gradient(145deg, #071b2a 0%, #14324a 48%, #0b4f68 100%);
   padding: 14px;
+  overflow: hidden auto;
 }
 
 .login-overlay[hidden] {
