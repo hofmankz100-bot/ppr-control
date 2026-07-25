@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v254-reliable-push-routing";
+const APP_VERSION = "v255-push-edge-cases";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1188,7 +1188,7 @@ async function ensurePushSubscription() {
 }
 
 async function verifyPushSubscription() {
-  if (Notification.permission !== "granted" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+  if (window.Notification?.permission !== "granted" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     localStorage.removeItem(PUSH_SUBSCRIPTION_KEY);
     return false;
   }
@@ -1205,7 +1205,10 @@ async function verifyPushSubscription() {
 
 async function removePushSubscriptionForLogout() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  const registration = await navigator.serviceWorker.ready.catch(() => null);
+  const registration = await Promise.race([
+    navigator.serviceWorker.ready.catch(() => null),
+    new Promise(resolve => window.setTimeout(() => resolve(null), 3000))
+  ]);
   const subscription = await registration?.pushManager.getSubscription().catch(() => null);
   if (subscription?.endpoint) {
     await apiJson("/api/push/unsubscribe", {
@@ -16260,7 +16263,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
-  if (Notification.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
+  if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
   connectRealtime();

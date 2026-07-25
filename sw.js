@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v254-reliable-push-routing";
+const CACHE_NAME = "ppr-v255-push-edge-cases";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=254-reliable-push-routing",
+  "./styles.css?v=255-push-edge-cases",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=254-reliable-push-routing",
+  "./app.js?v=255-push-edge-cases",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

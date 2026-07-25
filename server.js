@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v254-reliable-push-routing";
+const SERVER_VERSION = "v255-push-edge-cases";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1538,12 +1538,24 @@ async function clearRemarkPushNotifications(db, participants, origin, entityId =
     db.pushNotifications.vapid.publicKey,
     db.pushNotifications.vapid.privateKey
   );
-  await Promise.allSettled(targets.map(entry => webPush.sendNotification(entry.subscription, JSON.stringify({
-    type: "remark-cleared",
-    badgeCount: personalNotificationCountServer(db, entry),
-    clearTag: `remark:${entityId}`,
-    silentUpdate: true
-  }), { TTL: 300, urgency: "normal" })));
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, JSON.stringify({
+        type: "remark-cleared",
+        badgeCount: personalNotificationCountServer(db, entry),
+        clearTag: `remark:${entityId}`,
+        silentUpdate: true
+      }), { TTL: 300, urgency: "normal" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Remark clear push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
 }
 
 async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
