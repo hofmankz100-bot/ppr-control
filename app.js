@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v246-admin-close-legacy-remark";
+const APP_VERSION = "v247-repair-legacy-performer";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -14017,9 +14017,9 @@ function renderAggregateJournal() {
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td>
                   ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
-                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved && item.resolutionParticipants.length === 1 ? `
+                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved && (item.resolutionParticipants.length === 1 || (item.resolutionParticipants.length === 0 && item.resolvedByName && isResolutionExecutorRole(item.resolvedByRole))) ? `
                     <button type="button" class="mini-action no-print" data-admin-close-legacy-remark="${escapeHtml(item.recordKey)}" data-remark-id="${escapeHtml(item.remarkId)}">
-                      Закрыть за ${escapeHtml(item.resolutionParticipants[0].name)}
+                      Закрыть за ${escapeHtml(item.resolutionParticipants[0]?.name || item.resolvedByName)}
                     </button>
                   ` : ""}
                 </td>

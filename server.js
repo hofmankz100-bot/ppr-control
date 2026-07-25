@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v246-admin-close-legacy-remark";
+const SERVER_VERSION = "v247-repair-legacy-performer";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -3609,10 +3609,16 @@ async function handleApi(req, res, pathname, url) {
 
       if (action === "admin-close") {
         if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
-        if (participants.length !== 1 || !isResolutionExecutorRoleServer(participants[0].role)) {
+        const legacyPerformer = !participants.length && remark.resolvedByName && isResolutionExecutorRoleServer(remark.resolvedByRole)
+          ? (db.users || []).find(user =>
+              isResolutionExecutorRoleServer(user.role)
+              && String(user.name || "").trim().toLocaleLowerCase("ru-RU") === String(remark.resolvedByName || "").trim().toLocaleLowerCase("ru-RU")
+            )
+          : null;
+        const performer = participants.length === 1 ? participants[0] : legacyPerformer ? sanitizeResolutionParticipant(legacyPerformer) : null;
+        if (!performer || participants.length > 1 || !isResolutionExecutorRoleServer(performer.role)) {
           return { error: "remark_participant_invalid" };
         }
-        const performer = participants[0];
         const createdMs = Date.parse(remark.at || "");
         const completedAt = now;
         remark.resolved = true;
