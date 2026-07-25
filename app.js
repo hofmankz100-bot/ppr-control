@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v260-mobile-gas-journal-cards";
+const APP_VERSION = "v261-distinct-reserve-journal-colors";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -240,6 +240,12 @@ const DOWNTIME_COLORS = [
   "#7c3aed", "#0284c7", "#ca8a04", "#16a34a", "#dc2626", "#be185d",
   "#0891b2", "#4f46e5", "#65a30d", "#ea580c", "#0d9488", "#9333ea"
 ];
+const RESERVE_EQUIPMENT_COLORS = Object.freeze({
+  17: "#7c3aed",
+  18: "#2563eb",
+  19: "#f59e0b",
+  20: "#0f766e"
+});
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
 const COMMON_WAREHOUSE = "Склад общего пользования";
 const WAREHOUSE_AREAS = [COMMON_WAREHOUSE, ...AREAS];
@@ -7089,6 +7095,8 @@ function downtimeAreaColor(area) {
 }
 
 function equipmentRowColor(eq) {
+  const fixedReserveColor = RESERVE_EQUIPMENT_COLORS[Number(eq?.id)];
+  if (eq?.area === "Резерв" && fixedReserveColor) return fixedReserveColor;
   const sameAreaCount = allEquipment().filter(item => item.area === eq.area).length;
   const isReserveEquipment = sameAreaCount > 1 && /^оборудование\s+\d+$/i.test(String(eq.name || "").trim());
   if (!isReserveEquipment) return downtimeAreaColor(eq.area);

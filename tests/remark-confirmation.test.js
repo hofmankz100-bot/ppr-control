@@ -623,6 +623,12 @@ test("aggregate journals are separated by equipment even inside one area", () =>
   assert.match(source, /aggregateJournalItems\(selectedArea, selectedEquipment\?\.id\)/);
 });
 
+test("reserve journals keep distinct stable colors after renaming", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /const RESERVE_EQUIPMENT_COLORS = Object\.freeze\(\{[\s\S]*?17: "#7c3aed"[\s\S]*?18: "#2563eb"[\s\S]*?19: "#f59e0b"[\s\S]*?20: "#0f766e"/);
+  assert.match(source, /if \(eq\?\.area === "Резерв" && fixedReserveColor\) return fixedReserveColor/);
+});
+
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);

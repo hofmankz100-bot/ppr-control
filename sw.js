@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v260-mobile-gas-journal-cards";
+const CACHE_NAME = "ppr-v261-distinct-reserve-journal-colors";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=260-mobile-gas-journal-cards",
+  "./styles.css?v=261-distinct-reserve-journal-colors",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=260-mobile-gas-journal-cards",
+  "./app.js?v=261-distinct-reserve-journal-colors",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
