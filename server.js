@@ -46,7 +46,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v220-stability-security";
+const SERVER_VERSION = "v223-false-downtime-cleanup";
+const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const loginAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
@@ -303,7 +304,8 @@ async function initializeStorage() {
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
       const catalogChanged = removeObsoletePressNoMaterialNodes(postgresState);
-      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged) {
+      const falseDowntimeChanged = removeKnownFalseDowntimes(postgresState);
+      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged || falseDowntimeChanged) {
         await pool.query(
           `INSERT INTO ppr_settings(setting_key, payload, updated_at)
            VALUES ('full_state', $1::jsonb, now())
@@ -317,6 +319,7 @@ async function initializeStorage() {
       postgresState = readDbFile();
       migrateLegacyDirectorApprovals(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
+      removeKnownFalseDowntimes(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -837,6 +840,35 @@ function removeObsoletePressNoMaterialNodes(db) {
       item.reminders = nextReminders;
     }
     item.updatedAt = new Date().toISOString();
+    changed = true;
+  }
+  return changed;
+}
+
+function removeKnownFalseDowntimes(db) {
+  db.downtimes = Array.isArray(db.downtimes) ? db.downtimes : [];
+  let changed = false;
+  const now = new Date().toISOString();
+  for (const downtimeId of FALSE_DOWNTIME_IDS) {
+    const item = db.downtimes.find(entry => String(entry?.id || "") === downtimeId);
+    if (item) {
+      if (item.deleted) continue;
+      item.deleted = true;
+      item.deletedAt = now;
+      item.updatedAt = now;
+      item.endedAt ||= now;
+      item.systemNote = "Удалён подтверждённый ложный простой «Нет сырья».";
+      changed = true;
+      continue;
+    }
+    db.downtimes.push({
+      id: downtimeId,
+      deleted: true,
+      deletedAt: now,
+      updatedAt: now,
+      endedAt: now,
+      systemNote: "Защитная отметка для подтверждённого ложного простоя «Нет сырья»."
+    });
     changed = true;
   }
   return changed;
