@@ -533,7 +533,7 @@ test("every signed-in role sees only the factory reliability graph while enginee
 test("the approved press catalogs stay locked until an admin opens editing", async () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /LOCKED_EQUIPMENT_CATALOG_IDS = new Set\(\[1, 2\]\)/);
-  assert.match(source, /isEquipmentCatalogLocked\(eq\) && !isEquipmentCatalogEditingEnabled\(eq\)/);
+  assert.match(source, /if \(isEquipmentCatalogLocked\(eq\)\) \{[\s\S]*?if \(role === "editor"\) return false;[\s\S]*?if \(!isEquipmentCatalogEditingEnabled\(eq\)\) return false;/);
   assert.match(source, /catalogEditorRole\(\) !== "editor"/);
   assert.match(source, /Разрешить редактирование/);
 
