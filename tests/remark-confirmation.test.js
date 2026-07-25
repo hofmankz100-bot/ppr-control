@@ -570,6 +570,17 @@ test("PPR schedules only weekdays and moves weekend work to Monday", () => {
   assert.match(source, /shiftedFrom: originalDate/);
 });
 
+test("completed PPR is sent to every engineer and only the first confirmation wins", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /type: "ppr"/);
+  assert.match(client, /data-personal-ppr-confirm/);
+  assert.match(client, /await publishPprSheetAction\(message\.date, "approve"\)/);
+  assert.match(server, /sendPprApprovalPushNotifications/);
+  assert.match(server, /permissionBaseRoleServer\(entry\.profile\?\.role\) === "engineer"/);
+  assert.match(server, /if \(sheet\.approvedAt\) return \{ error: "ppr_sheet_locked" \}/);
+});
+
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);

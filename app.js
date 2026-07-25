@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v229-weekday-ppr";
+const APP_VERSION = "v230-ppr-engineer-confirmation";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -11252,6 +11252,29 @@ function personalRemarkMessages() {
       });
     });
   });
+  if (permissionBaseRole(profile?.role) === "engineer") {
+    Object.entries(state.pprSheets || {}).forEach(([date, sheet]) => {
+      const completion = pprSheetCompletion(date);
+      if (!completion.awaitingApproval || sheet?.approvedAt) return;
+      const activeRows = (Array.isArray(sheet?.rows) ? sheet.rows : []).filter(row => String(row?.work || "").trim());
+      const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
+      const works = activeRows.map(row => row.work).filter(Boolean).join("; ");
+      const id = `ppr-approval:${date}`;
+      messages.push({
+        id,
+        type: "ppr",
+        unread: !readIds.has(id),
+        action: "ppr-approval",
+        title: "Требуется подтвердить выполненный ППР",
+        text: works || "Плановые работы выполнены",
+        at: sheet.approvalRequestedAt || sheet.updatedAt || `${date}T00:00:00`,
+        date,
+        equipment: equipment || "Оборудование по графику",
+        area: "ППР",
+        node: `${activeRows.length} выполненных работ`
+      });
+    });
+  }
   return messages.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
 }
 
@@ -11262,6 +11285,27 @@ function markPersonalRemarkMessagesRead(messages = personalRemarkMessages()) {
 }
 
 function rolePersonalMessageHtml(message) {
+  if (message.type === "ppr") {
+    return `
+      <article class="role-personal-message submitted" data-role-personal-message="${escapeHtml(message.id)}">
+        <header>
+          <div>
+            <strong>${escapeHtml(message.title)}</strong>
+            <small>${escapeHtml(message.equipment)} · ${escapeHtml(dateHuman(message.date))}</small>
+          </div>
+          <span>${escapeHtml(dateTimeHuman(message.at))}</span>
+        </header>
+        <div class="role-personal-resolution">
+          <strong>Выполненные работы</strong>
+          <p>${escapeHtml(message.text)}</p>
+          <small>Подтверждение доступно всем инженерам. Засчитывается первый ответ.</small>
+        </div>
+        <div class="role-personal-actions">
+          <button type="button" data-personal-ppr-confirm>Подтвердить ППР</button>
+        </div>
+      </article>
+    `;
+  }
   const submitted = message.action === "submitted";
   return `
     <article class="role-personal-message ${escapeHtml(message.action)}" data-role-personal-message="${escapeHtml(message.id)}">
@@ -11323,6 +11367,13 @@ function bindRolePersonalInbox(messages) {
   ui.rolePersonalInbox.querySelectorAll("[data-role-personal-message]").forEach(card => {
     const message = messages.find(item => item.id === card.dataset.rolePersonalMessage);
     if (!message) return;
+    card.querySelector("[data-personal-ppr-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      if (!window.confirm("Подтвердить выполненные работы ППР?")) return;
+      await publishPprSheetAction(message.date, "approve");
+      markPersonalRemarkMessagesRead([message]);
+      refreshPersonalRemarkSurfaces();
+      showAppToast("ППР подтверждён. У остальных инженеров сообщение закрыто.", "ok");
+    }));
     card.querySelector("[data-personal-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
       if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
       await publishRemarkCollaborationAction(message.equipmentId, message.nodeIndex, message.date, "confirm", { remarkId: message.remarkId });

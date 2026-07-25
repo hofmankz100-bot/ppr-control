@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v229-weekday-ppr";
+const SERVER_VERSION = "v230-ppr-engineer-confirmation";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1074,6 +1074,45 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
       else console.error(`Engineer request push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
+async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const targets = subscriptions.filter(entry =>
+    (!origin || entry.clientId !== origin)
+    && permissionBaseRoleServer(entry.profile?.role) === "engineer"
+  );
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
+  const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
+  const payload = {
+    type: "ppr-approval",
+    title: "ALKZ — ППР выполнен",
+    body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
+    badgeCount: 1,
+    url: "/?view=requests",
+    entityId: sheet.id || `ppr-sheet:${sheet.date}`,
+    tag: `ppr-approval:${sheet.date}`
+  };
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`PPR approval push failed: ${error?.message || error}`);
     }
   }));
   if (expired.size) {
@@ -2985,8 +3024,8 @@ async function handleApi(req, res, pathname, url) {
     const date = String(body.date || "").trim();
     const action = String(body.action || "").trim();
     const rowId = String(body.rowId || "").trim();
-    const role = String(body.user?.role || "").trim();
-    const name = String(body.user?.name || "").trim();
+    const role = permissionBaseRoleServer(String(req.authUser?.role || ""));
+    const name = String(req.authUser?.name || "").trim();
     const allowedPlan = new Set(["engineer", "editor"]);
     const allowedMark = new Set(["mechanic", "electrician", "editor"]);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["mark", "add-row", "approve"].includes(action) || !name) {
@@ -3005,6 +3044,7 @@ async function handleApi(req, res, pathname, url) {
       if (sheet.approvedAt) return { error: "ppr_sheet_locked" };
       sheet.rows = Array.isArray(sheet.rows) ? sheet.rows : [];
       const now = new Date().toISOString();
+      let notifyEngineers = false;
       if (action === "mark") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         const mark = String(body.mark || "");
@@ -3017,6 +3057,15 @@ async function handleApi(req, res, pathname, url) {
         row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
         row.node = String(body.node || row.node || "").slice(0, 300);
         row.area = String(body.area || row.area || "").slice(0, 300);
+        const activeRows = sheet.rows.filter(item => String(item?.work || "").trim());
+        if (
+          activeRows.length
+          && activeRows.every(item => ["done", "na"].includes(item.mark))
+          && !sheet.approvalRequestedAt
+        ) {
+          sheet.approvalRequestedAt = now;
+          notifyEngineers = true;
+        }
       } else if (action === "add-row") {
         sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
       } else if (action === "approve") {
@@ -3031,7 +3080,7 @@ async function handleApi(req, res, pathname, url) {
       sheet.updatedByName = name;
       const actionId = String(body.actionId || "");
       writeDb(db, { action: `ppr_sheet_${action}`, actionId, clientId: String(body.clientId || ""), user: body.user || null, date, rowId });
-      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } } };
+      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, notifyEngineers, sheet };
     });
     if (result.error) {
       const status = result.error === "ppr_sheet_locked" ? 409 : result.error === "ppr_sheet_not_found" ? 404 : 400;
@@ -3039,6 +3088,11 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    if (result.notifyEngineers) {
+      sendPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
+        console.error(`PPR approval push delivery failed: ${error?.message || error}`);
+      });
+    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
     return true;
   }
