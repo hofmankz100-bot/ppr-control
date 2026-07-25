@@ -10119,3 +10119,54 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 @media print {
   .mobile-table-swipe-hint { display: none !important; }
 }
+.push-diagnostics-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, .62);
+}
+
+.push-diagnostics-modal > section {
+  width: min(760px, 100%);
+  max-height: min(82vh, 760px);
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--panel, #fff);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .3);
+}
+
+.push-diagnostics-modal header,
+.push-device-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.push-diagnostics-modal header div,
+.push-device-list article div {
+  display: grid;
+  gap: 4px;
+}
+
+.push-diagnostics-modal header span,
+.push-device-list span,
+.push-device-list small {
+  color: var(--muted, #64748b);
+}
+
+.push-device-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.push-device-list article {
+  padding: 13px;
+  border: 1px solid var(--line, #dbe3ec);
+  border-radius: 14px;
+}

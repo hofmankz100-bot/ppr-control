@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v253-executor-only-remark-credit";
+const APP_VERSION = "v254-reliable-push-routing";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -1051,6 +1051,60 @@ function appNotificationPermissionButton() {
   return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications">🔔 Включить уведомления</button>`;
 }
 
+function pushDeviceStatusText(device = {}) {
+  const updated = Date.parse(device.updatedAt || "");
+  if (!Number.isFinite(updated)) return "дата неизвестна";
+  const ageDays = Math.floor((Date.now() - updated) / 86400000);
+  return ageDays <= 0 ? "связь сегодня" : ageDays === 1 ? "связь вчера" : `связь ${ageDays} дн. назад`;
+}
+
+async function openPushDiagnostics() {
+  document.querySelector("#pushDiagnosticsModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "pushDiagnosticsModal";
+  modal.className = "push-diagnostics-modal";
+  modal.innerHTML = `<section><header><div><strong>Push-устройства</strong><span>Загрузка...</span></div><button type="button" data-close-push-diagnostics>×</button></header></section>`;
+  document.body.append(modal);
+  modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
+  try {
+    const result = await apiJson("/api/push/status", { timeout: 10000 });
+    const devices = Array.isArray(result.devices) ? result.devices : [];
+    modal.querySelector("section").innerHTML = `
+      <header>
+        <div><strong>Push-устройства</strong><span>Подключено: ${devices.length}</span></div>
+        <button type="button" data-close-push-diagnostics>×</button>
+      </header>
+      <div class="push-device-list">
+        ${devices.length ? devices.map(device => `
+          <article>
+            <div>
+              <strong>${escapeHtml(device.name)}</strong>
+              <span>${escapeHtml(ROLE_ACCESS[device.role]?.label || device.role || "Без роли")}${device.area ? ` · ${escapeHtml(device.area)}` : ""}</span>
+              <small>${escapeHtml(pushDeviceStatusText(device))} · личный счётчик ${Number(device.badgeCount || 0)}</small>
+              <small>${escapeHtml(device.device || "Устройство не определено")}</small>
+            </div>
+            <button type="button" data-test-push-device="${escapeHtml(device.id)}">Проверить</button>
+          </article>
+        `).join("") : `<p class="empty-state">Ни одно устройство ещё не подключило push.</p>`}
+      </div>
+    `;
+    modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
+    modal.querySelectorAll("[data-test-push-device]").forEach(button => button.addEventListener("click", event => {
+      runButtonOperation(event.currentTarget, async () => {
+        await apiJson("/api/push/test", {
+          method: "POST",
+          body: JSON.stringify({ id: event.currentTarget.dataset.testPushDevice }),
+          timeout: 15000
+        });
+        showAppToast("Тестовое уведомление отправлено.", "ok");
+      }, "Отправка...");
+    }));
+  } catch {
+    modal.querySelector("section").innerHTML = `<header><strong>Push-устройства</strong><button type="button" data-close-push-diagnostics>×</button></header><p class="empty-state">Не удалось загрузить состояние push.</p>`;
+    modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
+  }
+}
+
 function notificationDeviceCapability() {
   if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window) || !window.isSecureContext) return "unsupported";
   const iosMatch = navigator.userAgent.match(/OS (\d+)[._](\d+)/i);
@@ -1096,9 +1150,20 @@ async function ensurePushSubscription() {
   const [registration, publicKey] = await Promise.all([navigator.serviceWorker.ready, preparePushPublicKey()]);
   if (!publicKey) return false;
   let subscription = await registration.pushManager.getSubscription();
+  const expectedKey = pushApplicationServerKey(publicKey);
+  const currentKey = subscription?.options?.applicationServerKey
+    ? new Uint8Array(subscription.options.applicationServerKey)
+    : null;
+  if (subscription && currentKey && (
+    currentKey.length !== expectedKey.length
+    || currentKey.some((value, index) => value !== expectedKey[index])
+  )) {
+    await subscription.unsubscribe().catch(() => {});
+    subscription = null;
+  }
   subscription ||= await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: pushApplicationServerKey(publicKey)
+    applicationServerKey: expectedKey
   });
   const response = await fetch("/api/push/subscribe", {
     method: "POST",
@@ -1120,6 +1185,38 @@ async function ensurePushSubscription() {
   if (!response.ok) return false;
   localStorage.setItem(PUSH_SUBSCRIPTION_KEY, "1");
   return true;
+}
+
+async function verifyPushSubscription() {
+  if (Notification.permission !== "granted" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    localStorage.removeItem(PUSH_SUBSCRIPTION_KEY);
+    return false;
+  }
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    localStorage.removeItem(PUSH_SUBSCRIPTION_KEY);
+    return false;
+  }
+  const ready = await ensurePushSubscription().catch(() => false);
+  if (!ready) localStorage.removeItem(PUSH_SUBSCRIPTION_KEY);
+  return ready;
+}
+
+async function removePushSubscriptionForLogout() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  const registration = await navigator.serviceWorker.ready.catch(() => null);
+  const subscription = await registration?.pushManager.getSubscription().catch(() => null);
+  if (subscription?.endpoint) {
+    await apiJson("/api/push/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+      timeout: 5000
+    }).catch(() => {});
+    await subscription.unsubscribe().catch(() => {});
+  }
+  localStorage.removeItem(PUSH_SUBSCRIPTION_KEY);
+  pushProfileSyncKey = "";
 }
 
 function syncPushSubscriptionProfile() {
@@ -3297,6 +3394,7 @@ function renderProfile() {
     ${editorAreaSwitcher}
     ${languageSwitcher}
     ${appNotificationPermissionButton()}
+    ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
@@ -3313,6 +3411,7 @@ function renderProfile() {
   ui.profileBar.querySelector("#enableAppNotificationsButton")?.addEventListener("click", event => {
     requestAppNotificationPermission(event.currentTarget);
   });
+  ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
     if (!window.confirm("Очистить рабочие записи: комментарии, обычные заявки, простои, журналы и отчёты? Складские остатки и складские операции сохранятся.")) return;
@@ -3331,6 +3430,7 @@ function renderProfile() {
   });
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
+    await removePushSubscriptionForLogout();
     await apiJson("/api/auth/logout", { method: "POST", timeout: 5000 }).catch(() => {});
     localStorage.removeItem(PROFILE_KEY);
     localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
@@ -16160,6 +16260,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
+  if (Notification.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
   connectRealtime();

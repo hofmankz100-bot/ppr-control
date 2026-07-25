@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v253-executor-only-remark-credit";
+const CACHE_NAME = "ppr-v254-reliable-push-routing";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=242-request-output-flow",
+  "./styles.css?v=254-reliable-push-routing",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=242-request-output-flow",
+  "./app.js?v=254-reliable-push-routing",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
@@ -90,6 +90,11 @@ self.addEventListener("push", event => {
       if (count > 0 && "setAppBadge" in self.navigator) await self.navigator.setAppBadge(count);
       else if ("clearAppBadge" in self.navigator) await self.navigator.clearAppBadge();
     } catch {}
+    if (payload.clearTag) {
+      const notifications = await self.registration.getNotifications({ tag: payload.clearTag });
+      notifications.forEach(notification => notification.close());
+      if (payload.silentUpdate) return;
+    }
     await self.registration.showNotification(payload.title || "ALKZ — новое замечание", {
       body: payload.body || "Поступило новое замечание",
       icon: "/icon-192.png",

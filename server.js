@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v253-executor-only-remark-credit";
+const SERVER_VERSION = "v254-reliable-push-routing";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1044,15 +1044,28 @@ function remarkEntryByKeyServer(db, key) {
   return entry ? { recordKey, remarkId, entry } : null;
 }
 
-function subscriptionMatchesRemarkServer(subscriptionEntry, entry) {
+function subscriptionMatchesRemarkServer(db, subscriptionEntry, remarkRecord = {}) {
+  const entry = remarkRecord.entry || remarkRecord;
+  const recordKey = String(remarkRecord.recordKey || "");
   const profile = subscriptionEntry?.profile || {};
   const actor = sanitizeResolutionParticipant(profile);
   const participants = resolutionParticipantsServer(entry);
   if (participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) return true;
-  const area = String(entry?.area || entry?.confirmationArea || "").trim();
+  const area = String(
+    entry?.area
+    || entry?.confirmationArea
+    || remarkEquipmentAreaServer(db, recordKey, "")
+    || ""
+  ).trim();
   const role = permissionBaseRoleServer(String(profile.role || ""));
-  if (["shop", "operator"].includes(role)) return Boolean(area && String(profile.area || "").trim() === area);
-  return role === permissionBaseRoleServer(String(entry?.role || ""));
+  if (role === "shop") return Boolean(area && sameRemarkAreaServer(profile.area, area));
+  if (role === "engineer") return !(db.users || []).some(user =>
+    user.approved !== false
+    && user.pendingApproval !== true
+    && permissionBaseRoleServer(user.role) === "shop"
+    && sameRemarkAreaServer(user.area, area)
+  );
+  return false;
 }
 
 async function localizedPushPayloadServer(payload, subscriptionEntry) {
@@ -1080,7 +1093,7 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
   const db = readDb();
   const configChanged = ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(item, remark.entry || remark)));
+  const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(db, item, remark)));
   if (!subscriptions.length) {
     if (configChanged) writeDb(db, { action: "push_config_created" });
     return;
@@ -1090,18 +1103,18 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
     db.pushNotifications.vapid.publicKey,
     db.pushNotifications.vapid.privateKey
   );
-  const payload = {
-    type: "remark",
-    title: "ALKZ — новое замечание",
-    body: added === 1 ? `Открытых замечаний: ${total}` : `Новых замечаний: ${added}. Открытых: ${total}`,
-    badgeCount: total,
-    url,
-    entityId,
-    tag: `remark:${entityId}`
-  };
   const expired = new Set();
   await Promise.allSettled(targets.map(async item => {
     try {
+      const payload = {
+        type: "remark",
+        title: "ALKZ — новое замечание",
+        body: added === 1 ? "Поступило новое замечание" : `Новых замечаний: ${added}`,
+        badgeCount: personalNotificationCountServer(db, item),
+        url,
+        entityId,
+        tag: `remark:${entityId}`
+      };
       await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
@@ -1135,19 +1148,18 @@ async function sendEngineerRequestPushNotifications(db, submittedCount, origin =
     db.pushNotifications.vapid.publicKey,
     db.pushNotifications.vapid.privateKey
   );
-  const badgeCount = engineerIncomingRequestItemCountServer(db);
-  const payload = {
-    type: "engineer-request",
-    title: "ALKZ — новая заявка инженеру",
-    body: added === 1 ? "Поступила 1 новая позиция" : `Поступило новых позиций: ${added}`,
-    badgeCount,
-    url: "/?view=requestCreate",
-    entityId: request.id || "engineer-incoming",
-    tag: "engineer-request-incoming"
-  };
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
+      const payload = {
+        type: "engineer-request",
+        title: "ALKZ — новая заявка инженеру",
+        body: added === 1 ? "Поступила 1 новая позиция" : `Поступило новых позиций: ${added}`,
+        badgeCount: personalNotificationCountServer(db, entry),
+        url: "/?view=requestCreate",
+        entityId: request.id || "engineer-incoming",
+        tag: `engineer-request:${request.id || "incoming"}`
+      };
       await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
@@ -1175,22 +1187,57 @@ async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
   );
   const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
   const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
-  const payload = {
-    type: "ppr-approval",
-    title: "ALKZ — ППР выполнен",
-    body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
-    badgeCount: 1,
-    url: "/?view=requests",
-    entityId: sheet.id || `ppr-sheet:${sheet.date}`,
-    tag: `ppr-approval:${sheet.date}`
-  };
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
+      const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+      const payload = {
+        type: "ppr-approval",
+        title: "ALKZ — ППР выполнен",
+        body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
+        badgeCount: personalNotificationCountServer(db, entry),
+        url: "/?view=requests",
+        entityId,
+        tag: `ppr-approval:${entityId}`
+      };
       await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
       else console.error(`PPR approval push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
+async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const targets = subscriptions.filter(entry =>
+    (!origin || entry.clientId !== origin)
+    && permissionBaseRoleServer(entry.profile?.role) === "engineer"
+  );
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, JSON.stringify({
+        type: "ppr-approval-cleared",
+        badgeCount: personalNotificationCountServer(db, entry),
+        clearTag: `ppr-approval:${entityId}`,
+        silentUpdate: true
+      }), { TTL: 300, urgency: "normal" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`PPR approval clear push failed: ${error?.message || error}`);
     }
   }));
   if (expired.size) {
@@ -1382,7 +1429,7 @@ function subscriptionMatchesResolutionParticipant(subscriptionEntry, participant
 
 function openRemarkCountForSubscription(db, subscriptionEntry) {
   let count = 0;
-  for (const record of Object.values(db.checks || {})) {
+  for (const [recordKey, record] of Object.entries(db.checks || {})) {
     const item = record?.to;
     if (!item) continue;
     ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => {
@@ -1399,10 +1446,49 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
       }
       if (participants.length
         ? participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))
-        : subscriptionMatchesRemarkServer(subscriptionEntry, entry)) count += 1;
+        : subscriptionMatchesRemarkServer(db, subscriptionEntry, { recordKey, entry })) count += 1;
     });
   }
   return count;
+}
+
+function pendingPprCountForSubscription(db, subscriptionEntry) {
+  if (permissionBaseRoleServer(subscriptionEntry?.profile?.role) !== "engineer") return 0;
+  return Object.values(db.pprSheets || {}).filter(sheet =>
+    sheet
+    && sheet.approvalRequestedAt
+    && !sheet.approvedAt
+    && (sheet.rows || []).some(row => String(row?.work || "").trim())
+  ).length;
+}
+
+function activeDowntimeCountForSubscription(db, subscriptionEntry) {
+  const profile = subscriptionEntry?.profile || {};
+  const role = permissionBaseRoleServer(profile.role);
+  return (db.downtimes || []).filter(item => {
+    if (!item || item.deleted || item.endedAt) return false;
+    if (["engineer", "editor"].includes(role)) return true;
+    if (role === "shop") return sameRemarkAreaServer(profile.area, item.area);
+    if (resolutionUserKeyServer(item.author || {
+      id: item.authorId,
+      employeeId: item.authorEmployeeId,
+      phone: item.authorPhone,
+      name: item.authorName,
+      role: item.authorRole
+    }) === resolutionUserKeyServer(profile)) return true;
+    return (Array.isArray(item.participants) ? item.participants : [])
+      .some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant));
+  }).length;
+}
+
+function personalNotificationCountServer(db, subscriptionEntry) {
+  const engineerRequests = permissionBaseRoleServer(subscriptionEntry?.profile?.role) === "engineer"
+    ? engineerIncomingRequestItemCountServer(db)
+    : 0;
+  return openRemarkCountForSubscription(db, subscriptionEntry)
+    + pendingPprCountForSubscription(db, subscriptionEntry)
+    + activeDowntimeCountForSubscription(db, subscriptionEntry)
+    + engineerRequests;
 }
 
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
@@ -1422,7 +1508,7 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   );
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
-    const badgeCount = openRemarkCountForSubscription(db, entry);
+    const badgeCount = personalNotificationCountServer(db, entry);
     const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
     try {
       await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
@@ -1437,13 +1523,14 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   }
 }
 
-async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
+async function clearRemarkPushNotifications(db, participants, origin, entityId = "general") {
+  const targetParticipants = Array.isArray(participants) ? participants : [];
+  if (!targetParticipants.length) return;
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
-  const requested = Array.isArray(participants) ? participants : null;
   const targets = subscriptions.filter(entry =>
     (!origin || entry.clientId !== origin)
-    && (!requested || requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant)))
+    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
   );
   if (!targets.length) return;
   webPush.setVapidDetails(
@@ -1451,12 +1538,60 @@ async function sendDowntimePushNotifications(db, title, body, origin = "", parti
     db.pushNotifications.vapid.publicKey,
     db.pushNotifications.vapid.privateKey
   );
-  const badgeCount = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).length;
+  await Promise.allSettled(targets.map(entry => webPush.sendNotification(entry.subscription, JSON.stringify({
+    type: "remark-cleared",
+    badgeCount: personalNotificationCountServer(db, entry),
+    clearTag: `remark:${entityId}`,
+    silentUpdate: true
+  }), { TTL: 300, urgency: "normal" })));
+}
+
+async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications.subscriptions || [];
+  const requested = Array.isArray(participants) ? participants : null;
+  const downtime = (db.downtimes || []).find(item => String(item?.id || "") === String(downtimeId || ""));
+  const targets = subscriptions.filter(entry =>
+    (!origin || entry.clientId !== origin)
+    && (
+      requested
+        ? requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+        : (() => {
+            const role = permissionBaseRoleServer(entry.profile?.role);
+            if (["engineer", "editor"].includes(role)) return true;
+            if (role === "shop") return Boolean(downtime?.area && sameRemarkAreaServer(entry.profile?.area, downtime.area));
+            const author = {
+              id: downtime?.authorId,
+              employeeId: downtime?.authorEmployeeId,
+              phone: downtime?.authorPhone,
+              name: downtime?.authorName,
+              role: downtime?.authorRole
+            };
+            if (resolutionUserKeyServer(author) === resolutionUserKeyServer(entry.profile || {})) return true;
+            return (Array.isArray(downtime?.participants) ? downtime.participants : [])
+              .some(participant => subscriptionMatchesResolutionParticipant(entry, participant));
+          })()
+    )
+  );
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
   const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
-  const payload = { type: "downtime", title, body, badgeCount, url: targetUrl, entityId: downtimeId || "general", tag: `downtime:${downtimeId || "general"}` };
   const expired = new Set();
   await Promise.allSettled(targets.map(async entry => {
     try {
+      const payload = {
+        type: "downtime",
+        title,
+        body,
+        badgeCount: personalNotificationCountServer(db, entry),
+        url: targetUrl,
+        entityId: downtimeId || "general",
+        tag: `downtime:${downtimeId || "general"}`
+      };
       await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
@@ -2400,18 +2535,20 @@ async function handleApi(req, res, pathname, url) {
     }
     const db = readDb();
     ensurePushConfig(db);
+    const authenticatedProfile = req.authUser || {};
     const entry = {
       subscription,
       clientId: String(body.clientId || ""),
       profile: {
-        id: String(body.profile?.id || ""),
-        employeeId: String(body.profile?.employeeId || ""),
-        phone: String(body.profile?.phone || ""),
-        name: String(body.profile?.name || ""),
-        role: String(body.profile?.role || ""),
-        area: String(body.profile?.area || ""),
+        id: String(authenticatedProfile.id || ""),
+        employeeId: String(authenticatedProfile.employeeId || ""),
+        phone: String(authenticatedProfile.phone || ""),
+        name: String(authenticatedProfile.name || ""),
+        role: String(authenticatedProfile.role || ""),
+        area: String(authenticatedProfile.area || ""),
         language: ["ru", "kk", "uz"].includes(String(body.profile?.language || "")) ? String(body.profile.language) : "ru"
       },
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
       updatedAt: new Date().toISOString()
     };
     const subscriptions = db.pushNotifications.subscriptions || [];
@@ -2421,6 +2558,83 @@ async function handleApi(req, res, pathname, url) {
     db.pushNotifications.subscriptions = subscriptions.slice(-500);
     writeDb(db, { action: "push_subscription_saved", clientId: entry.clientId, role: entry.profile.role });
     sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (pathname === "/api/push/status" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const db = readDb();
+    const devices = (db.pushNotifications?.subscriptions || []).map(entry => ({
+      id: crypto.createHash("sha256").update(String(entry.subscription?.endpoint || "")).digest("hex").slice(0, 16),
+      name: String(entry.profile?.name || "Неизвестный сотрудник"),
+      role: String(entry.profile?.role || ""),
+      area: String(entry.profile?.area || ""),
+      language: String(entry.profile?.language || "ru"),
+      updatedAt: String(entry.updatedAt || ""),
+      device: String(entry.userAgent || "").slice(0, 160),
+      badgeCount: personalNotificationCountServer(db, entry)
+    }));
+    sendJson(res, 200, { ok: true, devices });
+    return true;
+  }
+
+  if (pathname === "/api/push/unsubscribe" && req.method === "POST") {
+    const body = await readBody(req);
+    const endpoint = String(body.endpoint || "");
+    const db = readDb();
+    const before = (db.pushNotifications?.subscriptions || []).length;
+    db.pushNotifications.subscriptions = (db.pushNotifications?.subscriptions || []).filter(entry =>
+      String(entry.subscription?.endpoint || "") !== endpoint
+    );
+    if (db.pushNotifications.subscriptions.length !== before) {
+      writeDb(db, { action: "push_subscription_removed", user: req.authUser });
+    }
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (pathname === "/api/push/test" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const targetId = String(body.id || "");
+    const db = readDb();
+    ensurePushConfig(db);
+    const entry = (db.pushNotifications?.subscriptions || []).find(item =>
+      crypto.createHash("sha256").update(String(item.subscription?.endpoint || "")).digest("hex").slice(0, 16) === targetId
+    );
+    if (!entry) {
+      sendJson(res, 404, { ok: false, error: "push_device_not_found" });
+      return true;
+    }
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      db.pushNotifications.vapid.publicKey,
+      db.pushNotifications.vapid.privateKey
+    );
+    try {
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer({
+        type: "push-test",
+        title: "ALKZ — проверка уведомлений",
+        body: `Push работает для: ${entry.profile?.name || "сотрудник"}`,
+        badgeCount: personalNotificationCountServer(db, entry),
+        url: "/",
+        entityId: `test:${targetId}`,
+        tag: `push-test:${targetId}:${Date.now()}`
+      }, entry), { TTL: 300, urgency: "high" });
+      sendJson(res, 200, { ok: true });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) {
+        db.pushNotifications.subscriptions = (db.pushNotifications.subscriptions || []).filter(item => item !== entry);
+        writeDb(db, { action: "push_subscription_expired", id: targetId });
+      }
+      sendJson(res, 502, { ok: false, error: "push_delivery_failed", detail: String(error?.message || "") });
+    }
     return true;
   }
 
@@ -3147,6 +3361,7 @@ async function handleApi(req, res, pathname, url) {
       sheet.rows = Array.isArray(sheet.rows) ? sheet.rows : [];
       const now = new Date().toISOString();
       let notifyEngineers = false;
+      let clearEngineerApproval = false;
       if (action === "mark") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         const mark = String(body.mark || "");
@@ -3177,12 +3392,13 @@ async function handleApi(req, res, pathname, url) {
         sheet.approvedByName = name;
         sheet.approvedByRole = role;
         sheet.lockedAt = now;
+        clearEngineerApproval = true;
       }
       sheet.updatedAt = now;
       sheet.updatedByName = name;
       const actionId = String(body.actionId || "");
       writeDb(db, { action: `ppr_sheet_${action}`, actionId, clientId: String(body.clientId || ""), user: body.user || null, date, rowId });
-      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, notifyEngineers, sheet };
+      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, notifyEngineers, clearEngineerApproval, sheet };
     });
     if (result.error) {
       const status = result.error === "ppr_sheet_locked" ? 409 : result.error === "ppr_sheet_not_found" ? 404 : 400;
@@ -3193,6 +3409,11 @@ async function handleApi(req, res, pathname, url) {
     if (result.notifyEngineers) {
       sendPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
         console.error(`PPR approval push delivery failed: ${error?.message || error}`);
+      });
+    }
+    if (result.clearEngineerApproval) {
+      clearPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
+        console.error(`PPR approval clear delivery failed: ${error?.message || error}`);
       });
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
@@ -3459,6 +3680,7 @@ async function handleApi(req, res, pathname, url) {
       const before = JSON.stringify(record);
       let participants = resolutionParticipantsServer(remark);
       let notifyParticipants = [];
+      let clearParticipants = [];
       let pushTitle = "ALKZ — совместное устранение";
       let pushBody = "Обновлена общая карточка замечания";
       const actorIsParticipant = participants.some(participant => participant.key === actor.key);
@@ -3763,6 +3985,7 @@ async function handleApi(req, res, pathname, url) {
           const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
           if (submittedUser) notifyParticipants = [sanitizeResolutionParticipant(submittedUser)];
         }
+        clearParticipants = confirmationRule.users;
         pushTitle = "Устранение подтверждено";
         pushBody = `${actor.name} подтвердил устранение`;
       }
@@ -3813,6 +4036,7 @@ async function handleApi(req, res, pathname, url) {
         origin: body.clientId || "api",
         patch,
         notifyParticipants,
+        clearParticipants,
         pushTitle,
         pushBody,
         remarkId,
@@ -3833,6 +4057,11 @@ async function handleApi(req, res, pathname, url) {
       const remarkUrl = `/?record=${encodeURIComponent(result.recordKey)}&remark=${encodeURIComponent(result.remarkId)}`;
       sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
         console.error(`Resolution push delivery failed: ${error?.message || error}`);
+      });
+    }
+    if (result.changed && result.clearParticipants?.length) {
+      clearRemarkPushNotifications(readDb(), result.clearParticipants, result.origin, result.remarkId).catch(error => {
+        console.error(`Remark clear push delivery failed: ${error?.message || error}`);
       });
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId, changed: result.changed, stateVersion, state: result.patch });

@@ -597,6 +597,8 @@ test("completed PPR is sent to every engineer and only the first confirmation wi
   assert.match(client, /data-personal-ppr-confirm/);
   assert.match(client, /await publishPprSheetAction\(message\.date, "approve"\)/);
   assert.match(server, /sendPprApprovalPushNotifications/);
+  assert.match(server, /clearPprApprovalPushNotifications/);
+  assert.match(server, /silentUpdate:\s*true/);
   assert.match(server, /permissionBaseRoleServer\(entry\.profile\?\.role\) === "engineer"/);
   assert.match(server, /if \(sheet\.approvedAt\) return \{ error: "ppr_sheet_locked" \}/);
 });
@@ -651,6 +653,48 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /\["ready", "unsupported", "failed"\]\.includes\(setupState\)/);
   assert.match(source, /data-notification-dismiss/);
   assert.match(source, /failures >= 2/);
+});
+
+test("push subscriptions use the authenticated employee and expose admin diagnostics", async () => {
+  const subscribed = await fetch(`${baseUrl}/api/push/subscribe`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-test-user-id": "mechanic-1",
+      "user-agent": "Push Test Device"
+    },
+    body: JSON.stringify({
+      clientId: "push-test-client",
+      subscription: {
+        endpoint: "https://push.example.test/device-1",
+        keys: { p256dh: "test-p256dh", auth: "test-auth" }
+      },
+      profile: {
+        id: "spoofed-admin",
+        name: "Spoofed Admin",
+        role: "editor",
+        area: "Wrong Area",
+        language: "ru"
+      }
+    })
+  });
+  assert.equal(subscribed.status, 200);
+
+  const statusResponse = await fetch(`${baseUrl}/api/push/status`, {
+    headers: { "x-test-user-id": "editor-1" }
+  });
+  assert.equal(statusResponse.status, 200);
+  const status = await statusResponse.json();
+  const device = status.devices.find(item => item.device === "Push Test Device");
+  assert.ok(device);
+  assert.equal(device.name, "Механик Один");
+  assert.equal(device.role, "mechanic");
+  assert.notEqual(device.name, "Spoofed Admin");
+
+  const forbidden = await fetch(`${baseUrl}/api/push/status`, {
+    headers: { "x-test-user-id": "mechanic-1" }
+  });
+  assert.equal(forbidden.status, 403);
 });
 
 test("uploaded photos are served and production keeps a PostgreSQL fallback", async () => {
