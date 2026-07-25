@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v241-role-update-flow";
+const APP_VERSION = "v242-request-output-flow";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -5658,7 +5658,7 @@ function requestShareText(req) {
 
 function shareTextToWhatsApp(text) {
   const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank", "noopener");
+  return Boolean(window.open(url, "_blank", "noopener"));
 }
 
 function requestPrintableFile(req) {
@@ -5681,23 +5681,13 @@ function requestPrintableFile(req) {
   return new File([html], `${safeNumber}-print.html`, { type: "text/html" });
 }
 
-async function shareRequestPrintFile(req) {
-  try {
-    const file = printRequestSheet(req, { asFile: true });
-    if (!file) throw new Error("print-file-not-created");
-    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-      await navigator.share({ title: req.requestNumber || "Заявка", text: "Файл заявки для печати", files: [file] });
-      return true;
-    }
-  } catch (error) {
-    if (error?.name === "AbortError") return false;
-  }
-  return Boolean(printRequestSheet(req));
+function openRequestInWhatsApp(req) {
+  return shareTextToWhatsApp(requestShareText(req));
 }
 
-async function sendRequestByDevice(req) {
-  if (mobileShareMode()) return shareRequestPrintFile(req);
-  return Boolean(printRequestSheet(req));
+async function sendRequestByDevice(req, options = {}) {
+  if (mobileShareMode()) return openRequestInWhatsApp(req);
+  return Boolean(await printRequestSheet(req, { waitForPrint: options.waitForPrint === true }));
 }
 
 function downloadRequestPrintFile(req) {
@@ -5716,7 +5706,7 @@ function downloadRequestPrintFile(req) {
 
 async function archiveTmcRequestAfterOutput(req, action) {
   if (!req) return false;
-  const outputStarted = await sendRequestByDevice(req);
+  const outputStarted = await sendRequestByDevice(req, { waitForPrint: true });
   if (!outputStarted) return false;
   const now = new Date().toISOString();
   req.done = true;
@@ -5743,7 +5733,7 @@ function bindTmcArchiveActions(root = document) {
       if (!req) return;
       const archived = await archiveTmcRequestAfterOutput(
         req,
-        mobileShareMode() ? "Отправлено в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
+        mobileShareMode() ? "Открыто в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
       );
       if (archived) renderTmcRequestArchivePanel();
     });
@@ -7779,6 +7769,9 @@ function syncRequestToRecord(req) {
     String(req.id || "").startsWith("stock-issue:")
     || String(req.id || "").startsWith("warehouse-ask:")
     || String(req.id || "").startsWith("manual-warehouse:")
+    || String(req.id || "").startsWith("engineer-batch:")
+    || String(req.id || "").startsWith("tmc-request:")
+    || String(req.id || "").startsWith("whatsapp-draft:")
     || String(req.id || "").includes(":req:")
   ) return;
   const kind = getRequestKindById(req.id);
@@ -14795,8 +14788,8 @@ function printRequestSheet(req, options = {}) {
   const items = requestItems(req);
   const columns = requestPrintColumns(items);
   const printItems = items.length ? items : [{}];
-  const firstPageLimit = 24;
-  const nextPageLimit = 27;
+  const firstPageLimit = 18;
+  const nextPageLimit = 22;
   const firstPageItems = printItems.slice(0, firstPageLimit);
   const continuationChunks = [];
   for (let index = firstPageLimit; index < printItems.length; index += nextPageLimit) {
@@ -14808,8 +14801,29 @@ function printRequestSheet(req, options = {}) {
     : window.open("", "_blank", "width=1280,height=820");
   if (!win) {
     window.alert("Разрешите всплывающие окна для печати заявки.");
-    return;
+    return false;
   }
+  const printToken = options.waitForPrint ? `request-print:${Date.now()}:${Math.random().toString(16).slice(2)}` : "";
+  const printConfirmation = options.waitForPrint ? new Promise(resolve => {
+    let finished = false;
+    const finish = value => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(closedTimer);
+      window.clearTimeout(expiryTimer);
+      resolve(value);
+    };
+    const onMessage = event => {
+      if (event.origin !== location.origin) return;
+      if (event.data?.type === "ppr-request-print-start" && event.data?.token === printToken) finish(true);
+    };
+    const closedTimer = window.setInterval(() => {
+      if (win.closed) finish(false);
+    }, 500);
+    const expiryTimer = window.setTimeout(() => finish(false), 10 * 60 * 1000);
+    window.addEventListener("message", onMessage);
+  }) : null;
   const sourceRole = ROLE_ACCESS[req.sourceRole]?.label || req.sourceRole || "";
   const logoUrl = new URL("hoffmann-logo.png", location.href).href;
   const createdDate = dateTimeHuman(req.createdAt || req.date || new Date().toISOString());
@@ -14857,6 +14871,8 @@ function printRequestSheet(req, options = {}) {
           .context span { display: block; color: #6b7d88; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
           .context strong { display: block; margin-top: 1mm; font-size: 10pt; }
           table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; border: 1px solid #b9c9d1; border-radius: 7px; overflow: hidden; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
           th, td { border-right: 1px solid #d5e0e5; border-bottom: 1px solid #d5e0e5; padding: 2mm 2.2mm; vertical-align: top; font-size: 8.3pt; line-height: 1.22; word-break: break-word; }
           th:last-child, td:last-child { border-right: 0; }
           tbody tr:last-child td { border-bottom: 0; }
@@ -14911,7 +14927,7 @@ function printRequestSheet(req, options = {}) {
           ${continuationChunks.length ? "" : signaturesHtml}
         </main>
         ${continuationHtml}
-        <div class="actions"><button onclick="window.print()">Печатать / сохранить PDF</button></div>
+        <div class="actions"><button onclick="${printToken ? `window.opener?.postMessage({type:'ppr-request-print-start',token:${JSON.stringify(printToken)}},location.origin);` : ""}window.print()">Печатать / сохранить PDF</button></div>
       </body>
     </html>`);
   win.document.close();
@@ -14919,7 +14935,7 @@ function printRequestSheet(req, options = {}) {
     const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
     return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
   }
-  return true;
+  return printConfirmation || true;
 }
 
 function renderAccountingWrittenOffList() {
@@ -15847,7 +15863,13 @@ ui.engineerIncomingTmcPanel?.addEventListener("click", async event => {
       await flushEngineerRequestEdits(formButton.dataset.formEngineerReq || "");
       const result = await publishEngineerRequestAction("form", { requestId: formButton.dataset.formEngineerReq || "" });
       renderRequestCreate();
-      if (result?.request) await sendRequestByDevice(result.request);
+      if (result?.request) {
+        const archived = await archiveTmcRequestAfterOutput(
+          result.request,
+          mobileShareMode() ? "Открыто в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
+        );
+        if (archived) renderRequestCreate();
+      }
     }, "Формируем...");
     return;
   }
@@ -15904,7 +15926,7 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
       state.requests[draft.id] = draft;
       saveState();
       await publishStateNow();
-      const archived = await archiveTmcRequestAfterOutput(draft, "Отправлено в WhatsApp и сохранено в архив");
+      const archived = await archiveTmcRequestAfterOutput(draft, "Открыто в WhatsApp и сохранено в архив");
       if (archived) {
         resetTmcRequestForm();
         ui.tmcRequestStatus.textContent = "Заявка отправлена и автоматически сохранена в архиве";

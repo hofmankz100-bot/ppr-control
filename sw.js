@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v241-role-update-flow";
+const CACHE_NAME = "ppr-v242-request-output-flow";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=241-role-update-flow",
+  "./styles.css?v=242-request-output-flow",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=241-role-update-flow",
+  "./app.js?v=242-request-output-flow",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
