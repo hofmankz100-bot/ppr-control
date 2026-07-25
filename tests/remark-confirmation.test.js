@@ -790,6 +790,7 @@ test("the repair mascot walks, fixes labels, and occasionally shows a fist", () 
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(app, /function setupRepairMasterMascot\(\)/);
   assert.match(app, /cycle % 3 === 0/);
   assert.match(app, /Почему не работаете\?/);
@@ -797,6 +798,7 @@ test("the repair mascot walks, fixes labels, and occasionally shows a fist", () 
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(sw, /assets\/repair-master-fist\.png/);
+  assert.match(server, /\^assets\\\/repair-master\(\?:-fist\)\?\\\.png\$/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {

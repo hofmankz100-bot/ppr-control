@@ -1,17 +1,17 @@
-const CACHE_NAME = "ppr-v264-repair-master-mascot";
+const CACHE_NAME = "ppr-v265-serve-repair-master-assets";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=264-repair-master-mascot",
+  "./styles.css?v=265-serve-repair-master-assets",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=264-repair-master-mascot",
-  "./assets/repair-master.png?v=v264-repair-master-mascot",
-  "./assets/repair-master-fist.png?v=v264-repair-master-mascot",
+  "./app.js?v=265-serve-repair-master-assets",
+  "./assets/repair-master.png?v=v265-serve-repair-master-assets",
+  "./assets/repair-master-fist.png?v=v265-serve-repair-master-assets",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
