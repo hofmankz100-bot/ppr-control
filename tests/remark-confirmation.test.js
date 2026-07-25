@@ -593,6 +593,14 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /allSheets\.slice\(1\)/);
 });
 
+test("aggregate journals are separated by equipment even inside one area", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /function aggregateJournalItems\(area, equipmentFilterId = 0\)/);
+  assert.match(source, /targetEquipmentId && equipmentId !== targetEquipmentId/);
+  assert.match(source, /data-aggregate-equipment/);
+  assert.match(source, /aggregateJournalItems\(selectedArea, selectedEquipment\?\.id\)/);
+});
+
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);

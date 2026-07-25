@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v233-auto-fill-aggregate-print";
+const APP_VERSION = "v234-separate-equipment-journals";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -8808,14 +8808,15 @@ function aggregateJournalAreas(equipment = visibleEquipment()) {
   return [...new Set(equipment.map(eq => eq.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
-function aggregateJournalItems(area) {
+function aggregateJournalItems(area, equipmentFilterId = 0) {
+  const targetEquipmentId = Number(equipmentFilterId || 0);
   const items = [];
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
     const equipmentId = Number(equipmentIdRaw);
     const nodeIndex = Number(nodeIndexRaw);
     const eq = equipmentById(equipmentId);
-    if (!eq || eq.area !== area) return;
+    if (!eq || eq.area !== area || (targetEquipmentId && equipmentId !== targetEquipmentId)) return;
     const item = rec?.to;
     if (!item) return;
     visibleCommentEntries(item).forEach((entry, entryIndex) => {
@@ -8846,7 +8847,11 @@ function aggregateJournalItems(area) {
     });
   });
   downtimes().forEach(item => {
-    if (item.area !== area || item.type === "production") return;
+    if (
+      item.area !== area
+      || item.type === "production"
+      || (targetEquipmentId && Number(item.equipmentId) !== targetEquipmentId)
+    ) return;
     items.push({
       id: item.id,
       kind: "Поломка",
@@ -8929,9 +8934,9 @@ function installedPartsForRemark(linkKey) {
     .filter(item => item.name && item.qty > 0);
 }
 
-function aggregateJournalCount(area) {
+function aggregateJournalCount(area, equipmentId = 0) {
   if (area === "\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f") return compressorJournalFilledRows(area).length;
-  return aggregateJournalItems(area).length;
+  return aggregateJournalItems(area, equipmentId).length;
 }
 
 const COMPRESSOR_JOURNAL_AREA = "\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f";
@@ -9688,11 +9693,11 @@ function renderEquipment() {
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
-            <button type="button" data-aggregate-area="${escapeHtml(eq.area)}" class="equipment-journal-button ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
+            <button type="button" data-aggregate-equipment="${eq.id}" class="equipment-journal-button ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">Журнал</span>
               <strong>${escapeHtml(eq.name)}</strong>
               <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area)} записей`}</small>
+              <small>${eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
@@ -9708,7 +9713,8 @@ function renderEquipment() {
           ` : ""}
         </th>
       `;
-      tr.querySelector("[data-aggregate-area]")?.addEventListener("click", () => {
+      tr.querySelector("[data-aggregate-equipment]")?.addEventListener("click", () => {
+        current.selectedAggregateEquipmentId = eq.id;
         current.selectedAggregateArea = eq.area || "";
         show("aggregateJournal");
       });
@@ -13946,8 +13952,11 @@ function renderDowntime() {
 }
 
 function renderAggregateJournal() {
-  const areas = aggregateJournalAreas();
-  const selectedArea = current.selectedAggregateArea || areas[0] || "";
+  const selectedEquipment = equipmentById(Number(current.selectedAggregateEquipmentId || current.equipmentId))
+    || visibleEquipment().find(eq => eq.area !== "Резерв")
+    || null;
+  const selectedArea = selectedEquipment?.area || current.selectedAggregateArea || "";
+  current.selectedAggregateEquipmentId = selectedEquipment?.id || 0;
   current.selectedAggregateArea = selectedArea;
   ui.subtitle.textContent = "Агрегатный журнал";
   if (!ui.aggregateJournalList) return;
@@ -13959,10 +13968,11 @@ function renderAggregateJournal() {
     renderCompressorJournal(selectedArea);
     return;
   }
-  ui.aggregateJournalTitle.textContent = selectedArea ? `Агрегатный журнал: ${selectedArea}` : "Агрегатный журнал";
-  const items = selectedArea ? aggregateJournalItems(selectedArea) : [];
+  const journalName = selectedEquipment?.name || selectedArea;
+  ui.aggregateJournalTitle.textContent = journalName ? `Агрегатный журнал: ${journalName}` : "Агрегатный журнал";
+  const items = selectedArea ? aggregateJournalItems(selectedArea, selectedEquipment?.id) : [];
   const openCount = items.filter(item => !item.resolved).length;
-  ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки цеха отдельно от графика простоя.`;
+  ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
     sheets.push(items.slice(i, i + AGGREGATE_JOURNAL_ROWS_PER_SHEET));
@@ -13975,7 +13985,7 @@ function renderAggregateJournal() {
     ${sheets.map((sheetItems, sheetIndex) => `
       <div class="aggregate-journal-sheet">
         <div class="aggregate-sheet-head">
-          <strong>Агрегатный журнал: ${escapeHtml(selectedArea)}</strong>
+          <strong>Агрегатный журнал: ${escapeHtml(journalName)}</strong>
           <span>Лист № ${sheetIndex + 1}</span>
           <button type="button" class="aggregate-sheet-print" data-print-aggregate-sheet="${sheetIndex}">Печатать этот лист</button>
         </div>
@@ -14041,9 +14051,9 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
-  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(selectedArea));
+  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
   ui.aggregateJournalList.querySelectorAll("[data-print-aggregate-sheet]").forEach(button => {
-    button.addEventListener("click", () => printAggregateJournal(selectedArea, Number(button.dataset.printAggregateSheet)));
+    button.addEventListener("click", () => printAggregateJournal(journalName, Number(button.dataset.printAggregateSheet)));
   });
 }
 
