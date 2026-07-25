@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v232-print-individual-aggregate-sheet";
+const APP_VERSION = "v233-auto-fill-aggregate-print";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -14056,7 +14056,19 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
     window.alert("Браузер заблокировал окно печати. Разрешите всплывающие окна для приложения и повторите.");
     return;
   }
-  const pages = sheets.map(sheet => `<section class="print-sheet">${sheet.innerHTML}</section>`).join("");
+  let pages = "";
+  if (Number.isInteger(selectedSheetIndex)) {
+    pages = `<section class="print-sheet">${sheets[0].innerHTML}</section>`;
+  } else {
+    const continuous = allSheets[0].cloneNode(true);
+    const continuousBody = continuous.querySelector("tbody");
+    allSheets.slice(1).forEach(sheet => {
+      sheet.querySelectorAll("tbody > tr").forEach(row => continuousBody?.append(row.cloneNode(true)));
+    });
+    const sheetNumber = continuous.querySelector(".aggregate-sheet-head span");
+    if (sheetNumber) sheetNumber.textContent = "Автоматическая разбивка по заполнению страниц";
+    pages = `<section class="print-sheet continuous">${continuous.innerHTML}</section>`;
+  }
   popup.document.write(`<!doctype html>
     <html lang="ru">
       <head>
@@ -14069,6 +14081,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
           html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: Arial, sans-serif; }
           .print-sheet { width: 283mm; min-height: 196mm; break-after: page; page-break-after: always; }
           .print-sheet:last-of-type { break-after: auto; page-break-after: auto; }
+          .print-sheet.continuous { min-height: 0; break-after: auto; page-break-after: auto; }
           .aggregate-sheet-head { display: flex; justify-content: space-between; gap: 8mm; margin: 0 0 3mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; font-size: 10pt; }
           .aggregate-sheet-print { display: none !important; }
           .aggregate-journal-table-wrap { width: 100%; overflow: visible; }

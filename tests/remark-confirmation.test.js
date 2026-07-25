@@ -589,6 +589,8 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /@page \{ size: A4 landscape; margin: 7mm; \}/);
   assert.match(source, /thead \{ display: table-header-group; \}/);
   assert.match(source, /page-break-inside: avoid/);
+  assert.match(source, /class="print-sheet continuous"/);
+  assert.match(source, /allSheets\.slice\(1\)/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
