@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v262-personal-admin-engineer";
+const CACHE_NAME = "ppr-v263-request-button-halo";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=262-personal-admin-engineer",
+  "./styles.css?v=263-request-button-halo",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=262-personal-admin-engineer",
+  "./app.js?v=263-request-button-halo",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

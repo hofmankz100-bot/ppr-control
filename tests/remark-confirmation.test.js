@@ -779,6 +779,13 @@ test("only the primary admin also receives the engineer workflow", () => {
   assert.match(server, /isPrimaryAdminEngineerServer\(profile\) \? "engineer"/);
 });
 
+test("the create request button uses a calm halo instead of blinking", () => {
+  const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(style, /#createTmcRequestButton\.request-alert,[\s\S]*?animation: requestButtonHalo 2\.2s ease-in-out infinite !important/);
+  assert.match(style, /@keyframes requestButtonHalo/);
+  assert.match(style, /box-shadow: 0 0 0 7px rgba\(22, 130, 170, \.25\)/);
+});
+
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
   const repairedResponse = await postRemark(
     "1:2:2026-07-16",
