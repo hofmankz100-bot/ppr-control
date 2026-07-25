@@ -76,7 +76,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v220-stability-security";
+const APP_VERSION = "v221-downtime-alert";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -6822,6 +6822,10 @@ function downtimePieChart(stats) {
   const activeStats = stats.filter(item => item.totalMs > 0);
   const { start, end } = monthRange(current.downtimeYear, current.downtimeMonth);
   const monthMs = end.getTime() - start.getTime();
+  const openAreas = new Set(downtimes()
+    .filter(item => !item.endedAt && Date.parse(item.startedAt || "") < end.getTime())
+    .map(item => item.area)
+    .filter(Boolean));
   if (!monthMs || !activeStats.length) {
     return `<div class="empty-state">За выбранный месяц простоев нет</div>`;
   }
@@ -6840,8 +6844,9 @@ function downtimePieChart(stats) {
     const percent = Math.round((item.totalMs / monthMs) * 100);
     const selected = current.selectedDowntimeArea === item.area;
     const overLimit = item.totalMs > DOWNTIME_MONTH_LIMIT_MS;
+    const activeOverLimit = overLimit && openAreas.has(item.area);
     return `
-      <g class="downtime-pie-slice ${selected ? "active" : ""} ${overLimit ? "limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
+      <g class="downtime-pie-slice ${selected ? "active" : ""} ${overLimit ? "limit-exceeded" : ""} ${activeOverLimit ? "active-limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
         <path d="${downtimePieSlicePath(120, 120, 96, start, end)}" fill="${colors[index % colors.length]}"></path>
         ${percent >= 3 ? `<text x="${labelPoint.x}" y="${labelPoint.y}" text-anchor="middle" dominant-baseline="middle">${percent} %</text>` : ""}
       </g>
@@ -6856,17 +6861,18 @@ function downtimePieChart(stats) {
   const legend = activeStats.map((item, index) => {
     const percent = Math.round((item.totalMs / monthMs) * 100);
     const overLimit = item.totalMs > DOWNTIME_MONTH_LIMIT_MS;
+    const activeOverLimit = overLimit && openAreas.has(item.area);
     return `
-      <button type="button" class="downtime-legend-item ${current.selectedDowntimeArea === item.area ? "active" : ""} ${overLimit ? "limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
+      <button type="button" class="downtime-legend-item ${current.selectedDowntimeArea === item.area ? "active" : ""} ${overLimit ? "limit-exceeded" : ""} ${activeOverLimit ? "active-limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
         <i style="background:${colors[index % colors.length]}"></i>
         <span>${escapeHtml(item.area)}</span>
-        <strong>${percent}% · ${durationText(item.totalMs)}${overLimit ? " · превышен лимит 125 ч" : ""}</strong>
+        <strong>${percent}% · ${durationText(item.totalMs)}${activeOverLimit ? " · лимит превышен, простой активен" : overLimit ? " · лимит превышен, простои закрыты" : ""}</strong>
       </button>
     `;
   }).join("");
   return `
     <div class="downtime-pie-wrap">
-      <div class="downtime-pie-note">Весь круг - выбранный месяц. Цветной сектор цеха показывает его простой за месяц. Лимит: 125 часов на цех; превышение мигает.</div>
+      <div class="downtime-pie-note">Весь круг — выбранный месяц. Цветной сектор показывает простой цеха. Закрытый перерасход отмечен красным без мигания; мигает только активный простой сверх лимита 125 часов.</div>
       <svg class="downtime-pie" viewBox="0 0 240 240" role="img" aria-label="Проценты простоев по цехам">
         ${slices}
         ${restSlice}

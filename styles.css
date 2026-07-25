@@ -5073,7 +5073,7 @@ body.editor-profile .warehouse-folders button.request-alert {
   stroke-width: 3;
 }
 
-.downtime-pie-slice.limit-exceeded path {
+.downtime-pie-slice.active-limit-exceeded path {
   animation: downtimeLimitBlink 0.8s ease-in-out infinite;
 }
 
@@ -5117,6 +5117,10 @@ body.editor-profile .warehouse-folders button.request-alert {
 
 .downtime-legend-item.limit-exceeded {
   border-color: #ef4444;
+  background: #fff7f7;
+}
+
+.downtime-legend-item.active-limit-exceeded {
   animation: downtimeLimitBlink 0.8s ease-in-out infinite;
 }
 
