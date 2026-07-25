@@ -76,7 +76,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v221-downtime-alert";
+const APP_VERSION = "v222-no-blink";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -6872,7 +6872,7 @@ function downtimePieChart(stats) {
   }).join("");
   return `
     <div class="downtime-pie-wrap">
-      <div class="downtime-pie-note">Весь круг — выбранный месяц. Цветной сектор показывает простой цеха. Закрытый перерасход отмечен красным без мигания; мигает только активный простой сверх лимита 125 часов.</div>
+      <div class="downtime-pie-note">Весь круг — выбранный месяц. Цветной сектор показывает простой цеха. Превышение лимита 125 часов отмечается красным без мигания; активное состояние указано текстом.</div>
       <svg class="downtime-pie" viewBox="0 0 240 240" role="img" aria-label="Проценты простоев по цехам">
         ${slices}
         ${restSlice}

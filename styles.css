@@ -5074,7 +5074,8 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 
 .downtime-pie-slice.active-limit-exceeded path {
-  animation: downtimeLimitBlink 0.8s ease-in-out infinite;
+  stroke: #b91c1c;
+  stroke-width: 3;
 }
 
 .downtime-pie-slice text {
@@ -5121,16 +5122,8 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 
 .downtime-legend-item.active-limit-exceeded {
-  animation: downtimeLimitBlink 0.8s ease-in-out infinite;
-}
-
-@keyframes downtimeLimitBlink {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: .45;
-  }
+  border-width: 2px;
+  border-color: #b91c1c;
 }
 
 .downtime-type-overlay {

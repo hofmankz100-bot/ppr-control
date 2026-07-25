@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v221-downtime-alert";
+const CACHE_NAME = "ppr-v222-no-blink";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=221-downtime-alert",
+  "./styles.css?v=222-no-blink",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=221-downtime-alert",
+  "./app.js?v=222-no-blink",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
