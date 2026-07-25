@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v236-request-auto-archive";
+const APP_VERSION = "v237-request-download-archive";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -5618,8 +5618,8 @@ function compactTmcArchiveCard(req, archiveMode = false) {
         ${requestHistoryHtml(req)}
         <div class="archive-request-actions">
           ${archiveMode
-            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>`
-            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "Сохранить и WhatsApp" : "Сохранить и печатать"}</button>`}
+            ? `<button type="button" class="action-button" data-print-archived-request="${escapeHtml(req.id)}">${mobileShareMode() ? "Отправить WhatsApp" : "Печатать"}</button>${mobileShareMode() ? "" : `<button type="button" class="action-button secondary" data-download-archived-request="${escapeHtml(req.id)}">Скачать файл</button>`}`
+            : `<button type="button" class="action-button" data-save-print-request-archive="${escapeHtml(req.id)}">${mobileShareMode() ? "Сохранить и WhatsApp" : "Сохранить и печатать"}</button>${mobileShareMode() ? "" : `<button type="button" class="action-button secondary" data-save-download-request-archive="${escapeHtml(req.id)}">Скачать и сохранить в архив</button>`}`}
         </div>
       </div>
     </article>
@@ -5692,6 +5692,20 @@ async function sendRequestByDevice(req) {
   return Boolean(printRequestSheet(req));
 }
 
+function downloadRequestPrintFile(req) {
+  const file = printRequestSheet(req, { asFile: true });
+  if (!file) return false;
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
 async function archiveTmcRequestAfterOutput(req, action) {
   if (!req) return false;
   const outputStarted = await sendRequestByDevice(req);
@@ -5730,6 +5744,29 @@ function bindTmcArchiveActions(root = document) {
     button.addEventListener("click", event => {
       const req = state.requests?.[event.currentTarget.dataset.printArchivedRequest || ""];
       if (req) sendRequestByDevice(req);
+    });
+  });
+  root.querySelectorAll("[data-save-download-request-archive]").forEach(button => {
+    button.addEventListener("click", async event => {
+      const req = state.requests?.[event.currentTarget.dataset.saveDownloadRequestArchive || ""];
+      if (!req || !downloadRequestPrintFile(req)) return;
+      const now = new Date().toISOString();
+      req.done = true;
+      req.stock = false;
+      req.status = "done";
+      req.updatedAt = now;
+      req.archivedAt ||= now;
+      requestAddHistory(req, "Скачано на компьютер и сохранено в архив", profile?.name || "");
+      syncRequestToRecord(req);
+      saveState();
+      await publishStateNow().catch(scheduleRemoteRetry);
+      renderTmcRequestArchivePanel();
+    });
+  });
+  root.querySelectorAll("[data-download-archived-request]").forEach(button => {
+    button.addEventListener("click", event => {
+      const req = state.requests?.[event.currentTarget.dataset.downloadArchivedRequest || ""];
+      if (req) downloadRequestPrintFile(req);
     });
   });
 }

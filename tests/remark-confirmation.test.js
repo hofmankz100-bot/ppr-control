@@ -758,4 +758,7 @@ test("request output archives only after mobile share or desktop print starts", 
   assert.match(appSource, /Отправлено в WhatsApp и сохранено в архив/);
   assert.match(appSource, /Отправлено на печать и сохранено в архив/);
   assert.match(appSource, /if \(error\?\.name === "AbortError"\) return false/);
+  assert.match(appSource, /function downloadRequestPrintFile\(req\)/);
+  assert.match(appSource, /data-save-download-request-archive/);
+  assert.match(appSource, /Скачано на компьютер и сохранено в архив/);
 });
