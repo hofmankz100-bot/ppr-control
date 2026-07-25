@@ -736,3 +736,15 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(serverSource, /Array\.isArray\(body\.participants\)/);
   assert.match(serverSource, /notifyParticipants = addedParticipants/);
 });
+
+test("gas and compressor printing gathers filled days without date selectors", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /function printGasJournalSheet\(section\)/);
+  assert.match(appSource, /function printCompressorJournalFilledDays\(area/);
+  assert.match(appSource, /gasJournalDateHasFilledRow\(section, row\.date\)/);
+  assert.match(appSource, /compressorJournalFilledRows\(area\)\.sort/);
+  assert.match(appSource, /thead\{display:table-header-group\}/);
+  assert.doesNotMatch(appSource, /data-gas-saved-date/);
+  assert.doesNotMatch(appSource, /data-compressor-saved-date/);
+  assert.doesNotMatch(appSource, /data-print-compressor-sheet/);
+});

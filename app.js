@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v234-separate-equipment-journals";
+const APP_VERSION = "v235-filled-journal-print";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -9015,6 +9015,31 @@ function compressorJournalFilledRows(area = COMPRESSOR_JOURNAL_AREA) {
     .filter(row => ["shiftTime", "airPressure", "airTemp", "oilPressureTemp", "leakGrounding", "blowTime", "checkedBy"].some(field => String(row[field] || "").trim()));
 }
 
+function printCompressorJournalFilledDays(area = COMPRESSOR_JOURNAL_AREA) {
+  const compressorOrder = new Map(COMPRESSOR_JOURNAL_COMPRESSORS.map((name, index) => [name, index]));
+  const rows = compressorJournalFilledRows(area).sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+    || (compressorOrder.get(a.compressor) ?? 999) - (compressorOrder.get(b.compressor) ?? 999)
+  );
+  if (!rows.length) {
+    window.alert("В компрессорном журнале нет заполненных дней для печати.");
+    return;
+  }
+  const headers = ["Дата", "Проверяющий", "Компрессор", "Смена / Время", "Давление воздуха", "Температура воздуха", "Давление / температура масла", "Контроль утечек и заземления", "Время продувки"];
+  const body = rows.map(row => `<tr>
+    <td>${dateHuman(row.date)}</td>
+    <td>${escapeHtml(row.checkedBy || "")}</td>
+    <td>${escapeHtml(row.compressor || "")}</td>
+    <td>${escapeHtml(row.shiftTime || "")}</td>
+    <td>${escapeHtml(row.airPressure || "")}</td>
+    <td>${escapeHtml(row.airTemp || "")}</td>
+    <td>${escapeHtml(row.oilPressureTemp || "")}</td>
+    <td>${escapeHtml(row.leakGrounding || "")}</td>
+    <td>${escapeHtml(row.blowTime || "")}</td>
+  </tr>`).join("");
+  printFilledJournalDocument("Компрессорный журнал — все заполненные дни", `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
+}
+
 function compressorJournalRowComplete(row) {
   return window.PPRModules.compressor.rowComplete(row);
 }
@@ -9329,11 +9354,42 @@ function clearGasJournalSheet(section, reason = "") {
   renderEquipment();
 }
 
+function printFilledJournalDocument(title, tableHtml) {
+  const popup = window.open("", "_blank", "width=1400,height=900");
+  if (!popup) {
+    window.alert("Браузер заблокировал окно печати. Разрешите всплывающие окна и повторите.");
+    return;
+  }
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+    @page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}
+    h1{margin:0 0 3mm;font-size:13pt}table{width:100%;border-collapse:collapse;table-layout:fixed}
+    thead{display:table-header-group}tbody{display:table-row-group}tr{break-inside:avoid;page-break-inside:avoid}
+    th,td{border:.3mm solid #000;padding:1.2mm;font-size:7pt;line-height:1.2;vertical-align:top;overflow-wrap:anywhere}
+    th{text-align:center;vertical-align:middle}.actions{position:sticky;bottom:0;text-align:center;background:#eef3f6;padding:12px}
+    button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:11px 22px;font-weight:800}
+    @media print{.actions{display:none}}
+  </style></head><body><h1>${escapeHtml(title)}</h1>${tableHtml}<div class="actions"><button onclick="window.print()">Печатать</button></div><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script></body></html>`);
+  popup.document.close();
+}
+
 function printGasJournalSheet(section) {
-  document.body.classList.remove("print-gas-A", "print-gas-B");
-  document.body.classList.add(`print-gas-${section}`);
-  printCurrentDocument(`ППР - Газовый журнал - раздел ${section}`);
-  setTimeout(() => document.body.classList.remove("print-gas-A", "print-gas-B"), 500);
+  const rows = Object.values(state.gasJournal || {})
+    .filter(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!rows.length) {
+    window.alert(`В разделе ${section} нет заполненных дней для печати.`);
+    return;
+  }
+  const sectionA = section === "A";
+  const headers = sectionA
+    ? ["Дата", "Время", "Давление входное, МПа", "Давление выходное, МПа", "Температура входная, °C", "Температура выходная, °C", "Перепад давления, МПа", "Исправность оборудования", "Срабатывание ПСК", "Техническое обслуживание", "Замечания", "Подпись"]
+    : ["Дата", "Время", "Участок", "Контрольный трубопровод и колодцы", "Запах газа", "Охранная зона", "Замечания", "Принятые меры", "Подпись"];
+  const body = rows.map(row => sectionA
+    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml(row.time || "")}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
+    : `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml(row.time || "")}</td><td>${escapeHtml(row.route || GAS_ROUTE_LIST.join(", "))}</td><td>${escapeHtml(row.wells || "")}</td><td>${escapeHtml(row.gasSmell || "")}</td><td>${escapeHtml(row.protectionZone || "")}</td><td>${escapeHtml(row.remarks || "")}</td><td>${escapeHtml(row.actions || "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
+  ).join("");
+  const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
+  printFilledJournalDocument(title, `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
 }
 
 function gasSelectHtml(section, date, field, value, options) {
@@ -9350,11 +9406,13 @@ function gasInputHtml(section, date, field, value) {
 function gasSheetActionsHtml(section, complete) {
   const label = section === "A" ? "А" : "Б";
   const sheetNo = gasJournalSheetIndex(section) + 1;
+  const hasFilledRows = Object.values(state.gasJournal || {}).some(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date));
   return `<div class="gas-sheet-actions">
     <button type="button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
     <button type="button" data-gas-sheet-today="${section}">Сегодня</button>
     <button type="button" data-gas-sheet-next="${section}">Следующий лист ›</button>
-    ${complete ? `<button type="button" data-gas-print="${section}">${printActionLabel(`Печать листа ${label} №${sheetNo}`, `PDF листа ${label} №${sheetNo}`)}</button><button type="button" class="danger" data-gas-clear="${section}">Удалить лист ${label} №${sheetNo}</button>` : `<span class="gas-sheet-note">Печать и удаление появятся после заполнения хотя бы одной даты на этом листе.</span>`}
+    ${hasFilledRows ? `<button type="button" data-gas-print="${section}">${printActionLabel(`Печать всех заполненных дней раздела ${label}`, `PDF всех заполненных дней раздела ${label}`)}</button>` : `<span class="gas-sheet-note">Печать появится после заполнения хотя бы одного дня.</span>`}
+    ${complete ? `<button type="button" class="danger" data-gas-clear="${section}">Удалить лист ${label} №${sheetNo}</button>` : ""}
   </div>`;
 }
 
@@ -9368,13 +9426,10 @@ function renderGasJournal() {
   const completeB = gasJournalSheetHasFilledDay("B");
   const sheetNoA = gasJournalSheetIndex("A") + 1;
   const sheetNoB = gasJournalSheetIndex("B") + 1;
-  const savedDates = gasJournalSavedDates();
-
   ui.aggregateJournalList.innerHTML = `
     <div class="journal-date-navigation">
       <button type="button" data-gas-all-today>Сегодня</button>
-      <label><span>Предыдущие записи</span><select data-gas-saved-date><option value="">Выберите дату</option>${savedDates.map(date => `<option value="${date}">${dateHuman(date)}</option>`).join("")}</select></label>
-      <small>Записи сохраняются по датам и не удаляются при наступлении нового дня.</small>
+      <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
       ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
@@ -9439,15 +9494,6 @@ function renderGasJournal() {
     setGasJournalSheetToToday("A");
     setGasJournalSheetToToday("B");
   });
-  ui.aggregateJournalList.querySelector("[data-gas-saved-date]")?.addEventListener("change", event => {
-    const date = event.currentTarget.value;
-    if (!date) return;
-    current.gasBaseDateA = date;
-    current.gasBaseDateB = date;
-    current.gasSheetIndexA = 0;
-    current.gasSheetIndexB = 0;
-    renderGasJournal();
-  });
   ui.aggregateJournalList.querySelectorAll("[data-gas-section]").forEach(el => {
     el.addEventListener("change", () => {
       updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
@@ -9475,8 +9521,6 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   if (current.compressorSheetIndex > maxSheetIndex) current.compressorSheetIndex = maxSheetIndex;
   const activeSheetIndex = compressorJournalSheetIndex();
   const sheetRows = compressorJournalRows(area, activeSheetIndex);
-  const printableDays = [...new Set(sheetRows.filter(row => compressorJournalDateHasFilledRow(area, row.date)).map(row => row.date))];
-  const savedDates = compressorJournalSavedDates(area);
   const filled = compressorJournalFilledRows(area).length;
   ui.aggregateJournalTitle.textContent = `\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043d\u044b\u0439 \u0436\u0443\u0440\u043d\u0430\u043b: ${area}`;
   ui.aggregateJournalMeta.textContent = `${filled} \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0445 \u0441\u0442\u0440\u043e\u043a. \u0416\u0443\u0440\u043d\u0430\u043b \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f \u0432\u0440\u0443\u0447\u043d\u0443\u044e; \u0437\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u044f \u0441\u044e\u0434\u0430 \u043d\u0435 \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442.`;
@@ -9487,18 +9531,17 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
         <strong>\u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</strong>
         <button type="button" data-compressor-sheet-next ${activeSheetIndex >= maxSheetIndex ? "disabled" : ""}>\u203a</button>
       </div>
+      <button type="button" data-print-all-compressor ${filled ? "" : "disabled"}>${printActionLabel("Печать всех заполненных дней", "PDF всех заполненных дней")}</button>
     </div>
     <div class="journal-date-navigation">
       <button type="button" data-compressor-today>Сегодня</button>
-      <label><span>Предыдущие записи</span><select data-compressor-saved-date><option value="">Выберите дату</option>${savedDates.map(date => `<option value="${date}">${dateHuman(date)}</option>`).join("")}</select></label>
-      <small>Записи сохраняются по датам. В печать войдут только дни, где есть данные.</small>
+      <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
       ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
         <strong>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f</strong>
         <span>${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</span>
-        <button class="compressor-sheet-print" type="button" data-print-compressor-sheet="${activeSheetIndex}" ${printableDays.length ? "" : "disabled"}>${printActionLabel(`Печать заполненных дней · лист №${activeSheetIndex + 1}`, `PDF заполненных дней · лист №${activeSheetIndex + 1}`)}</button>
       </div>
       <div class="aggregate-journal-table-wrap">
         <table class="aggregate-journal-table compressor-journal-table">
@@ -9556,35 +9599,9 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     current.compressorSheetIndex = 0;
     renderAggregateJournal();
   });
-  ui.aggregateJournalList.querySelector("[data-compressor-saved-date]")?.addEventListener("change", event => {
-    const date = event.currentTarget.value;
-    if (!date) return;
-    current.compressorBaseDate = date;
-    current.compressorSheetIndex = 0;
-    renderAggregateJournal();
-  });
-  ui.aggregateJournalList.querySelectorAll("[data-print-compressor-sheet]").forEach(button => {
-    button.addEventListener("click", () => {
-      const sheetIndex = button.dataset.printCompressorSheet || "";
-      const sheet = ui.aggregateJournalList.querySelector(`[data-compressor-sheet="${CSS.escape(sheetIndex)}"]`);
-      if (!sheet) return;
-      const cleanup = () => {
-        document.body.classList.remove("print-compressor-single");
-        sheet.classList.remove("print-selected");
-        window.removeEventListener("afterprint", cleanup);
-      };
-      document.body.classList.add("print-compressor-single");
-      sheet.classList.add("print-selected");
-      window.addEventListener("afterprint", cleanup);
-      printCurrentDocument(`ППР - Компрессорная - лист ${Number(sheetIndex) + 1}`);
-      window.setTimeout(cleanup, 1000);
-    });
-  });
+  ui.aggregateJournalList.querySelector("[data-print-all-compressor]")?.addEventListener("click", () => printCompressorJournalFilledDays(area));
   const refreshCompressorSheetControls = () => {
-    const hasFilledDay = compressorJournalSheetDates(activeSheetIndex).some(date => compressorJournalDateHasFilledRow(area, date));
-    const printButton = ui.aggregateJournalList.querySelector(`[data-print-compressor-sheet="${activeSheetIndex}"]`);
     const nextButton = ui.aggregateJournalList.querySelector("[data-compressor-sheet-next]");
-    if (printButton) printButton.disabled = !hasFilledDay;
     if (nextButton) nextButton.disabled = activeSheetIndex >= maxSheetIndex;
   };
   ui.aggregateJournalList.querySelectorAll("[data-compressor-row]").forEach(input => {

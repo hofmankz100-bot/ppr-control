@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v234-separate-equipment-journals";
+const CACHE_NAME = "ppr-v235-filled-journal-print";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=234-separate-equipment-journals",
+  "./styles.css?v=235-filled-journal-print",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=234-separate-equipment-journals",
+  "./app.js?v=235-filled-journal-print",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
