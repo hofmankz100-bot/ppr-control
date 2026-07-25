@@ -335,7 +335,9 @@ async function initializeStorage() {
   const connectionString = String(process.env.DATABASE_URL || "").trim();
   if (!connectionString) {
     const db = readDbFile();
-    if (migrateLegacyDirectorApprovals(db) || removeObsoletePressNoMaterialNodes(db)) writeDbFile(db);
+    migrateLegacyDirectorApprovals(db);
+    removeObsoletePressNoMaterialNodes(db);
+    writeDbFile(db);
     storageStatus = { mode: "json" };
     return storageStatus;
   }
@@ -375,18 +377,17 @@ async function initializeStorage() {
     );
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
-      const catalogChanged = removeObsoletePressNoMaterialNodes(postgresState);
-      const falseDowntimeChanged = removeKnownFalseDowntimes(postgresState);
-      const removedEquipmentChanged = purgeRemovedEquipmentData(postgresState);
-      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged || falseDowntimeChanged || removedEquipmentChanged) {
-        await pool.query(
-          `INSERT INTO ppr_settings(setting_key, payload, updated_at)
-           VALUES ('full_state', $1::jsonb, now())
-           ON CONFLICT(setting_key) DO UPDATE
-           SET payload = EXCLUDED.payload, updated_at = now()`,
-          [JSON.stringify(postgresState)]
-        );
-      }
+      removeObsoletePressNoMaterialNodes(postgresState);
+      removeKnownFalseDowntimes(postgresState);
+      purgeRemovedEquipmentData(postgresState);
+      migrateLegacyDirectorApprovals(postgresState);
+      await pool.query(
+        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
+         VALUES ('full_state', $1::jsonb, now())
+         ON CONFLICT(setting_key) DO UPDATE
+         SET payload = EXCLUDED.payload, updated_at = now()`,
+        [JSON.stringify(postgresState)]
+      );
       writeDbFile(postgresState);
     } else {
       postgresState = readDbFile();
