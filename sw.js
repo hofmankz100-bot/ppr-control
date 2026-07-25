@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v248-refresh-client-assets";
+const CACHE_NAME = "ppr-v249-reassign-legacy-remark";
 const ASSETS = [
   "./",
   "./index.html",

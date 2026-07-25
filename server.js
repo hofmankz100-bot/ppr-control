@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v248-refresh-client-assets";
+const SERVER_VERSION = "v249-reassign-legacy-remark";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -3388,7 +3388,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -3439,7 +3439,7 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         };
       }
-      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
@@ -3651,6 +3651,63 @@ async function handleApi(req, res, pathname, url) {
         notifyParticipants = [performer];
         pushTitle = "Устранение подтверждено";
         pushBody = `${actor.name} подтвердил устранение`;
+      }
+
+      if (action === "admin-repair-close") {
+        if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
+        const performerName = String(body.performerName || "").trim().toLocaleLowerCase("ru-RU");
+        const confirmerName = String(body.confirmerName || "").trim().toLocaleLowerCase("ru-RU");
+        const performerMatches = (db.users || []).filter(user =>
+          user.approved !== false && user.pendingApproval !== true
+          && isResolutionExecutorRoleServer(user.role)
+          && String(user.name || "").trim().toLocaleLowerCase("ru-RU") === performerName
+        );
+        const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
+        const confirmerMatches = (db.users || []).filter(user =>
+          user.approved !== false && user.pendingApproval !== true
+          && permissionBaseRoleServer(user.role) === "shop"
+          && String(user.name || "").trim().toLocaleLowerCase("ru-RU") === confirmerName
+          && (!equipmentArea || String(user.area || "").trim().toLocaleLowerCase("ru-RU") === equipmentArea.trim().toLocaleLowerCase("ru-RU"))
+        );
+        if (performerMatches.length !== 1 || confirmerMatches.length !== 1) return { error: "remark_participant_invalid" };
+        const performer = sanitizeResolutionParticipant(performerMatches[0]);
+        const confirmer = sanitizeResolutionParticipant(confirmerMatches[0]);
+        const createdMs = Date.parse(remark.at || "");
+        remark.resolutionParticipants = [performer];
+        remark.resolutionLeadKey = performer.key;
+        remark.resolutionLeadName = performer.name;
+        remark.resolutionCompletedParticipants = [performer];
+        remark.resolved = true;
+        remark.resolvedAt = now;
+        remark.resolvedDurationMs = Number.isFinite(createdMs) ? Math.max(0, Date.parse(now) - createdMs) : 0;
+        remark.resolvedByKey = performer.key;
+        remark.resolvedByName = performer.name;
+        remark.resolvedByRole = performer.role;
+        remark.resolvedComment = remark.resolutionSubmittedComment || "Устранено";
+        remark.resolutionPendingConfirmation = false;
+        remark.resolutionSubmittedAt ||= now;
+        remark.resolutionSubmittedByKey = performer.key;
+        remark.resolutionSubmittedByName = performer.name;
+        remark.resolutionSubmittedByRole = performer.role;
+        remark.confirmedAt = now;
+        remark.confirmedByKey = confirmer.key;
+        remark.confirmedByName = confirmer.name;
+        remark.confirmedByRole = confirmer.role;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "confirmed",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          targetKey: performer.key,
+          targetName: performer.name,
+          confirmerKey: confirmer.key,
+          confirmerName: confirmer.name,
+          at: now
+        });
+        notifyParticipants = [performer];
+        pushTitle = "Распределение устранения исправлено";
+        pushBody = `${performer.name}: устранение подтверждено`;
       }
 
       if (action === "confirm") {

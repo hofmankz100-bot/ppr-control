@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v248-refresh-client-assets";
+const APP_VERSION = "v249-reassign-legacy-remark";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -14017,9 +14017,9 @@ function renderAggregateJournal() {
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td>
                   ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
-                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved && (item.resolutionParticipants.length === 1 || (item.resolutionParticipants.length === 0 && item.resolvedByName && isResolutionExecutorRole(item.resolvedByRole))) ? `
-                    <button type="button" class="mini-action no-print" data-admin-close-legacy-remark="${escapeHtml(item.recordKey)}" data-remark-id="${escapeHtml(item.remarkId)}">
-                      Закрыть за ${escapeHtml(item.resolutionParticipants[0]?.name || item.resolvedByName)}
+                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved ? `
+                    <button type="button" class="mini-action no-print" data-admin-repair-legacy-remark="${escapeHtml(item.recordKey)}" data-remark-id="${escapeHtml(item.remarkId)}" data-current-performer="${escapeHtml(item.resolutionParticipants[0]?.name || item.resolvedByName || "")}">
+                      Исправить исполнителя и закрыть
                     </button>
                   ` : ""}
                 </td>
@@ -14048,6 +14048,23 @@ function renderAggregateJournal() {
       await publishRemarkCollaborationAction(Number(equipmentId), Number(nodeIndex), date, "admin-close", { remarkId });
       renderAggregateJournal();
     }, "Закрываем..."));
+  });
+  ui.aggregateJournalList.querySelectorAll("[data-admin-repair-legacy-remark]").forEach(button => {
+    button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      const recordKey = event.currentTarget.dataset.adminRepairLegacyRemark || "";
+      const remarkId = event.currentTarget.dataset.remarkId || "";
+      const performerName = window.prompt("Кто фактически устранил замечание?", event.currentTarget.dataset.currentPerformer || "");
+      if (performerName === null || !String(performerName).trim()) return;
+      const confirmerName = window.prompt("Какой начальник цеха подтвердил устранение?", "");
+      if (confirmerName === null || !String(confirmerName).trim()) return;
+      const [equipmentId, nodeIndex, date] = recordKey.split(":");
+      await publishRemarkCollaborationAction(Number(equipmentId), Number(nodeIndex), date, "admin-repair-close", {
+        remarkId,
+        performerName: String(performerName).trim(),
+        confirmerName: String(confirmerName).trim()
+      });
+      renderAggregateJournal();
+    }, "Исправляем..."));
   });
 }
 
