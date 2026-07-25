@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v239-engineer-only-requests";
+const SERVER_VERSION = "v240-password-reset-flow";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -1758,6 +1758,16 @@ function recordLoginFailure(key) {
   loginAttempts.set(key, !current || now - current.startedAt >= LOGIN_WINDOW_MS
     ? { count: 1, startedAt: now }
     : { ...current, count: current.count + 1 });
+}
+
+function clearLoginFailuresForUser(user = {}) {
+  const identifiers = [user.employeeId, user.phone]
+    .map(normalizeIdentifier)
+    .filter(Boolean);
+  if (!identifiers.length) return;
+  for (const key of loginAttempts.keys()) {
+    if (identifiers.some(identifier => key.endsWith(`|${identifier}`))) loginAttempts.delete(key);
+  }
 }
 
 function parseCookies(req) {
@@ -3771,6 +3781,46 @@ async function handleApi(req, res, pathname, url) {
       stateVersion,
       state: result.patch
     });
+    return true;
+  }
+
+  if (pathname === "/api/users/password" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const newPassword = String(body.newPassword || "");
+    if (newPassword.length < 6) {
+      sendJson(res, 400, { ok: false, error: "Пароль должен содержать минимум 6 символов." });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const target = (db.users || []).find(item =>
+        (body.id && item.id === body.id)
+        || (body.employeeId && String(item.employeeId || "") === String(body.employeeId))
+        || (body.phone && String(item.phone || "") === String(body.phone))
+      );
+      if (!target) return { error: "user_not_found" };
+      target.passwordHash = hashPassword(newPassword);
+      target.passwordUpdatedAt = new Date().toISOString();
+      target.passwordUpdatedBy = String(req.authUser?.name || "Администратор");
+      clearLoginFailuresForUser(target);
+      db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
+      writeDb(db, {
+        action: "user_password_reset",
+        actionId: String(body.actionId || ""),
+        clientId: String(body.clientId || ""),
+        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "" }
+      });
+      return { user: userPublic(target) };
+    });
+    if (result.error) {
+      sendJson(res, 404, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, user: result.user });
     return true;
   }
 

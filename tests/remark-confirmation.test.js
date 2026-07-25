@@ -680,6 +680,57 @@ test("the gas journal stays readable with horizontal scrolling on phones", () =>
   assert.match(styleSource, /position: sticky;[\s\S]*?left: 0/);
 });
 
+test("every field worker role sends requests to engineers", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /\["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"\]\.includes\(role\)/);
+});
+
+test("admin resets a legacy employee password and clears the login lock", async () => {
+  const reset = await fetch(`${baseUrl}/api/users/password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      employeeId: "legacy-77",
+      newPassword: "TempPass-77",
+      actionId: "password-reset-test",
+      clientId: "admin-test"
+    })
+  });
+  const resetBody = await reset.json();
+  assert.equal(reset.status, 200, JSON.stringify(resetBody));
+  for (let index = 0; index < 15; index += 1) {
+    const failed = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identifier: "legacy-77", password: "wrong-password" })
+    });
+    assert.equal(failed.status, 401);
+  }
+  const blocked = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identifier: "legacy-77", password: "TempPass-77" })
+  });
+  assert.equal(blocked.status, 429);
+  const unlock = await fetch(`${baseUrl}/api/users/password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      employeeId: "legacy-77",
+      newPassword: "TempPass-78",
+      actionId: "password-unlock-test",
+      clientId: "admin-test"
+    })
+  });
+  assert.equal(unlock.status, 200, await unlock.text());
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identifier: "legacy-77", password: "TempPass-78" })
+  });
+  assert.equal(login.status, 200, await login.text());
+});
+
 test("an admin can delete a legacy employee that has no internal id", async () => {
   const response = await fetch(`${baseUrl}/api/users`, {
     method: "POST",

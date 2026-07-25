@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v239-engineer-only-requests";
+const CACHE_NAME = "ppr-v240-password-reset-flow";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=239-engineer-only-requests",
+  "./styles.css?v=240-password-reset-flow",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=239-engineer-only-requests",
+  "./app.js?v=240-password-reset-flow",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v239-engineer-only-requests";
+const APP_VERSION = "v240-password-reset-flow";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -6017,7 +6017,7 @@ function resetTmcRequestForm() {
 }
 
 function workerSendsTmcRequestToEngineer(role = profile?.role) {
-  return ["mechanic", "electrician", "operator"].includes(role);
+  return ["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"].includes(role);
 }
 
 function tmcRequestSubmitLabel(role = profile?.role) {
@@ -13764,20 +13764,29 @@ function renderDirector() {
         window.alert("Пароль должен содержать минимум 6 символов.");
         return;
       }
-      await runButtonOperation(event.currentTarget, async () => {
-        await apiJson("/api/users", {
+      const resetButton = event.currentTarget;
+      setButtonBusy(resetButton, true, "Сохраняем...");
+      try {
+        await apiJson("/api/users/password", {
           method: "POST",
           body: JSON.stringify({
-            ...user,
+            id: user.id || "",
+            employeeId: user.employeeId || "",
+            phone: user.phone || "",
             newPassword,
-            actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
             actionId: nextActionId(),
             clientId: CLIENT_ID
           })
         });
         await loadRemoteUsers();
         renderDirector();
-      }, "Сохраняем...");
+        showAppToast(`Новый пароль для ${user.name || user.phone} сохранён. Блокировка входа снята.`);
+      } catch (error) {
+        console.error("Password reset failed", error);
+        window.alert(error?.message || "Новый пароль не сохранился.");
+      } finally {
+        if (resetButton.isConnected) setButtonBusy(resetButton, false);
+      }
     });
   });
   ui.directorPanel.querySelectorAll("[data-delete-user]").forEach(button => {
