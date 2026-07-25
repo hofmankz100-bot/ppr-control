@@ -1,15 +1,17 @@
-const CACHE_NAME = "ppr-v263-request-button-halo";
+const CACHE_NAME = "ppr-v264-repair-master-mascot";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=263-request-button-halo",
+  "./styles.css?v=264-repair-master-mascot",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=263-request-button-halo",
+  "./app.js?v=264-repair-master-mascot",
+  "./assets/repair-master.png?v=v264-repair-master-mascot",
+  "./assets/repair-master-fist.png?v=v264-repair-master-mascot",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

@@ -786,6 +786,19 @@ test("the create request button uses a calm halo instead of blinking", () => {
   assert.match(style, /box-shadow: 0 0 0 7px rgba\(22, 130, 170, \.25\)/);
 });
 
+test("the repair mascot walks, fixes labels, and occasionally shows a fist", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
+  assert.match(app, /function setupRepairMasterMascot\(\)/);
+  assert.match(app, /cycle % 3 === 0/);
+  assert.match(app, /Почему не работаете\?/);
+  assert.match(app, /target\?\.classList\?\.add\("repair-master-target"\)/);
+  assert.match(style, /pointer-events: none/);
+  assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(sw, /assets\/repair-master-fist\.png/);
+});
+
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
   const repairedResponse = await postRemark(
     "1:2:2026-07-16",

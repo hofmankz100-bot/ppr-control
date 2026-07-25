@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v263-request-button-halo";
+const APP_VERSION = "v264-repair-master-mascot";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
@@ -16320,6 +16320,92 @@ window.addEventListener("online", () => {
   pollRemoteUsers(true);
 });
 
+function setupRepairMasterMascot() {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || navigator.connection?.saveData) return;
+  const mascot = document.createElement("div");
+  mascot.className = "repair-master-mascot";
+  mascot.setAttribute("aria-hidden", "true");
+  mascot.innerHTML = `
+    <div class="repair-master-bubble"></div>
+    <div class="repair-master-sparks">✦</div>
+    <img src="assets/repair-master.png?v=${APP_VERSION}" alt="">
+  `;
+  document.body.append(mascot);
+  const image = mascot.querySelector("img");
+  const bubble = mascot.querySelector(".repair-master-bubble");
+  let cycle = 0;
+  let timer = 0;
+
+  const visibleRepairTargets = () => Array.from(document.querySelectorAll(
+    "main button strong, main button span, main .small-status, main h1, main h2, main h3, main td strong"
+  )).filter(element => {
+    const rect = element.getBoundingClientRect();
+    const text = String(element.textContent || "").trim();
+    return text && text.length <= 32 && rect.width > 8 && rect.height > 8
+      && rect.top > 70 && rect.bottom < window.innerHeight - 70;
+  });
+
+  const moveMascot = (fromX, fromY, toX, toY, duration) => mascot.animate([
+    { transform: `translate3d(${fromX}px,${fromY}px,0)` },
+    { transform: `translate3d(${toX}px,${toY}px,0)` }
+  ], { duration, easing: "linear", fill: "forwards" }).finished.catch(() => {});
+
+  const run = async () => {
+    window.clearTimeout(timer);
+    if (!isProfileReady() || document.hidden || document.querySelector(".login-overlay:not([hidden])")) {
+      timer = window.setTimeout(run, 20000);
+      return;
+    }
+    cycle += 1;
+    const fistMoment = cycle % 3 === 0;
+    const size = window.innerWidth <= 640 ? 88 : 118;
+    const startX = -size - 20;
+    const floorY = Math.max(90, window.innerHeight - size - (window.innerWidth <= 640 ? 78 : 24));
+    mascot.style.setProperty("--repair-master-size", `${size}px`);
+    mascot.hidden = false;
+    mascot.classList.add("is-walking");
+
+    if (fistMoment) {
+      const stopX = Math.max(12, (window.innerWidth - size) / 2);
+      await moveMascot(startX, floorY, stopX, floorY, 4200);
+      mascot.classList.remove("is-walking");
+      mascot.classList.add("is-fist");
+      image.src = `assets/repair-master-fist.png?v=${APP_VERSION}`;
+      bubble.textContent = "Почему не работаете?";
+      await new Promise(resolve => window.setTimeout(resolve, 3200));
+      bubble.textContent = "";
+      mascot.classList.remove("is-fist");
+      image.src = `assets/repair-master.png?v=${APP_VERSION}`;
+      mascot.classList.add("is-walking");
+      await moveMascot(stopX, floorY, window.innerWidth + size, floorY, 3800);
+    } else {
+      const targets = visibleRepairTargets();
+      const target = targets[Math.floor(Math.random() * Math.max(1, targets.length))];
+      const rect = target?.getBoundingClientRect?.();
+      const stopX = rect ? Math.max(8, Math.min(window.innerWidth - size - 8, rect.left + rect.width / 2 - size / 2)) : window.innerWidth * .55;
+      const stopY = rect ? Math.max(72, Math.min(floorY, rect.bottom + 4)) : floorY;
+      await moveMascot(startX, floorY, stopX, stopY, 4800);
+      mascot.classList.remove("is-walking");
+      mascot.classList.add("is-repairing");
+      bubble.textContent = target ? `Чиню: ${String(target.textContent || "").trim().slice(0, 22)}` : "Сейчас починим!";
+      target?.classList?.add("repair-master-target");
+      await new Promise(resolve => window.setTimeout(resolve, 2600));
+      target?.classList?.remove("repair-master-target");
+      bubble.textContent = "Готово!";
+      await new Promise(resolve => window.setTimeout(resolve, 900));
+      bubble.textContent = "";
+      mascot.classList.remove("is-repairing");
+      mascot.classList.add("is-walking");
+      await moveMascot(stopX, stopY, window.innerWidth + size, floorY, 4200);
+    }
+    mascot.classList.remove("is-walking");
+    mascot.hidden = true;
+    timer = window.setTimeout(run, 45000 + Math.round(Math.random() * 30000));
+  };
+
+  timer = window.setTimeout(run, 12000);
+}
+
 function reportClientError(message, source = "", line = 0, column = 0) {
   if (!isProfileReady() || !navigator.onLine) return;
   fetch("/api/client-error", {
@@ -16382,6 +16468,7 @@ if ("serviceWorker" in navigator) {
 
 setupTheme();
 setupLogin();
+setupRepairMasterMascot();
 resetAppNotificationsForOpen();
 (async () => {
   if (!loadProfile()) return;
