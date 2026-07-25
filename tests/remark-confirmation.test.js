@@ -798,7 +798,11 @@ test("the repair mascot walks, fixes labels, and occasionally shows a fist", () 
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(sw, /assets\/repair-master-fist\.png/);
-  assert.match(server, /\^assets\\\/repair-master\(\?:-fist\)\?\\\.png\$/);
+  assert.match(server, /repair-master\(\?:-fist\|-walk-\[ab\]\)\?/);
+  assert.match(app, /repair-master-walk-frame walk-a/);
+  assert.match(app, /repair-master-walk-frame walk-b/);
+  assert.match(style, /@keyframes repairMasterStepA/);
+  assert.match(style, /@keyframes repairMasterStepB/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {

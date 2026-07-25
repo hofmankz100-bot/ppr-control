@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v265-serve-repair-master-assets";
+const APP_VERSION = "v266-walking-legs-angry-fist";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
@@ -16328,10 +16328,12 @@ function setupRepairMasterMascot() {
   mascot.innerHTML = `
     <div class="repair-master-bubble"></div>
     <div class="repair-master-sparks">✦</div>
-    <img src="assets/repair-master.png?v=${APP_VERSION}" alt="">
+    <img class="repair-master-action-frame" src="assets/repair-master.png?v=${APP_VERSION}" alt="">
+    <img class="repair-master-walk-frame walk-a" src="assets/repair-master-walk-a.png?v=${APP_VERSION}" alt="">
+    <img class="repair-master-walk-frame walk-b" src="assets/repair-master-walk-b.png?v=${APP_VERSION}" alt="">
   `;
   document.body.append(mascot);
-  const image = mascot.querySelector("img");
+  const image = mascot.querySelector(".repair-master-action-frame");
   const bubble = mascot.querySelector(".repair-master-bubble");
   let cycle = 0;
   let timer = 0;

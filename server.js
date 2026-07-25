@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v265-serve-repair-master-assets";
+const SERVER_VERSION = "v266-walking-legs-angry-fist";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
@@ -97,7 +97,7 @@ function isPublicStaticPath(relativePath = "") {
   const normalized = String(relativePath).split(path.sep).join("/");
   if (publicRootFiles.has(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
-  if (/^assets\/repair-master(?:-fist)?\.png$/.test(normalized)) return true;
+  if (/^assets\/repair-master(?:-fist|-walk-[ab])?\.png$/.test(normalized)) return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js";
 }
 

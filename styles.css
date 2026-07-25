@@ -10171,8 +10171,26 @@ body.editor-profile #createTmcRequestButton.request-alert,
   transform-origin: 50% 92%;
 }
 
-.repair-master-mascot.is-walking img {
-  animation: repairMasterWalk .42s ease-in-out infinite alternate;
+.repair-master-walk-frame {
+  position: absolute;
+  inset: 0;
+  display: none !important;
+}
+
+.repair-master-mascot.is-walking .repair-master-action-frame {
+  display: none;
+}
+
+.repair-master-mascot.is-walking .repair-master-walk-frame {
+  display: block !important;
+}
+
+.repair-master-mascot.is-walking .walk-a {
+  animation: repairMasterStepA .44s steps(1, end) infinite;
+}
+
+.repair-master-mascot.is-walking .walk-b {
+  animation: repairMasterStepB .44s steps(1, end) infinite;
 }
 
 .repair-master-mascot.is-repairing img {
@@ -10226,9 +10244,14 @@ body.editor-profile #createTmcRequestButton.request-alert,
   animation: repairMasterFixedTarget .55s ease-in-out 3 !important;
 }
 
-@keyframes repairMasterWalk {
-  from { transform: rotate(-2deg) translateY(0); }
-  to { transform: rotate(2deg) translateY(-5px); }
+@keyframes repairMasterStepA {
+  0%, 49% { opacity: 1; transform: translateY(0) rotate(-1deg); }
+  50%, 100% { opacity: 0; transform: translateY(-3px) rotate(1deg); }
+}
+
+@keyframes repairMasterStepB {
+  0%, 49% { opacity: 0; transform: translateY(-3px) rotate(1deg); }
+  50%, 100% { opacity: 1; transform: translateY(0) rotate(-1deg); }
 }
 
 @keyframes repairMasterHammer {
