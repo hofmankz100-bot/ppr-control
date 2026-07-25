@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v240-password-reset-flow";
+const SERVER_VERSION = "v241-role-update-flow";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -3781,6 +3781,49 @@ async function handleApi(req, res, pathname, url) {
       stateVersion,
       state: result.patch
     });
+    return true;
+  }
+
+  if (pathname === "/api/users/role" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const role = String(body.role || "").trim();
+    const area = String(body.area || "").trim();
+    if (!role || role === "warehouse") {
+      sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const target = (db.users || []).find(item =>
+        (body.id && item.id === body.id)
+        || (body.employeeId && String(item.employeeId || "") === String(body.employeeId))
+        || (body.phone && String(item.phone || "") === String(body.phone))
+      );
+      if (!target) return { error: "user_not_found" };
+      if (target.role === "editor" && role !== "editor") return { error: "editor_role_protected" };
+      target.role = role;
+      target.area = area;
+      target.roleUpdatedAt = new Date().toISOString();
+      target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
+      db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
+      writeDb(db, {
+        action: "user_role_update",
+        actionId: String(body.actionId || ""),
+        clientId: String(body.clientId || ""),
+        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area }
+      });
+      return { user: userPublic(target) };
+    });
+    if (result.error) {
+      const status = result.error === "user_not_found" ? 404 : 409;
+      sendJson(res, status, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, user: result.user });
     return true;
   }
 

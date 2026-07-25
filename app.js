@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v240-password-reset-flow";
+const APP_VERSION = "v241-role-update-flow";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -13720,7 +13720,7 @@ function renderDirector() {
     });
   });
   ui.directorPanel.querySelectorAll("[data-save-user-role]").forEach(button => {
-    button.addEventListener("click", event => {
+    button.addEventListener("click", async event => {
       const userKey = event.currentTarget.dataset.saveUserRole || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
@@ -13733,23 +13733,31 @@ function renderDirector() {
         return;
       }
       if (!window.confirm(`Изменить должность сотрудника ${user.name || user.phone || ""} на «${ROLE_ACCESS[role]?.label || role}»?`)) return;
-      runButtonOperation(event.currentTarget, async () => {
-        const updatedUser = {
-          ...user,
-          role,
-          area: needsArea(permissionBaseRole(role)) ? area : "",
-          roleUpdatedAt: new Date().toISOString(),
-          roleUpdatedBy: authenticatedProfile?.name || profile?.name || "",
-          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
-          actionId: nextActionId(),
-          clientId: CLIENT_ID
-        };
-        await apiJson("/api/users", { method: "POST", body: JSON.stringify(updatedUser) });
+      const roleButton = event.currentTarget;
+      setButtonBusy(roleButton, true, "Сохраняем...");
+      try {
+        await apiJson("/api/users/role", {
+          method: "POST",
+          body: JSON.stringify({
+            id: user.id || "",
+            employeeId: user.employeeId || "",
+            phone: user.phone || "",
+            role,
+            area: needsArea(permissionBaseRole(role)) ? area : "",
+            actionId: nextActionId(),
+            clientId: CLIENT_ID
+          })
+        });
         userApprovalDrafts.delete(userKey);
         await loadRemoteUsers();
         renderDirector();
         showAppToast("Должность сотрудника изменена.");
-      }, "Сохраняем...");
+      } catch (error) {
+        console.error("Role update failed", error);
+        window.alert(error?.message || "Должность не сохранилась.");
+      } finally {
+        if (roleButton.isConnected) setButtonBusy(roleButton, false);
+      }
     });
   });
   ui.directorPanel.querySelectorAll("[data-reset-user-password]").forEach(button => {

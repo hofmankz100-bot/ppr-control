@@ -13,7 +13,7 @@ let dataDir;
 let serverOutput = "";
 
 function user(id, name, role, area = "") {
-  return { id, name, role, area, approved: true, pendingApproval: false };
+  return { id, employeeId: id, name, role, area, approved: true, pendingApproval: false };
 }
 
 function remark(id, name, role, text, at = "2026-07-16T08:00:00.000Z") {
@@ -683,6 +683,29 @@ test("the gas journal stays readable with horizontal scrolling on phones", () =>
 test("every field worker role sends requests to engineers", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /\["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"\]\.includes\(role\)/);
+});
+
+test("admin changes an employee role without losing the employee password", async () => {
+  const password = await fetch(`${baseUrl}/api/users/password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: "mechanic-1", newPassword: "RolePass-1", actionId: "role-password-test", clientId: "admin-test" })
+  });
+  assert.equal(password.status, 200, await password.text());
+  const update = await fetch(`${baseUrl}/api/users/role`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: "mechanic-1", role: "welder", area: "", actionId: "role-update-test", clientId: "admin-test" })
+  });
+  const updateBody = await update.json();
+  assert.equal(update.status, 200, JSON.stringify(updateBody));
+  assert.equal(updateBody.user.role, "welder");
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identifier: "mechanic-1", password: "RolePass-1" })
+  });
+  assert.equal(login.status, 200, await login.text());
 });
 
 test("admin resets a legacy employee password and clears the login lock", async () => {
