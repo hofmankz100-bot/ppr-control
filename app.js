@@ -76,7 +76,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v224-downtime-label-layout";
+const APP_VERSION = "v225-controlled-node-editing";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -2686,16 +2686,43 @@ function isEquipmentCatalogLocked(equipmentOrId = current.equipmentId) {
   return LOCKED_EQUIPMENT_CATALOG_IDS.has(Number(equipmentId));
 }
 
+function isEquipmentCatalogEditingEnabled(equipmentOrId = current.equipmentId) {
+  const equipmentId = typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId;
+  return state.catalog?.equipment?.[equipmentId]?.editingEnabled === true;
+}
+
+function setEquipmentCatalogEditingEnabled(equipmentId, enabled) {
+  if (catalogEditorRole() !== "editor") return false;
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq || !isEquipmentCatalogLocked(eq)) return false;
+  const item = equipmentOverride(eq.id);
+  item.name ||= eq.name;
+  item.area ||= eq.area;
+  item.nodes ||= [...eq.nodes];
+  item.editingEnabled = Boolean(enabled);
+  item.editingEnabledAt = new Date().toISOString();
+  item.editingEnabledBy = profile?.name || authenticatedProfile?.name || "Администратор";
+  item.updatedAt = item.editingEnabledAt;
+  recordAudit(
+    item.editingEnabled ? "Разрешил редактирование узлов" : "Запретил редактирование узлов",
+    eq.name,
+    "",
+    item.editingEnabledBy
+  );
+  saveState();
+  return true;
+}
+
 function canManageCatalogStructure(equipmentOrId = current.equipmentId) {
   return canEditEquipmentCatalog(equipmentOrId);
 }
 
 function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
-  if (isEquipmentCatalogLocked(equipmentOrId)) return false;
   const role = catalogEditorRole();
   if (!["editor", "engineer", "shop"].includes(role)) return false;
   const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
   if (!eq) return false;
+  if (isEquipmentCatalogLocked(eq) && !isEquipmentCatalogEditingEnabled(eq)) return false;
   if (role !== "shop") return true;
   const actorArea = authenticatedProfile?.area || profile?.area || "";
   return Boolean(actorArea && eq.area === actorArea);
@@ -9970,6 +9997,28 @@ function renderNodeWalkthrough(eq) {
     backRow.innerHTML = `<button type="button" data-node-screen-back>‹ Назад</button>`;
     backRow.querySelector("[data-node-screen-back]")?.addEventListener("click", goBack);
     list.append(backRow);
+  }
+  if (selectedNodeIndex === null && isEquipmentCatalogLocked(eq) && catalogEditorRole() === "editor") {
+    const editingEnabled = isEquipmentCatalogEditingEnabled(eq);
+    const permissionPanel = document.createElement("div");
+    permissionPanel.className = "node-catalog-admin";
+    permissionPanel.innerHTML = `
+      <span>${editingEnabled ? "Редактирование узлов разрешено начальнику цеха и инженеру" : "Редактирование узлов заблокировано"}</span>
+      <button type="button" class="${editingEnabled ? "danger" : ""}" data-toggle-node-editing>
+        ${editingEnabled ? "Закрыть редактирование" : "Разрешить редактирование"}
+      </button>
+    `;
+    permissionPanel.querySelector("[data-toggle-node-editing]")?.addEventListener("click", event => {
+      const message = editingEnabled
+        ? "Закрыть редактирование узлов для начальника цеха и инженера?"
+        : "Разрешить начальнику цеха и инженеру редактировать узлы этого оборудования?";
+      if (!window.confirm(message)) return;
+      runButtonOperation(event.currentTarget, () => {
+        if (!setEquipmentCatalogEditingEnabled(eq.id, !editingEnabled)) return;
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Сохраняется...");
+    });
+    list.append(permissionPanel);
   }
   if (selectedNodeIndex === null && canManageCatalogStructure(eq)) {
     const adminPanel = document.createElement("form");

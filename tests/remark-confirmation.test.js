@@ -530,10 +530,12 @@ test("every signed-in role sees only the factory reliability graph while enginee
   assert.match(source, /if \(controls\) controls\.hidden = !detailed/);
 });
 
-test("the approved press catalogs are locked in the UI and on the server", async () => {
+test("the approved press catalogs stay locked until an admin opens editing", async () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /LOCKED_EQUIPMENT_CATALOG_IDS = new Set\(\[1, 2\]\)/);
-  assert.match(source, /if \(isEquipmentCatalogLocked\(equipmentOrId\)\) return false/);
+  assert.match(source, /isEquipmentCatalogLocked\(eq\) && !isEquipmentCatalogEditingEnabled\(eq\)/);
+  assert.match(source, /catalogEditorRole\(\) !== "editor"/);
+  assert.match(source, /Разрешить редактирование/);
 
   const before = await (await fetch(`${baseUrl}/api/state`)).json();
   const response = await fetch(`${baseUrl}/api/state`, {

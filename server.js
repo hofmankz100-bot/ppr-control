@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v223-false-downtime-cleanup";
+const SERVER_VERSION = "v225-controlled-node-editing";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const loginAttempts = new Map();
 let postgresPool = null;
@@ -2594,18 +2594,24 @@ async function handleApi(req, res, pathname, url) {
       if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
-          // Press 2400 EGE and Press 1540 EGE have an approved, fixed node catalog.
-          // Ignore catalog mutations even from an old browser tab or direct state request.
-          if (lockedEquipmentCatalogIds.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
-          const item = {};
-          if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
-          if (Array.isArray(rawItem.nodes)) {
+          const lockedCatalog = lockedEquipmentCatalogIds.has(String(equipmentId));
+          const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
+          const requestedEditingEnabled = rawItem.editingEnabled === true;
+          const editingEnabled = authenticatedRole === "editor"
+            ? (hasEditingPermissionField ? requestedEditingEnabled : currentItem.editingEnabled === true)
+            : currentItem.editingEnabled === true;
+          // The two approved press catalogs can be edited only during an
+          // explicit window opened by an administrator.
+          if (lockedCatalog && !editingEnabled && !(authenticatedRole === "editor" && hasEditingPermissionField)) return;
+          const item = lockedCatalog ? { ...currentItem } : {};
+          if ((!lockedCatalog || editingEnabled) && String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
+          if ((!lockedCatalog || editingEnabled) && Array.isArray(rawItem.nodes)) {
             item.nodes = rawItem.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean).slice(0, 200);
           }
-          if (rawItem.reminders && typeof rawItem.reminders === "object") {
+          if ((!lockedCatalog || editingEnabled) && rawItem.reminders && typeof rawItem.reminders === "object") {
             item.reminders = {};
             Object.entries(rawItem.reminders).forEach(([nodeIndex, lines]) => {
               if (!Array.isArray(lines)) return;
@@ -2613,6 +2619,15 @@ async function handleApi(req, res, pathname, url) {
             });
           }
           if (equipmentArea) item.area = equipmentArea;
+          if (lockedCatalog) {
+            item.editingEnabled = authenticatedRole === "editor" && hasEditingPermissionField ? requestedEditingEnabled : true;
+            item.editingEnabledAt = String(
+              (authenticatedRole === "editor" && hasEditingPermissionField ? rawItem.editingEnabledAt : currentItem.editingEnabledAt) || ""
+            ).slice(0, 50);
+            item.editingEnabledBy = String(
+              (authenticatedRole === "editor" && hasEditingPermissionField ? rawItem.editingEnabledBy : currentItem.editingEnabledBy) || ""
+            ).trim().slice(0, 200);
+          }
           item.updatedAt = String(rawItem.updatedAt || new Date().toISOString());
           incomingCatalog[equipmentId] = item;
         });

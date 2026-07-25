@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v224-downtime-label-layout";
+const CACHE_NAME = "ppr-v225-controlled-node-editing";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=224-downtime-label-layout",
+  "./styles.css?v=225-controlled-node-editing",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=224-downtime-label-layout",
+  "./app.js?v=225-controlled-node-editing",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
