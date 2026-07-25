@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v252-authoritative-remark-display";
+const APP_VERSION = "v253-executor-only-remark-credit";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -4437,7 +4437,8 @@ function completedResolutionParticipants(item = {}) {
   const completed = Array.isArray(item.resolutionCompletedParticipants) && item.resolutionCompletedParticipants.length
     ? item.resolutionCompletedParticipants
     : item.resolutionParticipants;
-  const normalized = resolutionParticipants({ resolutionParticipants: completed });
+  const normalized = resolutionParticipants({ resolutionParticipants: completed })
+    .filter(participant => isResolutionExecutorRole(participant.role));
   const repairedDecision = [...(Array.isArray(item.resolutionEvents) ? item.resolutionEvents : [])]
     .reverse()
     .find(event => event?.action === "confirmed" && event.confirmerKey && event.targetKey);

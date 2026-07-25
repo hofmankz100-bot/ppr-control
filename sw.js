@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v252-authoritative-remark-display";
+const CACHE_NAME = "ppr-v253-executor-only-remark-credit";
 const ASSETS = [
   "./",
   "./index.html",

@@ -870,6 +870,7 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(serverSource, /action === "admin-close"/);
   assert.match(appSource, /data-admin-close-legacy-remark/);
   assert.match(appSource, /event\?\.action === "confirmed" && event\.confirmerKey && event\.targetKey/);
+  assert.match(appSource, /\.filter\(participant => isResolutionExecutorRole\(participant\.role\)\)/);
   assert.match(appSource, /ratingParticipants: completedResolutionParticipants\(entry\)/);
 });
 
