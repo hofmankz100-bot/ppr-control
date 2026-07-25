@@ -45,12 +45,15 @@ const httpsPort = Number(process.env.HTTPS_PORT || 8443);
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const SERVER_VERSION = "v220-stability-security";
 const loginAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
 let postgresPendingState = null;
 let postgresWriterActive = false;
+let lastPostgresBackupDate = "";
 let postgresPhotoWriteQueue = Promise.resolve();
 let localBackupPendingState = null;
 let localBackupTimer = null;
@@ -72,7 +75,9 @@ const contentTypes = {
 const publicRootFiles = new Set([
   "index.html",
   "styles.css",
+  "styles.min.css",
   "app.js",
+  "app.min.js",
   "sw.js",
   "manifest.json",
   "icon.svg",
@@ -188,7 +193,7 @@ function savePhotoDataUrl(dataUrl = "") {
   const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
   if (!match) return "";
   const bytes = Buffer.from(match[2].replace(/\s/g, ""), "base64");
-  if (!bytes.length) return "";
+  if (!bytes.length || bytes.length > MAX_PHOTO_BYTES) return "";
   fs.mkdirSync(photosDir, { recursive: true });
   const ext = photoExtensionFromMime(match[1]);
   const hash = crypto.createHash("sha1").update(bytes).digest("hex");
@@ -283,6 +288,13 @@ async function initializeStorage() {
         mime_type text NOT NULL,
         payload bytea NOT NULL,
         updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_state_backups (
+        backup_date date PRIMARY KEY,
+        payload jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
     const result = await pool.query(
@@ -700,8 +712,34 @@ function schedulePostgresWrite(db) {
            SET payload = EXCLUDED.payload, updated_at = now()`,
           [JSON.stringify(latest)]
         );
+        const backupDate = todayStamp();
+        if (lastPostgresBackupDate !== backupDate) {
+          await postgresPool.query(
+            `INSERT INTO ppr_state_backups(backup_date, payload)
+             VALUES (current_date, $1::jsonb)
+             ON CONFLICT(backup_date) DO NOTHING`,
+            [JSON.stringify(latest)]
+          );
+          await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '30 days'");
+          lastPostgresBackupDate = backupDate;
+        }
+        storageStatus = {
+          mode: "postgres",
+          table: "ppr_settings",
+          key: "full_state",
+          lastWriteAt: new Date().toISOString()
+        };
       } catch (error) {
-        console.error(`PostgreSQL write failed; JSON backup preserved: ${error.message}`);
+        console.error(`PostgreSQL write failed; retry scheduled and JSON backup preserved: ${error.message}`);
+        storageStatus = {
+          mode: "postgres-degraded",
+          table: "ppr_settings",
+          key: "full_state",
+          error: error.message,
+          retrying: true
+        };
+        postgresPendingState = latest;
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
   })().finally(() => {
@@ -2185,7 +2223,10 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/health" && req.method === "GET") {
     sendJson(res, 200, {
       ok: true,
+      version: SERVER_VERSION,
       time: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
       storage: storageStatus,
       realtime: Boolean(wss) || sseClients.size > 0,
       stateVersion: realtimeStateVersion(),
@@ -2193,6 +2234,22 @@ async function handleApi(req, res, pathname, url) {
       websocketClients: wss ? wss.clients.size : 0,
       eventClients: sseClients.size
     });
+    return true;
+  }
+
+  if (pathname === "/api/client-error" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    appendActionLog({
+      action: "client_error",
+      user: { id: req.authUser?.id || "", name: req.authUser?.name || "", role: req.authUser?.role || "" },
+      message: String(body.message || "").slice(0, 1000),
+      source: String(body.source || "").slice(0, 500),
+      line: Number(body.line || 0),
+      column: Number(body.column || 0),
+      appVersion: String(body.appVersion || "").slice(0, 100),
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 300)
+    });
+    sendJson(res, 200, { ok: true });
     return true;
   }
 
@@ -2384,9 +2441,10 @@ async function handleApi(req, res, pathname, url) {
     await stateWriteQueue.catch(() => {});
     createManualBackup("export_all");
     const db = readDb();
+    const { authSessions: ignoredAuthSessions, ...exportedDb } = db;
     sendDownload(res, `ppr_full_export_${todayStamp()}.json`, {
       exportedAt: new Date().toISOString(),
-      ...db,
+      ...exportedDb,
       users: (db.users || []).map(userPublic)
     });
     return true;
@@ -3693,7 +3751,11 @@ if (WebSocketServer) {
     perMessageDeflate: { threshold: 1024 }
   });
   wsServers.push(wss);
-  wss.on("connection", ws => {
+  wss.on("connection", (ws, req) => {
+    if (!authenticatedUser(req)) {
+      ws.close(1008, "authentication_required");
+      return;
+    }
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
     ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
@@ -3728,7 +3790,11 @@ if (WebSocketServer) {
       perMessageDeflate: { threshold: 1024 }
     });
     wsServers.push(httpsWss);
-    httpsWss.on("connection", ws => {
+    httpsWss.on("connection", (ws, req) => {
+      if (!authenticatedUser(req)) {
+        ws.close(1008, "authentication_required");
+        return;
+      }
       ws.isAlive = true;
       ws.on("pong", () => { ws.isAlive = true; });
       ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));

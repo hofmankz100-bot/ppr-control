@@ -71,11 +71,12 @@ const EQUIPMENT = [
 ];
 
 const STORE_KEY = "ppr-pwa-state-v2";
+const PENDING_ACTION_ID_KEY = `${STORE_KEY}-pending-action-id`;
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v210-collaborative-participants";
+const APP_VERSION = "v220-stability-security";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -965,6 +966,9 @@ function saveState(options = {}) {
     return;
   }
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  if (remoteSaveInFlight || !localStorage.getItem(PENDING_ACTION_ID_KEY)) {
+    localStorage.setItem(PENDING_ACTION_ID_KEY, nextActionId());
+  }
   queueRemoteStateSave();
   window.queueMicrotask(updateGlobalReminderBadge);
   window.queueMicrotask(syncAppIconBadge);
@@ -2004,11 +2008,13 @@ async function saveRemoteState() {
   remoteSavePromise = (async () => {
   try {
     const changedSections = changedRemoteStateSections();
+    const actionId = localStorage.getItem(PENDING_ACTION_ID_KEY) || nextActionId();
+    localStorage.setItem(PENDING_ACTION_ID_KEY, actionId);
     const result = await apiJson("/api/state", {
       method: "PUT",
       timeout: 60000,
       body: JSON.stringify({
-        actionId: nextActionId(),
+        actionId,
         clientId: CLIENT_ID,
         // The reset marker is a concurrency guard, not a changed state section.
         // Send it with every save so the server can safely accept operational
@@ -2029,7 +2035,10 @@ async function saveRemoteState() {
     });
     rememberRemoteStateBaseline({}, changedSections.fingerprints);
     const hasNewLocalChanges = remoteSavePending;
-    if (!hasNewLocalChanges) localStorage.removeItem(`${STORE_KEY}-pending`);
+    if (!hasNewLocalChanges) {
+      localStorage.removeItem(`${STORE_KEY}-pending`);
+      localStorage.removeItem(PENDING_ACTION_ID_KEY);
+    }
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
     if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
@@ -2043,6 +2052,7 @@ async function saveRemoteState() {
       // A reset made this local snapshot obsolete. Reload instead of retrying
       // forever or pretending that the rejected operation was saved.
       localStorage.removeItem(`${STORE_KEY}-pending`);
+      localStorage.removeItem(PENDING_ACTION_ID_KEY);
       localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
       localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
       await loadRemoteState();
@@ -6533,6 +6543,14 @@ function readPhotoFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
       resolve("");
+      return;
+    }
+    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(String(file.type || ""))) {
+      reject(new Error("Поддерживаются только фотографии JPEG, PNG и WebP."));
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      reject(new Error("Фотография слишком большая. Максимальный исходный размер — 20 МБ."));
       return;
     }
     const reader = new FileReader();
@@ -15792,6 +15810,29 @@ window.addEventListener("online", () => {
   flushPendingWork();
   syncRemoteChanges();
   pollRemoteUsers(true);
+});
+
+function reportClientError(message, source = "", line = 0, column = 0) {
+  if (!isProfileReady() || !navigator.onLine) return;
+  fetch("/api/client-error", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({
+      message: String(message || "Unknown client error").slice(0, 1000),
+      source: String(source || "").slice(0, 500),
+      line: Number(line || 0),
+      column: Number(column || 0),
+      appVersion: APP_VERSION
+    })
+  }).catch(() => {});
+}
+
+window.addEventListener("error", event => {
+  reportClientError(event.message, event.filename, event.lineno, event.colno);
+});
+window.addEventListener("unhandledrejection", event => {
+  reportClientError(event.reason?.message || String(event.reason || "Unhandled promise rejection"));
 });
 
 window.addEventListener("visibilitychange", () => {

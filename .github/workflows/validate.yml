@@ -20,6 +20,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: node --check server.js
       - run: node --check app.js
+      - run: node --check app.min.js
       - run: npm test
