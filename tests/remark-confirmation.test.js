@@ -913,6 +913,9 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(serverSource, /RESOLUTION_EXECUTOR_ROLES_SERVER/);
   assert.match(serverSource, /action === "admin-close"/);
   assert.match(appSource, /data-admin-close-legacy-remark/);
+  assert.match(appSource, /data-toggle-aggregate-repair/);
+  assert.match(appSource, /repairMode && item\.kind === "Замечание" && !item\.resolved/);
+  assert.match(appSource, /current\.aggregateRepairEquipmentId = 0/);
   assert.match(appSource, /event\?\.action === "confirmed" && event\.confirmerKey && event\.targetKey/);
   assert.match(appSource, /\.filter\(participant => isResolutionExecutorRole\(participant\.role\)\)/);
   assert.match(appSource, /ratingParticipants: completedResolutionParticipants\(entry\)/);

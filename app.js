@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v256-push-counter-breakdown";
+const APP_VERSION = "v257-hidden-legacy-repair";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -499,6 +499,7 @@ let current = {
   serviceCostNodeIndex: "",
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
+  aggregateRepairEquipmentId: 0,
   directorControlEquipmentId: null,
   directorProgressOpen: false,
   directorKpiOpen: "",
@@ -14065,6 +14066,8 @@ function renderAggregateJournal() {
   ui.aggregateJournalTitle.textContent = journalName ? `Агрегатный журнал: ${journalName}` : "Агрегатный журнал";
   const items = selectedArea ? aggregateJournalItems(selectedArea, selectedEquipment?.id) : [];
   const openCount = items.filter(item => !item.resolved).length;
+  const repairMode = profile?.role === "editor"
+    && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -14074,7 +14077,13 @@ function renderAggregateJournal() {
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions">
       <button type="button" data-print-aggregate-journal>${printActionLabel("Печать в альбомном виде", "PDF в альбомном виде")}</button>
+      ${profile?.role === "editor" && openCount ? `
+        <button type="button" class="${repairMode ? "danger" : ""}" data-toggle-aggregate-repair>
+          ${repairMode ? "Закрыть режим исправления" : "Исправить старую запись"}
+        </button>
+      ` : ""}
     </div>
+    ${repairMode ? `<div class="aggregate-admin-repair-note no-print">Служебный режим администратора. Используйте только для старой зависшей записи с уже выполненной работой.</div>` : ""}
     ${sheets.map((sheetItems, sheetIndex) => `
       <div class="aggregate-journal-sheet">
         <div class="aggregate-sheet-head">
@@ -14132,7 +14141,7 @@ function renderAggregateJournal() {
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td>
                   ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
-                  ${profile?.role === "editor" && item.kind === "Замечание" && !item.resolved ? `
+                  ${repairMode && item.kind === "Замечание" && !item.resolved ? `
                     <span class="no-print">
                       <input type="text" data-repair-performer placeholder="Исполнитель" value="${escapeHtml(item.resolutionParticipants[0]?.name || item.resolvedByName || "")}">
                       <input type="text" data-repair-confirmer placeholder="Подтвердил (начальник цеха)">
@@ -14154,6 +14163,10 @@ function renderAggregateJournal() {
     `).join("")}
   `;
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
+  ui.aggregateJournalList.querySelector("[data-toggle-aggregate-repair]")?.addEventListener("click", () => {
+    current.aggregateRepairEquipmentId = repairMode ? 0 : Number(selectedEquipment?.id || 0);
+    renderAggregateJournal();
+  });
   ui.aggregateJournalList.querySelectorAll("[data-print-aggregate-sheet]").forEach(button => {
     button.addEventListener("click", () => printAggregateJournal(journalName, Number(button.dataset.printAggregateSheet)));
   });
@@ -14183,6 +14196,7 @@ function renderAggregateJournal() {
         performerName,
         confirmerName
       });
+      current.aggregateRepairEquipmentId = 0;
       renderAggregateJournal();
     }, "Исправляем..."));
   });

@@ -10147,6 +10147,16 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   gap: 12px;
 }
 
+.aggregate-admin-repair-note {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  font-size: .9rem;
+}
+
 .push-diagnostics-modal header div,
 .push-device-list article div {
   display: grid;

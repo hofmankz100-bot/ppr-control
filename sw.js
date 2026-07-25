@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v256-push-counter-breakdown";
+const CACHE_NAME = "ppr-v257-hidden-legacy-repair";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=256-push-counter-breakdown",
+  "./styles.css?v=257-hidden-legacy-repair",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=256-push-counter-breakdown",
+  "./app.js?v=257-hidden-legacy-repair",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
