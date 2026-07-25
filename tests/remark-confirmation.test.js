@@ -869,6 +869,8 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(serverSource, /RESOLUTION_EXECUTOR_ROLES_SERVER/);
   assert.match(serverSource, /action === "admin-close"/);
   assert.match(appSource, /data-admin-close-legacy-remark/);
+  assert.match(appSource, /event\?\.action === "confirmed" && event\.confirmerKey && event\.targetKey/);
+  assert.match(appSource, /ratingParticipants: completedResolutionParticipants\(entry\)/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {

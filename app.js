@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v251-authoritative-remark-assignee";
+const APP_VERSION = "v252-authoritative-remark-display";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -4437,7 +4437,19 @@ function completedResolutionParticipants(item = {}) {
   const completed = Array.isArray(item.resolutionCompletedParticipants) && item.resolutionCompletedParticipants.length
     ? item.resolutionCompletedParticipants
     : item.resolutionParticipants;
-  return resolutionParticipants({ resolutionParticipants: completed });
+  const normalized = resolutionParticipants({ resolutionParticipants: completed });
+  const repairedDecision = [...(Array.isArray(item.resolutionEvents) ? item.resolutionEvents : [])]
+    .reverse()
+    .find(event => event?.action === "confirmed" && event.confirmerKey && event.targetKey);
+  if (!repairedDecision) return normalized;
+  const repairedPerformer = normalized.find(participant => participant.key === repairedDecision.targetKey);
+  if (repairedPerformer) return [repairedPerformer];
+  const fallback = resolutionParticipantFromUser({
+    key: item.resolvedByKey || repairedDecision.targetKey,
+    name: item.resolvedByName || repairedDecision.targetName,
+    role: item.resolvedByRole || repairedDecision.targetRole
+  });
+  return fallback.key && fallback.name && isResolutionExecutorRole(fallback.role) ? [fallback] : [];
 }
 
 function resolutionParticipantLabel(participant = {}) {
@@ -11849,9 +11861,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           confirmedAt: entry.confirmedAt || "",
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
-          ratingParticipants: (Array.isArray(entry.resolutionCompletedParticipants) && entry.resolutionCompletedParticipants.length
-            ? entry.resolutionCompletedParticipants
-            : entry.resolutionParticipants || []),
+          ratingParticipants: completedResolutionParticipants(entry),
           ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
