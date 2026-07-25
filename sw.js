@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v222-no-blink";
+const CACHE_NAME = "ppr-v224-downtime-label-layout";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=222-no-blink",
+  "./styles.css?v=224-downtime-label-layout",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=222-no-blink",
+  "./app.js?v=224-downtime-label-layout",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
