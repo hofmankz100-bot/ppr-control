@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v242-request-output-flow";
+const CACHE_NAME = "ppr-v243-archive-before-output";
 const ASSETS = [
   "./",
   "./index.html",

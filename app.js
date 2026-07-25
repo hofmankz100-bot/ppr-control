@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v242-request-output-flow";
+const APP_VERSION = "v243-archive-before-output";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -5658,7 +5658,12 @@ function requestShareText(req) {
 
 function shareTextToWhatsApp(text) {
   const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-  return Boolean(window.open(url, "_blank", "noopener"));
+  const whatsappWindow = window.open(url, "_blank");
+  if (!whatsappWindow) return false;
+  try {
+    whatsappWindow.opener = null;
+  } catch {}
+  return true;
 }
 
 function requestPrintableFile(req) {
@@ -5706,8 +5711,6 @@ function downloadRequestPrintFile(req) {
 
 async function archiveTmcRequestAfterOutput(req, action) {
   if (!req) return false;
-  const outputStarted = await sendRequestByDevice(req, { waitForPrint: true });
-  if (!outputStarted) return false;
   const now = new Date().toISOString();
   req.done = true;
   req.stock = false;
@@ -5720,10 +5723,20 @@ async function archiveTmcRequestAfterOutput(req, action) {
   requestAddHistory(req, action, profile?.name || "");
   syncRequestToRecord(req);
   saveState();
-  await publishStateNow().catch(error => {
+  const publishPromise = publishStateNow().catch(error => {
     scheduleRemoteRetry(error);
   });
-  return true;
+  const outputStarted = await sendRequestByDevice(req);
+  await publishPromise;
+  if (!outputStarted) {
+    showAppToast(
+      mobileShareMode()
+        ? "Заявка сохранена в архиве. Разрешите открытие WhatsApp и повторите отправку из архива."
+        : "Заявка сохранена в архиве. Разрешите всплывающие окна и повторите печать из архива.",
+      "error"
+    );
+  }
+  return { archived: true, outputStarted };
 }
 
 function bindTmcArchiveActions(root = document) {
@@ -5735,7 +5748,7 @@ function bindTmcArchiveActions(root = document) {
         req,
         mobileShareMode() ? "Открыто в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
       );
-      if (archived) renderTmcRequestArchivePanel();
+      if (archived?.archived) renderTmcRequestArchivePanel();
     });
   });
   root.querySelectorAll("[data-print-archived-request]").forEach(button => {
@@ -15868,7 +15881,7 @@ ui.engineerIncomingTmcPanel?.addEventListener("click", async event => {
           result.request,
           mobileShareMode() ? "Открыто в WhatsApp и сохранено в архив" : "Отправлено на печать и сохранено в архив"
         );
-        if (archived) renderRequestCreate();
+        if (archived?.archived) renderRequestCreate();
       }
     }, "Формируем...");
     return;
@@ -15925,13 +15938,14 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
       state.requests ||= {};
       state.requests[draft.id] = draft;
       saveState();
-      await publishStateNow();
       const archived = await archiveTmcRequestAfterOutput(draft, "Открыто в WhatsApp и сохранено в архив");
-      if (archived) {
+      if (archived?.archived) {
         resetTmcRequestForm();
-        ui.tmcRequestStatus.textContent = "Заявка отправлена и автоматически сохранена в архиве";
+        ui.tmcRequestStatus.textContent = archived.outputStarted
+          ? "Заявка отправлена и автоматически сохранена в архиве"
+          : "Заявка сохранена в архиве. Разрешите открытие WhatsApp и повторите отправку из архива";
       } else {
-        ui.tmcRequestStatus.textContent = "Отправка отменена. Заявка сохранена в текущих — её можно отправить повторно";
+        ui.tmcRequestStatus.textContent = "Не удалось сохранить заявку. Повторите попытку";
       }
       renderTmcRequestArchivePanel();
       return;

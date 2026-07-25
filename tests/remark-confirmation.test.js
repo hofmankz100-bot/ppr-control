@@ -826,17 +826,19 @@ test("gas and compressor printing gathers filled days without date selectors", (
   assert.doesNotMatch(appSource, /data-print-compressor-sheet/);
 });
 
-test("request output archives only after mobile share or desktop print starts", () => {
+test("request output archives before mobile share or desktop print starts", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /async function archiveTmcRequestAfterOutput\(req, action\)/);
-  assert.match(appSource, /const outputStarted = await sendRequestByDevice\(req, \{ waitForPrint: true \}\)/);
-  assert.match(appSource, /if \(!outputStarted\) return false/);
+  const archiveFlow = appSource.match(/async function archiveTmcRequestAfterOutput\(req, action\) \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.ok(archiveFlow.indexOf("saveState();") < archiveFlow.indexOf("sendRequestByDevice(req)"));
+  assert.match(archiveFlow, /const publishPromise = publishStateNow\(\)/);
+  assert.match(archiveFlow, /const outputStarted = await sendRequestByDevice\(req\)/);
+  assert.match(archiveFlow, /return \{ archived: true, outputStarted \}/);
   assert.match(appSource, /req\.archivedAt \|\|= now/);
   assert.match(appSource, /Открыто в WhatsApp и сохранено в архив/);
   assert.match(appSource, /Отправлено на печать и сохранено в архив/);
   assert.match(appSource, /function openRequestInWhatsApp\(req\)/);
   assert.doesNotMatch(appSource, /navigator\.share/);
-  assert.match(appSource, /ppr-request-print-start/);
   assert.match(appSource, /tr \{ break-inside: avoid; page-break-inside: avoid; \}/);
   assert.match(appSource, /if \(result\?\.request\) \{[\s\S]*?archiveTmcRequestAfterOutput/);
   assert.match(appSource, /Зам\. директора __________________/);
