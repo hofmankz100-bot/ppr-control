@@ -561,6 +561,15 @@ test("node editing permission is selective per equipment and admin keeps full ac
   assert.deepEqual(after.catalog.equipment["2"].nodes, ["Changed node 2"]);
 });
 
+test("PPR schedules only weekdays and moves weekend work to Monday", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /function isPprWorkday\(date\)/);
+  assert.match(source, /return day >= 1 && day <= 5/);
+  assert.match(source, /if \(!isPprWorkday\(date\)\) return null/);
+  assert.match(source, /for \(const daysBack of \[1, 2\]\)/);
+  assert.match(source, /shiftedFrom: originalDate/);
+});
+
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);

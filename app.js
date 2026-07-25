@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v228-remove-aho";
+const APP_VERSION = "v229-weekday-ppr";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -10598,7 +10598,12 @@ function directorOpenRemarks() {
   return result;
 }
 
-function directorRecommendedMaintenance(eq, date = todayISO()) {
+function isPprWorkday(date) {
+  const day = new Date(`${date}T12:00:00`).getDay();
+  return day >= 1 && day <= 5;
+}
+
+function directorRecommendedMaintenanceRaw(eq, date = todayISO()) {
   const intervalDays = [COMPRESSOR_JOURNAL_AREA, GAS_JOURNAL_AREA].includes(eq.area) ? 7 : 14;
   const dayNumber = Math.floor(new Date(`${date}T00:00:00`).getTime() / 86400000);
   const offset = (dayNumber + Number(eq.id || 0) * 3) % intervalDays;
@@ -10613,14 +10618,25 @@ function directorRecommendedMaintenance(eq, date = todayISO()) {
   };
 }
 
+function directorRecommendedMaintenance(eq, date = todayISO()) {
+  const plan = directorRecommendedMaintenanceRaw(eq, date);
+  if (isPprWorkday(plan.dueDate)) return plan;
+  const shiftedDueDate = addDaysISO(plan.dueDate, new Date(`${plan.dueDate}T12:00:00`).getDay() === 6 ? 2 : 1);
+  return {
+    ...plan,
+    dueDate: shiftedDueDate,
+    daysUntil: Math.max(0, Math.round((new Date(`${shiftedDueDate}T00:00:00`) - new Date(`${date}T00:00:00`)) / 86400000))
+  };
+}
+
 function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
   const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const rows = [];
   for (let dayOffset = 0; dayOffset < days; dayOffset += 1) {
     const date = addDaysISO(todayISO(), dayOffset);
     activeEquipment.forEach(eq => {
-      const plan = directorRecommendedMaintenance(eq, date);
-      if (plan.daysUntil !== 0) return;
+      const plan = recommendedMaintenanceForDate(eq, date);
+      if (!plan) return;
       rows.push({
         date,
         equipment: eq.name,
@@ -10634,8 +10650,18 @@ function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
 }
 
 function recommendedMaintenanceForDate(eq, date) {
-  const plan = directorRecommendedMaintenance(eq, date);
-  return plan.daysUntil === 0 ? plan : null;
+  if (!isPprWorkday(date)) return null;
+  const plan = directorRecommendedMaintenanceRaw(eq, date);
+  if (plan.daysUntil === 0) return plan;
+  if (new Date(`${date}T12:00:00`).getDay() !== 1) return null;
+  for (const daysBack of [1, 2]) {
+    const originalDate = addDaysISO(date, -daysBack);
+    const weekendPlan = directorRecommendedMaintenanceRaw(eq, originalDate);
+    if (weekendPlan.daysUntil === 0) {
+      return { ...weekendPlan, dueDate: date, daysUntil: 0, shiftedFrom: originalDate };
+    }
+  }
+  return null;
 }
 
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {

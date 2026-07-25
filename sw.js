@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v228-remove-aho";
+const CACHE_NAME = "ppr-v229-weekday-ppr";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=228-remove-aho",
+  "./styles.css?v=229-weekday-ppr",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=228-remove-aho",
+  "./app.js?v=229-weekday-ppr",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
