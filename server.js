@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v257-hidden-legacy-repair";
+const SERVER_VERSION = "v258-fast-reliable-qr-walk";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -2744,6 +2744,94 @@ async function handleApi(req, res, pathname, url) {
       "Cache-Control": "no-store"
     });
     res.end(svg);
+    return true;
+  }
+
+  if (pathname === "/api/qr-walk/mark" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const equipmentId = Number(body.equipmentId);
+    const nodeIndex = Number(body.nodeIndex);
+    const date = String(body.date || "");
+    const shift = String(body.shift || "");
+    const allowedRoles = new Set([
+      "editor", "engineer", "shop", "mechanic", "electrician", "operator",
+      "welder", "turner", "forkliftDriver", "safetyEngineer", "energyEngineer",
+      "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "productionDirector"
+    ]);
+    if (
+      !allowedRoles.has(String(req.authUser?.role || ""))
+      || !Number.isSafeInteger(equipmentId)
+      || equipmentId < 0
+      || equipmentId > 10000
+      || !Number.isSafeInteger(nodeIndex)
+      || nodeIndex < 0
+      || nodeIndex > 500
+      || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || !["day", "night"].includes(shift)
+    ) {
+      sendJson(res, 400, { ok: false, error: "qr_walk_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.checks ||= {};
+      const recordKey = `${equipmentId}:${nodeIndex}:${date}`;
+      const now = new Date().toISOString();
+      const currentRecord = db.checks[recordKey] || {};
+      const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
+      const existing = currentItem.walkShifts?.[shift];
+      if (existing?.done) {
+        return { changed: false, recordKey, record: currentRecord, actionId: String(body.actionId || ""), origin: String(body.clientId || "api") };
+      }
+      const nextItem = {
+        tasks: Array.isArray(currentItem.tasks) ? currentItem.tasks.slice(0, 15) : Array(15).fill(false),
+        walkDone: false,
+        comment: "",
+        commentPhoto: "",
+        commentOwnerRole: "",
+        commentOwnerName: "",
+        commentLog: [],
+        nodeDraftText: "",
+        request: "",
+        requestPhoto: "",
+        resolved: false,
+        createdAt: currentItem.createdAt || now,
+        ...currentItem,
+        walkShifts: {
+          ...(currentItem.walkShifts || {}),
+          [shift]: {
+            done: true,
+            at: now,
+            byRole: String(req.authUser?.role || ""),
+            byName: String(req.authUser?.name || ""),
+            shift,
+            label: String(body.label || "").slice(0, 100),
+            range: String(body.range || "").slice(0, 100)
+          }
+        },
+        updatedAt: now
+      };
+      nextItem.tasks[0] = false;
+      const record = { ...currentRecord, createdAt: currentRecord.createdAt || now, updatedAt: now, to: nextItem };
+      db.checks[recordKey] = record;
+      writeDb(db, {
+        action: "qr_walk_mark",
+        actionId: String(body.actionId || ""),
+        clientId: String(body.clientId || ""),
+        user: { id: req.authUser?.id || "", name: req.authUser?.name || "", role: req.authUser?.role || "" }
+      });
+      return { changed: true, recordKey, record, actionId: String(body.actionId || ""), origin: String(body.clientId || "api") };
+    });
+    const stateVersion = result.changed
+      ? broadcastState(result.origin, result.actionId, { checks: { [result.recordKey]: result.record } }, true)
+      : realtimeStateVersion();
+    sendJson(res, 200, {
+      ok: true,
+      alreadyDone: !result.changed,
+      recordKey: result.recordKey,
+      record: result.record,
+      stateVersion
+    });
     return true;
   }
 

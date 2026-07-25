@@ -646,6 +646,21 @@ test("repeat QR scans stay in an overlay on the main screen", () => {
   assert.doesNotMatch(source, /Узел уже обойден — открыт комментарий узла/);
 });
 
+test("QR walk uses a fast idempotent save and a throttled phone scanner", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /apiJson\("\/api\/qr-walk\/mark"/);
+  assert.match(client, /now - lastScanAt >= 220/);
+  assert.match(client, /const maxSide = 960/);
+  assert.match(client, /data-qr-torch/);
+  assert.match(client, /navigator\.vibrate\?\.\(\[80, 40, 80\]\)/);
+  assert.match(client, /}, 30000\)/);
+  assert.match(client, /let submitting = false/);
+  assert.match(server, /pathname === "\/api\/qr-walk\/mark"/);
+  assert.match(server, /if \(existing\?\.done\)/);
+  assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
+});
+
 test("notification setup stops nagging unsupported and legacy phones", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /function notificationDeviceCapability\(\)/);

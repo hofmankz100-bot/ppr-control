@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v257-hidden-legacy-repair";
+const CACHE_NAME = "ppr-v258-fast-reliable-qr-walk";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=257-hidden-legacy-repair",
+  "./styles.css?v=258-fast-reliable-qr-walk",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=257-hidden-legacy-repair",
+  "./app.js?v=258-fast-reliable-qr-walk",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

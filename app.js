@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v257-hidden-legacy-repair";
+const APP_VERSION = "v258-fast-reliable-qr-walk";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -3682,7 +3682,7 @@ function parseNodeQrPayload(value) {
   return { equipmentId, nodeIndex };
 }
 
-function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().date, shiftInfo = currentWalkShift()) {
+function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().date, shiftInfo = currentWalkShift(), options = {}) {
   const eq = equipmentById(equipmentId);
   if (!eq || !eq.nodes?.[nodeIndex]) return null;
   const now = new Date().toISOString();
@@ -3701,8 +3701,45 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   rec.to.walkDone = false;
   rec.to.updatedAt = now;
   rec.updatedAt = now;
-  saveState();
+  saveState({ remote: options.remote !== false });
   return { date, shift: shiftInfo };
+}
+
+async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
+  try {
+    const result = await apiJson("/api/qr-walk/mark", {
+      method: "POST",
+      timeout: 12000,
+      body: JSON.stringify({
+        actionId: nextActionId(),
+        clientId: CLIENT_ID,
+        equipmentId,
+        nodeIndex,
+        date,
+        shift: shiftInfo?.key || "",
+        label: shiftInfo?.label || "",
+        range: shiftInfo?.range || ""
+      })
+    });
+    if (result?.recordKey && result?.record) {
+      mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+    }
+    return true;
+  } catch (error) {
+    console.warn("Fast QR save failed; using state retry", error);
+    saveState();
+    publishStateNow().catch(scheduleRemoteRetry);
+    return false;
+  }
+}
+
+function confirmQrScanFeedback() {
+  try {
+    navigator.vibrate?.([80, 40, 80]);
+  } catch {}
+  try {
+    playNotificationDingDong();
+  } catch {}
 }
 
 function incomingNodeQrFromUrl() {
@@ -4049,6 +4086,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     return typeof window.jsQR === "function";
   };
 
+  let activeVideoTrack = null;
+  let torchOn = false;
+  const setTorchAvailable = available => {
+    const button = overlay?.querySelector("[data-qr-torch]");
+    if (button) button.hidden = !available;
+  };
   const scanWithLiveCamera = async (video, messageEl, applyValue, shouldStop) => {
     if (!navigator.mediaDevices?.getUserMedia || !video) return false;
     const hasQrReader = await ensureJsQr();
@@ -4064,6 +4107,9 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         audio: false
       });
       video.srcObject = stream;
+      activeVideoTrack = stream.getVideoTracks?.()[0] || null;
+      const capabilities = activeVideoTrack?.getCapabilities?.() || {};
+      setTorchAvailable(Boolean(capabilities.torch));
       video.hidden = false;
       await video.play();
       if (messageEl) messageEl.textContent = "Наведите камеру на QR. После считывания можно идти дальше.";
@@ -4076,22 +4122,29 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
           resolve(value);
         };
         let scanning = false;
+        let lastScanAt = 0;
+        let scanPass = 0;
         const tick = async () => {
           if (shouldStop()) return finish(false);
           if (Date.now() - started > 45000) {
             if (messageEl) messageEl.textContent = "QR не найден. Поднесите ближе или нажмите «Сканировать ещё раз».";
             return finish(false);
           }
-          if (!scanning && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+          const now = performance.now();
+          if (!scanning && now - lastScanAt >= 220 && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
             scanning = true;
+            lastScanAt = now;
             try {
-              const maxSide = 1280;
+              const maxSide = 960;
               const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
               canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
               canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              const value = await detectQrOnCanvas(canvas);
-              if (value) return finish(applyValue(value));
+              const value = await detectQrOnCanvas(canvas, scanPass++);
+              if (value) {
+                confirmQrScanFeedback();
+                return finish(applyValue(value));
+              }
             } catch {
             } finally {
               scanning = false;
@@ -4135,21 +4188,21 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     return String(result?.data || "");
   };
 
-  const detectQrOnCanvas = async canvas => {
+  const detectQrOnCanvas = async (canvas, scanPass = 0) => {
     const nativeValue = await detectQrWithNativeDetector(canvas);
     if (nativeValue) return nativeValue;
     const hasQrReader = await ensureJsQr();
     if (!hasQrReader) return "";
     const attempts = [{ x: 0, y: 0, w: canvas.width, h: canvas.height }];
-    for (const ratio of [0.86, 0.72, 0.58]) {
-      const size = Math.round(Math.min(canvas.width, canvas.height) * ratio);
-      attempts.push({
-        x: Math.max(0, Math.round((canvas.width - size) / 2)),
-        y: Math.max(0, Math.round((canvas.height - size) / 2)),
-        w: size,
-        h: size
-      });
-    }
+    const ratios = [0.86, 0.72, 0.58];
+    const ratio = ratios[Math.abs(scanPass) % ratios.length];
+    const size = Math.round(Math.min(canvas.width, canvas.height) * ratio);
+    attempts.push({
+      x: Math.max(0, Math.round((canvas.width - size) / 2)),
+      y: Math.max(0, Math.round((canvas.height - size) / 2)),
+      w: size,
+      h: size
+    });
     for (const area of attempts) {
       const work = document.createElement("canvas");
       work.width = area.w;
@@ -4187,7 +4240,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         const bitmap = await createImageBitmap(file);
         const nativeBitmapValue = await detectQrWithNativeDetector(bitmap);
         if (nativeBitmapValue) return nativeBitmapValue;
-        for (const size of [2200, 1600, 1100]) {
+        for (const size of [1600, 1100, 800]) {
           const value = await detectQrWithJsQr(bitmap, size);
           if (value) return value;
         }
@@ -4196,7 +4249,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     const img = await loadImageFromFile(file);
     const nativeValue = await detectQrWithNativeDetector(img);
     if (nativeValue) return nativeValue;
-    for (const size of [2200, 1600, 1100, 800]) {
+    for (const size of [1600, 1100, 800]) {
       const value = await detectQrWithJsQr(img, size);
       if (value) return value;
     }
@@ -4224,7 +4277,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (messageEl) messageEl.textContent = message;
       if (statusEl) statusEl.textContent = message;
       finish(false);
-    }, 12000);
+    }, 30000);
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) {
@@ -4258,6 +4311,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       <video playsinline muted hidden></video>
       <span class="qr-scan-message">Открываем камеру. Наведите на QR узла.</span>
       <div class="qr-scan-actions">
+        <button type="button" data-qr-torch hidden>Включить фонарик</button>
         <button type="button" data-qr-photo>Сканировать ещё раз</button>
         <button type="button" data-qr-cancel>Отмена</button>
       </div>
@@ -4269,6 +4323,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   let stopped = false;
   const stop = () => {
     stopped = true;
+    activeVideoTrack = null;
     if (video?.srcObject) {
       video.srcObject.getTracks?.().forEach(track => track.stop());
       video.srcObject = null;
@@ -4290,6 +4345,16 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (messageEl) messageEl.textContent = "QR не найден. Нажмите «Сканировать ещё раз» и наведите ближе.";
     };
     overlay.querySelector("[data-qr-cancel]")?.addEventListener("click", () => complete(false));
+    overlay.querySelector("[data-qr-torch]")?.addEventListener("click", async event => {
+      if (!activeVideoTrack) return;
+      try {
+        torchOn = !torchOn;
+        await activeVideoTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+        event.currentTarget.textContent = torchOn ? "Выключить фонарик" : "Включить фонарик";
+      } catch {
+        event.currentTarget.hidden = true;
+      }
+    });
     overlay.querySelector("[data-qr-photo]")?.addEventListener("click", async event => {
       const button = event.currentTarget;
       setButtonBusy(button, true, "Чтение...");
@@ -4349,16 +4414,21 @@ function promptQrWalkDecision(parsed) {
   `;
   document.body.append(overlay);
   return new Promise(resolve => {
+    let submitting = false;
     const finish = result => {
       overlay.remove();
       resolve(result);
     };
     overlay.querySelector("[data-qr-next]")?.addEventListener("click", () => finish("continue"));
     overlay.querySelector("[data-qr-finish]")?.addEventListener("click", () => finish("finish"));
-    overlay.querySelector("[data-qr-good]")?.addEventListener("click", () => {
-      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
-      publishStateNow().catch(scheduleRemoteRetry);
-      showQrSavedNotice();
+    overlay.querySelector("[data-qr-good]")?.addEventListener("click", async event => {
+      if (submitting) return;
+      submitting = true;
+      const button = event.currentTarget;
+      setButtonBusy(button, true, "Сохраняем...");
+      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
+      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+      showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
       finish("continue");
     });
     const form = overlay.querySelector(".qr-remark-form");
@@ -4373,12 +4443,14 @@ function promptQrWalkDecision(parsed) {
       if (actions) actions.hidden = false;
     });
     overlay.querySelector("[data-qr-save-remark]")?.addEventListener("click", async event => {
+      if (submitting) return;
       const comment = String(overlay.querySelector("[data-qr-comment]")?.value || "").trim();
       const errorEl = overlay.querySelector("[data-qr-error]");
       if (!comment) {
         if (errorEl) errorEl.textContent = "Напишите комментарий, чтобы сохранить замечание.";
         return;
       }
+      submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
       try {
@@ -4394,6 +4466,7 @@ function promptQrWalkDecision(parsed) {
         showQrSavedNotice("Обход сохранён с замечанием");
         finish("comment-saved");
       } catch {
+        submitting = false;
         if (errorEl) errorEl.textContent = "Не удалось обработать фото. Попробуйте ещё раз.";
         setButtonBusy(button, false);
       }
