@@ -2144,11 +2144,25 @@ function mergeCommentLogs(current = [], incoming = []) {
       entry.resolutionParticipants,
       item => resolutionUserKeyServer(item)
     );
-    next.resolutionCompletedParticipants = mergeRemarkHistoryItems(
-      previous.resolutionCompletedParticipants,
-      entry.resolutionCompletedParticipants,
-      item => resolutionUserKeyServer(item)
-    );
+    // This is the final scoring snapshot, not an append-only history.
+    // Keep the participants from the newest accepted decision so a stale
+    // client cannot restore an incorrectly assigned resolver and award
+    // points to both the old and corrected employees.
+    if (preservePreviousDecision) {
+      next.resolutionCompletedParticipants = Array.isArray(previous.resolutionCompletedParticipants)
+        ? previous.resolutionCompletedParticipants
+        : [];
+    } else if (fromIncoming && incomingDecisionTime > previousDecisionTime) {
+      next.resolutionCompletedParticipants = Array.isArray(entry.resolutionCompletedParticipants)
+        ? entry.resolutionCompletedParticipants
+        : [];
+    } else {
+      next.resolutionCompletedParticipants = Array.isArray(entry.resolutionCompletedParticipants)
+        ? entry.resolutionCompletedParticipants
+        : Array.isArray(previous.resolutionCompletedParticipants)
+          ? previous.resolutionCompletedParticipants
+          : [];
+    }
     map.set(key, next);
   };
   (Array.isArray(current) ? current : []).forEach(entry => mergeEntry(entry, false));
@@ -3673,7 +3687,8 @@ async function handleApi(req, res, pathname, url) {
         const performer = sanitizeResolutionParticipant(performerMatches[0]);
         const confirmer = sanitizeResolutionParticipant(confirmerMatches[0]);
         const createdMs = Date.parse(remark.at || "");
-        remark.resolutionParticipants = [performer];
+        participants = [performer];
+        remark.resolutionParticipants = participants;
         remark.resolutionLeadKey = performer.key;
         remark.resolutionLeadName = performer.name;
         remark.resolutionCompletedParticipants = [performer];

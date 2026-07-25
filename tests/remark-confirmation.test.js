@@ -97,6 +97,16 @@ test.before(async () => {
       "1:0:2026-07-16": { to: { commentLog: [remark("remark-shop", "Электрик Один", "electrician", "Предупреждение в цехе А")] } },
       "1:1:2026-07-16": { to: { commentLog: [remark("remark-any-author", "Директор производства", "productionDirector", "Предупреждение другой роли")] } },
       "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } }
+      ,
+      "1:2:2026-07-16": {
+        to: {
+          commentLog: [{
+            ...remark("remark-repair-assignment", "Начальник А", "shop", "Старая неверная привязка"),
+            resolutionParticipants: [user("shop-a", "Начальник А", "shop", "Цех А")],
+            resolutionCompletedParticipants: [user("shop-a", "Начальник А", "shop", "Цех А")]
+          }]
+        }
+      }
     },
     requests: {
       "ordinary-request": { id: "ordinary-request", kind: "tmc", text: "Обычная заявка", createdAt: "2026-07-16T08:00:00.000Z", updatedAt: "2026-07-16T08:00:00.000Z" },
@@ -146,6 +156,7 @@ test.before(async () => {
       user("editor-1", "Администратор", "editor"),
       { employeeId: "legacy-77", name: "Старый сотрудник", role: "mechanic", approved: true, pendingApproval: false },
       user("shop-a-2", "Second Shop Chief", "shop", "Цех А"),
+      user("repair-worker", "Repair Worker", "mechanic"),
     ],
     translationCache: {},
     pushNotifications: { subscriptions: [], vapid: null }
@@ -686,6 +697,39 @@ test("the gas journal stays readable with horizontal scrolling on phones", () =>
   assert.match(styleSource, /\.gas-journal-table\.gas-sheet-table \{[\s\S]*?min-width: 1180px !important/);
   assert.match(styleSource, /-webkit-overflow-scrolling: touch/);
   assert.match(styleSource, /position: sticky;[\s\S]*?left: 0/);
+});
+
+test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
+  const repairedResponse = await postRemark(
+    "1:2:2026-07-16",
+    "remark-repair-assignment",
+    "admin-repair-close",
+    user("editor-1", "Администратор", "editor"),
+    {
+      performerName: "Repair Worker",
+      confirmerName: "Second Shop Chief",
+      equipmentArea: "Цех А"
+    }
+  );
+  const repaired = patchedRemark(repairedResponse, "1:2:2026-07-16", "remark-repair-assignment");
+  assert.equal(repaired.resolved, true);
+  assert.equal(repaired.resolvedByName, "Repair Worker");
+  assert.equal(repaired.confirmedByName, "Second Shop Chief");
+  assert.deepEqual(repaired.resolutionParticipants.map(item => item.name), ["Repair Worker"]);
+  assert.deepEqual(repaired.resolutionCompletedParticipants.map(item => item.name), ["Repair Worker"]);
+
+  await postRemark(
+    "1:2:2026-07-16",
+    "remark-repair-assignment",
+    "admin-repair-close",
+    user("editor-1", "Администратор", "editor"),
+    {
+      performerName: "Repair Worker",
+      confirmerName: "Second Shop Chief",
+      equipmentArea: "Цех А"
+    },
+    409
+  );
 });
 
 test("every field worker role sends requests to engineers", () => {
