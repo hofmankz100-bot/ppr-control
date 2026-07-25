@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v227-per-equipment-node-permissions";
+const CACHE_NAME = "ppr-v228-remove-aho";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=227-per-equipment-node-permissions",
+  "./styles.css?v=228-remove-aho",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=227-per-equipment-node-permissions",
+  "./app.js?v=228-remove-aho",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

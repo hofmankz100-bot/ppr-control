@@ -46,8 +46,9 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v227-per-equipment-node-permissions";
+const SERVER_VERSION = "v228-remove-aho";
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
+const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
@@ -305,7 +306,8 @@ async function initializeStorage() {
       postgresState = normalizeDb(result.rows[0].payload);
       const catalogChanged = removeObsoletePressNoMaterialNodes(postgresState);
       const falseDowntimeChanged = removeKnownFalseDowntimes(postgresState);
-      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged || falseDowntimeChanged) {
+      const removedEquipmentChanged = purgeRemovedEquipmentData(postgresState);
+      if (migrateLegacyDirectorApprovals(postgresState) || catalogChanged || falseDowntimeChanged || removedEquipmentChanged) {
         await pool.query(
           `INSERT INTO ppr_settings(setting_key, payload, updated_at)
            VALUES ('full_state', $1::jsonb, now())
@@ -320,6 +322,7 @@ async function initializeStorage() {
       migrateLegacyDirectorApprovals(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
+      purgeRemovedEquipmentData(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -762,6 +765,7 @@ async function flushPostgresWrites() {
 
 function writeDb(db, action = {}) {
   const normalized = normalizeDb(db);
+  purgeRemovedEquipmentData(normalized);
   externalizePhotosInValue(normalized);
   if (postgresPool) {
     postgresState = normalized;
@@ -871,6 +875,47 @@ function removeKnownFalseDowntimes(db) {
     });
     changed = true;
   }
+  return changed;
+}
+
+function purgeRemovedEquipmentData(db) {
+  let changed = false;
+  db.catalog ||= { equipment: {} };
+  db.catalog.equipment ||= {};
+  for (const equipmentId of REMOVED_EQUIPMENT_IDS) {
+    if (Object.prototype.hasOwnProperty.call(db.catalog.equipment, equipmentId)) {
+      delete db.catalog.equipment[equipmentId];
+      changed = true;
+    }
+  }
+  const isRemovedItem = item => REMOVED_EQUIPMENT_IDS.has(String(item?.equipmentId ?? ""));
+  const nextChecks = Object.fromEntries(Object.entries(db.checks || {}).filter(([key]) =>
+    !REMOVED_EQUIPMENT_IDS.has(String(key).split(":")[0])
+  ));
+  if (Object.keys(nextChecks).length !== Object.keys(db.checks || {}).length) changed = true;
+  db.checks = nextChecks;
+  const nextRequests = Object.fromEntries(Object.entries(db.requests || {}).filter(([, item]) => !isRemovedItem(item)));
+  if (Object.keys(nextRequests).length !== Object.keys(db.requests || {}).length) changed = true;
+  db.requests = nextRequests;
+  for (const field of ["directorMessages", "serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
+    const current = Array.isArray(db[field]) ? db[field] : [];
+    const filtered = current.filter(item => !isRemovedItem(item));
+    if (filtered.length !== current.length) changed = true;
+    db[field] = filtered;
+  }
+  for (const sheet of Object.values(db.pprSheets || {})) {
+    if (!Array.isArray(sheet?.rows)) continue;
+    const filtered = sheet.rows.filter(item => !isRemovedItem(item));
+    if (filtered.length !== sheet.rows.length) {
+      sheet.rows = filtered;
+      changed = true;
+    }
+  }
+  const nextDueSince = Object.fromEntries(Object.entries(db.journalDueSince || {}).filter(([key, item]) =>
+    !REMOVED_EQUIPMENT_IDS.has(String(key).split(":")[0]) && !isRemovedItem(item)
+  ));
+  if (Object.keys(nextDueSince).length !== Object.keys(db.journalDueSince || {}).length) changed = true;
+  db.journalDueSince = nextDueSince;
   return changed;
 }
 
@@ -2593,6 +2638,7 @@ async function handleApi(req, res, pathname, url) {
       if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
+          if (REMOVED_EQUIPMENT_IDS.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
@@ -2706,6 +2752,7 @@ async function handleApi(req, res, pathname, url) {
       db.operationalResetAt = db.operationalResetAt || String(body.operationalResetAt || "");
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
       migrateLegacyDirectorApprovals(db);
+      purgeRemovedEquipmentData(db);
       const actionId = String(body.actionId || "");
       const afterState = publicState(db);
       const afterRemarkKeys = openRemarkKeysServer(db);

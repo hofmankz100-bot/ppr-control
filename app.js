@@ -63,7 +63,6 @@ const EQUIPMENT = [
   { id: 15, name: "ШГРП / ГРП / ГРУ", area: "Газовое хозяйство", nodes: [
     "ШГРП", "ГРП", "ГРУ", "Регулятор давления газа", "ПЗК", "ПСК", "Фильтр газа", "Подземный газопровод", "Контрольные трубки и колодцы", "Охранная зона газопровода"
   ]},
-  { id: 16, name: "оборудование 16", area: "Резерв", nodes: DEFAULT_NODES },
   { id: 17, name: "оборудование 17", area: "Резерв", nodes: DEFAULT_NODES },
   { id: 18, name: "оборудование 18", area: "Резерв", nodes: DEFAULT_NODES },
   { id: 19, name: "оборудование 19", area: "Резерв", nodes: DEFAULT_NODES },
@@ -76,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v227-per-equipment-node-permissions";
+const APP_VERSION = "v228-remove-aho";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
