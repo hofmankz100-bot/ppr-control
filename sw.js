@@ -1,19 +1,16 @@
-const CACHE_NAME = "ppr-v295-rating-ledger-access";
+const CACHE_NAME = "ppr-v296-hofmann-forklift";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=295-rating-ledger-access",
+  "./styles.css?v=296-hofmann-forklift",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=295-rating-ledger-access",
-  "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
-  "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
-  "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",
-  "./assets/repair-master-walk-b.png?v=v266-walking-legs-angry-fist",
+  "./app.js?v=296-hofmann-forklift",
+  "./assets/hofmann-forklift.png?v=v296-hofmann-forklift",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

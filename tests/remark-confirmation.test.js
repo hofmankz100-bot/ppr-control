@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=295-rating-ledger-access/);
-  assert.match(html, /styles\.css\?v=295-rating-ledger-access/);
-  assert.match(serviceWorker, /app\.js\?v=295-rating-ledger-access/);
+  assert.match(html, /app\.js\?v=296-hofmann-forklift/);
+  assert.match(html, /styles\.css\?v=296-hofmann-forklift/);
+  assert.match(serviceWorker, /app\.js\?v=296-hofmann-forklift/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -813,23 +813,24 @@ test("the create request button uses a calm halo instead of blinking", () => {
   assert.match(style, /box-shadow: 0 0 0 7px rgba\(22, 130, 170, \.25\)/);
 });
 
-test("the repair mascot walks, fixes labels, and occasionally shows a fist", () => {
+test("the Hofmann forklift drives, smokes and carries aluminum profiles without blocking the app", () => {
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(app, /function setupRepairMasterMascot\(\)/);
-  assert.match(app, /cycle % 3 === 0/);
-  assert.match(app, /Почему не работаете\?/);
-  assert.match(app, /target\?\.classList\?\.add\("repair-master-target"\)/);
+  assert.match(app, /function setupHofmannForkliftMascot\(\)/);
+  assert.match(app, /forklift-smoke/);
+  assert.match(app, /forklift-aluminum-load/);
+  assert.match(app, /HOFMANN/);
+  assert.match(app, /ALUMINIUM/);
+  assert.match(app, /is-loading/);
+  assert.match(app, /is-carrying/);
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(sw, /assets\/repair-master-fist\.png/);
-  assert.match(server, /repair-master\(\?:-fist\|-walk-\[ab\]\)\?/);
-  assert.match(app, /repair-master-walk-frame walk-a/);
-  assert.match(app, /repair-master-walk-frame walk-b/);
-  assert.match(style, /@keyframes repairMasterStepA/);
-  assert.match(style, /@keyframes repairMasterStepB/);
+  assert.match(style, /@keyframes forkliftSmoke/);
+  assert.match(style, /@keyframes hofmannFlagWave/);
+  assert.match(sw, /assets\/hofmann-forklift\.png/);
+  assert.match(server, /assets\/hofmann-forklift\.png/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {

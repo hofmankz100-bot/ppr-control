@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v295-rating-ledger-access";
+const SERVER_VERSION = "v296-hofmann-forklift";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -110,7 +110,7 @@ function isPublicStaticPath(relativePath = "") {
   const normalized = String(relativePath).split(path.sep).join("/");
   if (publicRootFiles.has(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
-  if (/^assets\/repair-master(?:-fist|-walk-[ab])?\.png$/.test(normalized)) return true;
+  if (normalized === "assets/hofmann-forklift.png") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js";
 }
 
