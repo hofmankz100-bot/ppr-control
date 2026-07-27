@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v289-auto-join-remark-resolution";
+const APP_VERSION = "v290-admin-close-remark-no-score";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -5307,6 +5307,7 @@ function resolutionParticipants(item = {}) {
 }
 
 function completedResolutionParticipants(item = {}) {
+  if (item?.closedWithoutScore) return [];
   const completed = Array.isArray(item.resolutionCompletedParticipants) && item.resolutionCompletedParticipants.length
     ? item.resolutionCompletedParticipants
     : item.resolutionParticipants;
@@ -5748,6 +5749,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const submittedParticipants = resolutionParticipantsText(entry, submittedBy || "Сотрудник");
   const actorCanJoin = isResolutionExecutorRole(resolutionActor().jobRole || resolutionActor().role);
   const canWriteResolution = currentParticipant || actorCanJoin;
+  const canCloseWithoutScore = resolutionActor().role === "editor";
 
   return `
     <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
@@ -5762,7 +5764,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
       ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
       ${resolved ? `
         <div class="comment-resolution-detail">
-          <strong>Устранили: ${escapeHtml(completedBy)}</strong>
+          <strong>${entry.closedWithoutScore ? "Закрыто без баллов" : `Устранили: ${escapeHtml(completedBy)}`}</strong>
           <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
           ${entry.resolvedComment ? `<p>${escapeHtml(entry.resolvedComment)}</p>` : ""}
           ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
@@ -5783,6 +5785,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           ${canConfirm
             ? `<div class="resolution-empty">Подтверждение доступно в «Личных сообщениях» на кнопке вашей роли.</div>`
             : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
+          ${canCloseWithoutScore ? `<button type="button" class="danger no-print" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
         </section>
       ` : `
         ${returnedToRework ? `
@@ -5842,6 +5845,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             <div class="node-walk-actions">
               <button type="button" class="secondary" data-remark-work-update ${canWriteResolution ? "" : "disabled"}>Добавить запись о работе</button>
               <button type="button" data-remark-resolve data-permission-disabled="${canResolve || actorCanJoin ? "false" : "true"}" ${canResolve || actorCanJoin ? "" : "disabled"}>Устранено</button>
+              ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
             </div>
           </div>
           ${resolutionEvents.length ? `
@@ -11291,6 +11295,23 @@ function renderNodeWalkthrough(eq) {
           renderNodeWalkthrough(equipmentById(eq.id));
         }
       }, "Публикуется..."));
+      card.querySelector("[data-remark-close-no-score]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        if (resolutionActor().role !== "editor") return;
+        const reason = window.prompt("Почему закрываем предупреждение без начисления баллов?", "Тестовая или ошибочная запись");
+        if (reason === null) return;
+        if (!String(reason).trim()) {
+          window.alert("Укажите причину закрытия.");
+          return;
+        }
+        if (!window.confirm("Закрыть предупреждение без начисления баллов?")) return;
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "close-no-score", {
+          remarkId,
+          reason: String(reason).trim()
+        });
+        if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
+        else renderNodeWalkthrough(equipmentById(eq.id));
+        showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
+      }, "Закрываем..."));
       card.querySelector("[data-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "confirm", { remarkId });

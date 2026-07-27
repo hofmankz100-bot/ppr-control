@@ -999,6 +999,17 @@ test("an executor can submit work immediately and is joined automatically", () =
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
 });
 
+test("only admin can close a false or test remark without awarding points", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /const canCloseWithoutScore = resolutionActor\(\)\.role === "editor"/);
+  assert.match(client, /data-remark-close-no-score/);
+  assert.match(client, /if \(item\?\.closedWithoutScore\) return \[\]/);
+  assert.match(server, /if \(action === "close-no-score"\)/);
+  assert.match(server, /if \(actor\.role !== "editor"\) return \{ error: "remark_confirmation_forbidden" \}/);
+  assert.match(server, /remark\.resolutionCompletedParticipants = \[\]/);
+});
+
 test("gas and compressor printing gathers filled days without date selectors", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /function printGasJournalSheet\(section\)/);

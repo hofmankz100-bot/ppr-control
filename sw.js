@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v289-auto-join-remark-resolution";
+const CACHE_NAME = "ppr-v290-admin-close-remark-no-score";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=289-auto-join-remark-resolution",
+  "./styles.css?v=290-admin-close-remark-no-score",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=289-auto-join-remark-resolution",
+  "./app.js?v=290-admin-close-remark-no-score",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",
