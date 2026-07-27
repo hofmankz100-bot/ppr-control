@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v282-gpm-mechanical-engineer";
+const APP_VERSION = "v283-gpm-personal-manager";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -12432,8 +12432,13 @@ function gpmIsAdmin() {
   return profile?.role === "editor";
 }
 
+const GPM_PERSONAL_MANAGERS = new Set([
+  "нурахунов махсут махмутович"
+]);
+
 function gpmCanManage() {
-  return gpmIsAdmin() || profile?.role === "mechanicalEngineer";
+  const name = String(profile?.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+  return gpmIsAdmin() || profile?.role === "mechanicalEngineer" || GPM_PERSONAL_MANAGERS.has(name);
 }
 
 function gpmIsEngineer(item) {
