@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v284-manage-gpm-access";
+const CACHE_NAME = "ppr-v285-gpm-journal-in-equipment";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=284-manage-gpm-access",
+  "./styles.css?v=285-gpm-journal-in-equipment",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=284-manage-gpm-access",
+  "./app.js?v=285-gpm-journal-in-equipment",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",
