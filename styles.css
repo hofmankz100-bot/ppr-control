@@ -5206,6 +5206,35 @@ body.editor-profile .warehouse-folders button.request-alert {
 .attendance-person > div:first-child { display: grid; gap: 3px; }
 .attendance-person span,
 .attendance-person small { color: #64748b; }
+.attendance-person-main {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 12px !important;
+  min-width: 0;
+}
+.attendance-person-main > div { display: grid; gap: 3px; min-width: 0; }
+.attendance-person-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; }
+.attendance-status-dot {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin-top: 4px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px currentColor;
+}
+.attendance-status-dot.green { color: #16a34a; background: #22c55e; }
+.attendance-status-dot.red { color: #dc2626; background: #ef4444; }
+.attendance-state-text {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+.attendance-state-text.green { color: #166534; background: #dcfce7; }
+.attendance-state-text.red { color: #991b1b; background: #fee2e2; }
+.attendance-person.on-duty { border-color: #86efac; background: #f7fff9; }
+.attendance-person.off-duty { border-color: #fecaca; background: #fffafa; }
 .attendance-whatsapp {
   background: #16a34a;
   color: #fff !important;

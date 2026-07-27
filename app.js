@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v269-secure-qr-terminal";
+const APP_VERSION = "v270-attendance-status-dots";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1814,17 +1814,21 @@ function resumeAttendanceKiosk() {
 }
 
 function attendanceSessionRows(items = [], admin = false) {
-  if (!items.length) return `<div class="attendance-empty">Сейчас никто не отмечен на работе.</div>`;
-  return items.map(item => {
-    const whatsapp = attendanceWhatsAppUrl(item.phone);
-    return `<div class="attendance-person">
-      <div><strong>${escapeHtml(item.name || "Сотрудник")}</strong>
-        <span>${escapeHtml(ROLE_ACCESS[item.role]?.label || item.role || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</span>
-        <small>Сканирование: ${escapeHtml(attendanceTime(item.startedAt))} · до ${escapeHtml(attendanceTime(item.expiresAt))}</small>
-      </div>
+  if (!items.length) return `<div class="attendance-empty">Нет сотрудников для рабочей отметки.</div>`;
+  return items.map(person => {
+    const item = person.session || person;
+    const onDuty = person.onDuty !== undefined ? person.onDuty : Boolean(item?.startedAt && Date.parse(item.expiresAt || "") > Date.now() && !item.endedAt);
+    const whatsapp = attendanceWhatsAppUrl(person.phone || item.phone);
+    return `<div class="attendance-person ${onDuty ? "on-duty" : "off-duty"}">
+      <div class="attendance-person-main"><span class="attendance-status-dot ${onDuty ? "green" : "red"}" aria-label="${onDuty ? "На работе" : "Не на работе"}"></span><div>
+        <div class="attendance-person-heading"><strong>${escapeHtml(person.name || item.name || "Сотрудник")}</strong><span class="attendance-state-text ${onDuty ? "green" : "red"}">${onDuty ? "На работе" : "Не на работе"}</span></div>
+        <span>${escapeHtml(ROLE_ACCESS[person.role || item.role]?.label || person.role || item.role || "")}${(person.area || item.area) ? ` · ${escapeHtml(person.area || item.area)}` : ""}</span>
+        <small>${onDuty ? `На работе · сканирование ${escapeHtml(attendanceTime(item.startedAt))} · до ${escapeHtml(attendanceTime(item.expiresAt))}` : "Не на работе · QR не отсканирован"}</small>
+      </div></div>
       <div class="attendance-person-actions">
         ${whatsapp ? `<a class="button-link attendance-whatsapp" href="${escapeHtml(whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
-        ${admin ? `<button type="button" data-attendance-end="${escapeHtml(item.id)}">Закрыть</button>` : ""}
+        ${admin && onDuty ? `<button type="button" data-attendance-end="${escapeHtml(item.id)}">Закрыть</button>` : ""}
+        ${admin && !onDuty ? `<button type="button" data-attendance-grant-person="${escapeHtml(person.userKey || "")}">Открыть смену</button>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -1836,12 +1840,20 @@ async function refreshAttendancePanel() {
   const status = await refreshAttendanceStatus({ renderProfileBar: false });
   if (!status) return;
   const list = modal.querySelector("[data-attendance-list]");
-  if (list) list.innerHTML = attendanceSessionRows(status.onDuty, status.isAdmin);
+  if (list) list.innerHTML = attendanceSessionRows(status.people || status.onDuty, status.isAdmin);
   modal.querySelectorAll("[data-attendance-end]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Закрыть смену сотрудника?")) return;
     await apiJson("/api/attendance/admin", {
       method: "POST",
       body: JSON.stringify({ action: "end", sessionId: button.dataset.attendanceEnd })
+    });
+    await refreshAttendancePanel();
+  }));
+  modal.querySelectorAll("[data-attendance-grant-person]").forEach(button => button.addEventListener("click", async () => {
+    if (!window.confirm("Открыть сотруднику смену на 10 часов вручную?")) return;
+    await apiJson("/api/attendance/admin", {
+      method: "POST",
+      body: JSON.stringify({ action: "grant", userKey: button.dataset.attendanceGrantPerson })
     });
     await refreshAttendancePanel();
   }));
@@ -1907,7 +1919,7 @@ async function openAttendancePanel() {
         </div>
       </div>` : ""}
       <div class="attendance-list-head"><h3>Сейчас на работе</h3><button type="button" data-attendance-refresh>Обновить</button></div>
-      <div class="attendance-list" data-attendance-list>${attendanceSessionRows(status.onDuty, status.isAdmin)}</div>
+      <div class="attendance-list" data-attendance-list>${attendanceSessionRows(status.people || status.onDuty, status.isAdmin)}</div>
     </section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-attendance-close]").forEach(item => item.addEventListener("click", closeAttendancePanel));

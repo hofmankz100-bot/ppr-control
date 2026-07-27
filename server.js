@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v269-secure-qr-terminal";
+const SERVER_VERSION = "v270-attendance-status-dots";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -2680,6 +2680,24 @@ async function handleApi(req, res, pathname, url) {
         .map(attendanceSessionPublic)
         .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
       : [];
+    const people = monitor
+      ? (db.users || [])
+        .filter(user => attendanceRoleAllowed(user) && user.approved !== false && user.pendingApproval !== true)
+        .map(user => {
+          const session = activeAttendanceSession(db, user, now);
+          return {
+            userKey: attendanceUserKey(user),
+            name: String(user.name || ""),
+            role: String(user.role || ""),
+            area: String(user.area || ""),
+            phone: String(user.phone || ""),
+            employeeId: String(user.employeeId || ""),
+            onDuty: Boolean(session),
+            session: session ? attendanceSessionPublic(session) : null
+          };
+        })
+        .sort((a, b) => Number(b.onDuty) - Number(a.onDuty) || a.name.localeCompare(b.name, "ru"))
+      : [];
     const history = req.authUser?.role === "editor"
       ? (db.attendanceSessions || []).slice(-200).reverse().map(attendanceSessionPublic)
       : [];
@@ -2692,6 +2710,7 @@ async function handleApi(req, res, pathname, url) {
       isPrimaryAdminEngineer: isPrimaryAdminEngineerServer(req.authUser),
       session: ownSession ? attendanceSessionPublic(ownSession) : null,
       onDuty,
+      people,
       history,
       workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
       workstationClientId: req.authUser?.role === "editor" ? String(db.attendanceConfig.workstationClientId || "") : "",

@@ -164,6 +164,7 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     const monitorData = await monitor.json();
     assert.equal(monitorData.isPrimaryAdminEngineer, true);
     assert.equal(monitorData.onDuty[0].name, worker.name);
+    assert.equal(monitorData.people.find(person => person.userKey === worker.id).onDuty, true);
     assert.equal(monitorData.workstationName, "Проходная");
 
     const ended = await api(baseUrl, "/api/attendance/admin", editorCookie, {
@@ -171,6 +172,8 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
       body: JSON.stringify({ action: "end", sessionId: session.id })
     });
     assert.equal(ended.status, 200);
+    const afterEnd = await api(baseUrl, "/api/attendance/status", editorCookie);
+    assert.equal((await afterEnd.json()).people.find(person => person.userKey === worker.id).onDuty, false);
     assert.equal((await api(baseUrl, "/api/state", workerCookie, {
       method: "PUT",
       body: JSON.stringify({ checks: {} })
