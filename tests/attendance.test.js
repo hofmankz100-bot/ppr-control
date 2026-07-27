@@ -120,6 +120,14 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.equal(registered.status, 200);
     const registrationData = await registered.json();
     assert.ok(registrationData.kioskToken);
+    const headerlessKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
+      headers: {
+        "x-attendance-kiosk-token": registrationData.kioskToken,
+        "x-attendance-client-id": "front-desk-browser"
+      }
+    });
+    assert.equal(headerlessKiosk.status, 200);
+    assert.equal((await headerlessKiosk.json()).updateRequired, undefined);
     const kiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
       headers: {
         "x-app-version": APP_VERSION,
@@ -131,13 +139,8 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     const kioskData = await kiosk.json();
     assert.equal(kioskData.workstationName, "Проходная");
     assert.match(kioskData.qrDataUrl, /^data:image\/svg\+xml;base64,/);
-    const outdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`);
-    assert.equal(outdatedKiosk.status, 200);
-    assert.equal((await outdatedKiosk.json()).updateRequired, true);
-    const recentOutdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
-      headers: { "x-app-version": "v272-contractor-attendance" }
-    });
-    assert.equal(recentOutdatedKiosk.status, 426);
+    const invalidKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`);
+    assert.equal(invalidKiosk.status, 401);
     assert.equal((await api(baseUrl, "/api/attendance/kiosk/exit", editorCookie, {
       method: "POST",
       headers: {

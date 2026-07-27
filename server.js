@@ -2655,33 +2655,14 @@ async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
+    || pathname === "/api/attendance/kiosk"
+    || pathname === "/api/attendance/kiosk/exit"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
   const clientProtocol = String(req.headers["x-client-protocol"] || "");
   const compatibleClient = clientProtocol === CLIENT_PROTOCOL_VERSION || SUPPORTED_CLIENT_VERSIONS.has(clientVersion);
   if (process.env.NODE_ENV !== "test" && !versionExempt && !compatibleClient) {
-    if (pathname === "/api/attendance/kiosk" && req.method === "GET" && !clientVersion) {
-      const updateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
-        <rect width="720" height="720" rx="40" fill="#fff"/>
-        <circle cx="360" cy="220" r="92" fill="#08789a"/>
-        <text x="360" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="92" font-weight="700" fill="#fff">↻</text>
-        <text x="360" y="385" text-anchor="middle" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="#123e54">ОБНОВИТЕ</text>
-        <text x="360" y="440" text-anchor="middle" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="#123e54">ПРИЛОЖЕНИЕ</text>
-        <text x="360" y="510" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" fill="#526b78">Перезагрузите страницу терминала</text>
-        <text x="360" y="550" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" fill="#08789a">${SERVER_VERSION}</text>
-      </svg>`;
-      sendJson(res, 200, {
-        ok: true,
-        workstationName: "Требуется обновление",
-        qrDataUrl: `data:image/svg+xml;base64,${Buffer.from(updateSvg).toString("base64")}`,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        serverTime: new Date().toISOString(),
-        onDutyCount: 0,
-        updateRequired: true
-      }, { "Cache-Control": "no-store" });
-      return true;
-    }
     sendJson(res, 426, {
       ok: false,
       error: "Требуется обновление приложения.",
