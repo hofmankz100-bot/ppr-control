@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v280-distinct-press-colors";
+const APP_VERSION = "v281-gpm-journal";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -102,6 +102,22 @@ test("production API requires a server session and rate-limits failed logins", a
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.match(cookie, /^ppr_session=/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    const gpmWrite = await fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({
+        actionId: "gpm-sync-test",
+        clientId: "test-client",
+        gpmJournal: {
+          equipment: { "gpm:1": { id: "gpm:1", name: "Test crane", updatedAt: new Date().toISOString() } },
+          inspections: {},
+          events: {}
+        }
+      })
+    });
+    assert.equal(gpmWrite.status, 200);
+    const gpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(gpmState.gpmJournal.equipment["gpm:1"].name, "Test crane");
     assert.equal((await fetch(`${baseUrl}/api/export/all`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
 
     for (let index = 0; index < 15; index += 1) {

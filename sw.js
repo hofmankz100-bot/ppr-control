@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v280-distinct-press-colors";
+const CACHE_NAME = "ppr-v281-gpm-journal";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=280-distinct-press-colors",
+  "./styles.css?v=281-gpm-journal",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=280-distinct-press-colors",
+  "./app.js?v=281-gpm-journal",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

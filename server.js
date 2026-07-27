@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v280-distinct-press-colors";
+const SERVER_VERSION = "v281-gpm-journal";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -82,6 +82,7 @@ const contentTypes = {
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".webp": "image/webp",
+  ".pdf": "application/pdf",
   ".svg": "image/svg+xml; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".mobileconfig": "application/x-apple-aspen-config"
@@ -114,7 +115,7 @@ function isPublicStaticPath(relativePath = "") {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -199,6 +200,10 @@ function normalizeDb(db) {
   db.downtimes ||= [];
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
+  db.gpmJournal ||= { equipment: {}, inspections: {}, events: {} };
+  db.gpmJournal.equipment ||= {};
+  db.gpmJournal.inspections ||= {};
+  db.gpmJournal.events ||= {};
   db.pprSheets ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
@@ -273,13 +278,14 @@ function writeDbFile(db) {
 
 function photoExtensionFromMime(mime = "") {
   const clean = String(mime || "").toLowerCase();
+  if (clean.includes("pdf")) return "pdf";
   if (clean.includes("png")) return "png";
   if (clean.includes("webp")) return "webp";
   return "jpg";
 }
 
 function savePhotoDataUrl(dataUrl = "") {
-  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|jpg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=\r\n]+)$/);
   if (!match) return "";
   const bytes = Buffer.from(match[2].replace(/\s/g, ""), "base64");
   if (!bytes.length || bytes.length > MAX_PHOTO_BYTES) return "";
@@ -317,7 +323,7 @@ function externalizePhotosInValue(value, seen = new WeakSet()) {
     seen.add(item);
     if (Array.isArray(item)) {
       item.forEach((entry, index) => {
-        if (typeof entry === "string" && entry.startsWith("data:image/")) {
+        if (typeof entry === "string" && (entry.startsWith("data:image/") || entry.startsWith("data:application/pdf"))) {
           const url = savePhotoDataUrl(entry);
           if (url) {
             item[index] = url;
@@ -331,7 +337,7 @@ function externalizePhotosInValue(value, seen = new WeakSet()) {
     }
     Object.keys(item).forEach(key => {
       const entry = item[key];
-      if (typeof entry === "string" && entry.startsWith("data:image/")) {
+      if (typeof entry === "string" && (entry.startsWith("data:image/") || entry.startsWith("data:application/pdf"))) {
         const url = savePhotoDataUrl(entry);
         if (url) {
           item[key] = url;
@@ -1018,6 +1024,7 @@ function publicState(db = readDb()) {
     downtimes: db.downtimes,
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
+    gpmJournal: db.gpmJournal,
     pprSheets: db.pprSheets,
     journalDueSince: db.journalDueSince,
     auditHistory: db.auditHistory,
@@ -2636,7 +2643,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "pprSheets", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
@@ -3588,7 +3595,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname.startsWith("/api/photos/") && req.method === "GET") {
     const fileName = path.basename(decodeURIComponent(pathname.slice("/api/photos/".length)));
-    if (!/^[a-f0-9]{40}\.(jpg|jpeg|png|webp)$/i.test(fileName)) {
+    if (!/^[a-f0-9]{40}\.(jpg|jpeg|png|webp|pdf)$/i.test(fileName)) {
       res.writeHead(404);
       res.end("Not found");
       return true;
@@ -3739,7 +3746,7 @@ async function handleApi(req, res, pathname, url) {
       }
       const operationalFields = [
         "checks", "requests", "directorMessages", "serviceCosts", "downtimes",
-        "compressorJournal", "gasJournal", "pprSheets", "journalDueSince", "auditHistory", "systemBroadcasts",
+        "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
       const hasOperationalPayload = operationalFields.some(field => Object.prototype.hasOwnProperty.call(body, field));
@@ -3770,6 +3777,11 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
         db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
+        db.gpmJournal = {
+          equipment: mergeObjectRecordsByFreshness(db.gpmJournal?.equipment, body.gpmJournal?.equipment),
+          inspections: mergeObjectRecordsByFreshness(db.gpmJournal?.inspections, body.gpmJournal?.inspections),
+          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, body.gpmJournal?.events)
+        };
         db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
