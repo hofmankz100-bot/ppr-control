@@ -134,7 +134,7 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.equal(outdatedKiosk.status, 200);
     assert.equal((await outdatedKiosk.json()).updateRequired, true);
     const recentOutdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
-      headers: { "x-app-version": "v274-attendance-two-columns" }
+      headers: { "x-app-version": "v272-contractor-attendance" }
     });
     assert.equal(recentOutdatedKiosk.status, 426);
     assert.equal((await api(baseUrl, "/api/attendance/kiosk/exit", editorCookie, {
