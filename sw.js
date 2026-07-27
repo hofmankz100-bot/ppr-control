@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v278-visible-terminal-binding";
+const CACHE_NAME = "ppr-v279-separate-press-downtimes";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=278-visible-terminal-binding",
+  "./styles.css?v=279-separate-press-downtimes",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=278-visible-terminal-binding",
+  "./app.js?v=279-separate-press-downtimes",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

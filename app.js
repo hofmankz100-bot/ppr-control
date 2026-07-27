@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v278-visible-terminal-binding";
+const APP_VERSION = "v279-separate-press-downtimes";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -7498,9 +7498,22 @@ function activeDowntime(equipmentId, nodeIndex) {
   return downtimes().find(item => item.key === keyValue && !item.endedAt) || null;
 }
 
+function downtimeGroupForEquipment(eq) {
+  if (!eq) return "";
+  if ([1, 2].includes(Number(eq.id)) || /\b(?:1540|2400)\b/.test(String(eq.name || ""))) {
+    return String(eq.name || "").trim();
+  }
+  return String(eq.area || "").trim();
+}
+
+function downtimeGroupLabel(item) {
+  return downtimeGroupForEquipment(equipmentById(Number(item?.equipmentId)))
+    || String(item?.equipment || item?.area || "").trim();
+}
+
 function activeDowntimeForArea(area) {
   return downtimes()
-    .filter(item => item.area === area && !item.endedAt)
+    .filter(item => downtimeGroupLabel(item) === area && !item.endedAt)
     .sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")))[0] || null;
 }
 
@@ -7645,15 +7658,15 @@ function downtimeOverlapMs(item, year = current.downtimeYear, month = current.do
 function downtimeMonthItems(area = "", year = current.downtimeYear, month = current.downtimeMonth) {
   const stoppedItems = downtimes()
     .map(item => ({ ...item, monthMs: downtimeOverlapMs(item, year, month) }))
-    .filter(item => item.monthMs > 0 && (!area || item.area === area));
+    .filter(item => item.monthMs > 0 && (!area || downtimeGroupLabel(item) === area));
   return stoppedItems;
 }
 
 function downtimeChartAreas() {
   return [...new Set([
-    ...AREAS,
-    ...allEquipment().map(item => item.area),
-    ...downtimeMonthItems().map(item => item.area)
+    ...AREAS.filter(area => area !== "Прессовый участок"),
+    ...allEquipment().map(downtimeGroupForEquipment),
+    ...downtimeMonthItems().map(downtimeGroupLabel)
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
@@ -7724,7 +7737,7 @@ function downtimePieChart(stats) {
   const monthMs = end.getTime() - start.getTime();
   const openAreas = new Set(downtimes()
     .filter(item => !item.endedAt && Date.parse(item.startedAt || "") < end.getTime())
-    .map(item => item.area)
+    .map(downtimeGroupLabel)
     .filter(Boolean));
   if (!monthMs || !activeStats.length) {
     return `<div class="empty-state">За выбранный месяц простоев нет</div>`;
@@ -14705,7 +14718,7 @@ function renderDowntime() {
   const stats = downtimeChartAreas().map(area => downtimeAreaStats(area));
   const activeCount = downtimes().filter(item => !item.endedAt).length;
   const monthCount = downtimeMonthItems().length;
-  ui.downtimeMeta.textContent = `Простоев за месяц: ${monthCount}. Активных остановок: ${activeCount}. Лимит простоя: 125 часов на цех за месяц.`;
+  ui.downtimeMeta.textContent = `Простоев за месяц: ${monthCount}. Активных остановок: ${activeCount}. Прессы 1540 и 2400 учитываются отдельно. Лимит простоя: 125 часов на каждое оборудование/цех за месяц.`;
   ui.downtimeChart.innerHTML = downtimePieChart(stats);
   ui.downtimeChart.querySelectorAll("[data-downtime-area]").forEach(button => {
     button.addEventListener("click", () => {
