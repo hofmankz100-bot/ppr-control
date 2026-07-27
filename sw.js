@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v292-admin-remark-close-dialog";
+const CACHE_NAME = "ppr-v293-remark-dialog-on-top";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=292-admin-remark-close-dialog",
+  "./styles.css?v=293-remark-dialog-on-top",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=292-admin-remark-close-dialog",
+  "./app.js?v=293-remark-dialog-on-top",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

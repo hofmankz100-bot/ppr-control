@@ -1002,6 +1002,7 @@ test("an executor can submit work immediately and is joined automatically", () =
 test("only admin can close a false or test remark without awarding points", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /const canCloseWithoutScore = resolutionActor\(\)\.role === "editor"/);
   assert.match(client, /data-remark-close-no-score/);
   assert.match(client, /data-close-remark-no-score/);
@@ -1015,6 +1016,9 @@ test("only admin can close a false or test remark without awarding points", () =
   assert.match(server, /remark\.resolutionCompletedParticipants = \[\]/);
   assert.match(server, /if \(action === "close-with-score"\)/);
   assert.match(server, /remark\.resolutionCompletedParticipants = \[performer\]/);
+  assert.match(styles, /\.send-kind-overlay\s*\{[\s\S]*?z-index:\s*5000/);
+  assert.match(styles, /\.send-kind-dialog\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 32px\)/);
+  assert.match(styles, /@media \(max-width:\s*560px\)[\s\S]*?\.send-kind-dialog/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {
