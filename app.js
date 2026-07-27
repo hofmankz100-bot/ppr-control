@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v285-gpm-journal-in-equipment";
+const APP_VERSION = "v286-catalog-edit-permissions";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -3444,7 +3444,7 @@ function canEditChecklist() {
 }
 
 function catalogEditorRole() {
-  return authenticatedProfile?.role || profile?.role || "";
+  return permissionBaseRole(authenticatedProfile?.role || profile?.role || "");
 }
 
 function isEquipmentCatalogEditingEnabled(equipmentOrId = current.equipmentId) {

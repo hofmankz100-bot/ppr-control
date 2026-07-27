@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v285-gpm-journal-in-equipment";
+const SERVER_VERSION = "v286-catalog-edit-permissions";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -3681,21 +3681,22 @@ async function handleApi(req, res, pathname, url) {
       const beforeState = JSON.stringify(publicState(db));
       const beforeRemarkKeys = openRemarkKeysServer(db);
       const authenticatedRole = String(req.authUser?.role || "");
+      const catalogRole = permissionBaseRoleServer(authenticatedRole);
       const authenticatedArea = String(req.authUser?.area || "").trim();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
-      if (["editor", "engineer", "shop"].includes(authenticatedRole) && body.catalog?.equipment) {
+      if (["editor", "engineer", "shop"].includes(catalogRole) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
           if (REMOVED_EQUIPMENT_IDS.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
-          if (authenticatedRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
+          if (catalogRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
           const requestedEditingEnabled = rawItem.editingEnabled === true;
           const editingEnabled = currentItem.editingEnabled === true;
-          if (authenticatedRole !== "editor" && !editingEnabled) return;
+          if (catalogRole !== "editor" && !editingEnabled) return;
           const item = { ...currentItem };
           if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
           if (Array.isArray(rawItem.nodes)) {
@@ -3709,7 +3710,7 @@ async function handleApi(req, res, pathname, url) {
             });
           }
           if (equipmentArea) item.area = equipmentArea;
-          if (authenticatedRole === "editor" && hasEditingPermissionField) {
+          if (catalogRole === "editor" && hasEditingPermissionField) {
             item.editingEnabled = requestedEditingEnabled;
             item.editingEnabledAt = String(
               rawItem.editingEnabledAt || currentItem.editingEnabledAt || ""

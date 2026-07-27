@@ -552,9 +552,13 @@ test("every signed-in role sees only the factory reliability graph while enginee
 
 test("node editing permission is selective per equipment and admin keeps full access", async () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /if \(role === "editor"\) return true;/);
   assert.match(source, /if \(!isEquipmentCatalogEditingEnabled\(eq\)\) return false;/);
   assert.match(source, /catalogEditorRole\(\) !== "editor"/);
+  assert.match(source, /return permissionBaseRole\(authenticatedProfile\?\.role \|\| profile\?\.role \|\| ""\)/);
+  assert.match(serverSource, /const catalogRole = permissionBaseRoleServer\(authenticatedRole\)/);
+  assert.match(serverSource, /\["editor", "engineer", "shop"\]\.includes\(catalogRole\)/);
   assert.match(source, /Разрешить редактирование/);
 
   const before = await (await fetch(`${baseUrl}/api/state`)).json();
