@@ -2645,6 +2645,7 @@ function changedStatePatch(before = {}, after = {}) {
 
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
+    || pathname === "/api/auth/session"
     || pathname === "/api/qr"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
