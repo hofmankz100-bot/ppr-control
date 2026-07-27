@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v291-close-no-score-in-warnings";
+const APP_VERSION = "v292-admin-remark-close-dialog";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -9677,6 +9677,7 @@ function openAllRemarkCards() {
             <footer>
               <small>${escapeHtml(target.author)}</small>
               ${resolutionActor().role === "editor" ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+              ${resolutionActor().role === "editor" ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
               <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
             </footer>
           </article>
@@ -9691,22 +9692,32 @@ function openAllRemarkCards() {
   overlay.querySelector("[data-close-open-remarks]")?.addEventListener("click", close);
   overlay.querySelectorAll("[data-close-remark-no-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     if (resolutionActor().role !== "editor") return;
-    const reason = window.prompt("Почему закрываем предупреждение без начисления баллов?", "Тестовая или ошибочная запись");
-    if (reason === null) return;
-    if (!String(reason).trim()) {
-      window.alert("Укажите причину закрытия.");
-      return;
-    }
-    if (!window.confirm("Закрыть это предупреждение без начисления баллов?")) return;
+    const decision = await askAdminRemarkClose(false);
+    if (!decision) return;
     await publishRemarkCollaborationAction(
       Number(button.dataset.equipmentId),
       Number(button.dataset.nodeIndex),
       button.dataset.date || todayISO(),
       "close-no-score",
-      { remarkId: button.dataset.remarkId || "", reason: String(reason).trim() }
+      { remarkId: button.dataset.remarkId || "", reason: decision.reason }
     );
     close();
     showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
+    window.setTimeout(() => openAllRemarkCards(), 50);
+  }, "Закрываем...")));
+  overlay.querySelectorAll("[data-close-remark-with-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    if (resolutionActor().role !== "editor") return;
+    const decision = await askAdminRemarkClose(true);
+    if (!decision) return;
+    await publishRemarkCollaborationAction(
+      Number(button.dataset.equipmentId),
+      Number(button.dataset.nodeIndex),
+      button.dataset.date || todayISO(),
+      "close-with-score",
+      { remarkId: button.dataset.remarkId || "", reason: decision.reason, performerKey: decision.performerKey }
+    );
+    close();
+    showAppToast(`Предупреждение закрыто. Баллы получит: ${decision.performerName}.`, "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Закрываем...")));
   overlay.querySelectorAll("[data-open-remark-card]").forEach(button => button.addEventListener("click", () => {
@@ -9722,6 +9733,54 @@ function openAllRemarkCards() {
     show("checklist");
   }));
   document.body.append(overlay);
+}
+
+function askAdminRemarkClose(withScore = false) {
+  if (resolutionActor().role !== "editor") return Promise.resolve(null);
+  const workers = eligibleResolutionUsers(null);
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "send-kind-overlay";
+    const close = value => {
+      overlay.remove();
+      resolve(value);
+    };
+    overlay.innerHTML = `
+      <div class="send-kind-dialog" role="dialog" aria-modal="true">
+        <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
+        <p>${withScore ? "Выберите фактического исполнителя. Баллы будут начислены только ему." : "Запись закроется как тестовая или ошибочная. Баллы не начисляются."}</p>
+        ${withScore ? `<label><span>Исполнитель</span><select data-admin-close-performer><option value="">Выберите сотрудника</option>${workers.map(worker => `<option value="${escapeHtml(worker.key)}">${escapeHtml(resolutionParticipantLabel(worker))}</option>`).join("")}</select></label>` : ""}
+        <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
+        <div class="downtime-type-error" data-admin-close-error></div>
+        <div class="send-kind-actions">
+          <button type="button" data-admin-close-submit>${withScore ? "Закрыть и начислить баллы" : "Закрыть без баллов"}</button>
+          <button type="button" class="secondary" data-admin-close-cancel>Отмена</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector("[data-admin-close-submit]")?.addEventListener("click", () => {
+      const reason = String(overlay.querySelector("[data-admin-close-reason]")?.value || "").trim();
+      const performerKey = String(overlay.querySelector("[data-admin-close-performer]")?.value || "");
+      const performer = workers.find(worker => worker.key === performerKey);
+      const error = overlay.querySelector("[data-admin-close-error]");
+      if (withScore && !performer) {
+        if (error) error.textContent = "Выберите сотрудника, которому начислить баллы.";
+        return;
+      }
+      if (!reason) {
+        if (error) error.textContent = withScore ? "Напишите, что было выполнено." : "Укажите причину закрытия.";
+        overlay.querySelector("[data-admin-close-reason]")?.focus();
+        return;
+      }
+      close({ reason, performerKey, performerName: performer?.name || "" });
+    });
+    overlay.querySelector("[data-admin-close-cancel]")?.addEventListener("click", () => close(null));
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) close(null);
+    });
+    document.body.append(overlay);
+    overlay.querySelector(withScore ? "[data-admin-close-performer]" : "[data-admin-close-reason]")?.focus();
+  });
 }
 
 function returnToOpenRemarkCards() {
@@ -11318,16 +11377,11 @@ function renderNodeWalkthrough(eq) {
       }, "Публикуется..."));
       card.querySelector("[data-remark-close-no-score]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         if (resolutionActor().role !== "editor") return;
-        const reason = window.prompt("Почему закрываем предупреждение без начисления баллов?", "Тестовая или ошибочная запись");
-        if (reason === null) return;
-        if (!String(reason).trim()) {
-          window.alert("Укажите причину закрытия.");
-          return;
-        }
-        if (!window.confirm("Закрыть предупреждение без начисления баллов?")) return;
+        const decision = await askAdminRemarkClose(false);
+        if (!decision) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "close-no-score", {
           remarkId,
-          reason: String(reason).trim()
+          reason: decision.reason
         });
         if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
         else renderNodeWalkthrough(equipmentById(eq.id));

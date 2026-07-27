@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v291-close-no-score-in-warnings";
+const APP_VERSION = "v292-admin-remark-close-dialog";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

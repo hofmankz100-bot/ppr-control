@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v291-close-no-score-in-warnings";
+const CACHE_NAME = "ppr-v292-admin-remark-close-dialog";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=291-close-no-score-in-warnings",
+  "./styles.css?v=292-admin-remark-close-dialog",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=291-close-no-score-in-warnings",
+  "./app.js?v=292-admin-remark-close-dialog",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

@@ -1005,11 +1005,16 @@ test("only admin can close a false or test remark without awarding points", () =
   assert.match(client, /const canCloseWithoutScore = resolutionActor\(\)\.role === "editor"/);
   assert.match(client, /data-remark-close-no-score/);
   assert.match(client, /data-close-remark-no-score/);
+  assert.match(client, /data-close-remark-with-score/);
+  assert.match(client, /function askAdminRemarkClose\(withScore = false\)/);
+  assert.doesNotMatch(client, /Почему закрываем предупреждение без начисления баллов/);
   assert.match(client, /overlay\.querySelectorAll\("\[data-close-remark-no-score\]"\)/);
   assert.match(client, /if \(item\?\.closedWithoutScore\) return \[\]/);
   assert.match(server, /if \(action === "close-no-score"\)/);
   assert.match(server, /if \(actor\.role !== "editor"\) return \{ error: "remark_confirmation_forbidden" \}/);
   assert.match(server, /remark\.resolutionCompletedParticipants = \[\]/);
+  assert.match(server, /if \(action === "close-with-score"\)/);
+  assert.match(server, /remark\.resolutionCompletedParticipants = \[performer\]/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {

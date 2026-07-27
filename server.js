@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v291-close-no-score-in-warnings";
+const SERVER_VERSION = "v292-admin-remark-close-dialog";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -4327,7 +4327,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "close-no-score"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "close-no-score", "close-with-score"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -4378,7 +4378,7 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         };
       }
-      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score", "close-with-score"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
@@ -4581,6 +4581,54 @@ async function handleApi(req, res, pathname, url) {
         clearParticipants = participants;
         pushTitle = "Предупреждение закрыто без баллов";
         pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
+      }
+
+      if (action === "close-with-score") {
+        if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
+        const reason = String(body.reason || "").trim().slice(0, 2000);
+        const performerKey = String(body.performerKey || "").trim();
+        const performerUser = (db.users || []).find(user =>
+          resolutionUserKeyServer(user) === performerKey
+          && user.approved !== false
+          && user.pendingApproval !== true
+          && isResolutionExecutorRoleServer(user.role)
+        );
+        if (!reason) return { error: "remark_resolution_text_required" };
+        if (!performerUser) return { error: "remark_participant_invalid" };
+        const performer = sanitizeResolutionParticipant(performerUser);
+        participants = [performer];
+        remark.resolutionParticipants = [performer];
+        remark.resolutionLeadKey = performer.key;
+        remark.resolutionLeadName = performer.name;
+        remark.resolutionCompletedParticipants = [performer];
+        remark.resolved = true;
+        remark.resolvedAt = now;
+        remark.resolvedDurationMs = Math.max(0, Date.parse(now) - (Date.parse(remark.at || "") || Date.parse(now)));
+        remark.resolvedByKey = performer.key;
+        remark.resolvedByName = performer.name;
+        remark.resolvedByRole = performer.role;
+        remark.resolvedComment = reason;
+        remark.resolvedPhoto = "";
+        remark.closedWithoutScore = false;
+        remark.resolutionPendingConfirmation = false;
+        remark.confirmedAt = now;
+        remark.confirmedByKey = actor.key;
+        remark.confirmedByName = actor.name;
+        remark.confirmedByRole = actor.role;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "confirmed",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          targetKey: performer.key,
+          targetName: performer.name,
+          reason,
+          at: now
+        });
+        notifyParticipants = [performer];
+        pushTitle = "Устранение закрыто администратором";
+        pushBody = `${performer.name}: ${reason.slice(0, 120)}`;
       }
 
       if (action === "admin-close") {
