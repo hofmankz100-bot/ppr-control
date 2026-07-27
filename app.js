@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v275-reliable-forced-update";
+const APP_VERSION = "v276-two-stage-cache-reset";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1618,22 +1618,9 @@ function showRequiredClientUpdate(requiredVersion = "") {
     const button = event.currentTarget;
     const status = overlay.querySelector("[data-required-update-status]");
     setButtonBusy(button, true, "Обновляем…");
-    if (status) status.textContent = "Удаляем старую версию и загружаем новую…";
-    try {
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map(key => caches.delete(key)));
-      }
-      if ("serviceWorker" in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
-      }
-    } finally {
-      const url = new URL(window.location.href);
-      url.searchParams.set("v", requiredVersion || `update-${Date.now()}`);
-      url.searchParams.set("refresh", String(Date.now()));
-      window.location.replace(url.toString());
-    }
+    if (status) status.textContent = "Открываем безопасную страницу обновления…";
+    const target = requiredVersion || APP_VERSION;
+    window.location.replace(`/update.html?target=${encodeURIComponent(target)}&refresh=${Date.now()}`);
   });
 }
 

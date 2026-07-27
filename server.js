@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v275-reliable-forced-update";
+const SERVER_VERSION = "v276-two-stage-cache-reset";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -94,6 +94,7 @@ const publicRootFiles = new Set([
   "hoffmann-logo.png",
   "phone-fix.html",
   "cache-clear.html",
+  "update.html",
   "ppr-ios-profile.mobileconfig"
 ]);
 
@@ -4990,7 +4991,9 @@ async function handleApi(req, res, pathname, url) {
 }
 
 function serveStatic(req, res, pathname) {
-  const cleanPath = pathname === "/" ? "index.html" : pathname.slice(1);
+  const requestUrl = new URL(req.url || "/", "http://localhost");
+  const legacyRefreshRequest = pathname === "/" && requestUrl.searchParams.has("refresh");
+  const cleanPath = legacyRefreshRequest ? "update.html" : pathname === "/" ? "index.html" : pathname.slice(1);
   const file = path.resolve(root, cleanPath);
   const relative = path.relative(root, file);
   const isInsideRoot = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
@@ -5008,9 +5011,9 @@ function serveStatic(req, res, pathname) {
     }
     const extension = path.extname(file).toLowerCase();
     const contentType = contentTypes[extension] || "application/octet-stream";
-    const versioned = Boolean(new URL(req.url || "/", "http://localhost").searchParams.get("v"));
+    const versioned = Boolean(requestUrl.searchParams.get("v"));
     const cacheControl = pathname === "/" || extension === ".html"
-      ? "no-cache"
+      ? cleanPath === "update.html" ? "no-store" : "no-cache"
       : versioned
         ? "public, max-age=31536000, immutable"
         : "public, max-age=3600";

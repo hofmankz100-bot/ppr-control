@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v275-reliable-forced-update";
+const CACHE_NAME = "ppr-v276-two-stage-cache-reset";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=275-reliable-forced-update",
+  "./styles.css?v=276-two-stage-cache-reset",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=275-reliable-forced-update",
+  "./app.js?v=276-two-stage-cache-reset",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",
