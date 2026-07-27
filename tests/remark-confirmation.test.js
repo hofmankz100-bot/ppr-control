@@ -1004,6 +1004,8 @@ test("only admin can close a false or test remark without awarding points", () =
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(client, /const canCloseWithoutScore = resolutionActor\(\)\.role === "editor"/);
   assert.match(client, /data-remark-close-no-score/);
+  assert.match(client, /data-close-remark-no-score/);
+  assert.match(client, /overlay\.querySelectorAll\("\[data-close-remark-no-score\]"\)/);
   assert.match(client, /if \(item\?\.closedWithoutScore\) return \[\]/);
   assert.match(server, /if \(action === "close-no-score"\)/);
   assert.match(server, /if \(actor\.role !== "editor"\) return \{ error: "remark_confirmation_forbidden" \}/);

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v290-admin-close-remark-no-score";
+const APP_VERSION = "v291-close-no-score-in-warnings";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -9676,6 +9676,7 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
+              ${resolutionActor().role === "editor" ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
               <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
             </footer>
           </article>
@@ -9688,6 +9689,26 @@ function openAllRemarkCards() {
     if (event.target === overlay) close();
   });
   overlay.querySelector("[data-close-open-remarks]")?.addEventListener("click", close);
+  overlay.querySelectorAll("[data-close-remark-no-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    if (resolutionActor().role !== "editor") return;
+    const reason = window.prompt("Почему закрываем предупреждение без начисления баллов?", "Тестовая или ошибочная запись");
+    if (reason === null) return;
+    if (!String(reason).trim()) {
+      window.alert("Укажите причину закрытия.");
+      return;
+    }
+    if (!window.confirm("Закрыть это предупреждение без начисления баллов?")) return;
+    await publishRemarkCollaborationAction(
+      Number(button.dataset.equipmentId),
+      Number(button.dataset.nodeIndex),
+      button.dataset.date || todayISO(),
+      "close-no-score",
+      { remarkId: button.dataset.remarkId || "", reason: String(reason).trim() }
+    );
+    close();
+    showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
+    window.setTimeout(() => openAllRemarkCards(), 50);
+  }, "Закрываем...")));
   overlay.querySelectorAll("[data-open-remark-card]").forEach(button => button.addEventListener("click", () => {
     current.equipmentId = Number(button.dataset.equipmentId);
     current.nodeIndex = Number(button.dataset.nodeIndex);
