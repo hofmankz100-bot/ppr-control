@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v287-open-new-gpm-journal";
+const SERVER_VERSION = "v288-live-catalog-names";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -3692,6 +3692,7 @@ async function handleApi(req, res, pathname, url) {
           if (REMOVED_EQUIPMENT_IDS.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
+          const requestedArea = String(rawItem.area || currentItem.area || "").trim().slice(0, 200);
           if (catalogRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
           const requestedEditingEnabled = rawItem.editingEnabled === true;
@@ -3709,7 +3710,7 @@ async function handleApi(req, res, pathname, url) {
               item.reminders[nodeIndex] = lines.map(value => String(value || "").trim().slice(0, 1000)).filter(Boolean).slice(0, 100);
             });
           }
-          if (equipmentArea) item.area = equipmentArea;
+          if (requestedArea) item.area = requestedArea;
           if (catalogRole === "editor" && hasEditingPermissionField) {
             item.editingEnabled = requestedEditingEnabled;
             item.editingEnabledAt = String(

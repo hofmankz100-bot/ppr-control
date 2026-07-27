@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v287-open-new-gpm-journal";
+const APP_VERSION = "v288-live-catalog-names";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -2861,7 +2861,7 @@ function editorPreviewRole() {
 function editorPreviewArea(role = editorPreviewRole()) {
   if (!isEditorSession() || !needsArea(role)) return "";
   const savedArea = localStorage.getItem(EDITOR_PREVIEW_AREA_KEY) || "";
-  return AREAS.includes(savedArea) ? savedArea : "";
+  return availableEquipmentAreas().includes(savedArea) ? savedArea : "";
 }
 
 function activeProfileFromSession(user) {
@@ -2875,7 +2875,7 @@ function activeProfileFromSession(user) {
   const previewRole = editorPreviewRole();
   const accessRole = permissionBaseRole(previewRole);
   const area = needsArea(accessRole)
-    ? editorPreviewArea(accessRole) || user.area || AREAS.find(areaName => areaName !== "Резерв") || ""
+    ? editorPreviewArea(accessRole) || user.area || availableEquipmentAreas().find(areaName => areaName !== "Резерв") || ""
     : user.area || "";
   return {
     ...user,
@@ -2900,7 +2900,7 @@ function setEditorPreviewRole(role) {
 
 function setEditorPreviewArea(area) {
   if (!isEditorSession()) return;
-  if (area && !AREAS.includes(area)) return;
+  if (area && !availableEquipmentAreas().includes(area)) return;
   if (area) localStorage.setItem(EDITOR_PREVIEW_AREA_KEY, area);
   else localStorage.removeItem(EDITOR_PREVIEW_AREA_KEY);
   profile = activeProfileFromSession(authenticatedProfile);
@@ -3525,15 +3525,22 @@ function allEquipment() {
   });
 }
 
+function availableEquipmentAreas() {
+  return [...new Set(allEquipment().map(eq => String(eq.area || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ru"));
+}
+
 function saveEquipmentCatalog(equipmentId, patch) {
   const eq = equipmentById(equipmentId);
   if (!eq || !canEditEquipmentCatalog(eq)) return false;
   const item = equipmentOverride(equipmentId);
   const nextName = String(patch?.name || eq.name).trim() || eq.name;
+  const nextArea = String(patch?.area || eq.area).trim() || eq.area;
   item.name = nextName;
-  item.area ||= eq.area;
+  item.area = nextArea;
   item.updatedAt = new Date().toISOString();
   if (nextName !== eq.name) recordAudit("Изменил название оборудования", eq.name, "", `Новое название: ${nextName}`);
+  if (nextArea !== eq.area) recordAudit("Изменил участок оборудования", nextName, "", `${eq.area} → ${nextArea}`);
   saveState();
   return true;
 }
@@ -4033,7 +4040,7 @@ function renderProfile() {
     <label class="editor-area-switcher">
       <span>Цех</span>
       <select id="editorPreviewAreaSelect">
-        ${AREAS.filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}
+        ${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}
       </select>
     </label>
   ` : "";
@@ -7729,7 +7736,7 @@ function downtimeMonthItems(area = "", year = current.downtimeYear, month = curr
 
 function downtimeChartAreas() {
   return [...new Set([
-    ...AREAS.filter(area => area !== "Прессовый участок"),
+    ...availableEquipmentAreas().filter(area => area !== "Прессовый участок"),
     ...allEquipment().map(downtimeGroupForEquipment),
     ...downtimeMonthItems().map(downtimeGroupLabel)
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
@@ -10695,8 +10702,9 @@ function renderEquipment() {
           </div>
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
-              <summary>Редактировать название</summary>
+              <summary>Редактировать оборудование</summary>
               <label><span>Название оборудования</span><input data-equipment-name="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.name)}"></label>
+              <label><span>Участок</span><input data-equipment-area="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.area)}"></label>
               <div class="catalog-editor-actions">
                 <button type="button" data-save-equipment="${eq.id}">Сохранить</button>
                 <button type="button" class="secondary" data-cancel-equipment="${eq.id}">Отмена</button>
@@ -10748,12 +10756,15 @@ function renderEquipment() {
       }
       tr.querySelector("[data-save-equipment]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
         const input = tr.querySelector(`[data-equipment-name="${eq.id}"]`);
-        if (!saveEquipmentCatalog(eq.id, { name: input?.value || eq.name })) return;
+        const areaInput = tr.querySelector(`[data-equipment-area="${eq.id}"]`);
+        if (!saveEquipmentCatalog(eq.id, { name: input?.value || eq.name, area: areaInput?.value || eq.area })) return;
         renderEquipment();
       }, "Сохраняется..."));
       tr.querySelector("[data-cancel-equipment]")?.addEventListener("click", () => {
         const input = tr.querySelector(`[data-equipment-name="${eq.id}"]`);
         if (input) input.value = eq.name;
+        const areaInput = tr.querySelector(`[data-equipment-area="${eq.id}"]`);
+        if (areaInput) areaInput.value = eq.area;
         const editor = tr.querySelector(`[data-equipment-editor="${eq.id}"]`);
         if (editor) editor.open = false;
       });
@@ -14134,7 +14145,7 @@ function serviceCosts() {
 }
 
 function serviceCostAreas() {
-  return [...new Set([...AREAS, ...allEquipment().map(eq => eq.area)].filter(Boolean))]
+  return [...new Set([...availableEquipmentAreas(), ...serviceCosts().map(item => item.area)].filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ru"));
 }
 
@@ -15272,7 +15283,7 @@ function renderDowntime() {
       ui.downtimeDetails.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
-  const selectedArea = current.selectedDowntimeArea || stats.find(item => item.items.length)?.area || AREAS[0];
+  const selectedArea = current.selectedDowntimeArea || stats.find(item => item.items.length)?.area || availableEquipmentAreas()[0];
   if (!current.selectedDowntimeArea) current.selectedDowntimeArea = selectedArea;
   const selectedItems = downtimeMonthItems(selectedArea)
     .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
@@ -15686,7 +15697,7 @@ function renderDirectorUsers() {
       .map(([role, access]) => `<option value="${role}" ${normalizedSelected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
       .join("")}`;
   };
-  const areaOptions = selected => `<option value="">Без участка</option>${AREAS
+  const areaOptions = selected => `<option value="">Без участка</option>${availableEquipmentAreas()
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `

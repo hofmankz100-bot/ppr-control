@@ -559,6 +559,10 @@ test("node editing permission is selective per equipment and admin keeps full ac
   assert.match(source, /return permissionBaseRole\(authenticatedProfile\?\.role \|\| profile\?\.role \|\| ""\)/);
   assert.match(serverSource, /const catalogRole = permissionBaseRoleServer\(authenticatedRole\)/);
   assert.match(serverSource, /\["editor", "engineer", "shop"\]\.includes\(catalogRole\)/);
+  assert.match(source, /function availableEquipmentAreas\(\)/);
+  assert.match(source, /const nextArea = String\(patch\?\.area \|\| eq\.area\)/);
+  assert.match(source, /data-equipment-area=/);
+  assert.match(serverSource, /const requestedArea = String\(rawItem\.area \|\| currentItem\.area \|\| ""\)/);
   assert.match(source, /Разрешить редактирование/);
 
   const before = await (await fetch(`${baseUrl}/api/state`)).json();
