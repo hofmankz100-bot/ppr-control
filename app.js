@@ -75,7 +75,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v276-two-stage-cache-reset";
+const APP_VERSION = "v277-stable-client-protocol";
+const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1580,7 +1581,7 @@ async function apiJson(url, options = {}) {
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetch(url, {
-      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, ...(options.headers || {}) },
+      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(options.headers || {}) },
       ...options,
       signal: options.signal || controller.signal
     });

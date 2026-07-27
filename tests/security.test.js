@@ -8,7 +8,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v276-two-stage-cache-reset";
+const APP_VERSION = "v277-stable-client-protocol";
+const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -84,6 +85,7 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.match(await legacyRefreshPage.text(), /Устанавливаем обновление/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-old" } })).status, 426);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-future-ui", "x-client-protocol": CLIENT_PROTOCOL_VERSION } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v275-reliable-forced-update" } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v273-required-client-update" } })).status, 401);
     const compatibleHealth = await fetch(`${baseUrl}/api/health`, { headers: { "x-app-version": "v275-reliable-forced-update" } }).then(response => response.json());

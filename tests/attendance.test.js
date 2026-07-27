@@ -8,7 +8,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v276-two-stage-cache-reset";
+const APP_VERSION = "v277-stable-client-protocol";
+const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -29,7 +30,7 @@ async function reservePort() {
 async function login(baseUrl, identifier, password) {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+    headers: { "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
     body: JSON.stringify({ identifier, password })
   });
   assert.equal(response.status, 200);
@@ -39,7 +40,7 @@ async function login(baseUrl, identifier, password) {
 async function api(baseUrl, pathname, cookie, options = {}) {
   return fetch(`${baseUrl}${pathname}`, {
     ...options,
-    headers: { "content-type": "application/json", "x-app-version": APP_VERSION, cookie, ...(options.headers || {}) }
+    headers: { "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION, cookie, ...(options.headers || {}) }
   });
 }
 

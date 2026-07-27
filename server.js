@@ -46,7 +46,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v276-two-stage-cache-reset";
+const SERVER_VERSION = "v277-stable-client-protocol";
+const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
   "v274-attendance-two-columns",
@@ -2657,7 +2658,9 @@ async function handleApi(req, res, pathname, url) {
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
-  if (process.env.NODE_ENV !== "test" && !versionExempt && !SUPPORTED_CLIENT_VERSIONS.has(clientVersion)) {
+  const clientProtocol = String(req.headers["x-client-protocol"] || "");
+  const compatibleClient = clientProtocol === CLIENT_PROTOCOL_VERSION || SUPPORTED_CLIENT_VERSIONS.has(clientVersion);
+  if (process.env.NODE_ENV !== "test" && !versionExempt && !compatibleClient) {
     if (pathname === "/api/attendance/kiosk" && req.method === "GET" && !clientVersion) {
       const updateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
         <rect width="720" height="720" rx="40" fill="#fff"/>
@@ -3249,11 +3252,12 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
-    const reportedClientVersion = SUPPORTED_CLIENT_VERSIONS.has(clientVersion) ? clientVersion : SERVER_VERSION;
+    const reportedClientVersion = compatibleClient && clientVersion ? clientVersion : SERVER_VERSION;
     sendJson(res, 200, {
       ok: true,
       version: reportedClientVersion,
       latestVersion: SERVER_VERSION,
+      clientProtocol: CLIENT_PROTOCOL_VERSION,
       time: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
       memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
