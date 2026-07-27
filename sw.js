@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v270-attendance-status-dots";
+const CACHE_NAME = "ppr-v271-attendance-call-actions";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=270-attendance-status-dots",
+  "./styles.css?v=271-attendance-call-actions",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=270-attendance-status-dots",
+  "./app.js?v=271-attendance-call-actions",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

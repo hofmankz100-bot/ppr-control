@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v270-attendance-status-dots";
+const APP_VERSION = "v271-attendance-call-actions";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1622,6 +1622,11 @@ function attendanceWhatsAppUrl(phone = "") {
   return digits ? `https://wa.me/${digits}` : "";
 }
 
+function attendancePhoneUrl(phone = "") {
+  const clean = String(phone).trim().replace(/[^\d+]/g, "");
+  return clean ? `tel:${clean}` : "";
+}
+
 async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
   if (!isProfileReady()) return null;
   try {
@@ -1818,14 +1823,18 @@ function attendanceSessionRows(items = [], admin = false) {
   return items.map(person => {
     const item = person.session || person;
     const onDuty = person.onDuty !== undefined ? person.onDuty : Boolean(item?.startedAt && Date.parse(item.expiresAt || "") > Date.now() && !item.endedAt);
-    const whatsapp = attendanceWhatsAppUrl(person.phone || item.phone);
+    const phone = person.phone || item.phone || "";
+    const whatsapp = attendanceWhatsAppUrl(phone);
+    const phoneUrl = attendancePhoneUrl(phone);
     return `<div class="attendance-person ${onDuty ? "on-duty" : "off-duty"}">
       <div class="attendance-person-main"><span class="attendance-status-dot ${onDuty ? "green" : "red"}" aria-label="${onDuty ? "На работе" : "Не на работе"}"></span><div>
         <div class="attendance-person-heading"><strong>${escapeHtml(person.name || item.name || "Сотрудник")}</strong><span class="attendance-state-text ${onDuty ? "green" : "red"}">${onDuty ? "На работе" : "Не на работе"}</span></div>
         <span>${escapeHtml(ROLE_ACCESS[person.role || item.role]?.label || person.role || item.role || "")}${(person.area || item.area) ? ` · ${escapeHtml(person.area || item.area)}` : ""}</span>
+        ${phone ? `<a class="attendance-phone-number" href="${escapeHtml(phoneUrl)}">${escapeHtml(phone)}</a>` : ""}
         <small>${onDuty ? `На работе · сканирование ${escapeHtml(attendanceTime(item.startedAt))} · до ${escapeHtml(attendanceTime(item.expiresAt))}` : "Не на работе · QR не отсканирован"}</small>
       </div></div>
       <div class="attendance-person-actions">
+        ${phoneUrl ? `<a class="button-link attendance-call" href="${escapeHtml(phoneUrl)}">Позвонить</a>` : ""}
         ${whatsapp ? `<a class="button-link attendance-whatsapp" href="${escapeHtml(whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
         ${admin && onDuty ? `<button type="button" data-attendance-end="${escapeHtml(item.id)}">Закрыть</button>` : ""}
         ${admin && !onDuty ? `<button type="button" data-attendance-grant-person="${escapeHtml(person.userKey || "")}">Открыть смену</button>` : ""}
