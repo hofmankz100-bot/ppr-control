@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v288-live-catalog-names";
+const CACHE_NAME = "ppr-v289-auto-join-remark-resolution";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=288-live-catalog-names",
+  "./styles.css?v=289-auto-join-remark-resolution",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=288-live-catalog-names",
+  "./app.js?v=289-auto-join-remark-resolution",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

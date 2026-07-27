@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v288-live-catalog-names";
+const APP_VERSION = "v289-auto-join-remark-resolution";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -5747,6 +5747,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const completedBy = resolutionParticipantsText(entry, resolvedBy || "Сотрудник");
   const submittedParticipants = resolutionParticipantsText(entry, submittedBy || "Сотрудник");
   const actorCanJoin = isResolutionExecutorRole(resolutionActor().jobRole || resolutionActor().role);
+  const canWriteResolution = currentParticipant || actorCanJoin;
 
   return `
     <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
@@ -5839,8 +5840,8 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             <input data-remark-action-photo type="file" accept="image/*" capture="environment">
             <div class="photo-preview remark-action-preview">${draftPhoto ? `<img src="${draftPhoto}" alt="Фото работы"><button type="button" data-clear-remark-photo>Удалить фото</button>` : ""}</div>
             <div class="node-walk-actions">
-              <button type="button" class="secondary" data-remark-work-update ${currentParticipant ? "" : "disabled"}>Добавить запись о работе</button>
-              <button type="button" data-remark-resolve data-permission-disabled="${canResolve ? "false" : "true"}" ${!canResolve ? "disabled" : ""}>Устранено</button>
+              <button type="button" class="secondary" data-remark-work-update ${canWriteResolution ? "" : "disabled"}>Добавить запись о работе</button>
+              <button type="button" data-remark-resolve data-permission-disabled="${canResolve || actorCanJoin ? "false" : "true"}" ${canResolve || actorCanJoin ? "" : "disabled"}>Устранено</button>
             </div>
           </div>
           ${resolutionEvents.length ? `
@@ -11254,6 +11255,13 @@ function renderNodeWalkthrough(eq) {
         const preview = card.querySelector(".remark-action-preview");
         if (preview) preview.innerHTML = "";
       });
+      const ensureCurrentResolverJoined = async () => {
+        if (isResolutionParticipant(remarkEntry)) return;
+        if (!isResolutionExecutorRole(resolutionActor().jobRole || resolutionActor().role)) {
+          throw new Error("remark_executor_required");
+        }
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "start", { remarkId });
+      };
       card.querySelector("[data-remark-work-update]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         const textBox = card.querySelector("[data-remark-action-text]");
         const text = String(textBox?.value || "").trim();
@@ -11261,6 +11269,7 @@ function renderNodeWalkthrough(eq) {
           textBox?.focus();
           return;
         }
+        await ensureCurrentResolverJoined();
         await publishRemarkCollaborationAction(eq.id, index, current.date, "update", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
         remarkResolutionPhotoDrafts.delete(photoKey);
         renderNodeWalkthrough(equipmentById(eq.id));
@@ -11273,6 +11282,7 @@ function renderNodeWalkthrough(eq) {
           return;
         }
         if (!window.confirm("Работа выполнена? Зафиксировать время устранения и передать на подтверждение?")) return;
+        await ensureCurrentResolverJoined();
         await publishRemarkCollaborationAction(eq.id, index, current.date, "resolve", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
         remarkResolutionPhotoDrafts.delete(photoKey);
         if (current.returnToRemarkListAfterResolve) {

@@ -991,6 +991,14 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(appSource, /ratingParticipants: completedResolutionParticipants\(entry\)/);
 });
 
+test("an executor can submit work immediately and is joined automatically", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /const canWriteResolution = currentParticipant \|\| actorCanJoin/);
+  assert.match(source, /const ensureCurrentResolverJoined = async \(\) =>/);
+  assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"update"/);
+  assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
+});
+
 test("gas and compressor printing gathers filled days without date selectors", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /function printGasJournalSheet\(section\)/);
