@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v283-gpm-personal-manager";
+const APP_VERSION = "v284-manage-gpm-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

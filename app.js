@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v283-gpm-personal-manager";
+const APP_VERSION = "v284-manage-gpm-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -929,10 +929,11 @@ function loadState() {
     parsed.downtimes ||= [];
     parsed.compressorJournal ||= {};
     parsed.gasJournal ||= {};
-    parsed.gpmJournal ||= { equipment: {}, inspections: {}, events: {} };
+    parsed.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
     parsed.gpmJournal.equipment ||= {};
     parsed.gpmJournal.inspections ||= {};
     parsed.gpmJournal.events ||= {};
+    parsed.gpmJournal.managers ||= {};
     parsed.pprSheets ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
@@ -951,7 +952,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -2391,7 +2392,11 @@ function mergeRemoteState(remote = {}, options = {}) {
       : mergeObjectByFreshnessLocal(state.gpmJournal?.inspections || {}, remote.gpmJournal?.inspections || {}),
     events: preferRemote
       ? { ...(remote.gpmJournal?.events || {}) }
-      : mergeObjectByFreshnessLocal(state.gpmJournal?.events || {}, remote.gpmJournal?.events || {})
+      : mergeObjectByFreshnessLocal(state.gpmJournal?.events || {}, remote.gpmJournal?.events || {}),
+    managers: preferRemote
+      ? { ...(remote.gpmJournal?.managers || {}) }
+      : mergeObjectByFreshnessLocal(state.gpmJournal?.managers || {}, remote.gpmJournal?.managers || {}),
+    managerMigrationVersion: remote.gpmJournal?.managerMigrationVersion || state.gpmJournal?.managerMigrationVersion || ""
   };
   state.pprSheets = preferRemote
     ? { ...(remote.pprSheets || {}) }
@@ -2428,10 +2433,12 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.compressorJournal) state.compressorJournal = mergeObjectByFreshnessLocal(state.compressorJournal, remote.compressorJournal);
   if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
   if (remote.gpmJournal) {
-    state.gpmJournal ||= { equipment: {}, inspections: {}, events: {} };
+    state.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
     state.gpmJournal.equipment = mergeObjectByFreshnessLocal(state.gpmJournal.equipment, remote.gpmJournal.equipment);
     state.gpmJournal.inspections = mergeObjectByFreshnessLocal(state.gpmJournal.inspections, remote.gpmJournal.inspections);
     state.gpmJournal.events = mergeObjectByFreshnessLocal(state.gpmJournal.events, remote.gpmJournal.events);
+    state.gpmJournal.managers = mergeObjectByFreshnessLocal(state.gpmJournal.managers, remote.gpmJournal.managers);
+    state.gpmJournal.managerMigrationVersion = remote.gpmJournal.managerMigrationVersion || state.gpmJournal.managerMigrationVersion || "";
   }
   if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
@@ -12397,10 +12404,11 @@ const GPM_INSPECTION_POINTS = [
 ];
 
 function gpmStore() {
-  state.gpmJournal ||= { equipment: {}, inspections: {}, events: {} };
+  state.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
   state.gpmJournal.equipment ||= {};
   state.gpmJournal.inspections ||= {};
   state.gpmJournal.events ||= {};
+  state.gpmJournal.managers ||= {};
   return state.gpmJournal;
 }
 
@@ -12432,13 +12440,15 @@ function gpmIsAdmin() {
   return profile?.role === "editor";
 }
 
-const GPM_PERSONAL_MANAGERS = new Set([
-  "нурахунов махсут махмутович"
-]);
+function gpmManagerKeys() {
+  const existingUsers = new Set(gpmUsers().map(gpmUserKey));
+  return new Set(Object.values(gpmStore().managers || {})
+    .filter(grant => grant?.active && existingUsers.has(grant.userKey))
+    .map(grant => grant.userKey));
+}
 
 function gpmCanManage() {
-  const name = String(profile?.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
-  return gpmIsAdmin() || profile?.role === "mechanicalEngineer" || GPM_PERSONAL_MANAGERS.has(name);
+  return gpmIsAdmin() || gpmManagerKeys().has(gpmUserKey());
 }
 
 function gpmIsEngineer(item) {
@@ -12493,6 +12503,41 @@ function gpmAssignmentOptions(selected = "", allowEmpty = true) {
   return `${allowEmpty ? `<option value="">Не назначен</option>` : ""}${gpmUsers().map(user =>
     `<option value="${escapeHtml(gpmUserKey(user))}" ${gpmUserKey(user) === selected ? "selected" : ""}>${escapeHtml(user.name || "")} — ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</option>`
   ).join("")}`;
+}
+
+function gpmManagerForm() {
+  const selected = gpmManagerKeys();
+  return `
+    <details class="gpm-manager-settings no-print">
+      <summary>Кто может редактировать журнал ГПМ</summary>
+      <form data-gpm-manager-form>
+        <p>Администратор всегда имеет доступ. Остальных редакторов можно назначить или заменить здесь.</p>
+        <label><span>Редакторы журнала ГПМ</span><select name="managerKeys" multiple size="6">${gpmUsers().map(user =>
+          `<option value="${escapeHtml(gpmUserKey(user))}" ${selected.has(gpmUserKey(user)) ? "selected" : ""}>${escapeHtml(user.name || "")} — ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</option>`
+        ).join("")}</select></label>
+        <button type="submit">Сохранить доступ</button>
+      </form>
+    </details>`;
+}
+
+function saveGpmManagerForm(form) {
+  const selected = new Set(Array.from(form.elements.managerKeys?.selectedOptions || []).map(option => option.value));
+  const now = new Date().toISOString();
+  gpmUsers().forEach(user => {
+    const userKey = gpmUserKey(user);
+    const id = `manager:${userKey}`;
+    const previous = gpmStore().managers[id] || {};
+    gpmStore().managers[id] = {
+      ...previous,
+      id,
+      userKey,
+      userName: user.name || "",
+      active: selected.has(userKey),
+      updatedAt: now,
+      updatedByName: profile?.name || ""
+    };
+  });
+  saveState();
 }
 
 function gpmEquipmentForm(item = {}) {
@@ -12682,6 +12727,7 @@ function renderGpmJournal() {
   const selected = equipment.find(item => item.id === current.selectedGpmId) || null;
   ui.gpmAddButton.hidden = !gpmCanManage();
   ui.gpmPanel.innerHTML = `
+    ${gpmIsAdmin() ? gpmManagerForm() : ""}
     <div class="gpm-layout">
       <aside class="gpm-equipment-list">
         ${equipment.length ? equipment.map(item => {
@@ -12696,6 +12742,12 @@ function renderGpmJournal() {
     current.gpmAdminEditorOpen = false;
     renderGpmJournal();
   }));
+  ui.gpmPanel.querySelector("[data-gpm-manager-form]")?.addEventListener("submit", event => {
+    event.preventDefault();
+    saveGpmManagerForm(event.currentTarget);
+    renderGpmJournal();
+    showAppToast("Доступ к редактированию ГПМ сохранён.", "ok");
+  });
   ui.gpmPanel.querySelector("[data-gpm-equipment-form]")?.addEventListener("submit", event => {
     event.preventDefault();
     saveGpmEquipmentForm(event.currentTarget);

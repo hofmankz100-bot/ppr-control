@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v283-gpm-personal-manager";
+const SERVER_VERSION = "v284-manage-gpm-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -115,7 +115,7 @@ function isPublicStaticPath(relativePath = "") {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -200,10 +200,11 @@ function normalizeDb(db) {
   db.downtimes ||= [];
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
-  db.gpmJournal ||= { equipment: {}, inspections: {}, events: {} };
+  db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
   db.gpmJournal.equipment ||= {};
   db.gpmJournal.inspections ||= {};
   db.gpmJournal.events ||= {};
+  db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
@@ -211,6 +212,22 @@ function normalizeDb(db) {
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
+  if (db.gpmJournal.managerMigrationVersion !== "initial-maksut-v1") {
+    const initialManager = db.users.find(user =>
+      String(user?.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU") === "нурахунов махсут махмутович"
+    );
+    if (initialManager) {
+      const userKey = resolutionUserKeyServer(initialManager);
+      db.gpmJournal.managers[`manager:${userKey}`] = {
+        id: `manager:${userKey}`,
+        userKey,
+        userName: String(initialManager.name || ""),
+        active: true,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    db.gpmJournal.managerMigrationVersion = "initial-maksut-v1";
+  }
   db.authSessions = Array.isArray(db.authSessions) ? db.authSessions : [];
   db.translationCache ||= {};
   db.pushNotifications ||= { subscriptions: [], vapid: null };
@@ -3780,7 +3797,9 @@ async function handleApi(req, res, pathname, url) {
         db.gpmJournal = {
           equipment: mergeObjectRecordsByFreshness(db.gpmJournal?.equipment, body.gpmJournal?.equipment),
           inspections: mergeObjectRecordsByFreshness(db.gpmJournal?.inspections, body.gpmJournal?.inspections),
-          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, body.gpmJournal?.events)
+          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, body.gpmJournal?.events),
+          managers: mergeObjectRecordsByFreshness(db.gpmJournal?.managers, body.gpmJournal?.managers),
+          managerMigrationVersion: db.gpmJournal?.managerMigrationVersion || body.gpmJournal?.managerMigrationVersion || ""
         };
         db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };

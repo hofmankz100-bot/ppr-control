@@ -16,16 +16,20 @@ test("GPM journal has assignments, inspections, PTO workflow and responsible app
   assert.match(app, /data-gpm-approve/);
 });
 
-test("mechanical engineer can configure GPM cards without receiving automatic approval rights", () => {
+test("GPM configuration rights are assigned separately from job role and approval rights", () => {
   assert.match(app, /function gpmCanManage\(\)/);
-  assert.match(app, /profile\?\.role === "mechanicalEngineer"/);
+  assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);
+  assert.doesNotMatch(app, /gpmIsAdmin\(\) \|\| profile\?\.role === "mechanicalEngineer"/);
   assert.match(app, /ui\.gpmAddButton\.hidden = !gpmCanManage\(\)/);
   assert.match(app, /function gpmIsResponsible\(item\)/);
 });
 
-test("Nурaхунов Махсут Махмутович has personal GPM configuration access", () => {
-  assert.match(app, /GPM_PERSONAL_MANAGERS = new Set\(\[\s*"нурахунов махсут махмутович"/);
-  assert.match(app, /GPM_PERSONAL_MANAGERS\.has\(name\)/);
+test("admin can grant and revoke GPM editor access by unique employee account", () => {
+  assert.match(app, /function gpmManagerForm\(\)/);
+  assert.match(app, /function saveGpmManagerForm\(form\)/);
+  assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);
+  assert.doesNotMatch(app, /GPM_PERSONAL_MANAGERS/);
+  assert.match(server, /managerMigrationVersion !== "initial-maksut-v1"/);
 });
 
 test("GPM deadlines enter the common PPR reminders and open the separate journal", () => {
