@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v294-rating-points-ledger";
+const SERVER_VERSION = "v295-rating-ledger-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",

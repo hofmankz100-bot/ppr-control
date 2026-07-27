@@ -642,7 +642,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /function workerRatingLedger\(year, workerKey\)/);
   assert.match(client, /workerRatingPointMap\(year, null, ledger\)/);
-  assert.match(client, /if \(!\["engineer", "editor"\]\.includes\(profile\?\.role\)\) return/);
+  assert.match(client, /function canAuditWorkerRating\(\)/);
+  assert.match(client, /return profile\?\.role === "editor" \|\| hasEngineerInboxAccess\(\)/);
+  assert.match(client, /if \(!canAuditWorkerRating\(\)\) return/);
   assert.match(client, /data-worker-rating-details=/);
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v294-rating-points-ledger";
+const CACHE_NAME = "ppr-v295-rating-ledger-access";
 const ASSETS = [
   "./",
   "./index.html",

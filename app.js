@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v294-rating-points-ledger";
+const APP_VERSION = "v295-rating-ledger-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -13829,8 +13829,12 @@ function workerRatingLedgerTypeLabel(type = "") {
   })[type] || "Другое";
 }
 
+function canAuditWorkerRating() {
+  return profile?.role === "editor" || hasEngineerInboxAccess();
+}
+
 function openWorkerRatingLedger(workerKey) {
-  if (!["engineer", "editor"].includes(profile?.role)) return;
+  if (!canAuditWorkerRating()) return;
   const stats = workerRatingStats(current.ratingYear);
   const worker = stats.workers.find(item => item.key === workerKey);
   if (!worker) return;
@@ -14112,7 +14116,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>Реакция: ${worker.avgReactionMs ? durationText(worker.avgReactionMs) : "-"}</span>
         <span>Ремонт: ${worker.avgRepairMs ? durationText(worker.avgRepairMs) : "-"}</span>
         <span>Смены: день ${worker.shifts.day}, ночь ${worker.shifts.night}</span>
-        ${["engineer", "editor"].includes(profile?.role) ? `<button type="button" class="worker-rating-details-button" data-worker-rating-details="${escapeHtml(worker.key)}">Расшифровка баллов</button>` : ""}
+        ${canAuditWorkerRating() ? `<button type="button" class="worker-rating-details-button" data-worker-rating-details="${escapeHtml(worker.key)}">Расшифровка баллов</button>` : ""}
       </div>
     </article>
   `).join("");

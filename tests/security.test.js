@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v294-rating-points-ledger";
+const APP_VERSION = "v295-rating-ledger-access";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
