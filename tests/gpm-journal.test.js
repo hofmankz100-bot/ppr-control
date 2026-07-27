@@ -48,6 +48,8 @@ test("GPM journal prints in landscape and supports image or PDF documents", () =
 
 test("only GPM equipment replaces its aggregate journal and no separate home button remains", () => {
   assert.match(app, /function isGpmEquipment\(eq\)/);
+  assert.match(app, /text\.includes\("гпм"\)/);
+  assert.doesNotMatch(app, /\/\\bгпм\\b\//);
   assert.match(app, /gpmEquipment \? `data-gpm-equipment=/);
   assert.match(app, /: `data-aggregate-equipment=/);
   assert.match(app, /document\.querySelector\("#gpmOpenButton"\)\?\.remove\(\)/);

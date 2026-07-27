@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v286-catalog-edit-permissions";
+const APP_VERSION = "v287-open-new-gpm-journal";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -7785,7 +7785,7 @@ function equipmentRowColor(eq) {
 
 function isGpmEquipment(eq) {
   const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
-  return /\bгпм\b/.test(text) || text.includes("грузопод");
+  return text.includes("гпм") || text.includes("грузопод");
 }
 
 function downtimePieSlicePath(cx, cy, radius, startAngle, endAngle) {
