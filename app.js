@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v267-dynamic-attendance-qr";
+const APP_VERSION = "v268-attendance-home-button";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
@@ -403,6 +403,7 @@ const ui = {
   back: document.querySelector("#backButton"),
   globalReminderButton: document.querySelector("#globalReminderButton"),
   qrWalkButton: document.querySelector("#qrWalkButton"),
+  attendanceHomeButton: document.querySelector("#attendanceHomeButton"),
   factoryStatusButton: document.querySelector("#factoryStatusButton"),
   globalReminderBadge: document.querySelector("#globalReminderBadge"),
   globalReminderOverlay: document.querySelector("#globalReminderOverlay"),
@@ -3591,6 +3592,9 @@ function requestVisibleForRoleIndicator(req, role) {
 function renderProfile() {
   if (!ui.profileBar) return;
   if (ui.factoryStatusButton) ui.factoryStatusButton.hidden = !isProfileReady();
+  if (ui.attendanceHomeButton) {
+    ui.attendanceHomeButton.hidden = !(isProfileReady() && (profile?.role === "editor" || hasEngineerInboxAccess()));
+  }
   document.body.classList.toggle("editor-profile", profile?.role === "editor");
   document.body.classList.toggle("editor-preview-profile", isEditorSession() && profile?.role !== "editor");
   document.body.classList.toggle("warehouse-only-profile", profile?.role === "warehouse");
@@ -16048,6 +16052,7 @@ function goBack() {
 ui.back?.addEventListener("click", goBack);
 
 ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
+ui.attendanceHomeButton?.addEventListener("click", openAttendancePanel);
 
 ui.qrWalkButton?.addEventListener("click", async () => {
   if (!isProfileReady()) {

@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v267-dynamic-attendance-qr";
+const CACHE_NAME = "ppr-v268-attendance-home-button";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=267-dynamic-attendance-qr",
+  "./styles.css?v=268-attendance-home-button",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=267-dynamic-attendance-qr",
+  "./app.js?v=268-attendance-home-button",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",
