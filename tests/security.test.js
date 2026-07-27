@@ -84,6 +84,10 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.match(await legacyRefreshPage.text(), /Устанавливаем обновление/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-old" } })).status, 426);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v275-reliable-forced-update" } })).status, 401);
+    const compatibleHealth = await fetch(`${baseUrl}/api/health`, { headers: { "x-app-version": "v275-reliable-forced-update" } }).then(response => response.json());
+    assert.equal(compatibleHealth.version, "v275-reliable-forced-update");
+    assert.equal(compatibleHealth.latestVersion, APP_VERSION);
     assert.notEqual((await fetch(`${baseUrl}/api/auth/session`, { headers: { "x-app-version": "v-old" } })).status, 426);
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {

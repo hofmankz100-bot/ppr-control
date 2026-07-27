@@ -47,6 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const SERVER_VERSION = "v276-two-stage-cache-reset";
+const SUPPORTED_CLIENT_VERSIONS = new Set(["v275-reliable-forced-update", SERVER_VERSION]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -2651,7 +2652,7 @@ async function handleApi(req, res, pathname, url) {
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
-  if (process.env.NODE_ENV !== "test" && !versionExempt && clientVersion !== SERVER_VERSION) {
+  if (process.env.NODE_ENV !== "test" && !versionExempt && !SUPPORTED_CLIENT_VERSIONS.has(clientVersion)) {
     if (pathname === "/api/attendance/kiosk" && req.method === "GET" && !clientVersion) {
       const updateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
         <rect width="720" height="720" rx="40" fill="#fff"/>
@@ -3243,9 +3244,11 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
+    const reportedClientVersion = SUPPORTED_CLIENT_VERSIONS.has(clientVersion) ? clientVersion : SERVER_VERSION;
     sendJson(res, 200, {
       ok: true,
-      version: SERVER_VERSION,
+      version: reportedClientVersion,
+      latestVersion: SERVER_VERSION,
       time: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
       memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
