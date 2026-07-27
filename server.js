@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v268-attendance-home-button";
+const SERVER_VERSION = "v269-secure-qr-terminal";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -2052,6 +2052,18 @@ function attendanceQrToken(db, clientId, now = Date.now()) {
   return `${slot}.${attendanceQrSignature(db, clientId, slot)}`;
 }
 
+function attendanceKioskTokenHash(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function validAttendanceKioskToken(db, token) {
+  const expected = String(db.attendanceConfig?.kioskTokenHash || "");
+  const received = attendanceKioskTokenHash(token);
+  return Boolean(expected)
+    && expected.length === received.length
+    && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+}
+
 function validAttendanceQrToken(db, clientId, token, now = Date.now()) {
   const match = String(token || "").match(/^(\d+)\.([A-Za-z0-9_-]+)$/);
   if (!match) return false;
@@ -2606,7 +2618,9 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
-    || pathname === "/api/auth/logout";
+    || pathname === "/api/auth/logout"
+    || (pathname === "/api/attendance/kiosk" && req.method === "GET")
+    || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST");
   if (!publicRequest) {
     const allowPending = pathname === "/api/users" && req.method === "GET";
     const authUser = authenticatedUser(req, readDb(), allowPending);
@@ -2615,6 +2629,44 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     req.authUser = authUser;
+  }
+
+  if (pathname === "/api/attendance/kiosk" && req.method === "GET") {
+    const token = String(req.headers["x-attendance-kiosk-token"] || "");
+    const clientId = String(req.headers["x-attendance-client-id"] || "");
+    const db = readDb();
+    if (
+      !validAttendanceKioskToken(db, token)
+      || !clientId
+      || clientId !== String(db.attendanceConfig.workstationClientId || "")
+    ) {
+      sendJson(res, 401, { ok: false, error: "attendance_kiosk_invalid" });
+      return true;
+    }
+    const now = Date.now();
+    const qrToken = attendanceQrToken(db, clientId, now);
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const protocol = forwardedProto === "https" ? "https" : "http";
+    const host = String(req.headers.host || "ppr-control-ramazan.onrender.com");
+    const scanUrl = `${protocol}://${host}/?attendance=${encodeURIComponent(qrToken)}`;
+    const svg = await QRCode.toString(scanUrl, {
+      type: "svg",
+      margin: 2,
+      width: 720,
+      errorCorrectionLevel: "M"
+    });
+    const onDutyCount = (db.attendanceSessions || []).filter(item =>
+      !item.endedAt && Date.parse(item.expiresAt || "") > now
+    ).length;
+    sendJson(res, 200, {
+      ok: true,
+      workstationName: String(db.attendanceConfig.workstationName || "Рабочий QR"),
+      qrDataUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+      expiresAt: new Date((Math.floor(now / ATTENDANCE_QR_SLOT_MS) + 1) * ATTENDANCE_QR_SLOT_MS).toISOString(),
+      serverTime: new Date(now).toISOString(),
+      onDutyCount
+    });
+    return true;
   }
 
   if (pathname === "/api/attendance/status" && req.method === "GET") {
@@ -2665,6 +2717,7 @@ async function handleApi(req, res, pathname, url) {
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      let issuedKioskToken = "";
       if (
         action === "register"
         && db.attendanceConfig.workstationClientId
@@ -2678,20 +2731,27 @@ async function handleApi(req, res, pathname, url) {
         db.attendanceConfig.workstationRegisteredBy = "";
         db.attendanceConfig.workstationName = "";
         db.attendanceConfig.workstationUserAgent = "";
+        db.attendanceConfig.kioskTokenHash = "";
       } else {
+        const kioskToken = crypto.randomBytes(32).toString("base64url");
+        issuedKioskToken = kioskToken;
         db.attendanceConfig.workstationClientId = clientId;
         db.attendanceConfig.workstationName = workstationName || "Рабочий компьютер QR";
         db.attendanceConfig.workstationUserAgent = String(req.headers["user-agent"] || "").slice(0, 300);
         db.attendanceConfig.workstationRegisteredAt = new Date().toISOString();
         db.attendanceConfig.workstationRegisteredBy = String(req.authUser.name || "");
+        db.attendanceConfig.kioskTokenHash = attendanceKioskTokenHash(kioskToken);
+        db.attendanceConfig.kioskTokenCreatedAt = new Date().toISOString();
       }
       attendanceQrSecret(db);
       writeDb(db, { action: `attendance_workstation_${action}`, user: req.authUser, clientId });
-      return {
+      const response = {
         workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
         workstationClientId: String(db.attendanceConfig.workstationClientId || ""),
         workstationName: String(db.attendanceConfig.workstationName || "")
       };
+      if (issuedKioskToken) response.kioskToken = issuedKioskToken;
+      return response;
     });
     if (result.error) {
       sendJson(res, 409, { ok: false, error: result.error });
@@ -2820,6 +2880,27 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/kiosk/exit" && req.method === "POST") {
+    const token = String(req.headers["x-attendance-kiosk-token"] || "");
+    const clientId = String(req.headers["x-attendance-client-id"] || "");
+    const body = await readBody(req).catch(() => ({}));
+    const db = readDb();
+    if (
+      !validAttendanceKioskToken(db, token)
+      || clientId !== String(db.attendanceConfig.workstationClientId || "")
+    ) {
+      sendJson(res, 401, { ok: false, error: "attendance_kiosk_invalid" });
+      return true;
+    }
+    const admin = findUser(db, body.identifier);
+    if (!admin || admin.role !== "editor" || !passwordMatches(String(body.password || ""), String(admin.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "Неверный пароль администратора." });
+      return true;
+    }
+    sendJson(res, 200, { ok: true });
     return true;
   }
 
