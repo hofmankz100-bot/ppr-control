@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v274-attendance-two-columns";
+const CACHE_NAME = "ppr-v275-reliable-forced-update";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=274-attendance-two-columns",
+  "./styles.css?v=275-reliable-forced-update",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=274-attendance-two-columns",
+  "./app.js?v=275-reliable-forced-update",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

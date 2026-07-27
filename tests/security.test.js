@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v274-attendance-two-columns";
+const APP_VERSION = "v275-reliable-forced-update";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -81,6 +81,7 @@ test("production API requires a server session and rate-limits failed logins", a
     await waitForHealth(baseUrl, serverProcess, () => output);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-old" } })).status, 426);
+    assert.notEqual((await fetch(`${baseUrl}/api/auth/session`, { headers: { "x-app-version": "v-old" } })).status, 426);
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",

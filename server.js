@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v274-attendance-two-columns";
+const SERVER_VERSION = "v275-reliable-forced-update";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -2651,7 +2651,7 @@ async function handleApi(req, res, pathname, url) {
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
   if (process.env.NODE_ENV !== "test" && !versionExempt && clientVersion !== SERVER_VERSION) {
-    if (pathname === "/api/attendance/kiosk" && req.method === "GET") {
+    if (pathname === "/api/attendance/kiosk" && req.method === "GET" && !clientVersion) {
       const updateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
         <rect width="720" height="720" rx="40" fill="#fff"/>
         <circle cx="360" cy="220" r="92" fill="#08789a"/>

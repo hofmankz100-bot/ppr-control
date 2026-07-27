@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v274-attendance-two-columns";
+const APP_VERSION = "v275-reliable-forced-update";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1626,7 +1626,7 @@ function showRequiredClientUpdate(requiredVersion = "") {
       }
       if ("serviceWorker" in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map(registration => registration.update().catch(() => {})));
+        await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
       }
     } finally {
       const url = new URL(window.location.href);
@@ -1635,6 +1635,13 @@ function showRequiredClientUpdate(requiredVersion = "") {
       window.location.replace(url.toString());
     }
   });
+}
+
+async function checkRequiredClientVersion() {
+  try {
+    const health = await apiJson("/api/health", { timeout: 8000 });
+    if (health?.version && health.version !== APP_VERSION) showRequiredClientUpdate(health.version);
+  } catch {}
 }
 
 function attendanceRole() {
@@ -1886,6 +1893,10 @@ async function refreshAttendanceKiosk() {
         "X-Attendance-Client-Id": clientId
       }
     });
+    if (result.updateRequired) {
+      showRequiredClientUpdate(result.requiredVersion || "");
+      return false;
+    }
     const image = kiosk.querySelector("[data-kiosk-qr]");
     if (image && image.src !== result.qrDataUrl) image.src = result.qrDataUrl;
     const name = kiosk.querySelector("[data-kiosk-name]");
@@ -17044,6 +17055,8 @@ if ("serviceWorker" in navigator) {
 }
 
 setupTheme();
+checkRequiredClientVersion();
+window.setInterval(checkRequiredClientVersion, 30000);
 setupPublicAttendanceEntry();
 setupLogin();
 setupRepairMasterMascot();

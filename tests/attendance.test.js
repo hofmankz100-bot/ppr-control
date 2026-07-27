@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v274-attendance-two-columns";
+const APP_VERSION = "v275-reliable-forced-update";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -133,6 +133,10 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     const outdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`);
     assert.equal(outdatedKiosk.status, 200);
     assert.equal((await outdatedKiosk.json()).updateRequired, true);
+    const recentOutdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
+      headers: { "x-app-version": "v274-attendance-two-columns" }
+    });
+    assert.equal(recentOutdatedKiosk.status, 426);
     assert.equal((await api(baseUrl, "/api/attendance/kiosk/exit", editorCookie, {
       method: "POST",
       headers: {
