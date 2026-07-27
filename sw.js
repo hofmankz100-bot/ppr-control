@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v272-contractor-attendance";
+const CACHE_NAME = "ppr-v273-required-client-update";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=272-contractor-attendance",
+  "./styles.css?v=273-required-client-update",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=272-contractor-attendance",
+  "./app.js?v=273-required-client-update",
   "./assets/repair-master.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-fist.png?v=v266-walking-legs-angry-fist",
   "./assets/repair-master-walk-a.png?v=v266-walking-legs-angry-fist",

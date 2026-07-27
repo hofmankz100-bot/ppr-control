@@ -8,6 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
+const APP_VERSION = "v273-required-client-update";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -78,30 +79,31 @@ test("production API requires a server session and rate-limits failed logins", a
   serverProcess.stderr.on("data", chunk => { output += String(chunk); });
   try {
     await waitForHealth(baseUrl, serverProcess, () => output);
-    assert.equal((await fetch(`${baseUrl}/api/state`)).status, 401);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-old" } })).status, 426);
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
       body: JSON.stringify({ identifier: editor.employeeId, password: "correct-password" })
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.match(cookie, /^ppr_session=/);
-    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie } })).status, 200);
-    assert.equal((await fetch(`${baseUrl}/api/export/all`)).status, 401);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/export/all`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
 
     for (let index = 0; index < 15; index += 1) {
       const failed = await fetch(`${baseUrl}/api/auth/login`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
         body: JSON.stringify({ identifier: "unknown-user", password: "wrong-password" })
       });
       assert.equal(failed.status, 401);
     }
     const blocked = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
       body: JSON.stringify({ identifier: "unknown-user", password: "wrong-password" })
     });
     assert.equal(blocked.status, 429);

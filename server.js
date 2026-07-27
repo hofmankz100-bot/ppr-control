@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v272-contractor-attendance";
+const SERVER_VERSION = "v273-required-client-update";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -2644,6 +2644,41 @@ function changedStatePatch(before = {}, after = {}) {
 }
 
 async function handleApi(req, res, pathname, url) {
+  const versionExempt = pathname === "/api/health"
+    || pathname === "/api/qr"
+    || pathname.startsWith("/api/photos/")
+    || pathname.startsWith("/api/export/");
+  const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
+  if (process.env.NODE_ENV !== "test" && !versionExempt && clientVersion !== SERVER_VERSION) {
+    if (pathname === "/api/attendance/kiosk" && req.method === "GET") {
+      const updateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720">
+        <rect width="720" height="720" rx="40" fill="#fff"/>
+        <circle cx="360" cy="220" r="92" fill="#08789a"/>
+        <text x="360" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="92" font-weight="700" fill="#fff">↻</text>
+        <text x="360" y="385" text-anchor="middle" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="#123e54">ОБНОВИТЕ</text>
+        <text x="360" y="440" text-anchor="middle" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="#123e54">ПРИЛОЖЕНИЕ</text>
+        <text x="360" y="510" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" fill="#526b78">Перезагрузите страницу терминала</text>
+        <text x="360" y="550" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" fill="#08789a">${SERVER_VERSION}</text>
+      </svg>`;
+      sendJson(res, 200, {
+        ok: true,
+        workstationName: "Требуется обновление",
+        qrDataUrl: `data:image/svg+xml;base64,${Buffer.from(updateSvg).toString("base64")}`,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        serverTime: new Date().toISOString(),
+        onDutyCount: 0,
+        updateRequired: true
+      }, { "Cache-Control": "no-store" });
+      return true;
+    }
+    sendJson(res, 426, {
+      ok: false,
+      error: "Требуется обновление приложения.",
+      code: "client_update_required",
+      requiredVersion: SERVER_VERSION
+    }, { "Cache-Control": "no-store" });
+    return true;
+  }
   const publicRequest = pathname === "/api/health"
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"

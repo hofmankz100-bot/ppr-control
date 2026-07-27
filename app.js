@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v272-contractor-attendance";
+const APP_VERSION = "v273-required-client-update";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1580,7 +1580,7 @@ async function apiJson(url, options = {}) {
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetch(url, {
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, ...(options.headers || {}) },
       ...options,
       signal: options.signal || controller.signal
     });
@@ -1589,12 +1589,52 @@ async function apiJson(url, options = {}) {
       const error = new Error(data.error || `HTTP ${response.status}`);
       error.data = data;
       error.status = response.status;
+      if (response.status === 426 || data.code === "client_update_required") showRequiredClientUpdate(data.requiredVersion);
       throw error;
     }
     return data;
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function showRequiredClientUpdate(requiredVersion = "") {
+  if (document.querySelector(".required-update-overlay")) return;
+  closeAttendancePanel();
+  closeAttendanceKiosk();
+  const overlay = document.createElement("div");
+  overlay.className = "required-update-overlay";
+  overlay.innerHTML = `<section class="required-update-card" role="alertdialog" aria-modal="true">
+    <div class="required-update-icon">↻</div>
+    <span>ОБЯЗАТЕЛЬНОЕ ОБНОВЛЕНИЕ</span>
+    <h1>Обновите приложение</h1>
+    <p>Эта версия устарела и больше не может сохранять данные. Обновление займёт несколько секунд.</p>
+    ${requiredVersion ? `<small>Новая версия: ${escapeHtml(requiredVersion)}</small>` : ""}
+    <button type="button" data-required-update>Обновить сейчас</button>
+    <div data-required-update-status></div>
+  </section>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("[data-required-update]")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const status = overlay.querySelector("[data-required-update-status]");
+    setButtonBusy(button, true, "Обновляем…");
+    if (status) status.textContent = "Удаляем старую версию и загружаем новую…";
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key)));
+      }
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration => registration.update().catch(() => {})));
+      }
+    } finally {
+      const url = new URL(window.location.href);
+      url.searchParams.set("v", requiredVersion || `update-${Date.now()}`);
+      url.searchParams.set("refresh", String(Date.now()));
+      window.location.replace(url.toString());
+    }
+  });
 }
 
 function attendanceRole() {

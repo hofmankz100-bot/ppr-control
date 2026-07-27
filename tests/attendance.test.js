@@ -8,6 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
+const APP_VERSION = "v273-required-client-update";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -28,7 +29,7 @@ async function reservePort() {
 async function login(baseUrl, identifier, password) {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
     body: JSON.stringify({ identifier, password })
   });
   assert.equal(response.status, 200);
@@ -38,7 +39,7 @@ async function login(baseUrl, identifier, password) {
 async function api(baseUrl, pathname, cookie, options = {}) {
   return fetch(`${baseUrl}${pathname}`, {
     ...options,
-    headers: { "content-type": "application/json", cookie, ...(options.headers || {}) }
+    headers: { "content-type": "application/json", "x-app-version": APP_VERSION, cookie, ...(options.headers || {}) }
   });
 }
 
@@ -120,6 +121,7 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.ok(registrationData.kioskToken);
     const kiosk = await fetch(`${baseUrl}/api/attendance/kiosk`, {
       headers: {
+        "x-app-version": APP_VERSION,
         "x-attendance-kiosk-token": registrationData.kioskToken,
         "x-attendance-client-id": "front-desk-browser"
       }
@@ -128,6 +130,9 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     const kioskData = await kiosk.json();
     assert.equal(kioskData.workstationName, "Проходная");
     assert.match(kioskData.qrDataUrl, /^data:image\/svg\+xml;base64,/);
+    const outdatedKiosk = await fetch(`${baseUrl}/api/attendance/kiosk`);
+    assert.equal(outdatedKiosk.status, 200);
+    assert.equal((await outdatedKiosk.json()).updateRequired, true);
     assert.equal((await api(baseUrl, "/api/attendance/kiosk/exit", editorCookie, {
       method: "POST",
       headers: {
@@ -150,14 +155,14 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
 
     const staffLookup = await fetch(`${baseUrl}/api/attendance/lookup`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
       body: JSON.stringify({ token, identifier: worker.phone })
     });
     assert.equal(staffLookup.status, 200);
     assert.equal((await staffLookup.json()).registered, true);
     const contractorLookup = await fetch(`${baseUrl}/api/attendance/lookup`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
       body: JSON.stringify({ token, identifier: "77009998877" })
     });
     assert.equal(contractorLookup.status, 200);
@@ -166,7 +171,7 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.ok(contractorLookupData.contractorTicket);
     const contractor = await fetch(`${baseUrl}/api/attendance/contractor`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
       body: JSON.stringify({
         token: "expired-token",
         contractorTicket: contractorLookupData.contractorTicket,

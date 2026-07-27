@@ -5320,6 +5320,47 @@ body.editor-profile .warehouse-folders button.request-alert {
 .public-attendance-card.success { justify-items: center; text-align: center; }
 .public-attendance-card.success > span { color: #15803d; font-size: 12px; font-weight: 900; letter-spacing: .08em; }
 .public-attendance-card.success > strong { padding: 11px 15px; border-radius: 12px; color: #166534; background: #dcfce7; }
+.required-update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60000;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 20px;
+  color: #172033;
+  background: rgba(5, 20, 31, .92);
+  backdrop-filter: blur(10px);
+}
+.required-update-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(480px, 100%);
+  padding: clamp(28px, 6vw, 44px);
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 35px 110px rgba(0,0,0,.5);
+  text-align: center;
+}
+.required-update-icon {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  color: #fff;
+  background: #08789a;
+  box-shadow: 0 0 0 13px rgba(8, 120, 154, .13);
+  font-size: 58px;
+  font-weight: 900;
+}
+.required-update-card > span { margin-top: 7px; color: #08789a; font-size: 12px; font-weight: 900; letter-spacing: .1em; }
+.required-update-card h1 { margin: 0; font-size: clamp(32px, 8vw, 48px); }
+.required-update-card p { margin: 0; color: #64748b; font-size: 17px; line-height: 1.5; }
+.required-update-card small { color: #475569; font-weight: 800; }
+.required-update-card button { width: 100%; min-height: 54px; margin-top: 5px; color: #fff; background: #08789a; font-size: 18px; }
+.required-update-card [data-required-update-status] { min-height: 20px; color: #08789a; font-size: 13px; font-weight: 800; }
 .attendance-empty {
   padding: 26px;
   border: 1px dashed #cbd5e1;
