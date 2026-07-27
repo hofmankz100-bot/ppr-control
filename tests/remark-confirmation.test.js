@@ -637,6 +637,18 @@ test("reserve journals keep distinct stable colors after renaming", () => {
   assert.match(source, /if \(eq\?\.area === "Резерв" && fixedReserveColor\) return fixedReserveColor/);
 });
 
+test("admin and engineers can audit every rating point in a mobile-friendly ledger", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(client, /function workerRatingLedger\(year, workerKey\)/);
+  assert.match(client, /workerRatingPointMap\(year, null, ledger\)/);
+  assert.match(client, /if \(!\["engineer", "editor"\]\.includes\(profile\?\.role\)\) return/);
+  assert.match(client, /data-worker-rating-details=/);
+  assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
+  assert.match(styles, /\.worker-rating-ledger-modal/);
+  assert.match(styles, /max-height: 94dvh/);
+});
+
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);

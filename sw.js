@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v293-remark-dialog-on-top";
+const CACHE_NAME = "ppr-v294-rating-points-ledger";
 const ASSETS = [
   "./",
   "./index.html",

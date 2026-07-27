@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v293-remark-dialog-on-top";
+const APP_VERSION = "v294-rating-points-ledger";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -13661,19 +13661,32 @@ function isPressRatingEquipment(area = "") {
   return String(area || "").trim().toLocaleLowerCase("ru-RU") === "прессовый участок";
 }
 
-function workerRatingPointMap(year, monthIndex = null) {
+function workerRatingPointMap(year, monthIndex = null, ledger = null) {
   const points = new Map();
   const usersByResolutionKey = new Map(loadUsers().map(user => [resolutionUserKey(user), user]));
   const inPeriod = value => {
     const parsed = dateYearMonth(value);
     return parsed?.year === year && (monthIndex === null || parsed.month === monthIndex);
   };
-  const add = (role, name, value) => {
+  const add = (role, name, value, details = {}) => {
     if (!isResolutionExecutorRole(role)) return;
     const cleanName = String(name || "").trim();
     if (!cleanName) return;
     const key = workerRatingKey(role, cleanName);
     points.set(key, Number(points.get(key) || 0) + Number(value || 0));
+    if (Array.isArray(ledger)) {
+      ledger.push({
+        key,
+        role,
+        name: cleanName,
+        points: Number(value || 0),
+        date: details.date || "",
+        type: details.type || "other",
+        title: details.title || "Работа",
+        equipment: details.equipment || "",
+        node: details.node || ""
+      });
+    }
   };
   const participantList = event => {
     const list = Array.isArray(event.ratingParticipants) ? event.ratingParticipants : [];
@@ -13692,7 +13705,13 @@ function workerRatingPointMap(year, monthIndex = null) {
       // A warning changes the rating only after a supervisor has accepted it.
       if (event.confirmedAt && inPeriod(event.confirmedAt)) {
         const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.remarkPress : WORK_RATING_POINTS.remark;
-        participantList(event).forEach(participant => add(participant.role, participant.name, value));
+        participantList(event).forEach(participant => add(participant.role, participant.name, value, {
+          date: event.confirmedAt,
+          type: "remark",
+          title: "Устранено и подтверждено замечание",
+          equipment: event.equipment,
+          node: event.node
+        }));
       }
       const penaltiesByWorker = new Map();
       (event.ratingReturns || []).filter(item => inPeriod(item.at)).forEach(item => {
@@ -13702,13 +13721,25 @@ function workerRatingPointMap(year, monthIndex = null) {
         const key = workerRatingKey(role, name);
         if (!isResolutionExecutorRole(role) || !name || Number(penaltiesByWorker.get(key) || 0) >= 2) return;
         penaltiesByWorker.set(key, Number(penaltiesByWorker.get(key) || 0) + 1);
-        add(role, name, WORK_RATING_POINTS.returnPenalty);
+        add(role, name, WORK_RATING_POINTS.returnPenalty, {
+          date: item.at,
+          type: "penalty",
+          title: "Возврат работы на доработку",
+          equipment: event.equipment,
+          node: event.node
+        });
       });
       return;
     }
     if (event.type === "breakdown" && event.resolvedAt && inPeriod(event.resolvedAt)) {
       const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.breakdownPress : WORK_RATING_POINTS.breakdown;
-      participantList(event).forEach(participant => add(participant.role, participant.name, value));
+      participantList(event).forEach(participant => add(participant.role, participant.name, value, {
+        date: event.resolvedAt,
+        type: "breakdown",
+        title: "Устранён аварийный простой",
+        equipment: event.equipment,
+        node: event.node
+      }));
     }
   });
 
@@ -13720,7 +13751,11 @@ function workerRatingPointMap(year, monthIndex = null) {
       const key = `${workerRatingKey(shift.byRole, shift.byName)}:${date}:${shift.shift === "night" ? "night" : "day"}`;
       if (qrAwards.has(key)) return;
       qrAwards.add(key);
-      add(shift.byRole, shift.byName, WORK_RATING_POINTS.qrShift);
+      add(shift.byRole, shift.byName, WORK_RATING_POINTS.qrShift, {
+        date: shift.at,
+        type: "qr",
+        title: `QR-обход · ${shift.shift === "night" ? "ночная" : "дневная"} смена`
+      });
     });
   });
 
@@ -13729,7 +13764,13 @@ function workerRatingPointMap(year, monthIndex = null) {
     (Array.isArray(sheet.rows) ? sheet.rows : []).forEach(row => {
       if (row?.mark !== "done") return;
       add(row.markedByRole, row.markedByName,
-        isPressRatingEquipment(row.area) ? WORK_RATING_POINTS.pprPress : WORK_RATING_POINTS.ppr);
+        isPressRatingEquipment(row.area) ? WORK_RATING_POINTS.pprPress : WORK_RATING_POINTS.ppr, {
+          date: sheet.approvedAt,
+          type: "ppr",
+          title: "Выполнено и принято ППР",
+          equipment: row.equipment || row.equipmentName || row.area || "",
+          node: row.node || row.work || ""
+        });
     });
   });
 
@@ -13745,7 +13786,11 @@ function workerRatingPointMap(year, monthIndex = null) {
       .reduce((sum, [, value]) => sum + value, 0);
     if (dayPoints >= 6) return;
     journalAwards.set(awardKey, WORK_RATING_POINTS.journal);
-    add(role, name, WORK_RATING_POINTS.journal);
+    add(role, name, WORK_RATING_POINTS.journal, {
+      date: `${date}T12:00:00`,
+      type: "journal",
+      title: journalKey === "compressor" ? "Заполнен компрессорный журнал" : "Заполнен журнал ШГРП"
+    });
   };
   const compressorByDate = new Map();
   Object.values(state.compressorJournal || {}).forEach(row => {
@@ -13763,6 +13808,82 @@ function workerRatingPointMap(year, monthIndex = null) {
     if (complete) addJournal(row.updatedByRole, row.checkedBy || row.updatedByName, row.date, `gas-${row.section}`);
   });
   return points;
+}
+
+function workerRatingLedger(year, workerKey) {
+  const ledger = [];
+  workerRatingPointMap(year, null, ledger);
+  return ledger
+    .filter(item => item.key === workerKey)
+    .sort((a, b) => Date.parse(b.date || "") - Date.parse(a.date || ""));
+}
+
+function workerRatingLedgerTypeLabel(type = "") {
+  return ({
+    remark: "Замечания",
+    breakdown: "Аварийные простои",
+    qr: "QR-обходы",
+    ppr: "ППР",
+    journal: "Журналы",
+    penalty: "Списания"
+  })[type] || "Другое";
+}
+
+function openWorkerRatingLedger(workerKey) {
+  if (!["engineer", "editor"].includes(profile?.role)) return;
+  const stats = workerRatingStats(current.ratingYear);
+  const worker = stats.workers.find(item => item.key === workerKey);
+  if (!worker) return;
+  const entries = workerRatingLedger(stats.year, workerKey);
+  const grouped = new Map();
+  entries.forEach(item => {
+    if (!grouped.has(item.type)) grouped.set(item.type, []);
+    grouped.get(item.type).push(item);
+  });
+  document.querySelector("#workerRatingLedgerModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "workerRatingLedgerModal";
+  modal.className = "worker-rating-ledger-modal";
+  modal.innerHTML = `
+    <div class="worker-rating-ledger-backdrop" data-close-rating-ledger></div>
+    <section role="dialog" aria-modal="true" aria-label="Расшифровка баллов">
+      <header>
+        <div>
+          <span>Расшифровка за ${stats.year} год</span>
+          <strong>${escapeHtml(worker.name)}</strong>
+          <small>${escapeHtml(worker.roleLabel)} · итог ${worker.points} баллов</small>
+        </div>
+        <button type="button" data-close-rating-ledger aria-label="Закрыть">×</button>
+      </header>
+      <div class="worker-rating-ledger-summary">
+        ${[...grouped.entries()].map(([type, items]) => `
+          <div>
+            <span>${escapeHtml(workerRatingLedgerTypeLabel(type))}</span>
+            <strong>${items.reduce((sum, item) => sum + item.points, 0) > 0 ? "+" : ""}${items.reduce((sum, item) => sum + item.points, 0)}</strong>
+            <small>${items.length} записей</small>
+          </div>
+        `).join("")}
+      </div>
+      <div class="worker-rating-ledger-list">
+        ${entries.length ? entries.map(item => `
+          <article class="${item.points < 0 ? "penalty" : ""}">
+            <time>${escapeHtml(item.date ? new Date(item.date).toLocaleDateString("ru-RU") : "Без даты")}</time>
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              ${item.equipment || item.node ? `<span>${escapeHtml([item.equipment, item.node].filter(Boolean).join(" · "))}</span>` : ""}
+            </div>
+            <b>${item.points > 0 ? "+" : ""}${item.points}</b>
+          </article>
+        `).join("") : `<p class="empty-state">Начислений за выбранный год нет.</p>`}
+      </div>
+      <footer>
+        <span>Проверено записей: ${entries.length}</span>
+        <strong>Итого: ${entries.reduce((sum, item) => sum + item.points, 0)} баллов</strong>
+      </footer>
+    </section>
+  `;
+  document.body.append(modal);
+  modal.querySelectorAll("[data-close-rating-ledger]").forEach(button => button.addEventListener("click", () => modal.remove()));
 }
 
 function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
@@ -13991,6 +14112,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>Реакция: ${worker.avgReactionMs ? durationText(worker.avgReactionMs) : "-"}</span>
         <span>Ремонт: ${worker.avgRepairMs ? durationText(worker.avgRepairMs) : "-"}</span>
         <span>Смены: день ${worker.shifts.day}, ночь ${worker.shifts.night}</span>
+        ${["engineer", "editor"].includes(profile?.role) ? `<button type="button" class="worker-rating-details-button" data-worker-rating-details="${escapeHtml(worker.key)}">Расшифровка баллов</button>` : ""}
       </div>
     </article>
   `).join("");
@@ -14067,6 +14189,9 @@ function renderWorkerRating() {
   const stats = workerRatingStats(current.ratingYear);
   if (ui.workerRatingYearLabel) ui.workerRatingYearLabel.textContent = String(stats.year);
   ui.workerRatingPanel.innerHTML = workerRatingHtml(stats);
+  ui.workerRatingPanel.querySelectorAll("[data-worker-rating-details]").forEach(button => {
+    button.addEventListener("click", () => openWorkerRatingLedger(button.dataset.workerRatingDetails));
+  });
 }
 
 function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
