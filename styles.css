@@ -5106,6 +5106,127 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 800;
 }
 
+/* Рабочая отметка по динамическому QR */
+.attendance-badge {
+  display: inline-flex;
+  margin: 6px 0 0 8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.attendance-badge.active { background: #dcfce7; color: #166534; }
+.attendance-badge.locked { background: #fee2e2; color: #991b1b; }
+.attendance-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.attendance-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, .68);
+  backdrop-filter: blur(4px);
+}
+.attendance-panel {
+  position: relative;
+  width: min(980px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: 22px;
+  border-radius: 22px;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
+}
+.attendance-panel > header,
+.attendance-list-head,
+.attendance-person,
+.attendance-person-actions,
+.attendance-workstation-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.attendance-panel > header,
+.attendance-list-head,
+.attendance-person { justify-content: space-between; }
+.attendance-panel h2,
+.attendance-panel h3,
+.attendance-panel p { margin: 0; }
+.attendance-panel header p,
+.attendance-manual-card p,
+.attendance-qr-card p { margin-top: 5px; color: #64748b; }
+.attendance-close {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 28px;
+  line-height: 1;
+}
+.attendance-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.2fr) minmax(260px, .8fr);
+  gap: 16px;
+  margin: 20px 0;
+}
+.attendance-qr-card,
+.attendance-manual-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #dbe5ef;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+.attendance-qr-card img {
+  width: min(100%, 380px);
+  aspect-ratio: 1;
+  justify-self: center;
+  padding: 10px;
+  border-radius: 16px;
+  background: #fff;
+}
+.attendance-workstation-name { display: grid; gap: 6px; }
+.attendance-workstation-name span { font-size: 12px; font-weight: 800; color: #475569; }
+.attendance-workstation-name input,
+.attendance-manual-card select { width: 100%; min-height: 44px; }
+.attendance-list-head { margin: 18px 0 10px; }
+.attendance-list { display: grid; gap: 10px; }
+.attendance-person {
+  padding: 13px 15px;
+  border: 1px solid #dbe5ef;
+  border-radius: 14px;
+  background: #fff;
+}
+.attendance-person > div:first-child { display: grid; gap: 3px; }
+.attendance-person span,
+.attendance-person small { color: #64748b; }
+.attendance-whatsapp {
+  background: #16a34a;
+  color: #fff !important;
+}
+.attendance-empty {
+  padding: 26px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: #64748b;
+  text-align: center;
+}
+@media (max-width: 700px) {
+  .attendance-modal { padding: 0; }
+  .attendance-panel { width: 100%; max-height: 100vh; min-height: 100vh; border-radius: 0; padding: 16px; }
+  .attendance-admin-grid { grid-template-columns: 1fr; }
+  .attendance-person { align-items: flex-start; flex-direction: column; }
+  .attendance-person-actions { width: 100%; }
+  .attendance-person-actions > * { flex: 1; text-align: center; }
+  .attendance-workstation-actions { align-items: stretch; flex-direction: column; }
+}
+
 .aggregate-sheet-print {
   border: 0;
   border-radius: 7px;

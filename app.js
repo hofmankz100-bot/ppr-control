@@ -75,8 +75,9 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v266-walking-legs-angry-fist";
+const APP_VERSION = "v267-dynamic-attendance-qr";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
+const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -336,6 +337,9 @@ let inventoryItemsCacheVersion = -1;
 let inventoryItemsCache = [];
 let authenticatedProfile = loadProfile();
 let profile = activeProfileFromSession(authenticatedProfile);
+let attendanceStatus = null;
+let attendanceRefreshTimer = null;
+let attendanceQrTimer = null;
 applyWorkCleanFromUrl();
 const nav = [];
 let remoteSaveTimer = null;
@@ -1589,6 +1593,216 @@ async function apiJson(url, options = {}) {
   }
 }
 
+function attendanceRole() {
+  return String(authenticatedProfile?.role || profile?.role || "");
+}
+
+function attendanceRequired() {
+  return ATTENDANCE_WORKER_ROLES.has(attendanceRole());
+}
+
+function attendanceAllowsEditing() {
+  if (!attendanceRequired()) return true;
+  return attendanceStatus?.canEdit === true
+    && Date.parse(attendanceStatus?.session?.expiresAt || "") > Date.now();
+}
+
+function attendanceTime(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function attendanceWhatsAppUrl(phone = "") {
+  const digits = String(phone).replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+
+async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
+  if (!isProfileReady()) return null;
+  try {
+    attendanceStatus = await apiJson("/api/attendance/status", { timeout: 8000 });
+    if (renderProfileBar) renderProfile();
+    return attendanceStatus;
+  } catch {
+    return attendanceStatus;
+  }
+}
+
+function startAttendanceRefresh() {
+  clearInterval(attendanceRefreshTimer);
+  refreshAttendanceStatus();
+  attendanceRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState !== "hidden") refreshAttendanceStatus();
+  }, 30000);
+}
+
+async function handleIncomingAttendanceQrFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("attendance");
+  if (!token) return false;
+  params.delete("attendance");
+  const cleanQuery = params.toString();
+  history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
+  if (!attendanceRequired()) {
+    window.alert("Этот QR предназначен для рабочих должностей.");
+    return true;
+  }
+  try {
+    const result = await apiJson("/api/attendance/scan", {
+      method: "POST",
+      body: JSON.stringify({ token })
+    });
+    await refreshAttendanceStatus();
+    const until = attendanceTime(result.session?.expiresAt);
+    window.alert(result.alreadyActive ? `Ваша смена уже открыта до ${until}.` : `Вы отмечены на работе. Редактирование открыто до ${until}.`);
+  } catch (error) {
+    window.alert(error.status === 410
+      ? "QR-код уже обновился. Отсканируйте новый код на рабочем компьютере."
+      : (error.message || "Не удалось отметить смену."));
+  }
+  return true;
+}
+
+function closeAttendancePanel() {
+  clearInterval(attendanceQrTimer);
+  attendanceQrTimer = null;
+  document.querySelector(".attendance-modal")?.remove();
+}
+
+function attendanceSessionRows(items = [], admin = false) {
+  if (!items.length) return `<div class="attendance-empty">Сейчас никто не отмечен на работе.</div>`;
+  return items.map(item => {
+    const whatsapp = attendanceWhatsAppUrl(item.phone);
+    return `<div class="attendance-person">
+      <div><strong>${escapeHtml(item.name || "Сотрудник")}</strong>
+        <span>${escapeHtml(ROLE_ACCESS[item.role]?.label || item.role || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</span>
+        <small>Сканирование: ${escapeHtml(attendanceTime(item.startedAt))} · до ${escapeHtml(attendanceTime(item.expiresAt))}</small>
+      </div>
+      <div class="attendance-person-actions">
+        ${whatsapp ? `<a class="button-link attendance-whatsapp" href="${escapeHtml(whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+        ${admin ? `<button type="button" data-attendance-end="${escapeHtml(item.id)}">Закрыть</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function refreshAttendancePanel() {
+  const modal = document.querySelector(".attendance-modal");
+  if (!modal) return;
+  const status = await refreshAttendanceStatus({ renderProfileBar: false });
+  if (!status) return;
+  const list = modal.querySelector("[data-attendance-list]");
+  if (list) list.innerHTML = attendanceSessionRows(status.onDuty, status.isAdmin);
+  modal.querySelectorAll("[data-attendance-end]").forEach(button => button.addEventListener("click", async () => {
+    if (!window.confirm("Закрыть смену сотрудника?")) return;
+    await apiJson("/api/attendance/admin", {
+      method: "POST",
+      body: JSON.stringify({ action: "end", sessionId: button.dataset.attendanceEnd })
+    });
+    await refreshAttendancePanel();
+  }));
+}
+
+async function refreshAttendanceQr() {
+  const modal = document.querySelector(".attendance-modal");
+  const qrImage = modal?.querySelector("[data-attendance-qr]");
+  const countdown = modal?.querySelector("[data-attendance-countdown]");
+  if (!modal || !qrImage || !attendanceStatus?.isAdmin) return;
+  if (attendanceStatus.workstationClientId !== CLIENT_ID) {
+    qrImage.removeAttribute("src");
+    qrImage.hidden = true;
+    if (countdown) countdown.textContent = attendanceStatus.workstationRegistered
+      ? "QR привязан к другому компьютеру."
+      : "Сначала назначьте этот компьютер.";
+    return;
+  }
+  try {
+    const result = await apiJson(`/api/attendance/qr?clientId=${encodeURIComponent(CLIENT_ID)}`, { timeout: 8000 });
+    qrImage.src = `/api/qr?size=560&data=${encodeURIComponent(result.scanUrl)}&t=${Date.now()}`;
+    qrImage.hidden = false;
+    if (countdown) countdown.textContent = "Код автоматически меняется каждые 30 секунд";
+  } catch (error) {
+    if (countdown) countdown.textContent = error.message || "Не удалось обновить QR.";
+  }
+}
+
+async function openAttendancePanel() {
+  closeAttendancePanel();
+  const status = await refreshAttendanceStatus({ renderProfileBar: false });
+  if (!status?.canMonitor) {
+    window.alert("Этот раздел доступен администраторам и инженерам.");
+    return;
+  }
+  const workerOptions = status.isAdmin
+    ? loadUsers().filter(user => ATTENDANCE_WORKER_ROLES.has(String(user.role || ""))).map(user =>
+      `<option value="${escapeHtml(String(user.id || user.employeeId || user.phone || ""))}">${escapeHtml(user.name || "Сотрудник")} — ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</option>`
+    ).join("")
+    : "";
+  const modal = document.createElement("div");
+  modal.className = "attendance-modal";
+  modal.innerHTML = `<div class="attendance-backdrop" data-attendance-close></div>
+    <section class="attendance-panel" role="dialog" aria-modal="true" aria-label="Кто на работе">
+      <header><div><h2>Кто на работе</h2><p>Отметка открывает рабочему редактирование на 10 часов.</p></div><button type="button" class="attendance-close" data-attendance-close>×</button></header>
+      ${status.isAdmin ? `<div class="attendance-admin-grid">
+        <div class="attendance-qr-card">
+          <h3>QR для отметки</h3>
+          <img data-attendance-qr alt="QR для начала смены" hidden>
+          <p data-attendance-countdown></p>
+          <label class="attendance-workstation-name"><span>Название компьютера</span><input data-attendance-workstation-name maxlength="100" value="${escapeHtml(status.workstationName || "Проходная")}" placeholder="Например: Проходная"></label>
+          ${status.workstationRegistered ? `<small>Зарегистрирован: ${escapeHtml(status.workstationName || "Рабочий компьютер QR")} · ${escapeHtml(attendanceTime(status.workstationRegisteredAt))}</small>` : ""}
+          <div class="attendance-workstation-actions">
+            <button type="button" data-attendance-register>${status.workstationClientId === CLIENT_ID ? "Этот компьютер назначен" : "Назначить этот компьютер"}</button>
+            ${status.workstationRegistered ? `<button type="button" class="danger" data-attendance-reset>Сбросить привязку</button>` : ""}
+          </div>
+        </div>
+        <div class="attendance-manual-card">
+          <h3>Ручное управление</h3>
+          <p>Если камера не сработала, администратор может открыть смену вручную.</p>
+          <select data-attendance-worker><option value="">Выберите сотрудника</option>${workerOptions}</select>
+          <button type="button" data-attendance-grant>Открыть на 10 часов</button>
+        </div>
+      </div>` : ""}
+      <div class="attendance-list-head"><h3>Сейчас на работе</h3><button type="button" data-attendance-refresh>Обновить</button></div>
+      <div class="attendance-list" data-attendance-list>${attendanceSessionRows(status.onDuty, status.isAdmin)}</div>
+    </section>`;
+  document.body.appendChild(modal);
+  modal.querySelectorAll("[data-attendance-close]").forEach(item => item.addEventListener("click", closeAttendancePanel));
+  modal.querySelector("[data-attendance-refresh]")?.addEventListener("click", refreshAttendancePanel);
+  modal.querySelector("[data-attendance-register]")?.addEventListener("click", async () => {
+    if (!window.confirm("Назначить этот компьютер для показа рабочего QR?")) return;
+    const workstationName = modal.querySelector("[data-attendance-workstation-name]")?.value?.trim();
+    if (!workstationName) return window.alert("Введите название компьютера.");
+    await apiJson("/api/attendance/workstation", {
+      method: "POST",
+      body: JSON.stringify({ action: "register", clientId: CLIENT_ID, workstationName })
+    });
+    await refreshAttendanceStatus({ renderProfileBar: false });
+    await refreshAttendanceQr();
+  });
+  modal.querySelector("[data-attendance-reset]")?.addEventListener("click", async () => {
+    if (!window.confirm("Сбросить привязку рабочего компьютера? QR перестанет работать до нового назначения.")) return;
+    await apiJson("/api/attendance/workstation", {
+      method: "POST",
+      body: JSON.stringify({ action: "reset", clientId: CLIENT_ID })
+    });
+    closeAttendancePanel();
+    openAttendancePanel();
+  });
+  modal.querySelector("[data-attendance-grant]")?.addEventListener("click", async () => {
+    const userKey = modal.querySelector("[data-attendance-worker]")?.value;
+    if (!userKey) return window.alert("Выберите сотрудника.");
+    await apiJson("/api/attendance/admin", {
+      method: "POST",
+      body: JSON.stringify({ action: "grant", userKey })
+    });
+    await refreshAttendancePanel();
+  });
+  await refreshAttendancePanel();
+  await refreshAttendanceQr();
+  if (status.isAdmin) attendanceQrTimer = window.setInterval(refreshAttendanceQr, 15000);
+}
+
 
 function nextActionId() {
   return `${CLIENT_ID}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -2709,6 +2923,9 @@ async function finishAuthOnCurrentPage() {
   ui.loginForm.hidden = false;
   ui.loginError.textContent = "";
   resetCurrentForProfile();
+  await refreshAttendanceStatus({ renderProfileBar: false });
+  await handleIncomingAttendanceQrFromUrl();
+  startAttendanceRefresh();
   renderProfile();
   applyLanguage();
   flushPendingWork();
@@ -2807,7 +3024,7 @@ function canConfirmInstallation() {
 }
 
 function canEditChecklist() {
-  return Boolean(roleAccess().checklist);
+  return Boolean(roleAccess().checklist) && attendanceAllowsEditing();
 }
 
 function catalogEditorRole() {
@@ -3414,12 +3631,21 @@ function renderProfile() {
       <select id="profileLanguageSelect">${languageOptions()}</select>
     </label>
   `;
+  const attendanceBadge = attendanceRequired()
+    ? (attendanceAllowsEditing()
+      ? `<span class="attendance-badge active">На работе · до ${escapeHtml(attendanceTime(attendanceStatus?.session?.expiresAt))}</span>`
+      : `<span class="attendance-badge locked">Только просмотр · отсканируйте QR</span>`)
+    : "";
+  const attendanceMonitorButton = (profile.role === "editor" || hasEngineerInboxAccess())
+    ? `<button type="button" id="openAttendanceButton">Кто на работе</button>`
+    : "";
   ui.profileBar.innerHTML = `
-    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}</div>
+    <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}${attendanceBadge}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
     ${appNotificationPermissionButton()}
+    ${attendanceMonitorButton}
     ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
@@ -3438,6 +3664,7 @@ function renderProfile() {
     requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
+  ui.profileBar.querySelector("#openAttendanceButton")?.addEventListener("click", openAttendancePanel);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
     if (!window.confirm("Очистить рабочие записи: комментарии, обычные заявки, простои, журналы и отчёты? Складские остатки и складские операции сохранятся.")) return;
@@ -16475,10 +16702,13 @@ resetAppNotificationsForOpen();
 (async () => {
   if (!loadProfile()) return;
   if (!await restoreServerSession()) return;
+  await refreshAttendanceStatus();
+  startAttendanceRefresh();
   const deviceState = await loadStateFromDevice();
   if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
   if (isProfileReady()) {
-    const handled = await handleIncomingNodeQrFromUrl();
+    const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
+    const handled = attendanceHandled || await handleIncomingNodeQrFromUrl();
     if (!handled) show(current.view, false);
   } else {
     render();

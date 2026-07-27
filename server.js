@@ -46,8 +46,11 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v266-walking-legs-angry-fist";
+const SERVER_VERSION = "v267-dynamic-attendance-qr";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
+const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
+const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
+const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
@@ -102,7 +105,7 @@ function isPublicStaticPath(relativePath = "") {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -198,6 +201,8 @@ function normalizeDb(db) {
   db.translationCache ||= {};
   db.pushNotifications ||= { subscriptions: [], vapid: null };
   db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
+  db.attendanceSessions = Array.isArray(db.attendanceSessions) ? db.attendanceSessions : [];
+  db.attendanceConfig = db.attendanceConfig && typeof db.attendanceConfig === "object" ? db.attendanceConfig : {};
   removeWarehouseWorkflow(db);
   return db;
 }
@@ -2009,6 +2014,72 @@ function requireAuthenticated(req, res, roles = null) {
   return user;
 }
 
+function attendanceUserKey(user = {}) {
+  return String(user.id || user.employeeId || user.phone || "").trim();
+}
+
+function attendanceRoleAllowed(user = {}) {
+  return ATTENDANCE_WORKER_ROLES.has(String(user.role || ""));
+}
+
+function attendanceCanMonitor(user = {}) {
+  return String(user.role || "") === "editor" || engineerPermissionRoleServer(user) === "engineer";
+}
+
+function activeAttendanceSession(db, user = {}, now = Date.now()) {
+  const userKey = attendanceUserKey(user);
+  if (!userKey) return null;
+  return (db.attendanceSessions || []).find(item =>
+    item.userKey === userKey
+    && !item.endedAt
+    && Date.parse(item.expiresAt || "") > now
+  ) || null;
+}
+
+function attendanceQrSecret(db) {
+  if (!db.attendanceConfig.qrSecret) db.attendanceConfig.qrSecret = crypto.randomBytes(32).toString("hex");
+  return db.attendanceConfig.qrSecret;
+}
+
+function attendanceQrSignature(db, clientId, slot) {
+  return crypto.createHmac("sha256", attendanceQrSecret(db))
+    .update(`${String(clientId)}:${Number(slot)}`)
+    .digest("base64url");
+}
+
+function attendanceQrToken(db, clientId, now = Date.now()) {
+  const slot = Math.floor(now / ATTENDANCE_QR_SLOT_MS);
+  return `${slot}.${attendanceQrSignature(db, clientId, slot)}`;
+}
+
+function validAttendanceQrToken(db, clientId, token, now = Date.now()) {
+  const match = String(token || "").match(/^(\d+)\.([A-Za-z0-9_-]+)$/);
+  if (!match) return false;
+  const tokenSlot = Number(match[1]);
+  const currentSlot = Math.floor(now / ATTENDANCE_QR_SLOT_MS);
+  if (![currentSlot, currentSlot - 1].includes(tokenSlot)) return false;
+  const expected = attendanceQrSignature(db, clientId, tokenSlot);
+  const received = String(match[2]);
+  return expected.length === received.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+}
+
+function attendanceSessionPublic(item = {}) {
+  return {
+    id: String(item.id || ""),
+    userKey: String(item.userKey || ""),
+    name: String(item.name || ""),
+    role: String(item.role || ""),
+    area: String(item.area || ""),
+    phone: String(item.phone || ""),
+    employeeId: String(item.employeeId || ""),
+    startedAt: String(item.startedAt || ""),
+    expiresAt: String(item.expiresAt || ""),
+    endedAt: String(item.endedAt || ""),
+    endedBy: String(item.endedBy || ""),
+    manual: item.manual === true
+  };
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -2544,6 +2615,230 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     req.authUser = authUser;
+  }
+
+  if (pathname === "/api/attendance/status" && req.method === "GET") {
+    const db = readDb();
+    const now = Date.now();
+    const ownSession = activeAttendanceSession(db, req.authUser, now);
+    const monitor = attendanceCanMonitor(req.authUser);
+    const onDuty = monitor
+      ? (db.attendanceSessions || [])
+        .filter(item => !item.endedAt && Date.parse(item.expiresAt || "") > now)
+        .map(attendanceSessionPublic)
+        .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
+      : [];
+    const history = req.authUser?.role === "editor"
+      ? (db.attendanceSessions || []).slice(-200).reverse().map(attendanceSessionPublic)
+      : [];
+    sendJson(res, 200, {
+      ok: true,
+      required: attendanceRoleAllowed(req.authUser),
+      canEdit: !attendanceRoleAllowed(req.authUser) || Boolean(ownSession),
+      canMonitor: monitor,
+      isAdmin: req.authUser?.role === "editor",
+      isPrimaryAdminEngineer: isPrimaryAdminEngineerServer(req.authUser),
+      session: ownSession ? attendanceSessionPublic(ownSession) : null,
+      onDuty,
+      history,
+      workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
+      workstationClientId: req.authUser?.role === "editor" ? String(db.attendanceConfig.workstationClientId || "") : "",
+      workstationName: monitor ? String(db.attendanceConfig.workstationName || "") : "",
+      workstationRegisteredAt: monitor ? String(db.attendanceConfig.workstationRegisteredAt || "") : "",
+      serverTime: new Date(now).toISOString()
+    });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/workstation" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const action = String(body.action || "register");
+    const clientId = String(body.clientId || "").trim().slice(0, 200);
+    const workstationName = String(body.workstationName || "").trim().slice(0, 100);
+    if (action === "register" && !clientId) {
+      sendJson(res, 400, { ok: false, error: "client_id_required" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      if (
+        action === "register"
+        && db.attendanceConfig.workstationClientId
+        && db.attendanceConfig.workstationClientId !== clientId
+      ) {
+        return { error: "attendance_workstation_already_registered" };
+      }
+      if (action === "reset") {
+        db.attendanceConfig.workstationClientId = "";
+        db.attendanceConfig.workstationRegisteredAt = "";
+        db.attendanceConfig.workstationRegisteredBy = "";
+        db.attendanceConfig.workstationName = "";
+        db.attendanceConfig.workstationUserAgent = "";
+      } else {
+        db.attendanceConfig.workstationClientId = clientId;
+        db.attendanceConfig.workstationName = workstationName || "Рабочий компьютер QR";
+        db.attendanceConfig.workstationUserAgent = String(req.headers["user-agent"] || "").slice(0, 300);
+        db.attendanceConfig.workstationRegisteredAt = new Date().toISOString();
+        db.attendanceConfig.workstationRegisteredBy = String(req.authUser.name || "");
+      }
+      attendanceQrSecret(db);
+      writeDb(db, { action: `attendance_workstation_${action}`, user: req.authUser, clientId });
+      return {
+        workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
+        workstationClientId: String(db.attendanceConfig.workstationClientId || ""),
+        workstationName: String(db.attendanceConfig.workstationName || "")
+      };
+    });
+    if (result.error) {
+      sendJson(res, 409, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/qr" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const clientId = String(url.searchParams.get("clientId") || "").trim();
+    const db = readDb();
+    if (!clientId || clientId !== String(db.attendanceConfig.workstationClientId || "")) {
+      sendJson(res, 409, { ok: false, error: "attendance_workstation_mismatch" });
+      return true;
+    }
+    const now = Date.now();
+    const token = attendanceQrToken(db, clientId, now);
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const protocol = forwardedProto === "https" ? "https" : "http";
+    const host = String(req.headers.host || "ppr-control-ramazan.onrender.com");
+    const scanUrl = `${protocol}://${host}/?attendance=${encodeURIComponent(token)}`;
+    sendJson(res, 200, {
+      ok: true,
+      token,
+      scanUrl,
+      expiresAt: new Date((Math.floor(now / ATTENDANCE_QR_SLOT_MS) + 1) * ATTENDANCE_QR_SLOT_MS).toISOString()
+    });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/scan" && req.method === "POST") {
+    if (!attendanceRoleAllowed(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "attendance_role_not_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const token = String(body.token || "");
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const clientId = String(db.attendanceConfig.workstationClientId || "");
+      const now = Date.now();
+      if (!clientId || !validAttendanceQrToken(db, clientId, token, now)) return { error: "attendance_qr_expired" };
+      const existing = activeAttendanceSession(db, req.authUser, now);
+      if (existing) return { alreadyActive: true, session: attendanceSessionPublic(existing) };
+      const startedAt = new Date(now).toISOString();
+      const session = {
+        id: `attendance:${now}:${crypto.randomBytes(4).toString("hex")}`,
+        userKey: attendanceUserKey(req.authUser),
+        userId: String(req.authUser.id || ""),
+        name: String(req.authUser.name || ""),
+        role: String(req.authUser.role || ""),
+        area: String(req.authUser.area || ""),
+        phone: String(req.authUser.phone || ""),
+        employeeId: String(req.authUser.employeeId || ""),
+        startedAt,
+        expiresAt: new Date(now + ATTENDANCE_WINDOW_MS).toISOString(),
+        workstationClientId: clientId,
+        manual: false
+      };
+      db.attendanceSessions.push(session);
+      db.attendanceSessions = db.attendanceSessions.slice(-2000);
+      writeDb(db, { action: "attendance_started", user: req.authUser, sessionId: session.id });
+      return { session: attendanceSessionPublic(session) };
+    });
+    if (result.error) {
+      sendJson(res, 410, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/admin" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const action = String(body.action || "");
+    const userKey = String(body.userKey || "").trim();
+    const sessionId = String(body.sessionId || "").trim();
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      if (action === "end") {
+        const session = (db.attendanceSessions || []).find(item => item.id === sessionId && !item.endedAt);
+        if (!session) return { error: "attendance_session_not_found" };
+        session.endedAt = new Date().toISOString();
+        session.endedBy = String(req.authUser.name || "Админ");
+        writeDb(db, { action: "attendance_ended_by_admin", user: req.authUser, sessionId });
+        return { session: attendanceSessionPublic(session) };
+      }
+      if (action === "grant") {
+        const user = (db.users || []).find(item => attendanceUserKey(item) === userKey);
+        if (!user || !attendanceRoleAllowed(user)) return { error: "attendance_user_not_found" };
+        const now = Date.now();
+        const existing = activeAttendanceSession(db, user, now);
+        if (existing) return { session: attendanceSessionPublic(existing), alreadyActive: true };
+        const session = {
+          id: `attendance:${now}:${crypto.randomBytes(4).toString("hex")}`,
+          userKey: attendanceUserKey(user),
+          userId: String(user.id || ""),
+          name: String(user.name || ""),
+          role: String(user.role || ""),
+          area: String(user.area || ""),
+          phone: String(user.phone || ""),
+          employeeId: String(user.employeeId || ""),
+          startedAt: new Date(now).toISOString(),
+          expiresAt: new Date(now + ATTENDANCE_WINDOW_MS).toISOString(),
+          manual: true,
+          grantedBy: String(req.authUser.name || "Админ")
+        };
+        db.attendanceSessions.push(session);
+        db.attendanceSessions = db.attendanceSessions.slice(-2000);
+        writeDb(db, { action: "attendance_granted_by_admin", user: req.authUser, target: userPublic(user) });
+        return { session: attendanceSessionPublic(session) };
+      }
+      return { error: "attendance_action_invalid" };
+    });
+    if (result.error) {
+      sendJson(res, 400, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  const attendanceMutationExempt = pathname.startsWith("/api/push/")
+    || pathname === "/api/client-error";
+  if (
+    attendanceRoleAllowed(req.authUser)
+    && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
+    && !attendanceMutationExempt
+  ) {
+    const db = readDb();
+    if (!activeAttendanceSession(db, req.authUser)) {
+      sendJson(res, 403, {
+        ok: false,
+        error: "attendance_required",
+        message: "Смена не открыта. Отсканируйте рабочий QR-код."
+      });
+      return true;
+    }
   }
 
   if (pathname === "/api/push/public-key" && req.method === "GET") {
