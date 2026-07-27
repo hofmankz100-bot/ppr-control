@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v273-required-client-update";
+const APP_VERSION = "v274-attendance-two-columns";
 
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString("hex");

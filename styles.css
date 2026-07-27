@@ -5133,7 +5133,7 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 .attendance-panel {
   position: relative;
-  width: min(980px, 100%);
+  width: min(1380px, 100%);
   max-height: calc(100vh - 36px);
   overflow: auto;
   padding: 22px;
@@ -5196,7 +5196,12 @@ body.editor-profile .warehouse-folders button.request-alert {
 .attendance-workstation-name input,
 .attendance-manual-card select { width: 100%; min-height: 44px; }
 .attendance-list-head { margin: 18px 0 10px; }
-.attendance-list { display: grid; gap: 10px; }
+.attendance-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, .65fr);
+  align-items: start;
+  gap: 18px;
+}
 .attendance-person {
   padding: 13px 15px;
   border: 1px solid #dbe5ef;
@@ -5260,11 +5265,21 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 .attendance-person.off-duty .attendance-call { background: #64748b; }
 .attendance-person.off-duty .attendance-whatsapp { background: #6b7280; }
-.attendance-people-group { display: grid; gap: 10px; }
+.attendance-people-group {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  max-height: 62vh;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #dbe5ef;
+  border-radius: 17px;
+  background: #f8fafc;
+}
 .attendance-people-group + .attendance-people-group {
-  margin-top: 16px;
-  padding-top: 18px;
-  border-top: 2px solid #dbe5ef;
+  margin-top: 0;
+  padding-top: 14px;
+  border-top: 1px solid #dbe5ef;
 }
 .attendance-group-title {
   display: flex;
@@ -5368,7 +5383,7 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: #64748b;
   text-align: center;
 }
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .attendance-modal { padding: 0; }
   .attendance-panel { width: 100%; max-height: 100vh; min-height: 100vh; border-radius: 0; padding: 16px; }
   .attendance-admin-grid { grid-template-columns: 1fr; }
@@ -5376,6 +5391,8 @@ body.editor-profile .warehouse-folders button.request-alert {
   .attendance-person-actions { width: 100%; }
   .attendance-person-actions > * { flex: 1; text-align: center; }
   .attendance-workstation-actions { align-items: stretch; flex-direction: column; }
+  .attendance-list { grid-template-columns: 1fr; }
+  .attendance-people-group { max-height: none; padding: 10px; overflow: visible; }
 }
 
 body.attendance-kiosk-active { overflow: hidden !important; }
