@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v298-spider-forklift-web";
+const APP_VERSION = "v299-admin-system-audit";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -1172,6 +1172,52 @@ async function openPushDiagnostics() {
   } catch {
     modal.querySelector("section").innerHTML = `<header><strong>Push-устройства</strong><button type="button" data-close-push-diagnostics>×</button></header><p class="empty-state">Не удалось загрузить состояние push.</p>`;
     modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
+  }
+}
+
+async function openStorageDiagnostics() {
+  document.querySelector("#storageDiagnosticsModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "storageDiagnosticsModal";
+  modal.className = "push-diagnostics-modal storage-diagnostics-modal";
+  modal.innerHTML = `<section><header><div><strong>Память и проверка мусора</strong><span>Проверяем без удаления...</span></div><button type="button" data-close-storage-diagnostics>×</button></header></section>`;
+  document.body.append(modal);
+  const close = () => modal.remove();
+  modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
+  try {
+    const result = await apiJson("/api/admin/storage-status", { timeout: 15000 });
+    const github = result.github || {};
+    const app = result.application || {};
+    const garbage = result.garbage || {};
+    const safeLimit = Number(github.safeLimitBytes || 1024 * 1024 * 1024);
+    const githubPercent = github.available ? Math.min(100, Math.round(Number(github.bytes || 0) / safeLimit * 1000) / 10) : 0;
+    const candidates = Array.isArray(garbage.candidates) ? garbage.candidates : [];
+    modal.querySelector("section").innerHTML = `
+      <header>
+        <div><strong>Память и проверка мусора</strong><span>Проверено ${escapeHtml(dateTimeHuman(result.checkedAt))}</span></div>
+        <button type="button" data-close-storage-diagnostics>×</button>
+      </header>
+      <div class="storage-diagnostics-grid">
+        <article><span>GitHub</span><strong>${github.available ? formatStorageSize(github.bytes) : "Нет связи"}</strong><small>${github.available ? `${githubPercent}% от безопасной отметки 1 ГБ` : "Повторите проверку позже"}</small></article>
+        <article><span>Данные приложения</span><strong>${formatStorageSize(app.databaseBytes || 0)}</strong><small>Рабочие записи PostgreSQL</small></article>
+        <article><span>Фотографии</span><strong>${formatStorageSize(app.photosBytes || 0)}</strong><small>${Number(app.photoFiles || 0)} файлов</small></article>
+        <article><span>Резервные копии</span><strong>${formatStorageSize(app.backupsBytes || 0)}</strong><small>${Number(app.backupFiles || 0)} файлов</small></article>
+      </div>
+      <div class="storage-garbage-report">
+        <div class="storage-garbage-head">
+          <div><strong>Возможный мусор</strong><span>${candidates.length} файлов · ${formatStorageSize(garbage.bytes || 0)}</span></div>
+          <b>Только проверка — ничего не удалено</b>
+        </div>
+        ${candidates.length ? candidates.map(item => `
+          <article><div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.reason || "")}</span></div><b>${formatStorageSize(item.bytes || 0)}</b></article>
+        `).join("") : `<p class="empty-state">Неиспользуемые файлы не найдены.</p>`}
+      </div>
+      <p class="storage-diagnostics-note">${escapeHtml(result.billing?.githubLfs || "")}<br>${escapeHtml(result.billing?.render || "")}</p>
+    `;
+    modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
+  } catch {
+    modal.querySelector("section").innerHTML = `<header><strong>Память и проверка мусора</strong><button type="button" data-close-storage-diagnostics>×</button></header><p class="empty-state">Не удалось выполнить проверку. Данные не изменены.</p>`;
+    modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
   }
 }
 
@@ -4073,6 +4119,7 @@ function renderProfile() {
     ${appNotificationPermissionButton()}
     ${attendanceMonitorButton}
     ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
+    ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
@@ -4090,6 +4137,7 @@ function renderProfile() {
     requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
+  ui.profileBar.querySelector("#storageDiagnosticsButton")?.addEventListener("click", openStorageDiagnostics);
   ui.profileBar.querySelector("#openAttendanceButton")?.addEventListener("click", openAttendancePanel);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
@@ -9844,6 +9892,7 @@ function scheduleRender(delay = 80) {
 function render() {
   renderProfile();
   renderSystemBroadcastNotice();
+  renderAdminMaintenanceNotice();
   updateDirectorBadge();
   updateDowntimeBadge();
   updateGpmBadge();
@@ -15917,6 +15966,28 @@ function renderSystemBroadcastNotice() {
   notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", () => { localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1"); notice.remove(); });
 }
 
+function renderAdminMaintenanceNotice() {
+  document.querySelector("#adminMaintenanceNotice")?.remove();
+  if (!isEditorSession()) return;
+  const noticeId = `ppr-admin-maintenance-read-${APP_VERSION}`;
+  if (localStorage.getItem(noticeId) === "1") return;
+  const notice = document.createElement("aside");
+  notice.id = "adminMaintenanceNotice";
+  notice.className = "system-broadcast-notice";
+  notice.innerHTML = `
+    <div>
+      <strong>Техническая проверка завершена</strong>
+      <span>Убран паучий герой и паутина. Погрузчик сохранён. Кнопка «Назад» проверена. Добавлена безопасная проверка мусора и памяти. Проверены регистрация, роли, журналы, отчёты, QR-обходы, устранения, баллы, заявки, печать, кеш и обновление.</span>
+    </div>
+    <div><button type="button" data-read-admin-maintenance>Понятно</button></div>
+  `;
+  document.body.append(notice);
+  notice.querySelector("[data-read-admin-maintenance]")?.addEventListener("click", () => {
+    localStorage.setItem(noticeId, "1");
+    notice.remove();
+  });
+}
+
 function renderDirectorUsers() {
   const users = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
   const canResetPasswords = ["director", "editor"].includes(profile?.role);
@@ -17197,8 +17268,13 @@ function goBack() {
     returnToOpenRemarkCards();
     return;
   }
-  const previous = nav.pop() || homeViewForProfile(profile?.role);
-  show(previous, false);
+  while (nav.length) {
+    const previous = nav.pop();
+    if (!previous || previous === current.view || !canOpenView(previous)) continue;
+    show(previous, false);
+    return;
+  }
+  show(homeViewForProfile(profile?.role), false);
 }
 
 ui.back?.addEventListener("click", goBack);
@@ -17718,11 +17794,6 @@ function setupHofmannForkliftMascot() {
   mascot.innerHTML = `
     <div class="forklift-smoke" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="forklift-flag"><b>HOFMANN</b><span>ALUMINIUM</span></div>
-    <div class="forklift-spider-driver">
-      <i class="spider-driver-head"><b></b><b></b></i>
-      <i class="spider-driver-body"></i>
-      <i class="spider-driver-arm"></i>
-    </div>
     <img class="forklift-vehicle" src="assets/hofmann-forklift.png?v=${APP_VERSION}" alt="">
     <div class="forklift-aluminum-load">
       <i></i><i></i><i></i><i></i><i></i>
@@ -17731,19 +17802,6 @@ function setupHofmannForkliftMascot() {
   `;
   document.body.append(mascot);
   mascot.hidden = true;
-  const webEffect = document.createElement("div");
-  webEffect.className = "forklift-web-screen";
-  webEffect.setAttribute("aria-hidden", "true");
-  webEffect.innerHTML = `
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-      <path class="forklift-web-line" d="M 24 82 Q 55 48 78 24"></path>
-      <g class="forklift-web-net" transform="translate(78 24)">
-        <circle r="4"></circle><circle r="8"></circle><circle r="13"></circle>
-        <path d="M-15 0H15M0-15V15M-11-11L11 11M11-11L-11 11"></path>
-      </g>
-    </svg>
-  `;
-  document.body.append(webEffect);
   let timer = 0;
   const moveForklift = (fromX, fromY, toX, toY, duration) => mascot.animate([
     { transform: `translate3d(${fromX}px,${fromY}px,0)` },
@@ -17770,11 +17828,6 @@ function setupHofmannForkliftMascot() {
     mascot.classList.add("is-driving");
     await moveForklift(startX, floorY, pickupX, floorY, window.innerWidth <= 640 ? 4300 : 5200);
     mascot.classList.remove("is-driving");
-    mascot.classList.add("is-web-shooting");
-    webEffect.classList.add("is-active");
-    await pause(1900);
-    webEffect.classList.remove("is-active");
-    mascot.classList.remove("is-web-shooting");
     mascot.classList.add("is-loading");
     await pause(2600);
     mascot.classList.remove("is-loading");

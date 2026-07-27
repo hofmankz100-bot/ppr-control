@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v298-spider-forklift-web";
+const SERVER_VERSION = "v299-admin-system-audit";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -112,6 +112,65 @@ function isPublicStaticPath(relativePath = "") {
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   if (normalized === "assets/hofmann-forklift.png") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js";
+}
+
+function directoryStorageStats(directory) {
+  if (!fs.existsSync(directory)) return { bytes: 0, files: 0 };
+  let bytes = 0;
+  let files = 0;
+  const walk = target => {
+    for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+      const fullPath = path.join(target, entry.name);
+      if (entry.isDirectory()) walk(fullPath);
+      else if (entry.isFile()) {
+        files += 1;
+        bytes += Number(fs.statSync(fullPath).size || 0);
+      }
+    }
+  };
+  try { walk(directory); } catch {}
+  return { bytes, files };
+}
+
+function unusedPublicAssetCandidates() {
+  const assetsDir = path.join(root, "assets");
+  if (!fs.existsSync(assetsDir)) return [];
+  const referenceFiles = ["app.js", "index.html", "styles.css", "sw.js", "manifest.json"]
+    .map(name => path.join(root, name))
+    .filter(file => fs.existsSync(file))
+    .map(file => fs.readFileSync(file, "utf8"))
+    .join("\n");
+  return fs.readdirSync(assetsDir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && !referenceFiles.includes(`assets/${entry.name}`))
+    .map(entry => {
+      const bytes = Number(fs.statSync(path.join(assetsDir, entry.name)).size || 0);
+      return { name: entry.name, bytes, reason: "Файл не подключён к текущей версии приложения" };
+    })
+    .sort((a, b) => b.bytes - a.bytes);
+}
+
+async function githubRepositoryStorage() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch("https://api.github.com/repos/hofmankz100-bot/ppr-control", {
+      headers: { "Accept": "application/vnd.github+json", "User-Agent": "PPR-Control-Storage-Monitor" },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`github_${response.status}`);
+    const data = await response.json();
+    return {
+      available: true,
+      bytes: Number(data.size || 0) * 1024,
+      safeLimitBytes: 1024 * 1024 * 1024,
+      recommendedMaximumBytes: 5 * 1024 * 1024 * 1024,
+      updatedAt: data.updated_at || ""
+    };
+  } catch {
+    return { available: false, bytes: 0, safeLimitBytes: 1024 * 1024 * 1024, recommendedMaximumBytes: 5 * 1024 * 1024 * 1024, updatedAt: "" };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function emptyDb() {
@@ -2712,6 +2771,41 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     req.authUser = authUser;
+  }
+
+  if (pathname === "/api/admin/storage-status" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const db = readDb();
+    const databaseBytes = Buffer.byteLength(JSON.stringify(publicState(db)), "utf8");
+    const photos = directoryStorageStats(photosDir);
+    const backups = directoryStorageStats(backupDir);
+    const garbageCandidates = unusedPublicAssetCandidates();
+    const github = await githubRepositoryStorage();
+    sendJson(res, 200, {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      github,
+      application: {
+        databaseBytes,
+        photosBytes: photos.bytes,
+        photoFiles: photos.files,
+        backupsBytes: backups.bytes,
+        backupFiles: backups.files
+      },
+      garbage: {
+        candidates: garbageCandidates,
+        bytes: garbageCandidates.reduce((sum, item) => sum + item.bytes, 0),
+        safeCheckOnly: true
+      },
+      billing: {
+        githubLfs: "Для точного остатка требуется защищённый GitHub billing token",
+        render: "Точный лимит тарифа смотрите в Render; приложение показывает фактически занятые данные"
+      }
+    }, { "Cache-Control": "no-store" });
+    return true;
   }
 
   if (pathname === "/api/attendance/lookup" && req.method === "POST") {

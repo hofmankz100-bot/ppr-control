@@ -10974,123 +10974,6 @@ body.editor-profile #createTmcRequestButton.request-alert,
   object-fit: contain;
 }
 
-.forklift-spider-driver {
-  position: absolute;
-  z-index: 2;
-  top: 31%;
-  left: 39%;
-  width: 17%;
-  height: 42%;
-  transform-origin: 50% 80%;
-}
-
-.spider-driver-head {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  left: 26%;
-  width: 52%;
-  aspect-ratio: .82;
-  border: 1px solid #640b16;
-  border-radius: 48% 48% 44% 44%;
-  background:
-    repeating-radial-gradient(circle at 50% 45%, transparent 0 5px, rgba(30,35,45,.6) 6px 6.7px),
-    #d51f32;
-  transform: rotate(8deg);
-}
-
-.spider-driver-head b {
-  position: absolute;
-  top: 29%;
-  width: 29%;
-  height: 37%;
-  border: 1px solid #171b22;
-  background: #fff;
-  clip-path: polygon(50% 0, 100% 20%, 68% 100%, 0 70%);
-}
-
-.spider-driver-head b:first-child { left: 12%; transform: scaleX(-1); }
-.spider-driver-head b:last-child { right: 12%; }
-
-.spider-driver-body {
-  position: absolute;
-  left: 17%;
-  bottom: 0;
-  width: 66%;
-  height: 62%;
-  border-radius: 44% 44% 20% 20%;
-  background: linear-gradient(90deg, #173f8e 0 22%, #cf1f34 22% 78%, #173f8e 78%);
-  transform: rotate(-8deg);
-}
-
-.spider-driver-arm {
-  position: absolute;
-  z-index: 3;
-  top: 48%;
-  left: 52%;
-  width: 78%;
-  height: 16%;
-  border-radius: 999px;
-  background: #cf1f34;
-  transform: rotate(27deg);
-  transform-origin: 0 50%;
-}
-
-.hofmann-forklift-mascot.is-web-shooting .forklift-spider-driver {
-  animation: spiderDriverLean .36s ease-in-out 2 alternate;
-}
-
-.hofmann-forklift-mascot.is-web-shooting .spider-driver-arm {
-  animation: spiderDriverShoot .32s ease-out forwards;
-}
-
-.forklift-web-screen {
-  position: fixed;
-  z-index: 1190;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.forklift-web-screen svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.forklift-web-line,
-.forklift-web-net circle,
-.forklift-web-net path {
-  fill: none;
-  stroke: rgba(242, 248, 255, .94);
-  stroke-width: .7;
-  vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 1px 1px rgba(20, 41, 61, .7));
-}
-
-.forklift-web-line {
-  stroke-dasharray: 130;
-  stroke-dashoffset: 130;
-}
-
-.forklift-web-net {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.forklift-web-screen.is-active {
-  animation: webScreenFade 1.9s ease-out forwards;
-}
-
-.forklift-web-screen.is-active .forklift-web-line {
-  animation: webLineShoot .48s ease-out forwards;
-}
-
-.forklift-web-screen.is-active .forklift-web-net {
-  animation: webNetOpen 1.35s .38s ease-out forwards;
-}
-
 .forklift-flag {
   position: absolute;
   z-index: 4;
@@ -11225,32 +11108,8 @@ body.editor-profile #createTmcRequestButton.request-alert,
   100% { opacity: 0; transform: translate(-34px, -32px) scale(1.65); }
 }
 
-@keyframes spiderDriverLean {
-  to { transform: translate(3px, -2px) rotate(6deg); }
-}
-
-@keyframes spiderDriverShoot {
-  to { transform: rotate(-28deg) scaleX(1.18); }
-}
-
-@keyframes webLineShoot {
-  to { stroke-dashoffset: 0; }
-}
-
-@keyframes webNetOpen {
-  0% { opacity: 0; transform: scale(.08) rotate(-18deg); }
-  35%, 78% { opacity: 1; transform: scale(1) rotate(0); }
-  100% { opacity: 0; transform: scale(1.08); }
-}
-
-@keyframes webScreenFade {
-  0%, 76% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .hofmann-forklift-mascot,
-  .forklift-web-screen { display: none !important; }
+  .hofmann-forklift-mascot { display: none !important; }
 }
 
 /* Phone gas journal: one readable date card instead of a 1180px print table. */
@@ -11403,4 +11262,106 @@ body.editor-profile #createTmcRequestButton.request-alert,
   padding: 13px;
   border: 1px solid var(--line, #dbe3ec);
   border-radius: 14px;
+}
+
+.storage-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.storage-diagnostics-grid article {
+  border: 1px solid var(--line, #dbe3ec);
+  border-radius: 12px;
+  background: #f7fafb;
+  padding: 12px;
+}
+
+.storage-diagnostics-grid span,
+.storage-diagnostics-grid strong,
+.storage-diagnostics-grid small {
+  display: block;
+}
+
+.storage-diagnostics-grid span,
+.storage-diagnostics-grid small,
+.storage-garbage-head span,
+.storage-garbage-report article span {
+  color: var(--muted, #64748b);
+  font-size: 12px;
+}
+
+.storage-diagnostics-grid strong {
+  margin: 4px 0;
+  color: #0f6175;
+  font-size: 20px;
+}
+
+.storage-garbage-report {
+  margin-top: 14px;
+  border: 1px solid #dbe3ec;
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+.storage-garbage-head,
+.storage-garbage-report article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 13px;
+}
+
+.storage-garbage-head {
+  background: #eef7f8;
+}
+
+.storage-garbage-head strong,
+.storage-garbage-head span,
+.storage-garbage-report article strong,
+.storage-garbage-report article span {
+  display: block;
+}
+
+.storage-garbage-head > b {
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.storage-garbage-report article + article {
+  border-top: 1px solid #e6edf0;
+}
+
+.storage-diagnostics-note {
+  margin: 12px 2px 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+@media (max-width: 650px) {
+  .storage-diagnostics-modal {
+    align-items: end;
+    padding: 0;
+  }
+
+  .storage-diagnostics-modal > section {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 16px 16px 0 0;
+    padding: 14px;
+  }
+
+  .storage-diagnostics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .storage-garbage-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

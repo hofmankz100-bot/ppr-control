@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=298-spider-forklift-web/);
-  assert.match(html, /styles\.css\?v=298-spider-forklift-web/);
-  assert.match(serviceWorker, /app\.js\?v=298-spider-forklift-web/);
+  assert.match(html, /app\.js\?v=299-admin-system-audit/);
+  assert.match(html, /styles\.css\?v=299-admin-system-audit/);
+  assert.match(serviceWorker, /app\.js\?v=299-admin-system-audit/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -825,18 +825,34 @@ test("the Hofmann forklift drives, smokes and carries aluminum profiles without 
   assert.match(app, /ALUMINIUM/);
   assert.match(app, /is-loading/);
   assert.match(app, /is-carrying/);
-  assert.match(app, /forklift-spider-driver/);
-  assert.match(app, /forklift-web-screen/);
-  assert.match(app, /is-web-shooting/);
+  assert.doesNotMatch(app, /forklift-spider-driver/);
+  assert.doesNotMatch(app, /forklift-web-screen/);
+  assert.doesNotMatch(app, /is-web-shooting/);
   assert.match(app, /document\.body\.append\(mascot\);\s+mascot\.hidden = true/);
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(style, /@keyframes forkliftSmoke/);
   assert.match(style, /@keyframes hofmannFlagWave/);
-  assert.match(style, /@keyframes webLineShoot/);
-  assert.match(style, /@keyframes webNetOpen/);
+  assert.doesNotMatch(style, /@keyframes webLineShoot/);
+  assert.doesNotMatch(style, /@keyframes webNetOpen/);
   assert.match(sw, /assets\/hofmann-forklift\.png/);
   assert.match(server, /assets\/hofmann-forklift\.png/);
+});
+
+test("admin garbage check is read-only and Back skips invalid history entries", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(app, /id="storageDiagnosticsButton">Проверить мусор/);
+  assert.match(app, /apiJson\("\/api\/admin\/storage-status"/);
+  assert.match(app, /Только проверка — ничего не удалено/);
+  assert.match(server, /pathname === "\/api\/admin\/storage-status" && req\.method === "GET"/);
+  assert.match(server, /safeCheckOnly: true/);
+  assert.match(server, /req\.authUser\?\.role !== "editor"/);
+  assert.match(app, /while \(nav\.length\)[\s\S]*?previous === current\.view \|\| !canOpenView\(previous\)/);
+  assert.match(app, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
+  assert.match(style, /\.storage-diagnostics-grid/);
+  assert.match(app, /Техническая проверка завершена/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
