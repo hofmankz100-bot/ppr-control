@@ -16,6 +16,12 @@ test("GPM journal has assignments, inspections, PTO workflow and responsible app
   assert.match(app, /data-gpm-approve/);
 });
 
+test("mechanical engineer can configure GPM cards without receiving automatic approval rights", () => {
+  assert.match(app, /function gpmCanManage\(\) \{\s*return gpmIsAdmin\(\) \|\| profile\?\.role === "mechanicalEngineer"/);
+  assert.match(app, /ui\.gpmAddButton\.hidden = !gpmCanManage\(\)/);
+  assert.match(app, /function gpmIsResponsible\(item\)/);
+});
+
 test("GPM deadlines enter the common PPR reminders and open the separate journal", () => {
   assert.match(app, /gpmDueEntries\(\)\.forEach/);
   assert.match(app, /data-open-gpm-reminder/);

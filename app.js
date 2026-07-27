@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v281-gpm-journal";
+const APP_VERSION = "v282-gpm-mechanical-engineer";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -12432,6 +12432,10 @@ function gpmIsAdmin() {
   return profile?.role === "editor";
 }
 
+function gpmCanManage() {
+  return gpmIsAdmin() || profile?.role === "mechanicalEngineer";
+}
+
 function gpmIsEngineer(item) {
   const key = gpmUserKey();
   return gpmIsAdmin() || (item?.engineerKeys || []).includes(key);
@@ -12596,7 +12600,7 @@ function gpmDetailHtml(item) {
           ${events.length ? events.map(entry => `<tr><td>${escapeHtml(dateHuman(entry.completedDate || entry.createdAt))}</td><td>${escapeHtml(gpmEventTypeLabel(entry.type))}</td><td>${escapeHtml(entry.engineerName || "")}</td><td>${escapeHtml(entry.result || "")}</td><td>${gpmDocumentLink(entry) || "—"}</td><td>${entry.approvedAt ? `Подтвердил ${escapeHtml(entry.approvedByName || "")}` : gpmIsResponsible(item) ? `<button type="button" class="no-print" data-gpm-approve="${escapeHtml(entry.id)}">Подтвердить допуск</button>` : "Ожидает ответственного"}</td></tr>`).join("") : `<tr><td colspan="6">Записей пока нет</td></tr>`}
         </tbody></table></div>
       </section>
-      ${gpmIsAdmin() ? `<div class="gpm-admin-actions no-print"><button type="button" data-gpm-edit="${escapeHtml(item.id)}">Настроить ГПМ и ответственных</button></div>` : ""}
+      ${gpmCanManage() ? `<div class="gpm-admin-actions no-print"><button type="button" data-gpm-edit="${escapeHtml(item.id)}">Настроить ГПМ и ответственных</button></div>` : ""}
     </section>`;
 }
 
@@ -12671,7 +12675,7 @@ function renderGpmJournal() {
   const equipment = gpmEquipmentList();
   if ((!current.selectedGpmId || !equipment.some(item => item.id === current.selectedGpmId)) && !current.gpmAdminEditorOpen) current.selectedGpmId = equipment[0]?.id || "";
   const selected = equipment.find(item => item.id === current.selectedGpmId) || null;
-  ui.gpmAddButton.hidden = !gpmIsAdmin();
+  ui.gpmAddButton.hidden = !gpmCanManage();
   ui.gpmPanel.innerHTML = `
     <div class="gpm-layout">
       <aside class="gpm-equipment-list">
@@ -12680,7 +12684,7 @@ function renderGpmJournal() {
           return `<button type="button" class="${item.id === current.selectedGpmId ? "active" : ""}" data-gpm-select="${escapeHtml(item.id)}"><span class="gpm-status-dot ${status.key}"></span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.location || "")} · ${status.label}</small></div></button>`;
         }).join("") : `<div class="empty-state">ГПМ ещё не добавлены. Администратор может создать первую карточку.</div>`}
       </aside>
-      <div class="gpm-content">${current.gpmAdminEditorOpen && gpmIsAdmin() ? gpmEquipmentForm(selected || {}) : selected ? gpmDetailHtml(selected) : ""}</div>
+      <div class="gpm-content">${current.gpmAdminEditorOpen && gpmCanManage() ? gpmEquipmentForm(selected || {}) : selected ? gpmDetailHtml(selected) : ""}</div>
     </div>`;
   ui.gpmPanel.querySelectorAll("[data-gpm-select]").forEach(button => button.addEventListener("click", () => {
     current.selectedGpmId = button.dataset.gpmSelect;

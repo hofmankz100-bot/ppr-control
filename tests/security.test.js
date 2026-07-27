@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v281-gpm-journal";
+const APP_VERSION = "v282-gpm-mechanical-engineer";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
