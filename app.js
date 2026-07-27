@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v277-stable-client-protocol";
+const APP_VERSION = "v278-visible-terminal-binding";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -2089,10 +2089,16 @@ async function openAttendancePanel() {
           <img data-attendance-qr alt="QR для начала смены" hidden>
           <p data-attendance-countdown></p>
           <label class="attendance-workstation-name"><span>Название компьютера</span><input data-attendance-workstation-name maxlength="100" value="${escapeHtml(status.workstationName || "Проходная")}" placeholder="Например: Проходная"></label>
-          ${status.workstationRegistered ? `<small>Зарегистрирован: ${escapeHtml(status.workstationName || "Рабочий компьютер QR")} · ${escapeHtml(attendanceTime(status.workstationRegisteredAt))}</small>` : ""}
+          <div class="attendance-binding-status ${status.workstationRegistered ? "is-linked" : "is-unlinked"}">
+            <span class="attendance-binding-dot" aria-hidden="true"></span>
+            <div>
+              <strong>${status.workstationRegistered ? "Компьютер привязан" : "Компьютер не привязан"}</strong>
+              ${status.workstationRegistered ? `<small>${escapeHtml(status.workstationName || "Рабочий компьютер QR")} · ${escapeHtml(attendanceTime(status.workstationRegisteredAt))}${status.workstationRegisteredBy ? ` · привязал: ${escapeHtml(status.workstationRegisteredBy)}` : ""}</small>` : `<small>Назначьте компьютер, на котором постоянно будет открыт рабочий QR.</small>`}
+            </div>
+          </div>
           <div class="attendance-workstation-actions">
-            <button type="button" data-attendance-register>${status.workstationClientId === CLIENT_ID ? "Этот компьютер назначен" : "Назначить этот компьютер"}</button>
-            ${status.workstationRegistered ? `<button type="button" class="danger" data-attendance-reset>Сбросить привязку</button>` : ""}
+            <button type="button" data-attendance-register>${status.workstationClientId === CLIENT_ID ? "Открыть QR на этом компьютере" : status.workstationRegistered ? "Заменить этим компьютером" : "Привязать этот компьютер"}</button>
+            ${status.workstationRegistered ? `<button type="button" class="danger" data-attendance-reset>Отвязать компьютер</button>` : ""}
           </div>
         </div>
         <div class="attendance-manual-card">
@@ -2109,7 +2115,9 @@ async function openAttendancePanel() {
   modal.querySelectorAll("[data-attendance-close]").forEach(item => item.addEventListener("click", closeAttendancePanel));
   modal.querySelector("[data-attendance-refresh]")?.addEventListener("click", refreshAttendancePanel);
   modal.querySelector("[data-attendance-register]")?.addEventListener("click", async () => {
-    if (!window.confirm("Назначить этот компьютер для показа рабочего QR?")) return;
+    if (!window.confirm(status.workstationRegistered && status.workstationClientId !== CLIENT_ID
+      ? "Сейчас привязан другой компьютер. Заменить его этим компьютером?"
+      : "Назначить этот компьютер для показа рабочего QR?")) return;
     const workstationName = modal.querySelector("[data-attendance-workstation-name]")?.value?.trim();
     if (!workstationName) return window.alert("Введите название компьютера.");
     const registration = await apiJson("/api/attendance/workstation", {

@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v277-stable-client-protocol";
+const APP_VERSION = "v278-visible-terminal-binding";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -218,6 +218,23 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
       method: "PUT",
       body: JSON.stringify({ checks: {} })
     })).status, 403);
+
+    const replacement = await api(baseUrl, "/api/attendance/workstation", editorCookie, {
+      method: "POST",
+      body: JSON.stringify({ action: "register", clientId: "replacement-browser", workstationName: "New terminal" })
+    });
+    assert.equal(replacement.status, 200);
+    const replacementData = await replacement.json();
+    assert.equal(replacementData.replacedExisting, true);
+    assert.ok(replacementData.kioskToken);
+    const oldTerminalAfterReplacement = await fetch(`${baseUrl}/api/attendance/kiosk`, {
+      headers: {
+        "x-app-version": APP_VERSION,
+        "x-attendance-kiosk-token": registrationData.kioskToken,
+        "x-attendance-client-id": "front-desk-browser"
+      }
+    });
+    assert.equal(oldTerminalAfterReplacement.status, 401);
   } finally {
     if (serverProcess.exitCode === null) {
       serverProcess.kill("SIGTERM");

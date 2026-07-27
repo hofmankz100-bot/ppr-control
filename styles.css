@@ -5195,6 +5195,35 @@ body.editor-profile .warehouse-folders button.request-alert {
 .attendance-workstation-name span { font-size: 12px; font-weight: 800; color: #475569; }
 .attendance-workstation-name input,
 .attendance-manual-card select { width: 100%; min-height: 44px; }
+.attendance-binding-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 13px;
+  background: #fff7f7;
+}
+.attendance-binding-status.is-linked {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+.attendance-binding-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, .12);
+}
+.attendance-binding-status.is-linked .attendance-binding-dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, .13);
+}
+.attendance-binding-status div { display: grid; gap: 3px; }
+.attendance-binding-status strong { color: #172033; }
+.attendance-binding-status small { color: #64748b; }
 .attendance-list-head { margin: 18px 0 10px; }
 .attendance-list {
   display: grid;

@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v277-stable-client-protocol";
+const SERVER_VERSION = "v278-visible-terminal-binding";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -2889,6 +2889,7 @@ async function handleApi(req, res, pathname, url) {
       workstationClientId: req.authUser?.role === "editor" ? String(db.attendanceConfig.workstationClientId || "") : "",
       workstationName: monitor ? String(db.attendanceConfig.workstationName || "") : "",
       workstationRegisteredAt: monitor ? String(db.attendanceConfig.workstationRegisteredAt || "") : "",
+      workstationRegisteredBy: monitor ? String(db.attendanceConfig.workstationRegisteredBy || "") : "",
       serverTime: new Date(now).toISOString()
     });
     return true;
@@ -2910,13 +2911,11 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       let issuedKioskToken = "";
-      if (
-        action === "register"
+      const replacedClientId = action === "register"
         && db.attendanceConfig.workstationClientId
         && db.attendanceConfig.workstationClientId !== clientId
-      ) {
-        return { error: "attendance_workstation_already_registered" };
-      }
+        ? String(db.attendanceConfig.workstationClientId)
+        : "";
       if (action === "reset") {
         db.attendanceConfig.workstationClientId = "";
         db.attendanceConfig.workstationRegisteredAt = "";
@@ -2940,7 +2939,8 @@ async function handleApi(req, res, pathname, url) {
       const response = {
         workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
         workstationClientId: String(db.attendanceConfig.workstationClientId || ""),
-        workstationName: String(db.attendanceConfig.workstationName || "")
+        workstationName: String(db.attendanceConfig.workstationName || ""),
+        replacedExisting: Boolean(replacedClientId)
       };
       if (issuedKioskToken) response.kioskToken = issuedKioskToken;
       return response;
