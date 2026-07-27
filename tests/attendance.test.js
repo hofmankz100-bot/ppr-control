@@ -148,6 +148,35 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.equal(qr.status, 200);
     const { token } = await qr.json();
 
+    const staffLookup = await fetch(`${baseUrl}/api/attendance/lookup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, identifier: worker.phone })
+    });
+    assert.equal(staffLookup.status, 200);
+    assert.equal((await staffLookup.json()).registered, true);
+    const contractorLookup = await fetch(`${baseUrl}/api/attendance/lookup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, identifier: "77009998877" })
+    });
+    assert.equal(contractorLookup.status, 200);
+    const contractorLookupData = await contractorLookup.json();
+    assert.equal(contractorLookupData.registered, false);
+    assert.ok(contractorLookupData.contractorTicket);
+    const contractor = await fetch(`${baseUrl}/api/attendance/contractor`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: "expired-token",
+        contractorTicket: contractorLookupData.contractorTicket,
+        name: "Contract Worker",
+        phone: "77009998877"
+      })
+    });
+    assert.equal(contractor.status, 200);
+    assert.equal((await contractor.json()).contractor, true);
+
     const scan = await api(baseUrl, "/api/attendance/scan", workerCookie, {
       method: "POST",
       body: JSON.stringify({ token })
@@ -165,6 +194,7 @@ test("dynamic attendance QR unlocks a worker for one shift and admin can close i
     assert.equal(monitorData.isPrimaryAdminEngineer, true);
     assert.equal(monitorData.onDuty[0].name, worker.name);
     assert.equal(monitorData.people.find(person => person.userKey === worker.id).onDuty, true);
+    assert.equal(monitorData.people.find(person => person.role === "contractor").name, "Contract Worker");
     assert.equal(monitorData.workstationName, "Проходная");
 
     const ended = await api(baseUrl, "/api/attendance/admin", editorCookie, {

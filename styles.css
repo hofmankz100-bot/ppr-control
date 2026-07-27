@@ -5260,6 +5260,66 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 .attendance-person.off-duty .attendance-call { background: #64748b; }
 .attendance-person.off-duty .attendance-whatsapp { background: #6b7280; }
+.attendance-people-group { display: grid; gap: 10px; }
+.attendance-people-group + .attendance-people-group {
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: 2px solid #dbe5ef;
+}
+.attendance-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+}
+.attendance-group-title h4 { margin: 0; font-size: 18px; }
+.attendance-group-title span { color: #64748b; font-size: 13px; font-weight: 800; }
+.attendance-people-group.contractors .attendance-group-title h4 { color: #7c3aed; }
+.public-attendance-entry {
+  position: fixed;
+  inset: 0;
+  z-index: 50000;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 20px;
+  overflow: auto;
+  color: #172033;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(14, 165, 233, .22), transparent 32%),
+    linear-gradient(145deg, #071b29, #123e54);
+}
+.public-attendance-card {
+  display: grid;
+  gap: 16px;
+  width: min(480px, 100%);
+  padding: clamp(24px, 5vw, 38px);
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 35px 100px rgba(0,0,0,.38);
+}
+.public-attendance-brand { color: #08789a; font-size: 12px; font-weight: 900; letter-spacing: .14em; }
+.public-attendance-card h1 { margin: 0; font-size: clamp(30px, 8vw, 46px); line-height: 1.05; }
+.public-attendance-card > p,
+.public-attendance-card > small { margin: 0; color: #64748b; line-height: 1.5; }
+.public-attendance-card form { display: grid; gap: 13px; }
+.public-attendance-card form[hidden] { display: none; }
+.public-attendance-card label { display: grid; gap: 6px; }
+.public-attendance-card label span { color: #475569; font-size: 13px; font-weight: 800; }
+.public-attendance-card input { width: 100%; min-height: 50px; font-size: 17px; }
+.public-attendance-card button { width: 100%; min-height: 50px; }
+.public-attendance-contractor-note {
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: #6d28d9;
+  background: #f3e8ff;
+  font-weight: 800;
+}
+.public-attendance-error { min-height: 20px; color: #b91c1c; font-weight: 800; }
+.public-attendance-card.success { justify-items: center; text-align: center; }
+.public-attendance-card.success > span { color: #15803d; font-size: 12px; font-weight: 900; letter-spacing: .08em; }
+.public-attendance-card.success > strong { padding: 11px 15px; border-radius: 12px; color: #166534; background: #dcfce7; }
 .attendance-empty {
   padding: 26px;
   border: 1px dashed #cbd5e1;

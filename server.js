@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v271-attendance-call-actions";
+const SERVER_VERSION = "v272-contractor-attendance";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
@@ -54,6 +54,7 @@ const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "t
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
 const loginAttempts = new Map();
+const contractorAttendanceAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
 let postgresWriteQueue = Promise.resolve();
@@ -2075,6 +2076,35 @@ function validAttendanceQrToken(db, clientId, token, now = Date.now()) {
   return expected.length === received.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
 }
 
+function contractorAttendanceRateAllowed(req) {
+  const key = requestIp(req);
+  const now = Date.now();
+  const recent = (contractorAttendanceAttempts.get(key) || []).filter(time => now - time < LOGIN_WINDOW_MS);
+  if (recent.length >= 20) return false;
+  recent.push(now);
+  contractorAttendanceAttempts.set(key, recent);
+  return true;
+}
+
+function contractorAttendanceTicket(db, req, now = Date.now()) {
+  const expires = now + 5 * 60 * 1000;
+  const signature = crypto.createHmac("sha256", attendanceQrSecret(db))
+    .update(`${expires}:${requestIp(req)}`)
+    .digest("base64url");
+  return `${expires}.${signature}`;
+}
+
+function validContractorAttendanceTicket(db, req, ticket, now = Date.now()) {
+  const match = String(ticket || "").match(/^(\d+)\.([A-Za-z0-9_-]+)$/);
+  if (!match) return false;
+  const expires = Number(match[1]);
+  if (!Number.isSafeInteger(expires) || expires < now || expires > now + 6 * 60 * 1000) return false;
+  const expected = crypto.createHmac("sha256", attendanceQrSecret(db))
+    .update(`${expires}:${requestIp(req)}`)
+    .digest("base64url");
+  return expected.length === match[2].length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(match[2]));
+}
+
 function attendanceSessionPublic(item = {}) {
   return {
     id: String(item.id || ""),
@@ -2620,7 +2650,9 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/auth/session"
     || pathname === "/api/auth/logout"
     || (pathname === "/api/attendance/kiosk" && req.method === "GET")
-    || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST");
+    || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST")
+    || (pathname === "/api/attendance/lookup" && req.method === "POST")
+    || (pathname === "/api/attendance/contractor" && req.method === "POST");
   if (!publicRequest) {
     const allowPending = pathname === "/api/users" && req.method === "GET";
     const authUser = authenticatedUser(req, readDb(), allowPending);
@@ -2629,6 +2661,88 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     req.authUser = authUser;
+  }
+
+  if (pathname === "/api/attendance/lookup" && req.method === "POST") {
+    if (!contractorAttendanceRateAllowed(req)) {
+      sendJson(res, 429, { ok: false, error: "Слишком много попыток. Подождите несколько минут." });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const db = readDb();
+    const clientId = String(db.attendanceConfig.workstationClientId || "");
+    if (!clientId || !validAttendanceQrToken(db, clientId, body.token)) {
+      sendJson(res, 410, { ok: false, error: "attendance_qr_expired" });
+      return true;
+    }
+    const identifier = String(body.identifier || "").trim().slice(0, 100);
+    if (identifier.length < 3) {
+      sendJson(res, 400, { ok: false, error: "Введите телефон или табельный номер." });
+      return true;
+    }
+    const user = findUser(db, identifier);
+    sendJson(res, 200, {
+      ok: true,
+      registered: Boolean(user && user.approved !== false && user.pendingApproval !== true && user.role),
+      identifier,
+      contractorTicket: user ? "" : contractorAttendanceTicket(db, req)
+    });
+    return true;
+  }
+
+  if (pathname === "/api/attendance/contractor" && req.method === "POST") {
+    if (!contractorAttendanceRateAllowed(req)) {
+      sendJson(res, 429, { ok: false, error: "Слишком много попыток. Подождите несколько минут." });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 150);
+    const phone = String(body.phone || "").trim().slice(0, 50);
+    if (name.length < 3 || normalizeIdentifier(phone).length < 7) {
+      sendJson(res, 400, { ok: false, error: "Введите ФИО и правильный номер телефона." });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const clientId = String(db.attendanceConfig.workstationClientId || "");
+      const now = Date.now();
+      if (
+        !clientId
+        || (!validAttendanceQrToken(db, clientId, body.token, now) && !validContractorAttendanceTicket(db, req, body.contractorTicket, now))
+      ) return { error: "attendance_qr_expired" };
+      if (findUser(db, phone)) return { error: "attendance_registered_user" };
+      const phoneKey = normalizeIdentifier(phone);
+      const userKey = `contractor:${phoneKey}`;
+      const existing = (db.attendanceSessions || []).find(item =>
+        item.userKey === userKey && !item.endedAt && Date.parse(item.expiresAt || "") > now
+      );
+      if (existing) return { alreadyActive: true, session: attendanceSessionPublic(existing) };
+      const session = {
+        id: `attendance:${now}:${crypto.randomBytes(4).toString("hex")}`,
+        userKey,
+        name,
+        role: "contractor",
+        area: "",
+        phone,
+        employeeId: "",
+        startedAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + ATTENDANCE_WINDOW_MS).toISOString(),
+        workstationClientId: clientId,
+        manual: false,
+        contractor: true
+      };
+      db.attendanceSessions.push(session);
+      db.attendanceSessions = db.attendanceSessions.slice(-2000);
+      writeDb(db, { action: "contractor_attendance_started", name, phone, sessionId: session.id });
+      return { session: attendanceSessionPublic(session) };
+    });
+    if (result.error) {
+      const status = result.error === "attendance_qr_expired" ? 410 : 409;
+      sendJson(res, status, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, contractor: true, ...result });
+    return true;
   }
 
   if (pathname === "/api/attendance/kiosk" && req.method === "GET") {
@@ -2681,7 +2795,7 @@ async function handleApi(req, res, pathname, url) {
         .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
       : [];
     const people = monitor
-      ? (db.users || [])
+      ? [...(db.users || [])
         .filter(user => attendanceRoleAllowed(user) && user.approved !== false && user.pendingApproval !== true)
         .map(user => {
           const session = activeAttendanceSession(db, user, now);
@@ -2695,7 +2809,20 @@ async function handleApi(req, res, pathname, url) {
             onDuty: Boolean(session),
             session: session ? attendanceSessionPublic(session) : null
           };
-        })
+        }),
+        ...(db.attendanceSessions || [])
+          .filter(item => item.contractor === true && !item.endedAt && Date.parse(item.expiresAt || "") > now)
+          .map(item => ({
+            userKey: String(item.userKey || ""),
+            name: String(item.name || ""),
+            role: "contractor",
+            area: "",
+            phone: String(item.phone || ""),
+            employeeId: "",
+            onDuty: true,
+            contractor: true,
+            session: attendanceSessionPublic(item)
+          }))]
         .sort((a, b) => Number(b.onDuty) - Number(a.onDuty) || a.name.localeCompare(b.name, "ru"))
       : [];
     const history = req.authUser?.role === "editor"

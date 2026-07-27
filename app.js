@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v271-attendance-call-actions";
+const APP_VERSION = "v272-contractor-attendance";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
 const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
@@ -1627,6 +1627,10 @@ function attendancePhoneUrl(phone = "") {
   return clean ? `tel:${clean}` : "";
 }
 
+function attendanceRoleLabel(role = "") {
+  return role === "contractor" ? "Наёмный сотрудник" : (ROLE_ACCESS[role]?.label || role || "Сотрудник");
+}
+
 async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
   if (!isProfileReady()) return null;
   try {
@@ -1677,7 +1681,7 @@ async function handleIncomingAttendanceQrFromUrl() {
   return true;
 }
 
-function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "", expiresAt = "" } = {}) {
+function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "", expiresAt = "", displayName = "" } = {}) {
   document.querySelector(".attendance-scan-confirmation")?.remove();
   navigator.vibrate?.(alreadyActive ? [80] : [100, 70, 160]);
   const overlay = document.createElement("div");
@@ -1685,7 +1689,7 @@ function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "",
   overlay.innerHTML = `<div class="attendance-scan-card" role="status" aria-live="assertive">
     <div class="attendance-scan-check">✓</div>
     <span>${alreadyActive ? "СМЕНА УЖЕ ОТКРЫТА" : "QR УСПЕШНО ОТСКАНИРОВАН"}</span>
-    <h2>${escapeHtml(profile?.name || "Сотрудник")}</h2>
+    <h2>${escapeHtml(displayName || profile?.name || "Сотрудник")}</h2>
     <p>${alreadyActive ? "Повторная отметка не требуется." : `Вы отмечены на работе в ${escapeHtml(attendanceTime(startedAt))}.`}</p>
     <strong>Редактирование доступно до ${escapeHtml(attendanceTime(expiresAt))}</strong>
     <button type="button">Продолжить работу</button>
@@ -1694,6 +1698,125 @@ function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "",
   const close = () => overlay.remove();
   overlay.querySelector("button")?.addEventListener("click", close);
   window.setTimeout(close, 12000);
+}
+
+function attendanceTokenFromUrl() {
+  return new URLSearchParams(window.location.search).get("attendance") || "";
+}
+
+function clearAttendanceTokenFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  params.delete("attendance");
+  const cleanQuery = params.toString();
+  history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
+}
+
+function showContractorAttendanceSuccess(overlay, result, name) {
+  clearAttendanceTokenFromUrl();
+  navigator.vibrate?.([100, 70, 160]);
+  overlay.innerHTML = `<section class="public-attendance-card success" role="status">
+    <div class="attendance-scan-check">✓</div>
+    <span>${result.alreadyActive ? "ВЫ УЖЕ ОТМЕЧЕНЫ" : "QR УСПЕШНО ОТСКАНИРОВАН"}</span>
+    <h1>${escapeHtml(name)}</h1>
+    <p>Вы отмечены как наёмный сотрудник.</p>
+    <strong>На работе до ${escapeHtml(attendanceTime(result.session?.expiresAt))}</strong>
+    <small>Доступ к производственному приложению не предоставляется. Закройте эту страницу.</small>
+  </section>`;
+}
+
+function setupPublicAttendanceEntry({ force = false } = {}) {
+  const token = attendanceTokenFromUrl();
+  if (!token || (!force && isProfileReady())) return false;
+  if (document.querySelector(".public-attendance-entry")) return true;
+  const overlay = document.createElement("div");
+  overlay.className = "public-attendance-entry";
+  overlay.innerHTML = `<section class="public-attendance-card">
+    <div class="public-attendance-brand">ППР КОНТРОЛЬ</div>
+    <h1>Отметка на работе</h1>
+    <p>Введите свой телефон или табельный номер. Система сама определит: штатный вы сотрудник или наёмный.</p>
+    <form data-public-lookup>
+      <label><span>Телефон или табельный номер</span><input name="identifier" autocomplete="username" inputmode="tel" required placeholder="+7… или табельный номер"></label>
+      <button type="submit">Продолжить</button>
+    </form>
+    <form data-public-contractor hidden>
+      <div class="public-attendance-contractor-note">Вы не найдены в списке штатных сотрудников. Отметьтесь как наёмный сотрудник.</div>
+      <label><span>ФИО</span><input name="name" autocomplete="name" required placeholder="Имя и фамилия"></label>
+      <label><span>Номер телефона</span><input name="phone" autocomplete="tel" inputmode="tel" required placeholder="+7…"></label>
+      <button type="submit">Отметиться на работе</button>
+      <button type="button" class="secondary" data-public-back>Назад</button>
+    </form>
+    <div class="public-attendance-error" data-public-error></div>
+    <small>Эта страница предназначена только для отметки. Данные приложения здесь недоступны.</small>
+  </section>`;
+  document.body.appendChild(overlay);
+  const lookupForm = overlay.querySelector("[data-public-lookup]");
+  const contractorForm = overlay.querySelector("[data-public-contractor]");
+  const errorBox = overlay.querySelector("[data-public-error]");
+  let contractorTicket = "";
+  lookupForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const identifier = String(new FormData(lookupForm).get("identifier") || "").trim();
+    errorBox.textContent = "";
+    const button = lookupForm.querySelector("button");
+    setButtonBusy(button, true, "Проверяем…");
+    try {
+      const result = await apiJson("/api/attendance/lookup", {
+        method: "POST",
+        body: JSON.stringify({ token, identifier })
+      });
+      if (result.registered) {
+        overlay.remove();
+        if (ui.loginEmployeeId) ui.loginEmployeeId.value = identifier;
+        if (ui.loginOverlay) ui.loginOverlay.hidden = false;
+        if (ui.loginForm) ui.loginForm.hidden = false;
+        if (ui.loginError) ui.loginError.textContent = "Штатный сотрудник найден. Введите пароль.";
+        ui.loginPassword?.focus();
+        return;
+      }
+      contractorTicket = String(result.contractorTicket || "");
+      lookupForm.hidden = true;
+      contractorForm.hidden = false;
+      const normalizedPhone = identifier.replace(/[^\d+]/g, "");
+      if (normalizedPhone.replace(/\D/g, "").length >= 7) contractorForm.elements.phone.value = identifier;
+      contractorForm.elements.name.focus();
+    } catch (error) {
+      errorBox.textContent = error.status === 410
+        ? "QR уже обновился. Отсканируйте новый код на терминале."
+        : (error.message || "Не удалось проверить данные.");
+    } finally {
+      setButtonBusy(button, false);
+    }
+  });
+  contractorForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const data = new FormData(contractorForm);
+    const name = String(data.get("name") || "").trim();
+    const phone = String(data.get("phone") || "").trim();
+    errorBox.textContent = "";
+    const button = contractorForm.querySelector("button[type='submit']");
+    setButtonBusy(button, true, "Отмечаем…");
+    try {
+      const result = await apiJson("/api/attendance/contractor", {
+        method: "POST",
+        body: JSON.stringify({ token, contractorTicket, name, phone })
+      });
+      showContractorAttendanceSuccess(overlay, result, name);
+    } catch (error) {
+      errorBox.textContent = error.status === 410
+        ? "QR уже обновился. Отсканируйте новый код на терминале."
+        : error.message === "attendance_registered_user"
+          ? "Этот телефон принадлежит штатному сотруднику. Вернитесь и войдите с паролем."
+          : (error.message || "Не удалось отметить сотрудника.");
+    } finally {
+      setButtonBusy(button, false);
+    }
+  });
+  overlay.querySelector("[data-public-back]")?.addEventListener("click", () => {
+    contractorForm.hidden = true;
+    lookupForm.hidden = false;
+    errorBox.textContent = "";
+  });
+  return true;
 }
 
 function closeAttendancePanel() {
@@ -1829,7 +1952,7 @@ function attendanceSessionRows(items = [], admin = false) {
     return `<div class="attendance-person ${onDuty ? "on-duty" : "off-duty"}">
       <div class="attendance-person-main"><span class="attendance-status-dot ${onDuty ? "green" : "red"}" aria-label="${onDuty ? "На работе" : "Не на работе"}"></span><div>
         <div class="attendance-person-heading"><strong>${escapeHtml(person.name || item.name || "Сотрудник")}</strong><span class="attendance-state-text ${onDuty ? "green" : "red"}">${onDuty ? "На работе" : "Не на работе"}</span></div>
-        <span>${escapeHtml(ROLE_ACCESS[person.role || item.role]?.label || person.role || item.role || "")}${(person.area || item.area) ? ` · ${escapeHtml(person.area || item.area)}` : ""}</span>
+        <span>${escapeHtml(attendanceRoleLabel(person.role || item.role))}${(person.area || item.area) ? ` · ${escapeHtml(person.area || item.area)}` : ""}</span>
         ${phone ? `<a class="attendance-phone-number" href="${escapeHtml(phoneUrl)}">${escapeHtml(phone)}</a>` : ""}
         <small>${onDuty ? `На работе · сканирование ${escapeHtml(attendanceTime(item.startedAt))} · до ${escapeHtml(attendanceTime(item.expiresAt))}` : "Не на работе · QR не отсканирован"}</small>
       </div></div>
@@ -1843,13 +1966,26 @@ function attendanceSessionRows(items = [], admin = false) {
   }).join("");
 }
 
+function attendancePeopleSections(items = [], admin = false) {
+  const staff = items.filter(person => !person.contractor && person.role !== "contractor");
+  const contractors = items.filter(person => person.contractor || person.role === "contractor");
+  return `<section class="attendance-people-group staff">
+      <div class="attendance-group-title"><h4>Штатные сотрудники</h4><span>${staff.filter(person => person.onDuty).length} на работе · ${staff.length} всего</span></div>
+      ${attendanceSessionRows(staff, admin)}
+    </section>
+    <section class="attendance-people-group contractors">
+      <div class="attendance-group-title"><h4>Наёмные сотрудники</h4><span>${contractors.length} на работе</span></div>
+      ${contractors.length ? attendanceSessionRows(contractors, admin) : `<div class="attendance-empty">Наёмные сотрудники ещё не отмечались.</div>`}
+    </section>`;
+}
+
 async function refreshAttendancePanel() {
   const modal = document.querySelector(".attendance-modal");
   if (!modal) return;
   const status = await refreshAttendanceStatus({ renderProfileBar: false });
   if (!status) return;
   const list = modal.querySelector("[data-attendance-list]");
-  if (list) list.innerHTML = attendanceSessionRows(status.people || status.onDuty, status.isAdmin);
+  if (list) list.innerHTML = attendancePeopleSections(status.people || status.onDuty, status.isAdmin);
   modal.querySelectorAll("[data-attendance-end]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Закрыть смену сотрудника?")) return;
     await apiJson("/api/attendance/admin", {
@@ -1927,8 +2063,8 @@ async function openAttendancePanel() {
           <button type="button" data-attendance-grant>Открыть на 10 часов</button>
         </div>
       </div>` : ""}
-      <div class="attendance-list-head"><h3>Сейчас на работе</h3><button type="button" data-attendance-refresh>Обновить</button></div>
-      <div class="attendance-list" data-attendance-list>${attendanceSessionRows(status.people || status.onDuty, status.isAdmin)}</div>
+      <div class="attendance-list-head"><h3>Статус сотрудников</h3><button type="button" data-attendance-refresh>Обновить</button></div>
+      <div class="attendance-list" data-attendance-list>${attendancePeopleSections(status.people || status.onDuty, status.isAdmin)}</div>
     </section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-attendance-close]").forEach(item => item.addEventListener("click", closeAttendancePanel));
@@ -3068,6 +3204,7 @@ async function restoreServerSession() {
     if (ui.loginOverlay) ui.loginOverlay.hidden = false;
     if (ui.loginForm) ui.loginForm.hidden = false;
     if (ui.loginError) ui.loginError.textContent = "Сессия завершена. Войдите снова.";
+    setupPublicAttendanceEntry({ force: true });
     return false;
   }
 }
@@ -16867,6 +17004,7 @@ if ("serviceWorker" in navigator) {
 }
 
 setupTheme();
+setupPublicAttendanceEntry();
 setupLogin();
 setupRepairMasterMascot();
 resetAppNotificationsForOpen();
