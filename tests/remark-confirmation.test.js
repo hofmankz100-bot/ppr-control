@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=297-hofmann-forklift-stable/);
-  assert.match(html, /styles\.css\?v=297-hofmann-forklift-stable/);
-  assert.match(serviceWorker, /app\.js\?v=297-hofmann-forklift-stable/);
+  assert.match(html, /app\.js\?v=298-spider-forklift-web/);
+  assert.match(html, /styles\.css\?v=298-spider-forklift-web/);
+  assert.match(serviceWorker, /app\.js\?v=298-spider-forklift-web/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -825,11 +825,16 @@ test("the Hofmann forklift drives, smokes and carries aluminum profiles without 
   assert.match(app, /ALUMINIUM/);
   assert.match(app, /is-loading/);
   assert.match(app, /is-carrying/);
+  assert.match(app, /forklift-spider-driver/);
+  assert.match(app, /forklift-web-screen/);
+  assert.match(app, /is-web-shooting/);
   assert.match(app, /document\.body\.append\(mascot\);\s+mascot\.hidden = true/);
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(style, /@keyframes forkliftSmoke/);
   assert.match(style, /@keyframes hofmannFlagWave/);
+  assert.match(style, /@keyframes webLineShoot/);
+  assert.match(style, /@keyframes webNetOpen/);
   assert.match(sw, /assets\/hofmann-forklift\.png/);
   assert.match(server, /assets\/hofmann-forklift\.png/);
 });

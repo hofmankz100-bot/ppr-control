@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v297-hofmann-forklift-stable";
+const APP_VERSION = "v298-spider-forklift-web";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -17718,6 +17718,11 @@ function setupHofmannForkliftMascot() {
   mascot.innerHTML = `
     <div class="forklift-smoke" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="forklift-flag"><b>HOFMANN</b><span>ALUMINIUM</span></div>
+    <div class="forklift-spider-driver">
+      <i class="spider-driver-head"><b></b><b></b></i>
+      <i class="spider-driver-body"></i>
+      <i class="spider-driver-arm"></i>
+    </div>
     <img class="forklift-vehicle" src="assets/hofmann-forklift.png?v=${APP_VERSION}" alt="">
     <div class="forklift-aluminum-load">
       <i></i><i></i><i></i><i></i><i></i>
@@ -17726,6 +17731,19 @@ function setupHofmannForkliftMascot() {
   `;
   document.body.append(mascot);
   mascot.hidden = true;
+  const webEffect = document.createElement("div");
+  webEffect.className = "forklift-web-screen";
+  webEffect.setAttribute("aria-hidden", "true");
+  webEffect.innerHTML = `
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path class="forklift-web-line" d="M 24 82 Q 55 48 78 24"></path>
+      <g class="forklift-web-net" transform="translate(78 24)">
+        <circle r="4"></circle><circle r="8"></circle><circle r="13"></circle>
+        <path d="M-15 0H15M0-15V15M-11-11L11 11M11-11L-11 11"></path>
+      </g>
+    </svg>
+  `;
+  document.body.append(webEffect);
   let timer = 0;
   const moveForklift = (fromX, fromY, toX, toY, duration) => mascot.animate([
     { transform: `translate3d(${fromX}px,${fromY}px,0)` },
@@ -17752,6 +17770,11 @@ function setupHofmannForkliftMascot() {
     mascot.classList.add("is-driving");
     await moveForklift(startX, floorY, pickupX, floorY, window.innerWidth <= 640 ? 4300 : 5200);
     mascot.classList.remove("is-driving");
+    mascot.classList.add("is-web-shooting");
+    webEffect.classList.add("is-active");
+    await pause(1900);
+    webEffect.classList.remove("is-active");
+    mascot.classList.remove("is-web-shooting");
     mascot.classList.add("is-loading");
     await pause(2600);
     mascot.classList.remove("is-loading");
