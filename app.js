@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v279-separate-press-downtimes";
+const APP_VERSION = "v280-distinct-press-colors";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -250,6 +250,10 @@ const RESERVE_EQUIPMENT_COLORS = Object.freeze({
   18: "#2563eb",
   19: "#f59e0b",
   20: "#0f766e"
+});
+const PRESS_EQUIPMENT_COLORS = Object.freeze({
+  1: "#2563eb",
+  2: "#7c3aed"
 });
 const AREAS = [...new Set(EQUIPMENT.map(item => item.area))].sort((a, b) => a.localeCompare(b, "ru"));
 const COMMON_WAREHOUSE = "Склад общего пользования";
@@ -7704,6 +7708,8 @@ function downtimeAreaColor(area) {
 }
 
 function equipmentRowColor(eq) {
+  const fixedPressColor = PRESS_EQUIPMENT_COLORS[Number(eq?.id)];
+  if (fixedPressColor) return fixedPressColor;
   const fixedReserveColor = RESERVE_EQUIPMENT_COLORS[Number(eq?.id)];
   if (eq?.area === "Резерв" && fixedReserveColor) return fixedReserveColor;
   const sameAreaCount = allEquipment().filter(item => item.area === eq.area).length;
