@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v308-remove-selected-attachment";
+const APP_VERSION = "v309-codex-live-status";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1269,7 +1269,13 @@ async function loadCodexTasksInto(modal) {
   }
 }
 
+let codexTasksRefreshTimer = 0;
+
 async function openCodexTasks() {
+  if (codexTasksRefreshTimer) {
+    window.clearInterval(codexTasksRefreshTimer);
+    codexTasksRefreshTimer = 0;
+  }
   document.querySelector("#codexTasksModal")?.remove();
   const modal = document.createElement("div");
   modal.id = "codexTasksModal";
@@ -1291,7 +1297,13 @@ async function openCodexTasks() {
       <div class="codex-task-list" data-codex-task-list><p class="empty-state">Загрузка...</p></div>
     </section>`;
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    if (codexTasksRefreshTimer) {
+      window.clearInterval(codexTasksRefreshTimer);
+      codexTasksRefreshTimer = 0;
+    }
+    modal.remove();
+  };
   modal.querySelector("[data-close-codex-tasks]")?.addEventListener("click", close);
   modal.addEventListener("click", event => {
     if (event.target === modal) close();
@@ -1349,11 +1361,19 @@ async function openCodexTasks() {
       form.reset();
       selectedFiles = [];
       renderSelectedFiles();
-      showAppToast("Задание сохранено в очереди.");
+      showAppToast("Задание отправлено. Статус обновляется автоматически.", "ok");
       await loadCodexTasksInto(modal);
     }, "Отправляем...");
   });
   await loadCodexTasksInto(modal);
+  codexTasksRefreshTimer = window.setInterval(() => {
+    if (!modal.isConnected) {
+      window.clearInterval(codexTasksRefreshTimer);
+      codexTasksRefreshTimer = 0;
+      return;
+    }
+    if (document.visibilityState !== "hidden") loadCodexTasksInto(modal);
+  }, 5000);
 }
 
 async function openStorageDiagnostics() {

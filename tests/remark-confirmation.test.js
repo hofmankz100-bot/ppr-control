@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=308-remove-selected-attachment/);
-  assert.match(html, /styles\.css\?v=308-remove-selected-attachment/);
-  assert.match(serviceWorker, /app\.js\?v=308-remove-selected-attachment/);
+  assert.match(html, /app\.js\?v=309-codex-live-status/);
+  assert.match(html, /styles\.css\?v=309-codex-live-status/);
+  assert.match(serviceWorker, /app\.js\?v=309-codex-live-status/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -904,6 +904,11 @@ test("only the primary admin can create and read Codex tasks", async () => {
   assert.match(clientSource, /data-codex-selected-files/);
   assert.match(clientSource, /data-remove-codex-file/);
   assert.match(clientSource, /selectedFiles\.splice/);
+  assert.match(clientSource, /codexTasksRefreshTimer = window\.setInterval/);
+  assert.match(clientSource, /Статус обновляется автоматически/);
+  const bridgeSource = fs.readFileSync(path.join(root, "agent", "codex-bridge.mjs"), "utf8");
+  assert.match(bridgeSource, /совет, инструкцию или ответ на вопрос/);
+  assert.match(bridgeSource, /CODEX_AGENT_POLL_MS\) \|\| 5000/);
   const forbidden = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
     headers: { "x-test-user-id": "engineer-1" }
   });

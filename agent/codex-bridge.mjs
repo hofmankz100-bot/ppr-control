@@ -8,7 +8,7 @@ const token = String(process.env.CODEX_AGENT_TOKEN || "");
 const agentId = String(process.env.CODEX_AGENT_ID || `ppr-codex-${process.env.COMPUTERNAME || "windows"}`);
 const repoDir = resolve(process.env.PPR_REPO_DIR || process.cwd());
 const codexBin = String(process.env.CODEX_BIN || "codex");
-const pollMs = Math.max(5000, Number(process.env.CODEX_AGENT_POLL_MS) || 30000);
+const pollMs = Math.max(5000, Number(process.env.CODEX_AGENT_POLL_MS) || 5000);
 const runOnce = process.env.CODEX_AGENT_ONCE === "1";
 
 if (!token) throw new Error("CODEX_AGENT_TOKEN is required");
@@ -55,9 +55,10 @@ function buildPrompt(task, attachments) {
     : "";
   return [
     "Задание пришло из приложения PPR-Control от основного администратора.",
-    "Работай только в текущем репозитории. Сначала проверь состояние git и существующий код.",
+    "Сначала определи тип задания. Если пользователь просит совет, инструкцию или ответ на вопрос и явно не просит изменить код, ответь кратко без запуска команд и без изменения файлов.",
+    "Если пользователь просит изменить приложение, работай только в текущем репозитории: проверь состояние git и существующий код, затем выполни безопасные локальные изменения и проверки.",
     "Не публикуй, не объединяй PR и не меняй внешние сервисы без явного указания в самом задании.",
-    "Выполни безопасные локальные изменения и проверки. В финале кратко сообщи результат и проверки.",
+    "В финале кратко сообщи результат. Для изменений кода также укажи выполненные проверки.",
     "",
     task.text,
     attachmentText
