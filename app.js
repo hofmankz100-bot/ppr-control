@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v305-admin-codex-task-window";
+const APP_VERSION = "v306-codex-task-attachments";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1210,9 +1210,45 @@ function renderCodexTaskItems(tasks = []) {
       </div>
       <p>${escapeHtml(task.text || "")}</p>
       <small>${escapeHtml(codexTaskEstimate(task))}</small>
+      ${Array.isArray(task.attachments) && task.attachments.length ? `<div class="codex-task-attachments">
+        ${task.attachments.map(file => `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener" download="${escapeHtml(file.name || "file")}">📎 ${escapeHtml(file.name || "Файл")}</a>`).join("")}
+      </div>` : ""}
       ${task.result ? `<div class="codex-task-result">${escapeHtml(task.result)}</div>` : ""}
     </article>
   `).join("");
+}
+
+function readCodexTaskFile(file) {
+  return new Promise((resolve, reject) => {
+    const allowed = /^(image\/(?:jpeg|jpg|png|webp)|application\/pdf)$/i;
+    if (!file || !allowed.test(String(file.type || ""))) {
+      reject(new Error("Можно прикрепить фото JPEG, PNG, WebP или PDF."));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error(`Файл «${file.name}» больше 5 МБ.`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Не удалось прочитать файл «${file.name}».`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadCodexTaskFile(file) {
+  const data = await readCodexTaskFile(file);
+  const result = await apiJson("/api/photos", {
+    method: "POST",
+    timeout: 30000,
+    body: JSON.stringify({ data })
+  });
+  return {
+    name: String(file.name || "Файл").slice(0, 160),
+    type: String(file.type || "").slice(0, 100),
+    size: Number(file.size || 0),
+    url: result?.url || ""
+  };
 }
 
 async function loadCodexTasksInto(modal) {
@@ -1246,6 +1282,8 @@ async function openCodexTasks() {
       </header>
       <form data-codex-task-form>
         <label><span>Новое задание</span><textarea rows="5" maxlength="5000" required placeholder="Опишите, что нужно проверить или изменить. Укажите экран, сотрудника или оборудование."></textarea></label>
+        <label class="codex-task-file-field"><span>Прикрепить фото или PDF</span><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple></label>
+        <small>До 3 файлов, каждый не больше 5 МБ.</small>
         <p>После получения задания здесь появятся статус и ориентировочное время выполнения.</p>
         <button type="submit">Отправить задание</button>
       </form>
@@ -1261,14 +1299,19 @@ async function openCodexTasks() {
     event.preventDefault();
     const form = event.currentTarget;
     const textarea = form.querySelector("textarea");
+    const fileInput = form.querySelector("input[type='file']");
     const button = form.querySelector("button[type='submit']");
     const text = textarea?.value.trim() || "";
     if (text.length < 5) return;
     runButtonOperation(button, async () => {
+      const files = Array.from(fileInput?.files || []);
+      if (files.length > 3) throw new Error("Можно прикрепить не больше 3 файлов.");
+      const attachments = [];
+      for (const file of files) attachments.push(await uploadCodexTaskFile(file));
       await apiJson("/api/admin/codex-tasks", {
         method: "POST",
-        body: JSON.stringify({ text }),
-        timeout: 12000
+        body: JSON.stringify({ text, attachments }),
+        timeout: 45000
       });
       form.reset();
       showAppToast("Задание сохранено в очереди.");

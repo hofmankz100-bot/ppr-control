@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=305-admin-codex-task-window/);
-  assert.match(html, /styles\.css\?v=305-admin-codex-task-window/);
-  assert.match(serviceWorker, /app\.js\?v=305-admin-codex-task-window/);
+  assert.match(html, /app\.js\?v=306-codex-task-attachments/);
+  assert.match(html, /styles\.css\?v=306-codex-task-attachments/);
+  assert.match(serviceWorker, /app\.js\?v=306-codex-task-attachments/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -916,10 +916,21 @@ test("only the primary admin can create and read Codex tasks", async () => {
     })
   });
   assert.equal(promote.status, 200, await promote.text());
+  const fileData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const upload = await fetch(`${baseUrl}/api/photos`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
+    body: JSON.stringify({ data: fileData })
+  });
+  const uploadBody = await upload.json();
+  assert.equal(upload.status, 200, JSON.stringify(uploadBody));
   const created = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
-    body: JSON.stringify({ text: "Проверить отображение должности сотрудника во всех разделах." })
+    body: JSON.stringify({
+      text: "Проверить отображение должности сотрудника во всех разделах.",
+      attachments: [{ name: "screen.png", type: "image/png", size: 68, url: uploadBody.url }]
+    })
   });
   const createdBody = await created.json();
   assert.equal(created.status, 201, JSON.stringify(createdBody));
@@ -931,6 +942,8 @@ test("only the primary admin can create and read Codex tasks", async () => {
   assert.equal(list.status, 200, JSON.stringify(listBody));
   assert.equal(listBody.agentConnected, false);
   assert.equal(listBody.tasks[0].id, createdBody.task.id);
+  assert.equal(listBody.tasks[0].attachments[0].name, "screen.png");
+  assert.equal(listBody.tasks[0].attachments[0].url, uploadBody.url);
 });
 
 test("admin changes an employee role without losing the employee password", async () => {

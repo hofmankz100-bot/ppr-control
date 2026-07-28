@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v305-admin-codex-task-window";
+const SERVER_VERSION = "v306-codex-task-attachments";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -55,6 +55,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v302-shgrp-mobile-day-swipe",
   "v303-director-personal-messages",
   "v304-role-sync-director-clean",
+  "v305-admin-codex-task-window",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -3282,6 +3283,15 @@ async function handleApi(req, res, pathname, url) {
     }
     const body = await readBody(req).catch(() => ({}));
     const text = String(body.text || "").trim().slice(0, 5000);
+    const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
+      .slice(0, 3)
+      .map(item => ({
+        name: String(item?.name || "Файл").trim().slice(0, 160),
+        type: String(item?.type || "").trim().slice(0, 100),
+        size: Math.max(0, Number(item?.size) || 0),
+        url: String(item?.url || "").trim()
+      }))
+      .filter(item => /^\/api\/photos\/[a-f0-9]{40}\.(jpg|jpeg|png|webp|pdf)$/i.test(item.url));
     if (text.length < 5) {
       sendJson(res, 400, { ok: false, error: "Опишите задание подробнее." });
       return true;
@@ -3292,6 +3302,7 @@ async function handleApi(req, res, pathname, url) {
       const task = {
         id: `codex-task:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
         text,
+        attachments,
         status: "new",
         createdAt: now,
         updatedAt: now,
