@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v302-shgrp-mobile-day-swipe";
+const APP_VERSION = "v303-director-personal-messages";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -15192,6 +15192,9 @@ function renderDirectorControl() {
     <div class="director-control-head director-analytics-head director-analytics-only-head">
       <div><span>СТАТИСТИКА ПРЕДПРИЯТИЯ</span><h1>Главный график завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
       <div class="director-control-actions">
+        <button type="button" class="${directorUnreadCount() ? "has-alerts" : ""}" data-open-director-messages>
+          Личные сообщения${directorUnreadCount() ? ` (${directorUnreadCount()})` : ""}
+        </button>
         <button type="button" data-refresh-director-control>Обновить</button>
       </div>
     </div>
@@ -15205,6 +15208,7 @@ function renderDirectorControl() {
         await loadRemoteUsers();
       }, "Обновляем...");
     });
+    ui.directorControlPanel.querySelector("[data-open-director-messages]")?.addEventListener("click", () => show("director"));
     return;
   }
   ui.directorControlPanel.innerHTML = `
