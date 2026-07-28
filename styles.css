@@ -11123,6 +11123,15 @@ body.editor-profile #createTmcRequestButton.request-alert,
     overflow: visible !important;
     border: 0 !important;
     border-radius: 0 !important;
+    overscroll-behavior-x: auto !important;
+    touch-action: pan-y !important;
+  }
+
+  .gas-journal-sheet .gas-a4-wrap .gas-journal-table,
+  .gas-journal-sheet .gas-a4-wrap .gas-journal-table tbody,
+  .gas-journal-sheet .gas-a4-wrap .gas-journal-table tr,
+  .gas-journal-sheet .gas-a4-wrap .gas-journal-table td {
+    touch-action: pan-y !important;
   }
 
   .gas-journal-table.gas-sheet-table,

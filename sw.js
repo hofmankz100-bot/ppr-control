@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v300-admin-audit-complete";
+const CACHE_NAME = "ppr-v301-shgrp-mobile-vertical-scroll";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=300-admin-audit-complete",
+  "./styles.css?v=301-shgrp-mobile-vertical-scroll",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=300-admin-audit-complete",
-  "./assets/hofmann-forklift.png?v=v300-admin-audit-complete",
+  "./app.js?v=301-shgrp-mobile-vertical-scroll",
+  "./assets/hofmann-forklift.png?v=v301-shgrp-mobile-vertical-scroll",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
