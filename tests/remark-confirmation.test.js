@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=309-codex-live-status/);
-  assert.match(html, /styles\.css\?v=309-codex-live-status/);
-  assert.match(serviceWorker, /app\.js\?v=309-codex-live-status/);
+  assert.match(html, /app\.js\?v=310-admin-codex-live/);
+  assert.match(html, /styles\.css\?v=310-admin-codex-live/);
+  assert.match(serviceWorker, /app\.js\?v=310-admin-codex-live/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -904,7 +904,10 @@ test("only the primary admin can create and read Codex tasks", async () => {
   assert.match(clientSource, /data-codex-selected-files/);
   assert.match(clientSource, /data-remove-codex-file/);
   assert.match(clientSource, /selectedFiles\.splice/);
-  assert.match(clientSource, /codexTasksRefreshTimer = window\.setInterval/);
+  assert.match(clientSource, /primaryAdminCodexLiveTimer = window\.setInterval\(pollPrimaryAdminCodexTasks, 3000\)/);
+  assert.match(clientSource, /if \(!isPrimaryAdminEngineer\(\)\) return/);
+  assert.match(clientSource, /showAppToast\(`Codex:/);
+  assert.match(clientSource, /requestedView === "codex" && isPrimaryAdminEngineer\(\)/);
   assert.match(clientSource, /Статус обновляется автоматически/);
   const bridgeSource = fs.readFileSync(path.join(root, "agent", "codex-bridge.mjs"), "utf8");
   assert.match(bridgeSource, /совет, инструкцию или ответ на вопрос/);
@@ -1000,6 +1003,7 @@ test("only the primary admin can create and read Codex tasks", async () => {
   assert.equal(agentUpdateBody.task.result, "Задание принято.");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(serverSource, /\.filter\(entry => isPrimaryAdminEngineerServer\(entry\.profile \|\| \{\}\)\)/);
+  assert.match(serverSource, /url: "\/\?view=codex"/);
 });
 
 test("admin changes an employee role without losing the employee password", async () => {
