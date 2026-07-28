@@ -46,7 +46,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v306-codex-task-attachments";
+const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
+const SERVER_VERSION = "v307-private-codex-task-push";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -56,6 +57,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v303-director-personal-messages",
   "v304-role-sync-director-clean",
   "v305-admin-codex-task-window",
+  "v306-codex-task-attachments",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -1641,6 +1643,55 @@ function syncPushProfilesForUser(db, user = {}) {
   });
 }
 
+function validCodexAgentToken(req) {
+  const supplied = String(req.headers["x-codex-agent-token"] || "");
+  if (!CODEX_AGENT_TOKEN || !supplied || supplied.length !== CODEX_AGENT_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(CODEX_AGENT_TOKEN));
+}
+
+async function sendCodexTaskPushNotification(db, task = {}) {
+  ensurePushConfig(db);
+  const subscriptions = db.pushNotifications?.subscriptions || [];
+  const targets = subscriptions
+    .map(entry => currentPushEntry(db, entry))
+    .filter(entry => isPrimaryAdminEngineerServer(entry.profile || {}));
+  if (!targets.length) return;
+  webPush.setVapidDetails(
+    "https://ppr-control-ramazan.onrender.com",
+    db.pushNotifications.vapid.publicKey,
+    db.pushNotifications.vapid.privateKey
+  );
+  const status = String(task.status || "accepted");
+  const estimate = Number(task.estimatedMinutes || 0);
+  const title = status === "completed"
+    ? "Codex завершил задание"
+    : status === "approval"
+      ? "Codex ждёт подтверждения"
+      : "Новое сообщение от Codex";
+  const body = String(task.result || "").trim().slice(0, 220)
+    || (estimate ? `Задание принято. Ориентировочное время: ${estimate} мин.` : `Статус задания: ${status}`);
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, JSON.stringify({
+        type: "codex-task",
+        title,
+        body,
+        url: "/",
+        entityId: String(task.id || "general"),
+        tag: `codex-task:${task.id || "general"}`
+      }), { TTL: 86400, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Codex task push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  }
+}
+
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
   const targetParticipants = Array.isArray(participants) ? participants : [];
   if (!targetParticipants.length) return;
@@ -2778,6 +2829,7 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/qr"
     || pathname === "/api/attendance/kiosk"
     || pathname === "/api/attendance/kiosk/exit"
+    || pathname.startsWith("/api/agent/codex-tasks/")
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -2800,7 +2852,8 @@ async function handleApi(req, res, pathname, url) {
     || (pathname === "/api/attendance/kiosk" && req.method === "GET")
     || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST")
     || (pathname === "/api/attendance/lookup" && req.method === "POST")
-    || (pathname === "/api/attendance/contractor" && req.method === "POST");
+    || (pathname === "/api/attendance/contractor" && req.method === "POST")
+    || (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH");
   if (!publicRequest) {
     const allowPending = pathname === "/api/users" && req.method === "GET";
     const authUser = authenticatedUser(req, readDb(), allowPending);
@@ -3268,9 +3321,11 @@ async function handleApi(req, res, pathname, url) {
       .slice()
       .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
       .slice(0, 100);
+    const agentLastSeen = Date.parse(db.codexAgent?.lastSeenAt || "");
+    const agentConnected = Number.isFinite(agentLastSeen) && Date.now() - agentLastSeen < 90_000;
     sendJson(res, 200, {
       ok: true,
-      agentConnected: false,
+      agentConnected,
       tasks
     });
     return true;
@@ -3323,6 +3378,48 @@ async function handleApi(req, res, pathname, url) {
       return task;
     });
     sendJson(res, 201, { ok: true, task: result });
+    return true;
+  }
+
+  if (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH") {
+    if (!validCodexAgentToken(req)) {
+      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
+      return true;
+    }
+    const taskId = decodeURIComponent(pathname.slice("/api/agent/codex-tasks/".length));
+    const body = await readBody(req).catch(() => ({}));
+    const allowedStatuses = new Set(["accepted", "analyzing", "approval", "working", "completed", "failed", "cancelled"]);
+    const status = String(body.status || "").trim();
+    const estimatedMinutes = Math.max(0, Math.min(10080, Math.round(Number(body.estimatedMinutes) || 0)));
+    const resultText = String(body.result || "").trim().slice(0, 10000);
+    if (!taskId || (status && !allowedStatuses.has(status))) {
+      sendJson(res, 400, { ok: false, error: "invalid_codex_task_update" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const task = (db.codexTasks || []).find(item => String(item.id || "") === taskId);
+      if (!task) return { error: "codex_task_not_found" };
+      if (status) task.status = status;
+      if (estimatedMinutes) task.estimatedMinutes = estimatedMinutes;
+      if (resultText) task.result = resultText;
+      task.agentConnected = true;
+      task.updatedAt = new Date().toISOString();
+      db.codexAgent = { connected: true, lastSeenAt: task.updatedAt };
+      writeDb(db, {
+        action: "codex_task_updated",
+        task: { id: task.id, status: task.status, estimatedMinutes: task.estimatedMinutes || 0 }
+      });
+      return { task };
+    });
+    if (result.error) {
+      sendJson(res, 404, { ok: false, error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, task: result.task });
+    sendCodexTaskPushNotification(readDb(), result.task).catch(error => {
+      console.error(`Codex task notification failed: ${error?.message || error}`);
+    });
     return true;
   }
 

@@ -173,6 +173,7 @@ test.before(async () => {
       DATA_DIR: dataDir,
       DATABASE_URL: "",
       REQUIRE_POSTGRES: "false",
+      CODEX_AGENT_TOKEN: "test-codex-agent-token",
       NODE_ENV: "test"
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -651,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=306-codex-task-attachments/);
-  assert.match(html, /styles\.css\?v=306-codex-task-attachments/);
-  assert.match(serviceWorker, /app\.js\?v=306-codex-task-attachments/);
+  assert.match(html, /app\.js\?v=307-private-codex-task-push/);
+  assert.match(html, /styles\.css\?v=307-private-codex-task-push/);
+  assert.match(serviceWorker, /app\.js\?v=307-private-codex-task-push/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -944,6 +945,23 @@ test("only the primary admin can create and read Codex tasks", async () => {
   assert.equal(listBody.tasks[0].id, createdBody.task.id);
   assert.equal(listBody.tasks[0].attachments[0].name, "screen.png");
   assert.equal(listBody.tasks[0].attachments[0].url, uploadBody.url);
+  const unauthorizedUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(createdBody.task.id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "accepted", estimatedMinutes: 45 })
+  });
+  assert.equal(unauthorizedUpdate.status, 401);
+  const agentUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(createdBody.task.id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
+    body: JSON.stringify({ status: "accepted", estimatedMinutes: 45, result: "Задание принято." })
+  });
+  const agentUpdateBody = await agentUpdate.json();
+  assert.equal(agentUpdate.status, 200, JSON.stringify(agentUpdateBody));
+  assert.equal(agentUpdateBody.task.estimatedMinutes, 45);
+  assert.equal(agentUpdateBody.task.result, "Задание принято.");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /\.filter\(entry => isPrimaryAdminEngineerServer\(entry\.profile \|\| \{\}\)\)/);
 });
 
 test("admin changes an employee role without losing the employee password", async () => {
