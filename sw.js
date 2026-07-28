@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v303-director-personal-messages";
+const CACHE_NAME = "ppr-v304-role-sync-director-clean";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=303-director-personal-messages",
+  "./styles.css?v=304-role-sync-director-clean",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=303-director-personal-messages",
-  "./assets/hofmann-forklift.png?v=v303-director-personal-messages",
+  "./app.js?v=304-role-sync-director-clean",
+  "./assets/hofmann-forklift.png?v=v304-role-sync-director-clean",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

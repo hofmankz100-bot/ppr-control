@@ -46,13 +46,14 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v303-director-personal-messages";
+const SERVER_VERSION = "v304-role-sync-director-clean";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
   "v274-attendance-two-columns",
   "v275-reliable-forced-update",
   "v302-shgrp-mobile-day-swipe",
+  "v303-director-personal-messages",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -1602,6 +1603,39 @@ function personalNotificationBreakdownServer(db, subscriptionEntry) {
 
 function personalNotificationCountServer(db, subscriptionEntry) {
   return personalNotificationBreakdownServer(db, subscriptionEntry).total;
+}
+
+function userMatchesPushProfile(user = {}, profile = {}) {
+  if (profile.id && user.id && String(profile.id) === String(user.id)) return true;
+  if (profile.employeeId && user.employeeId && normalizeIdentifier(profile.employeeId) === normalizeIdentifier(user.employeeId)) return true;
+  if (profile.phone && user.phone && normalizeIdentifier(profile.phone) === normalizeIdentifier(user.phone)) return true;
+  return false;
+}
+
+function currentPushEntry(db, entry = {}) {
+  const savedProfile = entry.profile || {};
+  const currentUser = (db.users || []).find(user => userMatchesPushProfile(user, savedProfile));
+  if (!currentUser) return entry;
+  return {
+    ...entry,
+    profile: {
+      ...savedProfile,
+      id: String(currentUser.id || savedProfile.id || ""),
+      employeeId: String(currentUser.employeeId || savedProfile.employeeId || ""),
+      phone: String(currentUser.phone || savedProfile.phone || ""),
+      name: String(currentUser.name || savedProfile.name || ""),
+      role: String(currentUser.role || savedProfile.role || ""),
+      area: String(currentUser.area || savedProfile.area || "")
+    }
+  };
+}
+
+function syncPushProfilesForUser(db, user = {}) {
+  const subscriptions = db.pushNotifications?.subscriptions || [];
+  subscriptions.forEach(entry => {
+    if (!userMatchesPushProfile(user, entry.profile || {})) return;
+    entry.profile = currentPushEntry({ users: [user] }, entry).profile;
+  });
 }
 
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
@@ -3262,7 +3296,8 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const db = readDb();
-    const devices = (db.pushNotifications?.subscriptions || []).map(entry => {
+    const devices = (db.pushNotifications?.subscriptions || []).map(savedEntry => {
+      const entry = currentPushEntry(db, savedEntry);
       const counts = personalNotificationBreakdownServer(db, entry);
       return {
         id: crypto.createHash("sha256").update(String(entry.subscription?.endpoint || "")).digest("hex").slice(0, 16),
@@ -5054,6 +5089,7 @@ async function handleApi(req, res, pathname, url) {
       target.area = area;
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
+      syncPushProfilesForUser(db, target);
       db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
       writeDb(db, {
         action: "user_role_update",
@@ -5169,6 +5205,7 @@ async function handleApi(req, res, pathname, url) {
       if (user.newPassword) nextUser.passwordHash = hashPassword(user.newPassword);
       delete nextUser.newPassword;
       db.users.push(nextUser);
+      syncPushProfilesForUser(db, nextUser);
       writeDb(db, { action: "user_register", actionId, clientId: String(user.clientId || ""), user: { name: user.name || "", role: user.role || "", phone: phone || "" } });
       return { actionId, origin: user.clientId || "user" };
     });

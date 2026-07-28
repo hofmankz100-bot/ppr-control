@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=303-director-personal-messages/);
-  assert.match(html, /styles\.css\?v=303-director-personal-messages/);
-  assert.match(serviceWorker, /app\.js\?v=303-director-personal-messages/);
+  assert.match(html, /app\.js\?v=304-role-sync-director-clean/);
+  assert.match(html, /styles\.css\?v=304-role-sync-director-clean/);
+  assert.match(serviceWorker, /app\.js\?v=304-role-sync-director-clean/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -905,14 +905,32 @@ test("admin changes an employee role without losing the employee password", asyn
     body: JSON.stringify({ id: "mechanic-1", newPassword: "RolePass-1", actionId: "role-password-test", clientId: "admin-test" })
   });
   assert.equal(password.status, 200, await password.text());
+  const pushEndpoint = `https://push.example.test/${Date.now()}`;
+  const subscribe = await fetch(`${baseUrl}/api/push/subscribe`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": "mechanic-1" },
+    body: JSON.stringify({
+      clientId: "mechanic-role-sync-test",
+      subscription: {
+        endpoint: pushEndpoint,
+        keys: { p256dh: "test-p256dh", auth: "test-auth" }
+      },
+      profile: { language: "ru" }
+    })
+  });
+  assert.equal(subscribe.status, 200, await subscribe.text());
   const update = await fetch(`${baseUrl}/api/users/role`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id: "mechanic-1", role: "welder", area: "", actionId: "role-update-test", clientId: "admin-test" })
+    body: JSON.stringify({ id: "mechanic-1", role: "designEngineer", area: "", actionId: "role-update-test", clientId: "admin-test" })
   });
   const updateBody = await update.json();
   assert.equal(update.status, 200, JSON.stringify(updateBody));
-  assert.equal(updateBody.user.role, "welder");
+  assert.equal(updateBody.user.role, "designEngineer");
+  const pushStatus = await fetch(`${baseUrl}/api/push/status`);
+  const pushStatusBody = await pushStatus.json();
+  assert.equal(pushStatus.status, 200, JSON.stringify(pushStatusBody));
+  assert.equal(pushStatusBody.devices.find(device => device.name === updateBody.user.name)?.role, "designEngineer");
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
