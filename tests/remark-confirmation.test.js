@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=307-private-codex-task-push/);
-  assert.match(html, /styles\.css\?v=307-private-codex-task-push/);
-  assert.match(serviceWorker, /app\.js\?v=307-private-codex-task-push/);
+  assert.match(html, /app\.js\?v=308-remove-selected-attachment/);
+  assert.match(html, /styles\.css\?v=308-remove-selected-attachment/);
+  assert.match(serviceWorker, /app\.js\?v=308-remove-selected-attachment/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -900,6 +900,10 @@ test("every field worker role sends requests to engineers", () => {
 });
 
 test("only the primary admin can create and read Codex tasks", async () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(clientSource, /data-codex-selected-files/);
+  assert.match(clientSource, /data-remove-codex-file/);
+  assert.match(clientSource, /selectedFiles\.splice/);
   const forbidden = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
     headers: { "x-test-user-id": "engineer-1" }
   });

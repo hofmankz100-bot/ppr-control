@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
-const SERVER_VERSION = "v307-private-codex-task-push";
+const SERVER_VERSION = "v308-remove-selected-attachment";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -58,6 +58,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v304-role-sync-director-clean",
   "v305-admin-codex-task-window",
   "v306-codex-task-attachments",
+  "v307-private-codex-task-push",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";

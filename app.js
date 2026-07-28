@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v307-private-codex-task-push";
+const APP_VERSION = "v308-remove-selected-attachment";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1284,6 +1284,7 @@ async function openCodexTasks() {
         <label><span>Новое задание</span><textarea rows="5" maxlength="5000" required placeholder="Опишите, что нужно проверить или изменить. Укажите экран, сотрудника или оборудование."></textarea></label>
         <label class="codex-task-file-field"><span>Прикрепить фото или PDF</span><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple></label>
         <small>До 3 файлов, каждый не больше 5 МБ.</small>
+        <div class="codex-selected-files" data-codex-selected-files></div>
         <p>После получения задания здесь появятся статус и ориентировочное время выполнения.</p>
         <button type="submit">Отправить задание</button>
       </form>
@@ -1295,16 +1296,48 @@ async function openCodexTasks() {
   modal.addEventListener("click", event => {
     if (event.target === modal) close();
   });
+  const fileInput = modal.querySelector("[data-codex-task-form] input[type='file']");
+  const selectedFilesBox = modal.querySelector("[data-codex-selected-files]");
+  let selectedFiles = [];
+  const renderSelectedFiles = () => {
+    if (!selectedFilesBox) return;
+    selectedFilesBox.innerHTML = selectedFiles.map((file, index) => `
+      <div>
+        <span>📎 ${escapeHtml(file.name)} · ${escapeHtml(formatStorageSize(file.size))}</span>
+        <button type="button" data-remove-codex-file="${index}">Убрать</button>
+      </div>
+    `).join("");
+    selectedFilesBox.querySelectorAll("[data-remove-codex-file]").forEach(button => {
+      button.addEventListener("click", () => {
+        selectedFiles.splice(Number(button.dataset.removeCodexFile), 1);
+        renderSelectedFiles();
+      });
+    });
+  };
+  fileInput?.addEventListener("change", event => {
+    const incoming = Array.from(event.currentTarget.files || []);
+    let skipped = 0;
+    incoming.forEach(file => {
+      const duplicate = selectedFiles.some(saved =>
+        saved.name === file.name && saved.size === file.size && saved.lastModified === file.lastModified
+      );
+      if (duplicate) return;
+      if (selectedFiles.length < 3) selectedFiles.push(file);
+      else skipped += 1;
+    });
+    if (skipped) showAppToast("Можно прикрепить не больше 3 файлов.", "error");
+    event.currentTarget.value = "";
+    renderSelectedFiles();
+  });
   modal.querySelector("[data-codex-task-form]")?.addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
     const textarea = form.querySelector("textarea");
-    const fileInput = form.querySelector("input[type='file']");
     const button = form.querySelector("button[type='submit']");
     const text = textarea?.value.trim() || "";
     if (text.length < 5) return;
     runButtonOperation(button, async () => {
-      const files = Array.from(fileInput?.files || []);
+      const files = selectedFiles.slice();
       if (files.length > 3) throw new Error("Можно прикрепить не больше 3 файлов.");
       const attachments = [];
       for (const file of files) attachments.push(await uploadCodexTaskFile(file));
@@ -1314,6 +1347,8 @@ async function openCodexTasks() {
         timeout: 45000
       });
       form.reset();
+      selectedFiles = [];
+      renderSelectedFiles();
       showAppToast("Задание сохранено в очереди.");
       await loadCodexTasksInto(modal);
     }, "Отправляем...");
