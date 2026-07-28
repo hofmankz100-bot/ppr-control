@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v301-shgrp-mobile-vertical-scroll";
+const APP_VERSION = "v302-shgrp-mobile-day-swipe";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator"]);
@@ -10366,6 +10366,20 @@ function gasJournalSheetDates(section) {
   return Array.from({ length: daysPerSheet }, (_, index) => addDaysISO(base, startOffset + index));
 }
 
+function gasJournalMobileMode() {
+  return window.matchMedia?.("(max-width: 760px)")?.matches || false;
+}
+
+function gasJournalMobileDate() {
+  if (!current.gasMobileDate) current.gasMobileDate = todayISO();
+  return current.gasMobileDate;
+}
+
+function shiftGasJournalMobileDate(deltaDays) {
+  current.gasMobileDate = addDaysISO(gasJournalMobileDate(), deltaDays);
+  renderGasJournal();
+}
+
 function shiftGasJournalSheet(section, deltaSheets) {
   const key = section === "A" ? "gasSheetIndexA" : "gasSheetIndexB";
   current[key] = Math.max(0, gasJournalSheetIndex(section) + deltaSheets);
@@ -10377,6 +10391,7 @@ function setGasJournalSheetToToday(section) {
   const keyIndex = section === "A" ? "gasSheetIndexA" : "gasSheetIndexB";
   current[keyBase] = todayISO();
   current[keyIndex] = 0;
+  current.gasMobileDate = todayISO();
   renderGasJournal();
 }
 
@@ -10523,9 +10538,9 @@ function gasSheetActionsHtml(section, complete) {
   const sheetNo = gasJournalSheetIndex(section) + 1;
   const hasFilledRows = Object.values(state.gasJournal || {}).some(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date));
   return `<div class="gas-sheet-actions">
-    <button type="button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
+    <button type="button" class="gas-sheet-page-button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
     <button type="button" data-gas-sheet-today="${section}">Сегодня</button>
-    <button type="button" data-gas-sheet-next="${section}">Следующий лист ›</button>
+    <button type="button" class="gas-sheet-page-button" data-gas-sheet-next="${section}">Следующий лист ›</button>
     ${hasFilledRows ? `<button type="button" data-gas-print="${section}">${printActionLabel(`Печать всех заполненных дней раздела ${label}`, `PDF всех заполненных дней раздела ${label}`)}</button>` : `<span class="gas-sheet-note">Печать появится после заполнения хотя бы одного дня.</span>`}
     ${complete ? `<button type="button" class="danger" data-gas-clear="${section}">Удалить лист ${label} №${sheetNo}</button>` : ""}
   </div>`;
@@ -10535,8 +10550,9 @@ function renderGasJournal() {
   state.gasJournal ||= {};
   ui.aggregateJournalTitle.textContent = "Агрегатный журнал ШГРП / ГРП / ГРУ";
   ui.aggregateJournalMeta.textContent = `${gasJournalFilledCount()} заполненных строк. На одном листе несколько дат; одна дата не переносится на второй лист.`;
-  const datesA = gasJournalSheetDates("A");
-  const datesB = gasJournalSheetDates("B");
+  const mobileDate = gasJournalMobileDate();
+  const datesA = gasJournalMobileMode() ? [mobileDate] : gasJournalSheetDates("A");
+  const datesB = gasJournalMobileMode() ? [mobileDate] : gasJournalSheetDates("B");
   const completeA = gasJournalSheetHasFilledDay("A");
   const completeB = gasJournalSheetHasFilledDay("B");
   const sheetNoA = gasJournalSheetIndex("A") + 1;
@@ -10545,10 +10561,11 @@ function renderGasJournal() {
     <div class="journal-date-navigation">
       <button type="button" data-gas-all-today>Сегодня</button>
       <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
+      <small class="gas-mobile-swipe-note">Свайп влево — следующий день, вправо — предыдущий.</small>
       ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
-      <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span>Лист раздела А № ${sheetNoA}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span class="gas-sheet-date-label">${gasJournalMobileMode() ? dateHuman(mobileDate) : `Лист раздела А № ${sheetNoA}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-a-table">
@@ -10578,7 +10595,7 @@ function renderGasJournal() {
     </div>
 
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-b ${datesB.includes(todayISO()) && !gasJournalRowCompleteB(todayISO()) ? "gas-missing-today" : ""}" data-print-section="B">
-      <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span>Лист раздела Б № ${sheetNoB}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span class="gas-sheet-date-label">${gasJournalMobileMode() ? dateHuman(mobileDate) : `Лист раздела Б № ${sheetNoB}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-b-table">
@@ -10619,6 +10636,33 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-prev]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetPrev, -1)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-next]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetNext, 1)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-today]").forEach(btn => btn.addEventListener("click", () => setGasJournalSheetToToday(btn.dataset.gasSheetToday)));
+  if (gasJournalMobileMode()) {
+    ui.aggregateJournalList.querySelectorAll(".gas-journal-sheet").forEach(sheet => {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchTracking = false;
+      sheet.addEventListener("touchstart", event => {
+        if (event.target.closest("input, select, textarea, button")) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        touchTracking = true;
+      }, { passive: true });
+      sheet.addEventListener("touchend", event => {
+        if (!touchTracking) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        touchStartX = 0;
+        touchStartY = 0;
+        touchTracking = false;
+        if (Math.abs(deltaX) < 55 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
+        shiftGasJournalMobileDate(deltaX < 0 ? 1 : -1);
+      }, { passive: true });
+    });
+  }
   ui.aggregateJournalList.querySelectorAll("[data-gas-print]").forEach(btn => btn.addEventListener("click", () => printGasJournalSheet(btn.dataset.gasPrint)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-clear]").forEach(btn => btn.addEventListener("click", () => {
     const section = btn.dataset.gasClear;

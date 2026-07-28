@@ -11113,7 +11113,19 @@ body.editor-profile #createTmcRequestButton.request-alert,
 }
 
 /* Phone gas journal: one readable date card instead of a 1180px print table. */
+.gas-mobile-swipe-note { display: none; }
 @media screen and (max-width: 760px) {
+  .gas-sheet-page-button {
+    display: none !important;
+  }
+
+  .gas-mobile-swipe-note {
+    display: block;
+    width: 100%;
+    color: #075985;
+    font-weight: 900;
+  }
+
   .gas-journal-sheet .mobile-table-swipe-hint {
     display: none !important;
   }

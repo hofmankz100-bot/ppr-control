@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=301-shgrp-mobile-vertical-scroll/);
-  assert.match(html, /styles\.css\?v=301-shgrp-mobile-vertical-scroll/);
-  assert.match(serviceWorker, /app\.js\?v=301-shgrp-mobile-vertical-scroll/);
+  assert.match(html, /app\.js\?v=302-shgrp-mobile-day-swipe/);
+  assert.match(html, /styles\.css\?v=302-shgrp-mobile-day-swipe/);
+  assert.match(serviceWorker, /app\.js\?v=302-shgrp-mobile-day-swipe/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -794,6 +794,10 @@ test("the gas journal becomes readable date cards on phones", () => {
   assert.match(styleSource, /content: attr\(data-mobile-label\)/);
   assert.match(styleSource, /touch-action: manipulation/);
   assert.match(styleSource, /\.gas-journal-sheet \.gas-a4-wrap \{[\s\S]*?touch-action: pan-y !important/);
+  assert.match(appSource, /const datesA = gasJournalMobileMode\(\) \? \[mobileDate\] : gasJournalSheetDates\("A"\)/);
+  assert.match(appSource, /shiftGasJournalMobileDate\(deltaX < 0 \? 1 : -1\)/);
+  assert.match(styleSource, /\.gas-sheet-page-button \{[\s\S]*?display: none !important/);
+  assert.match(appSource, /data-gas-print="\$\{section\}"/);
 });
 
 test("only the primary admin also receives the engineer workflow", () => {
