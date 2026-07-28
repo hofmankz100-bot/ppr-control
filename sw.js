@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v308-remove-selected-attachment";
+const CACHE_NAME = "ppr-v309-codex-live-status";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=308-remove-selected-attachment",
+  "./styles.css?v=309-codex-live-status",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=308-remove-selected-attachment",
-  "./assets/hofmann-forklift.png?v=v308-remove-selected-attachment",
+  "./app.js?v=309-codex-live-status",
+  "./assets/hofmann-forklift.png?v=v309-codex-live-status",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

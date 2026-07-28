@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
-const SERVER_VERSION = "v308-remove-selected-attachment";
+const SERVER_VERSION = "v309-codex-live-status";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",

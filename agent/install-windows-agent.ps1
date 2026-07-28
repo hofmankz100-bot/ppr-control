@@ -30,6 +30,7 @@ $config = @"
 `$env:CODEX_AGENT_TOKEN = '$($AgentToken.Replace("'", "''"))'
 `$env:PPR_REPO_DIR = '$($RepoDir.Replace("'", "''"))'
 `$env:CODEX_BIN = '$($CodexBin.Replace("'", "''"))'
+`$env:CODEX_AGENT_POLL_MS = '5000'
 "@
 Set-Content -LiteralPath $configPath -Value $config -Encoding UTF8
 
