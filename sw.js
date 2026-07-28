@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v302-shgrp-mobile-day-swipe";
+const CACHE_NAME = "ppr-v303-admin-hub-dark-theme";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=302-shgrp-mobile-day-swipe",
+  "./styles.css?v=303-admin-hub-dark-theme",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=302-shgrp-mobile-day-swipe",
-  "./assets/hofmann-forklift.png?v=v302-shgrp-mobile-day-swipe",
+  "./app.js?v=303-admin-hub-dark-theme",
+  "./assets/hofmann-forklift.png?v=v303-admin-hub-dark-theme",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
