@@ -1,6 +1,6 @@
 param(
-  [Parameter(Mandatory = $true)]
-  [string]$AgentToken,
+  [string]$AgentToken = "",
+  [string]$AgentTokenFile = "",
   [string]$AppUrl = "https://ppr-control-ramazan.onrender.com",
   [string]$RepoDir = (Split-Path -Parent $PSScriptRoot),
   [string]$CodexBin = "C:\Users\A.Kairat.CORP\.codex\plugins\.plugin-appserver\codex.exe"
@@ -15,6 +15,13 @@ $startupPath = Join-Path $startupDir "PPR-Control Codex Agent.cmd"
 $nodeBin = (Get-Command node).Source
 $bridgePath = Join-Path $PSScriptRoot "codex-bridge.mjs"
 $logPath = Join-Path $installDir "agent.log"
+
+if (-not $AgentToken -and $AgentTokenFile) {
+  $AgentToken = (Get-Content -Raw -LiteralPath $AgentTokenFile).Trim()
+}
+if (-not $AgentToken) {
+  throw "AgentToken or AgentTokenFile is required."
+}
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 
@@ -39,6 +46,9 @@ $acl.SetAccessRuleProtection($true, $false)
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($env:USERNAME, "FullControl", "Allow")
 $acl.SetAccessRule($rule)
 Set-Acl -LiteralPath $configPath -AclObject $acl
+if ($AgentTokenFile -and (Test-Path -LiteralPath $AgentTokenFile)) {
+  Remove-Item -LiteralPath $AgentTokenFile -Force
+}
 
 Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$launcherPath`""
 Write-Output "PPR-Control Codex Agent installed and started."
