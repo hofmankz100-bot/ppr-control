@@ -2830,7 +2830,7 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/qr"
     || pathname === "/api/attendance/kiosk"
     || pathname === "/api/attendance/kiosk/exit"
-    || pathname.startsWith("/api/agent/codex-tasks/")
+    || pathname.startsWith("/api/agent/codex-tasks")
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -2854,6 +2854,8 @@ async function handleApi(req, res, pathname, url) {
     || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST")
     || (pathname === "/api/attendance/lookup" && req.method === "POST")
     || (pathname === "/api/attendance/contractor" && req.method === "POST")
+    || (pathname === "/api/agent/codex-tasks/claim" && req.method === "POST")
+    || (pathname === "/api/agent/codex-tasks/heartbeat" && req.method === "POST")
     || (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH");
   if (!publicRequest) {
     const allowPending = pathname === "/api/users" && req.method === "GET";
@@ -3382,6 +3384,65 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/agent/codex-tasks/heartbeat" && req.method === "POST") {
+    if (!validCodexAgentToken(req)) {
+      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const agentId = String(body.agentId || "ppr-codex-agent").trim().slice(0, 120);
+    const now = new Date().toISOString();
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.codexAgent = { connected: true, agentId, lastSeenAt: now };
+      writeDb(db, { action: "codex_agent_heartbeat", agentId });
+      return db.codexAgent;
+    });
+    sendJson(res, 200, { ok: true, agent: result });
+    return true;
+  }
+
+  if (pathname === "/api/agent/codex-tasks/claim" && req.method === "POST") {
+    if (!validCodexAgentToken(req)) {
+      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const agentId = String(body.agentId || "ppr-codex-agent").trim().slice(0, 120);
+    const nowMs = Date.now();
+    const leaseDurationMs = 3 * 60 * 1000;
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const task = (db.codexTasks || [])
+        .filter(item => {
+          if (item.status === "new") return true;
+          if (!["accepted", "analyzing", "working"].includes(item.status)) return false;
+          const leaseUntil = Date.parse(item.leaseUntil || "");
+          return !Number.isFinite(leaseUntil) || leaseUntil <= nowMs;
+        })
+        .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")))[0];
+      const lastSeenAt = new Date(nowMs).toISOString();
+      db.codexAgent = { connected: true, agentId, lastSeenAt };
+      if (!task) {
+        writeDb(db, { action: "codex_agent_poll", agentId });
+        return { task: null };
+      }
+      task.status = "accepted";
+      task.agentConnected = true;
+      task.agentId = agentId;
+      task.leaseId = crypto.randomBytes(16).toString("hex");
+      task.leaseUntil = new Date(nowMs + leaseDurationMs).toISOString();
+      task.updatedAt = lastSeenAt;
+      writeDb(db, {
+        action: "codex_task_claimed",
+        task: { id: task.id, agentId, leaseUntil: task.leaseUntil }
+      });
+      return { task };
+    });
+    sendJson(res, 200, { ok: true, task: result.task });
+    return true;
+  }
+
   if (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH") {
     if (!validCodexAgentToken(req)) {
       sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
@@ -3393,6 +3454,7 @@ async function handleApi(req, res, pathname, url) {
     const status = String(body.status || "").trim();
     const estimatedMinutes = Math.max(0, Math.min(10080, Math.round(Number(body.estimatedMinutes) || 0)));
     const resultText = String(body.result || "").trim().slice(0, 10000);
+    const leaseId = String(body.leaseId || "").trim();
     if (!taskId || (status && !allowedStatuses.has(status))) {
       sendJson(res, 400, { ok: false, error: "invalid_codex_task_update" });
       return true;
@@ -3401,11 +3463,18 @@ async function handleApi(req, res, pathname, url) {
       const db = readDb();
       const task = (db.codexTasks || []).find(item => String(item.id || "") === taskId);
       if (!task) return { error: "codex_task_not_found" };
+      if (task.leaseId && leaseId !== task.leaseId) return { error: "codex_task_lease_mismatch" };
       if (status) task.status = status;
       if (estimatedMinutes) task.estimatedMinutes = estimatedMinutes;
       if (resultText) task.result = resultText;
       task.agentConnected = true;
       task.updatedAt = new Date().toISOString();
+      if (["accepted", "analyzing", "working", "approval"].includes(task.status)) {
+        task.leaseUntil = new Date(Date.now() + 3 * 60 * 1000).toISOString();
+      } else {
+        delete task.leaseUntil;
+        delete task.leaseId;
+      }
       db.codexAgent = { connected: true, lastSeenAt: task.updatedAt };
       writeDb(db, {
         action: "codex_task_updated",
