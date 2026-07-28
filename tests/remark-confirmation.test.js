@@ -963,6 +963,35 @@ test("only the primary admin can create and read Codex tasks", async () => {
   const agentUpdateBody = await agentUpdate.json();
   assert.equal(agentUpdate.status, 200, JSON.stringify(agentUpdateBody));
   assert.equal(agentUpdateBody.task.estimatedMinutes, 45);
+  const claimSeedResponse = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
+    body: JSON.stringify({ text: "Run a safe Codex bridge test task." })
+  });
+  const claimSeedBody = await claimSeedResponse.json();
+  assert.equal(claimSeedResponse.status, 201, JSON.stringify(claimSeedBody));
+  const unauthorizedClaim = await fetch(`${baseUrl}/api/agent/codex-tasks/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "test-agent" })
+  });
+  assert.equal(unauthorizedClaim.status, 401);
+  const claim = await fetch(`${baseUrl}/api/agent/codex-tasks/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
+    body: JSON.stringify({ agentId: "test-agent" })
+  });
+  const claimBody = await claim.json();
+  assert.equal(claim.status, 200, JSON.stringify(claimBody));
+  assert.equal(claimBody.task.id, claimSeedBody.task.id);
+  assert.equal(claimBody.task.status, "accepted");
+  assert.ok(claimBody.task.leaseId);
+  const leaseUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(claimSeedBody.task.id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
+    body: JSON.stringify({ status: "completed", result: "done", leaseId: claimBody.task.leaseId })
+  });
+  assert.equal(leaseUpdate.status, 200, await leaseUpdate.text());
   assert.equal(agentUpdateBody.task.result, "Задание принято.");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(serverSource, /\.filter\(entry => isPrimaryAdminEngineerServer\(entry\.profile \|\| \{\}\)\)/);
