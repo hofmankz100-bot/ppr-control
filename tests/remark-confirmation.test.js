@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=304-role-sync-director-clean/);
-  assert.match(html, /styles\.css\?v=304-role-sync-director-clean/);
-  assert.match(serviceWorker, /app\.js\?v=304-role-sync-director-clean/);
+  assert.match(html, /app\.js\?v=305-admin-codex-task-window/);
+  assert.match(html, /styles\.css\?v=305-admin-codex-task-window/);
+  assert.match(serviceWorker, /app\.js\?v=305-admin-codex-task-window/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -896,6 +896,41 @@ test("admin repair replaces the old resolver, awards only the performer, and can
 test("every field worker role sends requests to engineers", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /\["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"\]\.includes\(role\)/);
+});
+
+test("only the primary admin can create and read Codex tasks", async () => {
+  const forbidden = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
+    headers: { "x-test-user-id": "engineer-1" }
+  });
+  assert.equal(forbidden.status, 403);
+  const promote = await fetch(`${baseUrl}/api/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
+    body: JSON.stringify({
+      id: "editor-1",
+      employeeId: "87064091893",
+      name: "Администратор",
+      role: "editor",
+      approved: true,
+      pendingApproval: false
+    })
+  });
+  assert.equal(promote.status, 200, await promote.text());
+  const created = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
+    body: JSON.stringify({ text: "Проверить отображение должности сотрудника во всех разделах." })
+  });
+  const createdBody = await created.json();
+  assert.equal(created.status, 201, JSON.stringify(createdBody));
+  assert.equal(createdBody.task.status, "new");
+  const list = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
+    headers: { "x-test-user-id": "editor-1" }
+  });
+  const listBody = await list.json();
+  assert.equal(list.status, 200, JSON.stringify(listBody));
+  assert.equal(listBody.agentConnected, false);
+  assert.equal(listBody.tasks[0].id, createdBody.task.id);
 });
 
 test("admin changes an employee role without losing the employee password", async () => {

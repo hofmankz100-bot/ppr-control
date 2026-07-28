@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v304-role-sync-director-clean";
+const SERVER_VERSION = "v305-admin-codex-task-window";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -54,6 +54,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v275-reliable-forced-update",
   "v302-shgrp-mobile-day-swipe",
   "v303-director-personal-messages",
+  "v304-role-sync-director-clean",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -176,7 +177,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -257,6 +258,7 @@ function normalizeDb(db) {
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
   db.directorMessages ||= [];
+  db.codexTasks = Array.isArray(db.codexTasks) ? db.codexTasks : [];
   db.serviceCosts ||= [];
   db.downtimes ||= [];
   db.compressorJournal ||= {};
@@ -3252,6 +3254,64 @@ async function handleApi(req, res, pathname, url) {
     const db = readDb();
     if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
     sendJson(res, 200, { ok: true, publicKey: db.pushNotifications.vapid.publicKey });
+    return true;
+  }
+
+  if (pathname === "/api/admin/codex-tasks" && req.method === "GET") {
+    if (!isPrimaryAdminEngineerServer(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "primary_admin_required" });
+      return true;
+    }
+    const db = readDb();
+    const tasks = (db.codexTasks || [])
+      .slice()
+      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+      .slice(0, 100);
+    sendJson(res, 200, {
+      ok: true,
+      agentConnected: false,
+      tasks
+    });
+    return true;
+  }
+
+  if (pathname === "/api/admin/codex-tasks" && req.method === "POST") {
+    if (!isPrimaryAdminEngineerServer(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "primary_admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const text = String(body.text || "").trim().slice(0, 5000);
+    if (text.length < 5) {
+      sendJson(res, 400, { ok: false, error: "Опишите задание подробнее." });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const now = new Date().toISOString();
+      const task = {
+        id: `codex-task:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
+        text,
+        status: "new",
+        createdAt: now,
+        updatedAt: now,
+        createdBy: {
+          id: String(req.authUser.id || ""),
+          employeeId: String(req.authUser.employeeId || ""),
+          name: String(req.authUser.name || "Администратор")
+        },
+        agentConnected: false,
+        result: ""
+      };
+      db.codexTasks = [...(db.codexTasks || []), task].slice(-500);
+      writeDb(db, {
+        action: "codex_task_created",
+        user: req.authUser,
+        task: { id: task.id, text: task.text.slice(0, 200) }
+      });
+      return task;
+    });
+    sendJson(res, 201, { ok: true, task: result });
     return true;
   }
 

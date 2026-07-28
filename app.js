@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v304-role-sync-director-clean";
+const APP_VERSION = "v305-admin-codex-task-window";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1173,6 +1173,109 @@ async function openPushDiagnostics() {
     modal.querySelector("section").innerHTML = `<header><strong>Push-устройства</strong><button type="button" data-close-push-diagnostics>×</button></header><p class="empty-state">Не удалось загрузить состояние push.</p>`;
     modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
   }
+}
+
+function codexTaskStatusLabel(status = "") {
+  return ({
+    new: "Новое",
+    accepted: "Принято",
+    analyzing: "Проверяется",
+    approval: "Ждёт подтверждения",
+    working: "Выполняется",
+    completed: "Готово",
+    failed: "Ошибка",
+    cancelled: "Остановлено"
+  })[status] || "Новое";
+}
+
+function codexTaskEstimate(task = {}) {
+  if (task.estimatedMinutes) {
+    const minutes = Number(task.estimatedMinutes) || 0;
+    if (minutes < 60) return `Оценка времени: около ${minutes} мин.`;
+    const hours = Math.round(minutes / 60 * 10) / 10;
+    return `Оценка времени: около ${hours} ч.`;
+  }
+  return task.agentConnected
+    ? "Оценка времени формируется"
+    : "Оценка времени появится после подключения агента";
+}
+
+function renderCodexTaskItems(tasks = []) {
+  if (!tasks.length) return `<p class="empty-state">Заданий пока нет.</p>`;
+  return tasks.map(task => `
+    <article class="codex-task-item ${escapeHtml(task.status || "new")}">
+      <div class="codex-task-meta">
+        <strong>${escapeHtml(codexTaskStatusLabel(task.status))}</strong>
+        <time>${escapeHtml(dateTimeHuman(task.createdAt))}</time>
+      </div>
+      <p>${escapeHtml(task.text || "")}</p>
+      <small>${escapeHtml(codexTaskEstimate(task))}</small>
+      ${task.result ? `<div class="codex-task-result">${escapeHtml(task.result)}</div>` : ""}
+    </article>
+  `).join("");
+}
+
+async function loadCodexTasksInto(modal) {
+  const list = modal?.querySelector("[data-codex-task-list]");
+  const connection = modal?.querySelector("[data-codex-agent-status]");
+  if (!list) return;
+  try {
+    const result = await apiJson("/api/admin/codex-tasks", { timeout: 10000 });
+    list.innerHTML = renderCodexTaskItems(Array.isArray(result.tasks) ? result.tasks : []);
+    if (connection) {
+      connection.textContent = result.agentConnected
+        ? "Компьютерный агент подключён"
+        : "Агент пока не подключён — задания сохраняются в очереди";
+      connection.classList.toggle("connected", Boolean(result.agentConnected));
+    }
+  } catch (error) {
+    list.innerHTML = `<p class="empty-state">${escapeHtml(error?.message || "Не удалось загрузить задания.")}</p>`;
+  }
+}
+
+async function openCodexTasks() {
+  document.querySelector("#codexTasksModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "codexTasksModal";
+  modal.className = "codex-tasks-modal";
+  modal.innerHTML = `
+    <section>
+      <header>
+        <div><strong>Задания Codex</strong><span data-codex-agent-status>Проверяем подключение...</span></div>
+        <button type="button" data-close-codex-tasks>×</button>
+      </header>
+      <form data-codex-task-form>
+        <label><span>Новое задание</span><textarea rows="5" maxlength="5000" required placeholder="Опишите, что нужно проверить или изменить. Укажите экран, сотрудника или оборудование."></textarea></label>
+        <p>После получения задания здесь появятся статус и ориентировочное время выполнения.</p>
+        <button type="submit">Отправить задание</button>
+      </form>
+      <div class="codex-task-list" data-codex-task-list><p class="empty-state">Загрузка...</p></div>
+    </section>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector("[data-close-codex-tasks]")?.addEventListener("click", close);
+  modal.addEventListener("click", event => {
+    if (event.target === modal) close();
+  });
+  modal.querySelector("[data-codex-task-form]")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const textarea = form.querySelector("textarea");
+    const button = form.querySelector("button[type='submit']");
+    const text = textarea?.value.trim() || "";
+    if (text.length < 5) return;
+    runButtonOperation(button, async () => {
+      await apiJson("/api/admin/codex-tasks", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+        timeout: 12000
+      });
+      form.reset();
+      showAppToast("Задание сохранено в очереди.");
+      await loadCodexTasksInto(modal);
+    }, "Отправляем...");
+  });
+  await loadCodexTasksInto(modal);
 }
 
 async function openStorageDiagnostics() {
@@ -4118,6 +4221,7 @@ function renderProfile() {
     ${languageSwitcher}
     ${appNotificationPermissionButton()}
     ${attendanceMonitorButton}
+    ${isPrimaryAdminEngineer() ? `<button type="button" id="codexTasksButton">Задания Codex</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
     ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
@@ -4137,6 +4241,7 @@ function renderProfile() {
     requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
+  ui.profileBar.querySelector("#codexTasksButton")?.addEventListener("click", openCodexTasks);
   ui.profileBar.querySelector("#storageDiagnosticsButton")?.addEventListener("click", openStorageDiagnostics);
   ui.profileBar.querySelector("#openAttendanceButton")?.addEventListener("click", openAttendancePanel);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));

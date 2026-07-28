@@ -796,6 +796,139 @@ body.warehouse-only-profile .mobile-nav [data-mobile-view="downtime"] {
   .global-reminder-button.has-alerts { animation:none; }
 }
 
+.codex-tasks-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(8px);
+}
+
+.codex-tasks-modal > section {
+  width: min(720px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.codex-tasks-modal header,
+.codex-task-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.codex-tasks-modal header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.codex-tasks-modal header strong {
+  font-size: 1.2rem;
+}
+
+.codex-tasks-modal header span,
+.codex-tasks-modal form p,
+.codex-task-item small {
+  color: #64748b;
+}
+
+.codex-tasks-modal header span.connected {
+  color: #15803d;
+}
+
+.codex-tasks-modal header button {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.codex-tasks-modal form {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.codex-tasks-modal form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.codex-tasks-modal textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.codex-task-list {
+  display: grid;
+  gap: 12px;
+}
+
+.codex-task-item {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+  border: 1px solid #dbe4ee;
+  border-left: 5px solid #0ea5e9;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.codex-task-item.completed {
+  border-left-color: #16a34a;
+}
+
+.codex-task-item.failed,
+.codex-task-item.cancelled {
+  border-left-color: #dc2626;
+}
+
+.codex-task-item p,
+.codex-task-result {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.codex-task-meta time {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.codex-task-result {
+  padding: 10px;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+
+@media (max-width: 640px) {
+  .codex-tasks-modal {
+    align-items: end;
+    padding: 0;
+  }
+
+  .codex-tasks-modal > section {
+    max-height: 92vh;
+    padding: 16px;
+    border-radius: 24px 24px 0 0;
+  }
+}
+
 .global-reminder-overlay {
   position: fixed;
   inset: 0;
