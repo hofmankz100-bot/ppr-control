@@ -651,9 +651,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=303-admin-hub-dark-theme/);
-  assert.match(html, /styles\.css\?v=303-admin-hub-dark-theme/);
-  assert.match(serviceWorker, /app\.js\?v=303-admin-hub-dark-theme/);
+  assert.match(html, /app\.js\?v=302-shgrp-mobile-day-swipe/);
+  assert.match(html, /styles\.css\?v=302-shgrp-mobile-day-swipe/);
+  assert.match(serviceWorker, /app\.js\?v=302-shgrp-mobile-day-swipe/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -857,7 +857,7 @@ test("admin garbage check is read-only and Back skips invalid history entries", 
   assert.match(app, /while \(nav\.length\)[\s\S]*?previous === current\.view \|\| !canOpenView\(previous\)/);
   assert.match(app, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
   assert.match(style, /\.storage-diagnostics-grid/);
-  assert.doesNotMatch(app, /showAdminMaintenanceNotice/);
+  assert.match(app, /Техническая проверка завершена/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {

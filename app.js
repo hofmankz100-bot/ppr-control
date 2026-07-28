@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v303-admin-hub-dark-theme";
+const APP_VERSION = "v302-shgrp-mobile-day-swipe";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -404,12 +404,7 @@ function applyTheme(theme) {
 }
 
 function setupTheme() {
-  applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
-  document.addEventListener("click", event => {
-    const button = event.target.closest("[data-theme-toggle]");
-    if (!button) return;
-    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-  });
+  applyTheme("light");
 }
 const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
@@ -544,7 +539,6 @@ let current = {
   directorKpiOpen: "",
   directorArchiveOpen: "",
   directorAuditOpen: false,
-  adminUserQuery: "",
   pprCalendarMonth: new Date().getMonth(),
   pprCalendarYear: new Date().getFullYear(),
   compressorSheetIndex: 0,
@@ -3965,7 +3959,7 @@ function updateDirectorBadge() {
   const adminSession = isEditorSession();
   const hiddenForRole = ["warehouse", "mechanic", "electrician", "operator"].includes(profile?.role);
   ui.directorOpenButton.hidden = !adminSession && hiddenForRole;
-  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = adminSession ? "Администрирование" : "Директорская";
+  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = adminSession ? "Админ" : "Директорская";
   const count = directorUnreadCount();
   ui.directorBadge.textContent = count;
   ui.directorOpenButton.classList.toggle("request-alert", count > 0);
@@ -4114,30 +4108,20 @@ function renderProfile() {
       ? `<span class="attendance-badge active">На работе · до ${escapeHtml(attendanceTime(attendanceStatus?.session?.expiresAt))}</span>`
       : `<span class="attendance-badge locked">Только просмотр · отсканируйте QR</span>`)
     : "";
-  const adminTools = profile.role === "editor" ? `
-    <details class="admin-tools-menu">
-      <summary>Инструменты</summary>
-      <div>
-        <button type="button" id="pushDiagnosticsButton">Push-устройства</button>
-        ${current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
-        <button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>
-      </div>
-    </details>
-  ` : "";
-  const previewTools = isEditorSession() ? `
-    <details class="admin-tools-menu admin-preview-menu">
-      <summary>Просмотр роли</summary>
-      <div>${editorRoleSwitcher}${editorAreaSwitcher}</div>
-    </details>
-  ` : "";
+  const attendanceMonitorButton = (profile.role === "editor" || hasEngineerInboxAccess())
+    ? `<button type="button" id="openAttendanceButton">Кто на работе</button>`
+    : "";
   ui.profileBar.innerHTML = `
     <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}${attendanceBadge}</div>
-    ${previewTools}
+    ${editorRoleSwitcher}
+    ${editorAreaSwitcher}
     ${languageSwitcher}
-    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Переключить тему">${document.documentElement.dataset.theme === "dark" ? "☀" : "☾"}</button>
     ${appNotificationPermissionButton()}
-    ${adminTools}
+    ${attendanceMonitorButton}
+    ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
+    ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
+    ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
   `;
   ui.profileBar.querySelector("#editorPreviewRoleSelect")?.addEventListener("change", event => {
@@ -9908,6 +9892,7 @@ function scheduleRender(delay = 80) {
 function render() {
   renderProfile();
   renderSystemBroadcastNotice();
+  renderAdminMaintenanceNotice();
   updateDirectorBadge();
   updateDowntimeBadge();
   updateGpmBadge();
@@ -15382,25 +15367,6 @@ function renderDirector() {
       if (!window.confirm("Открыть WhatsApp этому сотруднику?")) event.preventDefault();
     });
   });
-  ui.directorPanel.querySelector("[data-admin-attendance]")?.addEventListener("click", openAttendancePanel);
-  ui.directorPanel.querySelector("[data-admin-factory]")?.addEventListener("click", () => show("directorControl"));
-  ui.directorPanel.querySelector("[data-admin-equipment]")?.addEventListener("click", () => show("equipment"));
-  ui.directorPanel.querySelector("[data-admin-system]")?.addEventListener("click", () => {
-    const section = ui.directorPanel.querySelector("[data-admin-system-section]");
-    if (!section) return;
-    section.open = true;
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  ui.directorPanel.querySelector("[data-admin-users]")?.addEventListener("click", () => {
-    ui.directorPanel.querySelector(".director-users")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  ui.directorPanel.querySelector("[data-admin-user-search]")?.addEventListener("input", event => {
-    current.adminUserQuery = event.currentTarget.value;
-    const query = String(current.adminUserQuery || "").trim().toLocaleLowerCase("ru-RU");
-    ui.directorPanel.querySelectorAll(".director-user-row").forEach(row => {
-      row.hidden = Boolean(query) && !row.textContent.toLocaleLowerCase("ru-RU").includes(query);
-    });
-  });
   ui.directorPanel.querySelector("[data-refresh-users]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     await loadRemoteUsers();
     renderDirector();
@@ -16044,15 +16010,32 @@ function renderSystemBroadcastNotice() {
   notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", () => { localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1"); notice.remove(); });
 }
 
+function renderAdminMaintenanceNotice() {
+  document.querySelector("#adminMaintenanceNotice")?.remove();
+  if (!isEditorSession()) return;
+  const noticeId = `ppr-admin-maintenance-read-${APP_VERSION}`;
+  if (localStorage.getItem(noticeId) === "1") return;
+  const notice = document.createElement("aside");
+  notice.id = "adminMaintenanceNotice";
+  notice.className = "system-broadcast-notice";
+  notice.innerHTML = `
+    <div>
+      <strong>Техническая проверка завершена</strong>
+      <span>Убран паучий герой и паутина. Погрузчик сохранён. Кнопка «Назад» проверена. Добавлена безопасная проверка мусора и памяти. Проверены регистрация, роли, журналы, отчёты, QR-обходы, устранения, баллы, заявки, печать, кеш и обновление.</span>
+    </div>
+    <div><button type="button" data-read-admin-maintenance>Понятно</button></div>
+  `;
+  document.body.append(notice);
+  notice.querySelector("[data-read-admin-maintenance]")?.addEventListener("click", () => {
+    localStorage.setItem(noticeId, "1");
+    notice.remove();
+  });
+}
+
 function renderDirectorUsers() {
   const users = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
   const canResetPasswords = ["director", "editor"].includes(profile?.role);
   const pendingCount = users.filter(user => user.approved === false || user.pendingApproval).length;
-  const userQuery = String(current.adminUserQuery || "").trim().toLocaleLowerCase("ru-RU");
-  const visibleUsers = userQuery
-    ? users.filter(user => [user.name, user.employeeId, user.phone, ROLE_ACCESS[user.role]?.label, user.area]
-      .some(value => String(value || "").toLocaleLowerCase("ru-RU").includes(userQuery)))
-    : users;
   const cleanPhone = phone => String(phone || "").replace(/\D/g, "");
   const whatsappHref = phone => {
     const digits = cleanPhone(phone);
@@ -16068,22 +16051,15 @@ function renderDirectorUsers() {
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `
-    <nav class="admin-hub" aria-label="Разделы администратора">
-      <button type="button" class="active" data-admin-users><span>👥</span><strong>Сотрудники</strong><small>${users.length} всего · ${pendingCount} ожидают</small></button>
-      <button type="button" data-admin-attendance><span>◉</span><strong>Кто на работе</strong><small>QR и рабочие смены</small></button>
-      <button type="button" data-admin-factory><span>🏭</span><strong>Состояние завода</strong><small>ППР, простои и замечания</small></button>
-      <button type="button" data-admin-equipment><span>⚙</span><strong>Оборудование</strong><small>Узлы и журналы</small></button>
-      <button type="button" data-admin-system><span>▣</span><strong>Система</strong><small>Память и отчёт</small></button>
-    </nav>
+    ${renderSystemLoadAdmin()}
     <div class="director-users">
       <div class="director-users-head">
-        <div><strong>Зарегистрированные сотрудники</strong><span>Поиск по ФИО, телефону, табельному номеру или участку</span></div>
+        <strong>Зарегистрированные сотрудники</strong>
         <button type="button" class="mini-action" data-refresh-users>Обновить список</button>
       </div>
-      <label class="admin-user-search"><span>Поиск сотрудника</span><input type="search" data-admin-user-search value="${escapeHtml(current.adminUserQuery || "")}" placeholder="Имя, телефон, табельный номер или участок"></label>
       <div class="empty-state">Пароли не отображаются. Директор может выдать сотруднику новый временный пароль.</div>
       ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">Новые регистрации ждут подтверждения: ${pendingCount}</div>` : ""}
-      ${visibleUsers.length ? visibleUsers.map(user => {
+      ${users.length ? users.map(user => {
         const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
         const draft = userApprovalDrafts.get(userKey) || {};
         return `
@@ -16103,12 +16079,8 @@ function renderDirectorUsers() {
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
       `;
-      }).join("") : `<div class="empty-state">${userQuery ? "По вашему запросу сотрудники не найдены" : "Список сотрудников пока пуст"}</div>`}
+      }).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
     </div>
-    <details class="admin-system-section" data-admin-system-section>
-      <summary><span>▣</span><strong>Система и архив</strong><small>Редко используемые действия скрыты здесь</small></summary>
-      ${renderSystemLoadAdmin()}
-    </details>
   `;
 }
 

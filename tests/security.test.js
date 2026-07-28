@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v303-admin-hub-dark-theme";
+const APP_VERSION = "v302-shgrp-mobile-day-swipe";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
