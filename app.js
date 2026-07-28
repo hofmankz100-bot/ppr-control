@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v309-codex-live-status";
+const APP_VERSION = "v310-admin-codex-live";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1200,6 +1200,71 @@ function codexTaskEstimate(task = {}) {
     : "Оценка времени появится после подключения агента";
 }
 
+let primaryAdminCodexTasks = [];
+let primaryAdminCodexSnapshot = new Map();
+let primaryAdminCodexSnapshotReady = false;
+let primaryAdminCodexPollInFlight = false;
+let primaryAdminCodexLiveTimer = 0;
+
+function primaryAdminCodexButtonLabel() {
+  const latest = primaryAdminCodexTasks[0];
+  if (!latest) return "Задания Codex";
+  if (["new", "accepted", "analyzing", "working"].includes(String(latest.status || ""))) {
+    return `Codex: ${codexTaskStatusLabel(latest.status)}`;
+  }
+  const updatedAt = Date.parse(latest.updatedAt || latest.createdAt || "");
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt < 10 * 60 * 1000
+    ? `Codex: ${codexTaskStatusLabel(latest.status)}`
+    : "Задания Codex";
+}
+
+function updatePrimaryAdminCodexButton() {
+  const button = document.querySelector("#codexTasksButton");
+  if (button) button.textContent = primaryAdminCodexButtonLabel();
+}
+
+function applyPrimaryAdminCodexResult(modal, result = {}) {
+  const tasks = Array.isArray(result.tasks) ? result.tasks : [];
+  let notificationTask = null;
+  const nextSnapshot = new Map();
+  tasks.forEach(task => {
+    const taskId = String(task.id || "");
+    const signature = [task.status, task.updatedAt, task.result].map(value => String(value || "")).join("\u0001");
+    nextSnapshot.set(taskId, signature);
+    const previous = primaryAdminCodexSnapshot.get(taskId);
+    if (
+      primaryAdminCodexSnapshotReady
+      && previous
+      && previous !== signature
+      && ["completed", "failed", "approval"].includes(String(task.status || ""))
+      && (!notificationTask || String(task.updatedAt || "") > String(notificationTask.updatedAt || ""))
+    ) {
+      notificationTask = task;
+    }
+  });
+  primaryAdminCodexTasks = tasks;
+  primaryAdminCodexSnapshot = nextSnapshot;
+  primaryAdminCodexSnapshotReady = true;
+  updatePrimaryAdminCodexButton();
+
+  const list = modal?.querySelector("[data-codex-task-list]");
+  const connection = modal?.querySelector("[data-codex-agent-status]");
+  if (list) list.innerHTML = renderCodexTaskItems(tasks);
+  if (connection) {
+    connection.textContent = result.agentConnected
+      ? "Компьютерный агент подключён"
+      : "Агент пока не подключён — задания сохраняются в очереди";
+    connection.classList.toggle("connected", Boolean(result.agentConnected));
+  }
+
+  if (notificationTask) {
+    const status = codexTaskStatusLabel(notificationTask.status);
+    const answer = String(notificationTask.result || "").trim().replace(/\s+/g, " ").slice(0, 180);
+    showAppToast(`Codex: ${status}${answer ? ` — ${answer}` : ""}`, notificationTask.status === "failed" ? "error" : "ok");
+    playNotificationDingDong();
+  }
+}
+
 function renderCodexTaskItems(tasks = []) {
   if (!tasks.length) return `<p class="empty-state">Заданий пока нет.</p>`;
   return tasks.map(task => `
@@ -1253,29 +1318,37 @@ async function uploadCodexTaskFile(file) {
 
 async function loadCodexTasksInto(modal) {
   const list = modal?.querySelector("[data-codex-task-list]");
-  const connection = modal?.querySelector("[data-codex-agent-status]");
   if (!list) return;
   try {
     const result = await apiJson("/api/admin/codex-tasks", { timeout: 10000 });
-    list.innerHTML = renderCodexTaskItems(Array.isArray(result.tasks) ? result.tasks : []);
-    if (connection) {
-      connection.textContent = result.agentConnected
-        ? "Компьютерный агент подключён"
-        : "Агент пока не подключён — задания сохраняются в очереди";
-      connection.classList.toggle("connected", Boolean(result.agentConnected));
-    }
+    applyPrimaryAdminCodexResult(modal, result);
   } catch (error) {
     list.innerHTML = `<p class="empty-state">${escapeHtml(error?.message || "Не удалось загрузить задания.")}</p>`;
   }
 }
 
-let codexTasksRefreshTimer = 0;
+async function pollPrimaryAdminCodexTasks() {
+  if (!isPrimaryAdminEngineer() || !isProfileReady() || document.visibilityState === "hidden" || primaryAdminCodexPollInFlight) return;
+  primaryAdminCodexPollInFlight = true;
+  try {
+    const result = await apiJson("/api/admin/codex-tasks", { timeout: 10000 });
+    applyPrimaryAdminCodexResult(document.querySelector("#codexTasksModal"), result);
+  } catch {
+    // A temporary network failure is retried by the next admin-only live poll.
+  } finally {
+    primaryAdminCodexPollInFlight = false;
+  }
+}
+
+function startPrimaryAdminCodexLiveUpdates() {
+  window.clearInterval(primaryAdminCodexLiveTimer);
+  primaryAdminCodexLiveTimer = 0;
+  if (!isPrimaryAdminEngineer()) return;
+  pollPrimaryAdminCodexTasks();
+  primaryAdminCodexLiveTimer = window.setInterval(pollPrimaryAdminCodexTasks, 3000);
+}
 
 async function openCodexTasks() {
-  if (codexTasksRefreshTimer) {
-    window.clearInterval(codexTasksRefreshTimer);
-    codexTasksRefreshTimer = 0;
-  }
   document.querySelector("#codexTasksModal")?.remove();
   const modal = document.createElement("div");
   modal.id = "codexTasksModal";
@@ -1297,13 +1370,7 @@ async function openCodexTasks() {
       <div class="codex-task-list" data-codex-task-list><p class="empty-state">Загрузка...</p></div>
     </section>`;
   document.body.appendChild(modal);
-  const close = () => {
-    if (codexTasksRefreshTimer) {
-      window.clearInterval(codexTasksRefreshTimer);
-      codexTasksRefreshTimer = 0;
-    }
-    modal.remove();
-  };
+  const close = () => modal.remove();
   modal.querySelector("[data-close-codex-tasks]")?.addEventListener("click", close);
   modal.addEventListener("click", event => {
     if (event.target === modal) close();
@@ -1366,14 +1433,7 @@ async function openCodexTasks() {
     }, "Отправляем...");
   });
   await loadCodexTasksInto(modal);
-  codexTasksRefreshTimer = window.setInterval(() => {
-    if (!modal.isConnected) {
-      window.clearInterval(codexTasksRefreshTimer);
-      codexTasksRefreshTimer = 0;
-      return;
-    }
-    if (document.visibilityState !== "hidden") loadCodexTasksInto(modal);
-  }, 5000);
+  startPrimaryAdminCodexLiveUpdates();
 }
 
 async function openStorageDiagnostics() {
@@ -4319,7 +4379,7 @@ function renderProfile() {
     ${languageSwitcher}
     ${appNotificationPermissionButton()}
     ${attendanceMonitorButton}
-    ${isPrimaryAdminEngineer() ? `<button type="button" id="codexTasksButton">Задания Codex</button>` : ""}
+    ${isPrimaryAdminEngineer() ? `<button type="button" id="codexTasksButton">${escapeHtml(primaryAdminCodexButtonLabel())}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
     ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
@@ -7895,6 +7955,9 @@ function handleIncomingNotificationLink() {
   } else if (requestedView === "requestCreate" && hasEngineerInboxAccess()) {
     show("requestCreate");
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    handled = true;
+  } else if (requestedView === "codex" && isPrimaryAdminEngineer()) {
+    openCodexTasks();
     handled = true;
   }
 
@@ -18118,6 +18181,7 @@ window.addEventListener("visibilitychange", () => {
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
+    pollPrimaryAdminCodexTasks();
   }
 });
 
@@ -18173,5 +18237,6 @@ resumeAttendanceKiosk();
   loadRemoteUsers();
   connectRealtime();
   startRealtimePoll();
+  startPrimaryAdminCodexLiveUpdates();
 })();
 
