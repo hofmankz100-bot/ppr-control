@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
-const SERVER_VERSION = "v315-translate-warning-hall";
+const SERVER_VERSION = "v316-preserve-translation-keys";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2036,7 +2036,10 @@ async function translateTexts(texts, target) {
   db.translationCache ||= {};
   const result = {};
   let changed = false;
-  const unique = [...new Set((Array.isArray(texts) ? texts : []).map(normalizeTranslateText).filter(shouldTranslateText))].slice(0, 250);
+  const originals = [...new Set((Array.isArray(texts) ? texts : [])
+    .map(value => String(value ?? "").trim())
+    .filter(shouldTranslateText))].slice(0, 250);
+  const unique = [...new Set(originals.map(normalizeTranslateText))];
   const missing = [];
   for (const text of unique) {
     const cacheKey = translationCacheKey(lang, text);
@@ -2063,9 +2066,10 @@ async function translateTexts(texts, target) {
       }
     });
   }
-  for (const text of unique) {
-    const cacheKey = translationCacheKey(lang, text);
-    result[text] = db.translationCache[cacheKey]?.translated || text;
+  for (const original of originals) {
+    const normalized = normalizeTranslateText(original);
+    const cacheKey = translationCacheKey(lang, normalized);
+    result[original] = db.translationCache[cacheKey]?.translated || original;
   }
   if (changed) writeDb(db, { action: "translate_cache", target: lang, count: unique.length });
   return result;
