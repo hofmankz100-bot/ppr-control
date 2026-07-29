@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v322-compressor-fixation";
+const CACHE_NAME = "ppr-v323-compressor-date-fixation";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=322-compressor-fixation",
-  "./modules/compressor.js?v=322-compressor-fixation",
-  "./modules/shgrp.js?v=322-compressor-fixation",
+  "./styles.css?v=323-compressor-date-fixation",
+  "./modules/compressor.js?v=323-compressor-date-fixation",
+  "./modules/shgrp.js?v=323-compressor-date-fixation",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=322-compressor-fixation",
-  "./assets/hofmann-forklift.png?v=v322-compressor-fixation",
+  "./app.js?v=323-compressor-date-fixation",
+  "./assets/hofmann-forklift.png?v=v323-compressor-date-fixation",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
