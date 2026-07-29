@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v322-compressor-fixation";
+const APP_VERSION = "v323-compressor-date-fixation";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10463,6 +10463,20 @@ function compressorJournalBaseDate() {
   return current.compressorBaseDate;
 }
 
+function compressorJournalMobileMode() {
+  return window.matchMedia?.("(max-width: 760px)")?.matches || false;
+}
+
+function compressorJournalMobileDate() {
+  if (!current.compressorMobileDate) current.compressorMobileDate = todayISO();
+  return current.compressorMobileDate;
+}
+
+function shiftCompressorJournalMobileDate(deltaDays) {
+  current.compressorMobileDate = compressorJournalAddDays(compressorJournalMobileDate(), deltaDays);
+  renderCompressorJournal(COMPRESSOR_JOURNAL_AREA);
+}
+
 function compressorJournalSavedDates(area = COMPRESSOR_JOURNAL_AREA) {
   return [...new Set(compressorJournalFilledRows(area).map(row => row.date).filter(Boolean))].sort().reverse();
 }
@@ -10719,62 +10733,67 @@ const COMPRESSOR_JOURNAL_REQUIRED_FIELDS = [
   ["leakGrounding", "контроль утечек и заземления"]
 ];
 
-function compressorJournalFixationHtml(row) {
-  const fixed = compressorJournalRowComplete(row);
-  const fixedLabel = row.fixedAt ? `Зафиксировано ${dateTimeHuman(row.fixedAt)}` : "Запись зафиксирована";
-  return `<div class="compressor-entry-fixation">
-    <span data-compressor-entry-signer="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</span>
-    <button type="button" class="compressor-entry-fix-button ${fixed ? "fixed" : ""}" data-compressor-fix-entry="${escapeHtml(row.id)}" ${fixed ? "disabled" : ""}>${fixed ? "Запись зафиксирована ✓" : "Зафиксировать запись"}</button>
-    <small class="compressor-entry-status ${fixed ? "fixed" : "draft"}" data-compressor-entry-status="${escapeHtml(row.id)}">${fixed ? escapeHtml(fixedLabel) : "После заполнения нажмите кнопку"}</small>
+function compressorJournalDateFixationHtml(area, date, rows = compressorJournalDateRows(area, date)) {
+  const fixed = rows.length === COMPRESSOR_JOURNAL_COMPRESSORS.length && rows.every(compressorJournalRowComplete);
+  const fixedAt = rows.map(row => row.fixedAt).filter(Boolean).sort().slice(-1)[0] || "";
+  const fixedLabel = fixedAt ? `Зафиксировано ${dateTimeHuman(fixedAt)}` : "Три компрессора зафиксированы";
+  return `<div class="compressor-date-fixation">
+    <button type="button" class="compressor-date-fix-button ${fixed ? "fixed" : ""}" data-compressor-fix-date="${date}" data-compressor-fix-area="${escapeHtml(area)}" ${fixed ? "disabled" : ""}>${fixed ? "3 компрессора зафиксированы ✓" : "Зафиксировать 3 компрессора"}</button>
+    <small class="compressor-date-status ${fixed ? "fixed" : "draft"}" data-compressor-date-status="${date}">${fixed ? escapeHtml(fixedLabel) : "Одна кнопка фиксирует все три строки"}</small>
   </div>`;
 }
 
-function markCompressorJournalEntryDraftInView(rowId) {
-  const escapedRowId = CSS.escape(rowId);
-  const button = ui.aggregateJournalList.querySelector(`[data-compressor-fix-entry="${escapedRowId}"]`);
+function markCompressorJournalDateDraftInView(area, date, rowId) {
+  const button = ui.aggregateJournalList.querySelector(`[data-compressor-fix-date="${date}"][data-compressor-fix-area="${CSS.escape(area)}"]`);
   if (button) {
     button.disabled = false;
     button.classList.remove("fixed");
-    button.textContent = "Зафиксировать запись";
+    button.textContent = "Зафиксировать 3 компрессора";
   }
-  const status = ui.aggregateJournalList.querySelector(`[data-compressor-entry-status="${escapedRowId}"]`);
+  const status = ui.aggregateJournalList.querySelector(`[data-compressor-date-status="${date}"]`);
   if (status) {
-    status.className = "compressor-entry-status draft";
-    status.textContent = "Есть изменения — нажмите «Зафиксировать запись»";
+    status.className = "compressor-date-status draft";
+    status.textContent = "Есть изменения — заполните все три строки и зафиксируйте";
   }
-  const signer = ui.aggregateJournalList.querySelector(`[data-compressor-entry-signer="${escapedRowId}"]`);
-  if (signer) signer.textContent = "Ожидает фиксации";
+  const checkedCell = ui.aggregateJournalList.querySelector(`[data-compressor-checked="${CSS.escape(rowId)}"]`);
+  if (checkedCell) checkedCell.textContent = "Ожидает фиксации";
 }
 
-async function fixCompressorJournalEntry(rowId, button) {
-  const [area, date, compressor] = rowId.split("::");
-  const row = { id: rowId, area, date, compressor, ...(state.compressorJournal?.[rowId] || {}) };
-  if (compressorJournalRowComplete(row)) {
-    showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
+async function fixCompressorJournalDate(area, date, button) {
+  const rows = compressorJournalDateRows(area, date);
+  if (rows.length === COMPRESSOR_JOURNAL_COMPRESSORS.length && rows.every(compressorJournalRowComplete)) {
+    showAppToast("Все три компрессора уже зафиксированы и недоступны для редактирования.", "error");
     return;
   }
-  const missing = COMPRESSOR_JOURNAL_REQUIRED_FIELDS
-    .filter(([field]) => !String(row[field] || "").trim())
-    .map(([, label]) => label);
+  const missing = rows.flatMap(row => {
+    const fields = COMPRESSOR_JOURNAL_REQUIRED_FIELDS
+      .filter(([field]) => !String(row[field] || "").trim())
+      .map(([, label]) => label);
+    return fields.length ? [`${row.compressor}: ${fields.join(", ")}`] : [];
+  });
   if (missing.length) {
-    showAppToast(`Сначала заполните: ${missing.join(", ")}.`, "error");
+    showAppToast(`Сначала заполните все три компрессора. ${missing.join("; ")}.`, "error");
     return;
   }
   const now = new Date();
   const fixedAt = now.toISOString();
-  state.compressorJournal[rowId] = {
-    ...row,
-    shiftTime: `${shiftForDate(now)} ${localTimeNow()}`,
-    blowTime: localTimeNow(),
-    checkedBy: profile?.name || "Сотрудник",
-    updatedAt: fixedAt,
-    updatedByName: profile?.name || "",
-    updatedByRole: profile?.role || "",
-    entryStatus: "fixed",
-    fixedAt,
-    fixedByName: profile?.name || ""
-  };
-  recordAudit("Зафиксировал запись компрессорного журнала", `${compressor} · ${dateHuman(date)}`);
+  const shiftTime = `${shiftForDate(now)} ${localTimeNow()}`;
+  const blowTime = localTimeNow();
+  rows.forEach(row => {
+    state.compressorJournal[row.id] = {
+      ...row,
+      shiftTime,
+      blowTime,
+      checkedBy: profile?.name || "Сотрудник",
+      updatedAt: fixedAt,
+      updatedByName: profile?.name || "",
+      updatedByRole: profile?.role || "",
+      entryStatus: "fixed",
+      fixedAt,
+      fixedByName: profile?.name || ""
+    };
+  });
+  recordAudit("Зафиксировал компрессорный журнал", `3 компрессора · ${dateHuman(date)}`);
   saveState();
   setButtonBusy(button, true, "Фиксируем...");
   await publishStateNow();
@@ -10783,8 +10802,8 @@ async function fixCompressorJournalEntry(rowId, button) {
   renderEquipment();
   showAppToast(
     pending
-      ? "Запись зафиксирована на телефоне и отправится на сервер после восстановления связи."
-      : "Запись компрессорного журнала зафиксирована и сохранена.",
+      ? "Три компрессора зафиксированы на телефоне и отправятся на сервер после восстановления связи."
+      : "Три компрессора зафиксированы и сохранены одной записью.",
     pending ? "error" : "ok"
   );
 }
@@ -11268,29 +11287,37 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   const maxSheetIndex = compressorJournalMaxSheetIndex();
   if (current.compressorSheetIndex > maxSheetIndex) current.compressorSheetIndex = maxSheetIndex;
   const activeSheetIndex = compressorJournalSheetIndex();
-  const sheetRows = compressorJournalRows(area, activeSheetIndex);
+  const mobileMode = compressorJournalMobileMode();
+  const mobileDate = compressorJournalMobileDate();
+  const sheetRows = mobileMode
+    ? compressorJournalDateRows(area, mobileDate)
+    : compressorJournalRows(area, activeSheetIndex);
   const filled = compressorJournalFilledRows(area).length;
   ui.aggregateJournalTitle.textContent = `\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043d\u044b\u0439 \u0436\u0443\u0440\u043d\u0430\u043b: ${area}`;
   ui.aggregateJournalMeta.textContent = `${filled} \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0445 \u0441\u0442\u0440\u043e\u043a. \u0416\u0443\u0440\u043d\u0430\u043b \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f \u0432\u0440\u0443\u0447\u043d\u0443\u044e; \u0437\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u044f \u0441\u044e\u0434\u0430 \u043d\u0435 \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442.`;
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions compressor-journal-actions">
       <div class="segmented">
-        <button type="button" data-compressor-sheet-prev ${activeSheetIndex <= 0 ? "disabled" : ""}>\u2039</button>
+        <button type="button" class="compressor-sheet-page-button" data-compressor-sheet-prev ${activeSheetIndex <= 0 ? "disabled" : ""}>\u2039</button>
         <strong>\u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</strong>
-        <button type="button" data-compressor-sheet-next ${activeSheetIndex >= maxSheetIndex ? "disabled" : ""}>\u203a</button>
+        <button type="button" class="compressor-sheet-page-button" data-compressor-sheet-next ${activeSheetIndex >= maxSheetIndex ? "disabled" : ""}>\u203a</button>
       </div>
       <button type="button" data-print-all-compressor ${filled ? "" : "disabled"}>${printActionLabel("Печать всех заполненных дней", "PDF всех заполненных дней")}</button>
     </div>
     <div class="journal-date-navigation">
+      <button type="button" class="compressor-mobile-day-button" data-compressor-day-prev>‹ День</button>
       <button type="button" data-compressor-today>Сегодня</button>
+      <button type="button" class="compressor-mobile-day-button" data-compressor-day-next>День ›</button>
       <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
+      <small class="compressor-mobile-swipe-note">Свайп влево — следующий день, вправо — предыдущий.</small>
       ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
         <strong>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f</strong>
-        <span>${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</span>
+        <span>${mobileMode ? dateHuman(mobileDate) : `${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}`}</span>
       </div>
+      ${mobileMode ? `<div class="compressor-mobile-date-panel"><strong>${dateHuman(mobileDate)}</strong>${compressorJournalDateFixationHtml(area, mobileDate, sheetRows)}</div>` : ""}
       <div class="aggregate-journal-table-wrap">
         <table class="aggregate-journal-table compressor-journal-table">
           <thead>
@@ -11312,21 +11339,21 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
               const locked = compressorJournalRowComplete(row);
               return `
               <tr data-compressor-date="${row.date}" class="${compressorDayAttention ? "overdue-line-blink" : ""} ${compressorJournalDateHasFilledRow(area, row.date) ? "" : "print-empty-day"}">
-                ${index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? `<td rowspan="${COMPRESSOR_JOURNAL_COMPRESSORS.length}">${dateHuman(row.date)}</td>` : ""}
-                <td data-compressor-checked="${escapeHtml(row.id)}">${compressorJournalFixationHtml(row)}</td>
-                <td>${escapeHtml(row.compressor)}</td>
-                <td data-compressor-shift="${escapeHtml(row.id)}">${escapeHtml(row.shiftTime || "")}</td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airPressure" value="${escapeHtml(row.airPressure || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}" ${locked ? "disabled" : ""}></td>
-                <td>
+                ${!mobileMode && index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? `<td rowspan="${COMPRESSOR_JOURNAL_COMPRESSORS.length}" class="compressor-date-cell"><strong>${dateHuman(row.date)}</strong>${compressorJournalDateFixationHtml(area, row.date, compressorJournalDateRows(area, row.date))}</td>` : ""}
+                <td data-mobile-label="Проверяющий" data-compressor-checked="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</td>
+                <td data-mobile-label="Компрессор"><strong>${escapeHtml(row.compressor)}</strong></td>
+                <td data-mobile-label="Смена / время" data-compressor-shift="${escapeHtml(row.id)}">${escapeHtml(row.shiftTime || "После фиксации")}</td>
+                <td data-mobile-label="Давление воздуха"><input aria-label="${escapeHtml(row.compressor)} — давление воздуха" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airPressure" value="${escapeHtml(row.airPressure || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+                <td data-mobile-label="Температура воздуха"><input aria-label="${escapeHtml(row.compressor)} — температура воздуха" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+                <td data-mobile-label="Давление / температура масла"><input aria-label="${escapeHtml(row.compressor)} — давление и температура масла" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}" ${locked ? "disabled" : ""}></td>
+                <td data-mobile-label="Утечки и заземление">
                   <select data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding" ${locked ? "disabled" : ""}>
                     <option value=""></option>
                     <option value="\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ${row.leakGrounding === "\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ? "selected" : ""}>\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e</option>
                     <option value="\u043d\u0435\u0442" ${row.leakGrounding === "\u043d\u0435\u0442" ? "selected" : ""}>\u043d\u0435\u0442</option>
                   </select>
                 </td>
-                <td data-compressor-blow="${escapeHtml(row.id)}">${escapeHtml(row.blowTime || "")}</td>
+                <td data-mobile-label="Время продувки" data-compressor-blow="${escapeHtml(row.id)}">${escapeHtml(row.blowTime || "После фиксации")}</td>
               </tr>
             `;
             }).join("")}
@@ -11346,8 +11373,11 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   ui.aggregateJournalList.querySelector("[data-compressor-today]")?.addEventListener("click", () => {
     current.compressorBaseDate = todayISO();
     current.compressorSheetIndex = 0;
+    current.compressorMobileDate = todayISO();
     renderAggregateJournal();
   });
+  ui.aggregateJournalList.querySelector("[data-compressor-day-prev]")?.addEventListener("click", () => shiftCompressorJournalMobileDate(-1));
+  ui.aggregateJournalList.querySelector("[data-compressor-day-next]")?.addEventListener("click", () => shiftCompressorJournalMobileDate(1));
   ui.aggregateJournalList.querySelector("[data-print-all-compressor]")?.addEventListener("click", () => printCompressorJournalFilledDays(area));
   const refreshCompressorSheetControls = () => {
     const nextButton = ui.aggregateJournalList.querySelector("[data-compressor-sheet-next]");
@@ -11365,9 +11395,9 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       }
       const shiftCell = ui.aggregateJournalList.querySelector(`[data-compressor-shift="${CSS.escape(rowId)}"]`);
       const blowCell = ui.aggregateJournalList.querySelector(`[data-compressor-blow="${CSS.escape(rowId)}"]`);
-      if (shiftCell) shiftCell.textContent = savedRow.shiftTime || "";
-      if (blowCell) blowCell.textContent = savedRow.blowTime || "";
-      markCompressorJournalEntryDraftInView(rowId);
+      if (shiftCell) shiftCell.textContent = savedRow.shiftTime || "После фиксации";
+      if (blowCell) blowCell.textContent = savedRow.blowTime || "После фиксации";
+      markCompressorJournalDateDraftInView(area, savedRow.date, rowId);
       ui.aggregateJournalList.querySelectorAll(`[data-compressor-date="${CSS.escape(savedRow.date)}"]`).forEach(row => row.classList.toggle("print-empty-day", !compressorJournalDateHasFilledRow(area, savedRow.date)));
       refreshCompressorSheetControls();
     };
@@ -11377,9 +11407,39 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       renderEquipment();
     });
   });
-  ui.aggregateJournalList.querySelectorAll("[data-compressor-fix-entry]").forEach(button => {
-    button.addEventListener("click", () => fixCompressorJournalEntry(button.dataset.compressorFixEntry, button));
+  ui.aggregateJournalList.querySelectorAll("[data-compressor-fix-date]").forEach(button => {
+    button.addEventListener("click", () => fixCompressorJournalDate(
+      button.dataset.compressorFixArea,
+      button.dataset.compressorFixDate,
+      button
+    ));
   });
+  if (mobileMode) {
+    const sheet = ui.aggregateJournalList.querySelector(".compressor-journal-sheet");
+    if (sheet) {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchTracking = false;
+      sheet.addEventListener("touchstart", event => {
+        if (event.target.closest("input, select, textarea, button")) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        touchTracking = true;
+      }, { passive: true });
+      sheet.addEventListener("touchend", event => {
+        if (!touchTracking) return;
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        touchTracking = false;
+        if (Math.abs(deltaX) < 55 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
+        shiftCompressorJournalMobileDate(deltaX < 0 ? 1 : -1);
+      }, { passive: true });
+    }
+  }
 }
 
 function renderEquipment() {

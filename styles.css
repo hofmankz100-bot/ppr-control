@@ -4065,8 +4065,8 @@ body.editor-profile .warehouse-folders button.request-alert {
   min-width: 1120px;
 }
 
-.compressor-journal-table th:nth-child(1) { width: 92px; }
-.compressor-journal-table th:nth-child(2) { width: 180px; }
+.compressor-journal-table th:nth-child(1) { width: 190px; }
+.compressor-journal-table th:nth-child(2) { width: 130px; }
 .compressor-journal-table th:nth-child(3) { width: 150px; }
 .compressor-journal-table th:nth-child(4) { width: 140px; }
 .compressor-journal-table th:nth-child(5) { width: 130px; }
@@ -4124,20 +4124,16 @@ body.editor-profile .warehouse-folders button.request-alert {
   cursor: not-allowed;
 }
 
-.compressor-entry-fixation {
+.compressor-date-fixation {
   display: grid;
-  gap: 5px;
+  gap: 7px;
+  margin-top: 8px;
   min-width: 0;
 }
 
-.compressor-entry-fixation > span {
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.compressor-entry-fix-button {
+.compressor-date-fix-button {
   width: 100%;
-  min-height: 40px;
+  min-height: 46px;
   border: 0;
   border-radius: 8px;
   background: #047857;
@@ -4148,35 +4144,159 @@ body.editor-profile .warehouse-folders button.request-alert {
   cursor: pointer;
 }
 
-.compressor-entry-fix-button.fixed,
-.compressor-entry-fix-button:disabled {
+.compressor-date-fix-button.fixed,
+.compressor-date-fix-button:disabled {
   background: #d1fae5;
   color: #065f46;
   cursor: default;
   opacity: 1;
 }
 
-.compressor-entry-status {
+.compressor-date-status {
   color: #92400e;
   font-size: 11px;
   font-weight: 800;
   line-height: 1.25;
 }
 
-.compressor-entry-status.fixed {
+.compressor-date-status.fixed {
   color: #047857;
 }
 
+.compressor-mobile-day-button,
+.compressor-mobile-swipe-note,
+.compressor-mobile-date-panel {
+  display: none;
+}
+
 @media screen and (max-width: 760px) {
-  .compressor-entry-fix-button {
-    min-height: 48px;
+  .compressor-sheet-page-button {
+    display: none !important;
+  }
+
+  .compressor-mobile-day-button {
+    display: inline-flex;
+    flex: 1 1 96px;
+    justify-content: center;
+  }
+
+  .compressor-mobile-swipe-note {
+    display: block;
+    flex: 1 1 100% !important;
+    color: #075985 !important;
+    font-weight: 900 !important;
+  }
+
+  .compressor-mobile-date-panel {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #86b7a0;
+    border-radius: 11px;
+    background: #f0fdf4;
+    padding: 11px;
+  }
+
+  .compressor-date-fix-button {
+    min-height: 52px;
     font-size: 14px;
+  }
+
+  .compressor-journal-sheet,
+  .compressor-journal-sheet .aggregate-journal-table-wrap,
+  .compressor-journal-table,
+  .compressor-journal-table tbody,
+  .compressor-journal-table tr,
+  .compressor-journal-table td {
+    touch-action: pan-y !important;
+  }
+
+  .compressor-journal-sheet .aggregate-journal-table-wrap {
+    overflow: visible !important;
+  }
+
+  .compressor-journal-table,
+  .compressor-journal-table tbody {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .compressor-journal-table thead {
+    display: none !important;
+  }
+
+  .compressor-journal-table tbody tr {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 14px !important;
+    overflow: hidden !important;
+    border: 1px solid #9fb2c3 !important;
+    border-radius: 11px !important;
+    background: #fff !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, .08) !important;
+  }
+
+  .compressor-journal-table tbody td,
+  .compressor-journal-table tbody td:first-child {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: minmax(118px, 42%) minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 9px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 50px !important;
+    padding: 8px 10px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #dbe5eb !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    text-align: left !important;
+    font-size: 14px !important;
+  }
+
+  .compressor-journal-table tbody td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .compressor-journal-table tbody td::before {
+    content: attr(data-mobile-label);
+    color: #385264;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+  }
+
+  .compressor-journal-table tbody td:nth-child(2) {
+    background: #eaf3f7 !important;
+    color: #123f5c !important;
+    font-weight: 900 !important;
+  }
+
+  .compressor-journal-table input,
+  .compressor-journal-table select {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    border: 1px solid #8da8b8 !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    padding: 8px !important;
+    font-size: 16px !important;
+    touch-action: manipulation !important;
+  }
+
+  .compressor-journal-table input:disabled,
+  .compressor-journal-table select:disabled {
+    background: #ecfdf5 !important;
+    border-color: #a7c8b9 !important;
   }
 }
 
 @media print {
-  .compressor-entry-fix-button,
-  .compressor-entry-status {
+  .compressor-date-fix-button,
+  .compressor-date-status {
     display: none !important;
   }
 }

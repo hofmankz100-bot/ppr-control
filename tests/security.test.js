@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v322-compressor-fixation";
+const APP_VERSION = "v323-compressor-date-fixation";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
