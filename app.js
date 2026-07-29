@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v321-lock-shgrp-entry";
+const APP_VERSION = "v322-compressor-fixation";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10468,7 +10468,7 @@ function compressorJournalSavedDates(area = COMPRESSOR_JOURNAL_AREA) {
 }
 
 function compressorJournalDateHasFilledRow(area, date) {
-  return compressorJournalDateRows(area, date).some(row => ["shiftTime", "airPressure", "airTemp", "oilPressureTemp", "leakGrounding", "blowTime", "checkedBy"].some(field => String(row[field] || "").trim()));
+  return compressorJournalDateRows(area, date).some(compressorJournalRowComplete);
 }
 
 function compressorJournalSheetIndex() {
@@ -10522,7 +10522,7 @@ function compressorJournalRows(area = COMPRESSOR_JOURNAL_AREA, sheetIndex = comp
 function compressorJournalFilledRows(area = COMPRESSOR_JOURNAL_AREA) {
   return Object.values(state.compressorJournal || {})
     .filter(row => row?.area === area)
-    .filter(row => ["shiftTime", "airPressure", "airTemp", "oilPressureTemp", "leakGrounding", "blowTime", "checkedBy"].some(field => String(row[field] || "").trim()));
+    .filter(compressorJournalRowComplete);
 }
 
 function printCompressorJournalFilledDays(area = COMPRESSOR_JOURNAL_AREA) {
@@ -10664,21 +10664,23 @@ function updateCompressorJournalRow(rowId, field, value) {
   const [area, date, compressor] = rowId.split("::");
   const now = new Date();
   const old = state.compressorJournal[rowId] || {};
-  const shiftTime = old.shiftTime || `${shiftForDate(now)} ${localTimeNow()}`;
-  const checkedBy = old.checkedBy || profile?.name || "";
+  if (compressorJournalRowComplete({ id: rowId, area, date, compressor, ...old })) return null;
   const nextRow = {
     ...old,
     id: rowId,
     area,
     date,
     compressor,
-    shiftTime,
-    checkedBy,
+    shiftTime: "",
+    checkedBy: "",
     [field]: value,
-    blowTime: localTimeNow(),
+    blowTime: "",
     updatedAt: now.toISOString(),
     updatedByName: profile?.name || "",
-    updatedByRole: profile?.role || ""
+    updatedByRole: profile?.role || "",
+    entryStatus: "draft",
+    fixedAt: "",
+    fixedByName: ""
   };
   const hasManualValue = ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding"]
     .some(name => String(nextRow[name] || "").trim());
@@ -10697,7 +10699,10 @@ function updateCompressorJournalRow(rowId, field, value) {
       checkedBy: "",
       updatedAt: now.toISOString(),
       updatedByName: profile?.name || "",
-      updatedByRole: profile?.role || ""
+      updatedByRole: profile?.role || "",
+      entryStatus: "draft",
+      fixedAt: "",
+      fixedByName: ""
     };
     saveState();
     return state.compressorJournal[rowId];
@@ -10705,6 +10710,83 @@ function updateCompressorJournalRow(rowId, field, value) {
   state.compressorJournal[rowId] = nextRow;
   saveState();
   return state.compressorJournal[rowId];
+}
+
+const COMPRESSOR_JOURNAL_REQUIRED_FIELDS = [
+  ["airPressure", "давление воздуха"],
+  ["airTemp", "температуру воздуха"],
+  ["oilPressureTemp", "давление и температуру масла"],
+  ["leakGrounding", "контроль утечек и заземления"]
+];
+
+function compressorJournalFixationHtml(row) {
+  const fixed = compressorJournalRowComplete(row);
+  const fixedLabel = row.fixedAt ? `Зафиксировано ${dateTimeHuman(row.fixedAt)}` : "Запись зафиксирована";
+  return `<div class="compressor-entry-fixation">
+    <span data-compressor-entry-signer="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</span>
+    <button type="button" class="compressor-entry-fix-button ${fixed ? "fixed" : ""}" data-compressor-fix-entry="${escapeHtml(row.id)}" ${fixed ? "disabled" : ""}>${fixed ? "Запись зафиксирована ✓" : "Зафиксировать запись"}</button>
+    <small class="compressor-entry-status ${fixed ? "fixed" : "draft"}" data-compressor-entry-status="${escapeHtml(row.id)}">${fixed ? escapeHtml(fixedLabel) : "После заполнения нажмите кнопку"}</small>
+  </div>`;
+}
+
+function markCompressorJournalEntryDraftInView(rowId) {
+  const escapedRowId = CSS.escape(rowId);
+  const button = ui.aggregateJournalList.querySelector(`[data-compressor-fix-entry="${escapedRowId}"]`);
+  if (button) {
+    button.disabled = false;
+    button.classList.remove("fixed");
+    button.textContent = "Зафиксировать запись";
+  }
+  const status = ui.aggregateJournalList.querySelector(`[data-compressor-entry-status="${escapedRowId}"]`);
+  if (status) {
+    status.className = "compressor-entry-status draft";
+    status.textContent = "Есть изменения — нажмите «Зафиксировать запись»";
+  }
+  const signer = ui.aggregateJournalList.querySelector(`[data-compressor-entry-signer="${escapedRowId}"]`);
+  if (signer) signer.textContent = "Ожидает фиксации";
+}
+
+async function fixCompressorJournalEntry(rowId, button) {
+  const [area, date, compressor] = rowId.split("::");
+  const row = { id: rowId, area, date, compressor, ...(state.compressorJournal?.[rowId] || {}) };
+  if (compressorJournalRowComplete(row)) {
+    showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
+    return;
+  }
+  const missing = COMPRESSOR_JOURNAL_REQUIRED_FIELDS
+    .filter(([field]) => !String(row[field] || "").trim())
+    .map(([, label]) => label);
+  if (missing.length) {
+    showAppToast(`Сначала заполните: ${missing.join(", ")}.`, "error");
+    return;
+  }
+  const now = new Date();
+  const fixedAt = now.toISOString();
+  state.compressorJournal[rowId] = {
+    ...row,
+    shiftTime: `${shiftForDate(now)} ${localTimeNow()}`,
+    blowTime: localTimeNow(),
+    checkedBy: profile?.name || "Сотрудник",
+    updatedAt: fixedAt,
+    updatedByName: profile?.name || "",
+    updatedByRole: profile?.role || "",
+    entryStatus: "fixed",
+    fixedAt,
+    fixedByName: profile?.name || ""
+  };
+  recordAudit("Зафиксировал запись компрессорного журнала", `${compressor} · ${dateHuman(date)}`);
+  saveState();
+  setButtonBusy(button, true, "Фиксируем...");
+  await publishStateNow();
+  const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
+  renderCompressorJournal(area);
+  renderEquipment();
+  showAppToast(
+    pending
+      ? "Запись зафиксирована на телефоне и отправится на сервер после восстановления связи."
+      : "Запись компрессорного журнала зафиксирована и сохранена.",
+    pending ? "error" : "ok"
+  );
 }
 
 
@@ -11227,17 +11309,18 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
           <tbody>
             ${sheetRows.map((row, index) => {
               const compressorDayAttention = compressorJournalDateNeedsAttention(area, row.date);
+              const locked = compressorJournalRowComplete(row);
               return `
               <tr data-compressor-date="${row.date}" class="${compressorDayAttention ? "overdue-line-blink" : ""} ${compressorJournalDateHasFilledRow(area, row.date) ? "" : "print-empty-day"}">
                 ${index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? `<td rowspan="${COMPRESSOR_JOURNAL_COMPRESSORS.length}">${dateHuman(row.date)}</td>` : ""}
-                <td data-compressor-checked="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "")}</td>
+                <td data-compressor-checked="${escapeHtml(row.id)}">${compressorJournalFixationHtml(row)}</td>
                 <td>${escapeHtml(row.compressor)}</td>
                 <td data-compressor-shift="${escapeHtml(row.id)}">${escapeHtml(row.shiftTime || "")}</td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airPressure" value="${escapeHtml(row.airPressure || "")}" inputmode="decimal"></td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal"></td>
-                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}"></td>
+                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airPressure" value="${escapeHtml(row.airPressure || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+                <td><input data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}" ${locked ? "disabled" : ""}></td>
                 <td>
-                  <select data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding">
+                  <select data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding" ${locked ? "disabled" : ""}>
                     <option value=""></option>
                     <option value="\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ${row.leakGrounding === "\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ? "selected" : ""}>\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e</option>
                     <option value="\u043d\u0435\u0442" ${row.leakGrounding === "\u043d\u0435\u0442" ? "selected" : ""}>\u043d\u0435\u0442</option>
@@ -11275,12 +11358,16 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       const control = event.currentTarget;
       const rowId = control.dataset.compressorRow;
       const savedRow = updateCompressorJournalRow(rowId, control.dataset.compressorField, control.value.trim());
+      if (!savedRow) {
+        renderCompressorJournal(area);
+        showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
+        return;
+      }
       const shiftCell = ui.aggregateJournalList.querySelector(`[data-compressor-shift="${CSS.escape(rowId)}"]`);
       const blowCell = ui.aggregateJournalList.querySelector(`[data-compressor-blow="${CSS.escape(rowId)}"]`);
-      const checkedCell = ui.aggregateJournalList.querySelector(`[data-compressor-checked="${CSS.escape(rowId)}"]`);
       if (shiftCell) shiftCell.textContent = savedRow.shiftTime || "";
       if (blowCell) blowCell.textContent = savedRow.blowTime || "";
-      if (checkedCell) checkedCell.textContent = savedRow.checkedBy || "";
+      markCompressorJournalEntryDraftInView(rowId);
       ui.aggregateJournalList.querySelectorAll(`[data-compressor-date="${CSS.escape(savedRow.date)}"]`).forEach(row => row.classList.toggle("print-empty-day", !compressorJournalDateHasFilledRow(area, savedRow.date)));
       refreshCompressorSheetControls();
     };
@@ -11289,6 +11376,9 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       commitCompressorValue(event);
       renderEquipment();
     });
+  });
+  ui.aggregateJournalList.querySelectorAll("[data-compressor-fix-entry]").forEach(button => {
+    button.addEventListener("click", () => fixCompressorJournalEntry(button.dataset.compressorFixEntry, button));
   });
 }
 

@@ -1,9 +1,15 @@
 (function () {
   const root = window.PPRModules ||= {};
+  const requiredFields = ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding"];
+  const rowFieldsComplete = row =>
+    requiredFields.every(field => String(row?.[field] || "").trim());
+
   root.compressor = {
+    rowFieldsComplete,
     rowComplete(row) {
-      return ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding"]
-        .every(field => String(row?.[field] || "").trim());
+      return rowFieldsComplete(row)
+        && ["shiftTime", "blowTime", "checkedBy"].every(field => String(row?.[field] || "").trim())
+        && row?.entryStatus !== "draft";
     },
     rowsComplete(rows) {
       return Array.isArray(rows) && rows.length > 0 && rows.every(root.compressor.rowComplete);
