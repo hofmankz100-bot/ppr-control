@@ -3749,7 +3749,9 @@ function canConfirmInstallation() {
 }
 
 function canEditChecklist() {
-  return Boolean(roleAccess().checklist) && attendanceAllowsEditing();
+  return Boolean(roleAccess().checklist)
+    && attendanceAllowsEditing()
+    && !activeOperationalPause(current.equipmentId, current.nodeIndex, current.date);
 }
 
 function catalogEditorRole() {
@@ -3829,9 +3831,62 @@ function allEquipment() {
       name: override.name || eq.name,
       area: override.area || eq.area,
       nodes: Array.isArray(override.nodes) ? override.nodes : eq.nodes,
-      reminders: override.reminders || {}
+      reminders: override.reminders || {},
+      operationalPauses: Array.isArray(override.operationalPauses) ? override.operationalPauses : [],
+      nodeOperationalPauses: override.nodeOperationalPauses && typeof override.nodeOperationalPauses === "object"
+        ? override.nodeOperationalPauses
+        : {}
     };
   });
+}
+
+function operationalPauseApplies(pause, date = todayISO()) {
+  if (!pause?.startedAt) return false;
+  const targetDate = String(date || todayISO()).slice(0, 10);
+  const startDate = String(pause.startedAt).slice(0, 10);
+  const endDate = pause.endedAt ? String(pause.endedAt).slice(0, 10) : "";
+  return targetDate >= startDate && (!endDate || targetDate <= endDate);
+}
+
+function activeOperationalPause(equipmentOrId, nodeIndex = null, date = todayISO()) {
+  const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
+  if (!eq) return null;
+  const equipmentPause = (eq.operationalPauses || []).find(pause => operationalPauseApplies(pause, date));
+  if (equipmentPause) return { ...equipmentPause, scope: "equipment" };
+  if (!Number.isInteger(nodeIndex)) return null;
+  const nodePause = (eq.nodeOperationalPauses?.[nodeIndex] || []).find(pause => operationalPauseApplies(pause, date));
+  return nodePause ? { ...nodePause, scope: "node" } : null;
+}
+
+function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
+  if (catalogEditorRole() !== "editor") return false;
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq || (nodeIndex !== null && (!Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length))) return false;
+  const item = equipmentOverride(eq.id);
+  const now = new Date().toISOString();
+  const targetName = nodeIndex === null ? eq.name : `${eq.name} · ${eq.nodes[nodeIndex]}`;
+  const list = nodeIndex === null
+    ? (item.operationalPauses ||= [])
+    : ((item.nodeOperationalPauses ||= {})[nodeIndex] ||= []);
+  const active = [...list].reverse().find(pause => pause?.startedAt && !pause.endedAt);
+  if (paused) {
+    if (active) return true;
+    list.push({
+      startedAt: now,
+      endedAt: "",
+      reason: String(reason || "").trim(),
+      changedBy: profile?.name || authenticatedProfile?.name || "Администратор"
+    });
+    recordAudit("Временно остановил", targetName, String(reason || "").trim(), "ППР и просрочки приостановлены");
+  } else {
+    if (!active) return true;
+    active.endedAt = now;
+    active.endedBy = profile?.name || authenticatedProfile?.name || "Администратор";
+    recordAudit("Возобновил работу", targetName, "", "ППР и контроль сроков включены");
+  }
+  item.updatedAt = now;
+  saveState();
+  return true;
 }
 
 function availableEquipmentAreas() {
@@ -11537,20 +11592,31 @@ function renderEquipment() {
       const compressorJournalMissingToday = compressorJournalOverdueDays > 0;
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
       const gpmEquipment = isGpmEquipment(eq);
+      const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
-            <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
+            <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">${gpmEquipment ? "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(eq.name)}</strong>
               <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
               <summary>Редактировать оборудование</summary>
+              ${catalogEditorRole() === "editor" ? (() => {
+                const pause = activeOperationalPause(eq);
+                return `<div class="operational-pause-control ${pause ? "paused" : ""}">
+                  <strong>${pause ? "Оборудование временно не работает" : "Оборудование работает"}</strong>
+                  ${pause?.reason ? `<span>Причина: ${escapeHtml(pause.reason)}</span>` : ""}
+                  <button type="button" class="${pause ? "" : "danger"}" data-toggle-equipment-pause="${eq.id}">
+                    ${pause ? "Возобновить работу" : "Временно остановить"}
+                  </button>
+                </div>`;
+              })() : ""}
               <label><span>Название оборудования</span><input data-equipment-name="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.name)}"></label>
               <label><span>Участок</span><input data-equipment-area="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.area)}"></label>
               <div class="catalog-editor-actions">
@@ -11577,18 +11643,30 @@ function renderEquipment() {
         event.stopPropagation();
         printEquipmentQrCodes(eq);
       });
+      tr.querySelector("[data-toggle-equipment-pause]")?.addEventListener("click", event => {
+        const pause = activeOperationalPause(eq);
+        const reason = pause ? "" : window.prompt("Укажите причину временной остановки оборудования:", "")?.trim();
+        if (!pause && !reason) return;
+        if (!window.confirm(pause
+          ? `Возобновить работу оборудования «${eq.name}»?`
+          : `Временно остановить оборудование «${eq.name}»? ППР и просрочки на период остановки учитываться не будут.`)) return;
+        runButtonOperation(event.currentTarget, () => {
+          if (setOperationalPause(eq.id, null, !pause, reason)) renderEquipment();
+        }, "Сохраняется...");
+      });
       for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date);
+        const operationalPause = activeOperationalPause(eq, null, date);
         const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
         const downtimeOpen = equipmentDowntimeOpen;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        const baseClass = summary.done === summary.total ? "completed-day" : "to";
+        const baseClass = operationalPause ? "operational-paused-day" : summary.done === summary.total ? "completed-day" : "to";
         td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
-        td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
+        td.textContent = operationalPause ? "Пауза" : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
+        td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
           if (!canOpenEquipmentDate(date)) return;
           current.equipmentId = eq.id;
@@ -11623,9 +11701,11 @@ function renderEquipment() {
 }
 
 function equipmentDaySummary(eq, date) {
-  const rows = eq.nodes.map((_, index) => getRecord(eq.id, index, date));
+  const activeNodeIndexes = eq.nodes.map((_, index) => index)
+    .filter(index => !activeOperationalPause(eq, index, date));
+  const rows = activeNodeIndexes.map(index => getRecord(eq.id, index, date));
   const shiftKeys = walkShiftKeysDueForDate(date);
-  const total = eq.nodes.length * Math.max(1, shiftKeys.length);
+  const total = activeNodeIndexes.length * Math.max(1, shiftKeys.length);
   const done = shiftKeys.length
     ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey)).length, 0)
     : rows.filter(rec => isNodeChecked(rec)).length;
@@ -11636,8 +11716,8 @@ function equipmentDaySummary(eq, date) {
     total,
     open,
     requestOpen,
-    overdue: isDueOrPast(date) && shiftKeys.length > 0 && done < total,
-    blinkToday: date === currentWalkShift().date && shiftKeys.length > 0 && done < total
+    overdue: total > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < total,
+    blinkToday: total > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < total
   };
 }
 
@@ -11711,17 +11791,18 @@ function renderSchedule() {
       const open = hasOpenCommentRecord(rec);
       const requestOpen = hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(current.equipmentId, nodeIndex, date);
       const activeNodeDowntime = activeDowntime(current.equipmentId, nodeIndex);
+      const operationalPause = activeOperationalPause(eq, nodeIndex, date);
       const downtimeOpen = Boolean(activeNodeDowntime);
       const downtimeBlink = Boolean(activeNodeDowntime && activeNodeDowntime.type !== "production");
-      const overdue = plan && isDueOrPast(date) && walkShiftKeysDueForDate(date).length > 0 && !isPlannedDone(rec, plan, date);
-      const blinkToday = plan && date === currentWalkShift().date && !isPlannedDone(rec, plan, date);
+      const overdue = !operationalPause && plan && isDueOrPast(date) && walkShiftKeysDueForDate(date).length > 0 && !isPlannedDone(rec, plan, date);
+      const blinkToday = !operationalPause && plan && date === currentWalkShift().date && !isPlannedDone(rec, plan, date);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
-      const baseClass = isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
+      const baseClass = operationalPause ? "operational-paused-day" : isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
       td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeBlink ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
       if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-      td.textContent = completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
-      td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
+      td.textContent = operationalPause ? "Пауза" : completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
+      td.title = operationalPause ? `Временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
         if (!canOpenEquipmentDate(date)) return;
         current.nodeIndex = nodeIndex;
@@ -11901,11 +11982,14 @@ function renderNodeWalkthrough(eq) {
     const activeStop = activeDowntime(eq.id, index);
     const hasUnresolvedRemark = openRemarkEntries(item).length > 0;
     const nodeDone = isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key);
+    const operationalPause = activeOperationalPause(eq, index, current.date);
     if (selectedNodeIndex === null) {
       const row = document.createElement("div");
       row.className = `node-walk-row node-walk-list-item ${hasUnresolvedRemark ? "open-comment" : ""}`;
       row.dataset.nodeWalkIndex = String(index);
-      const statusText = activeStop
+      const statusText = operationalPause
+        ? `Временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}`
+        : activeStop
         ? `Простой: ${durationText(downtimeDurationMs(activeStop))}`
         : nodeWalkStatusText(item);
       row.innerHTML = `
@@ -11922,6 +12006,11 @@ function renderNodeWalkthrough(eq) {
             <button type="button" data-save-node-name="${index}">Сохранить</button>
             <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
             ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
+            ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `
+              <button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">
+                ${operationalPause ? "Возобновить узел" : "Временно остановить узел"}
+              </button>
+            ` : ""}
           </div>
         ` : ""}
       `;
@@ -11951,6 +12040,17 @@ function renderNodeWalkthrough(eq) {
             ? "Нельзя удалить последний узел."
             : "Удаление запрещено: у этого или следующих узлов уже есть сохранённые обходы, заявки или простои.");
         }
+      });
+      row.querySelector("[data-toggle-node-pause]")?.addEventListener("click", event => {
+        const pause = activeOperationalPause(eq, index);
+        const reason = pause ? "" : window.prompt(`Почему узел «${nodeName}» временно не работает?`, "")?.trim();
+        if (!pause && !reason) return;
+        if (!window.confirm(pause
+          ? `Возобновить работу узла «${nodeName}»?`
+          : `Остановить узел «${nodeName}»? На период остановки ППР и просрочки учитываться не будут.`)) return;
+        runButtonOperation(event.currentTarget, () => {
+          if (setOperationalPause(eq.id, index, !pause, reason)) renderNodeWalkthrough(equipmentById(eq.id));
+        }, "Сохраняется...");
       });
       list.append(row);
       return;
@@ -13719,6 +13819,8 @@ function globalReminderItems(equipment = globalControlEquipment()) {
     }));
   equipment.forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
+    const planNodeIndex = eq.nodes.findIndex(node => node === plan.node);
+    if (activeOperationalPause(eq, planNodeIndex >= 0 ? planNodeIndex : null, plan.dueDate)) return;
     const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
     if (plan.daysUntil <= 2 && !journalComplete) {
       items.push({
