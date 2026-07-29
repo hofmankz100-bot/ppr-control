@@ -12081,3 +12081,13 @@ body.editor-profile #createTmcRequestButton.request-alert,
   border-color: #e7a94f;
   background: #fff4e5;
 }
+
+.node-reminder-autofill {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.node-reminder-autofill small {
+  color: var(--muted);
+}

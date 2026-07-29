@@ -3832,6 +3832,7 @@ function allEquipment() {
       area: override.area || eq.area,
       nodes: Array.isArray(override.nodes) ? override.nodes : eq.nodes,
       reminders: override.reminders || {},
+      reminderMeta: override.reminderMeta && typeof override.reminderMeta === "object" ? override.reminderMeta : {},
       operationalPauses: Array.isArray(override.operationalPauses) ? override.operationalPauses : [],
       nodeOperationalPauses: override.nodeOperationalPauses && typeof override.nodeOperationalPauses === "object"
         ? override.nodeOperationalPauses
@@ -3902,6 +3903,11 @@ function saveEquipmentCatalog(equipmentId, patch) {
   const nextArea = String(patch?.area || eq.area).trim() || eq.area;
   item.name = nextName;
   item.area = nextArea;
+  if (nextName !== eq.name && item.reminderMeta) {
+    Object.values(item.reminderMeta).forEach(meta => {
+      if (meta?.mode === "auto") meta.stale = true;
+    });
+  }
   item.updatedAt = new Date().toISOString();
   if (nextName !== eq.name) recordAudit("Изменил название оборудования", eq.name, "", `Новое название: ${nextName}`);
   if (nextArea !== eq.area) recordAudit("Изменил участок оборудования", nextName, "", `${eq.area} → ${nextArea}`);
@@ -3919,6 +3925,7 @@ function saveNodeName(equipmentId, nodeIndex, value) {
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes[nodeIndex] = nextName;
+  if (item.reminderMeta?.[nodeIndex]?.mode === "auto") item.reminderMeta[nodeIndex].stale = true;
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
   recordAudit("Изменил название узла", `${eq.name} · ${previousName}`, "", `Новое название: ${nextName}`);
@@ -3984,18 +3991,27 @@ function deleteNodeName(equipmentId, nodeIndex) {
 
 function reminderItemsForNode(equipmentId, nodeIndex, nodeName) {
   const saved = equipmentOverride(equipmentId).reminders?.[nodeIndex];
-  return Array.isArray(saved) && saved.length ? saved : nodeReminderItems(nodeName);
+  const eq = equipmentById(Number(equipmentId));
+  return Array.isArray(saved) && saved.length ? saved : nodeReminderItems(nodeName, eq?.name);
 }
 
-function saveNodeReminder(equipmentId, nodeIndex, text) {
+function saveNodeReminder(equipmentId, nodeIndex, text, options = {}) {
   if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   const item = equipmentOverride(equipmentId);
   item.reminders ||= {};
+  item.reminderMeta ||= {};
   const previous = reminderItemsForNode(equipmentId, nodeIndex, eq.nodes[nodeIndex]);
   const next = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   item.reminders[nodeIndex] = next;
+  item.reminderMeta[nodeIndex] = {
+    mode: options.mode === "auto" ? "auto" : "manual",
+    generatedFor: options.mode === "auto" ? `${eq.name} · ${eq.nodes[nodeIndex]}` : "",
+    stale: false,
+    updatedAt: new Date().toISOString(),
+    updatedBy: profile?.name || authenticatedProfile?.name || ""
+  };
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
   if (JSON.stringify(previous) !== JSON.stringify(next)) {
@@ -4003,6 +4019,14 @@ function saveNodeReminder(equipmentId, nodeIndex, text) {
   }
   saveState();
   return true;
+}
+
+function autofillNodeReminder(equipmentId, nodeIndex) {
+  if (!canEditEquipmentCatalog(equipmentId)) return false;
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq || !Number.isInteger(nodeIndex) || !eq.nodes[nodeIndex]) return false;
+  const lines = nodeReminderItems(eq.nodes[nodeIndex], eq.name);
+  return saveNodeReminder(eq.id, nodeIndex, lines.join("\n"), { mode: "auto" });
 }
 
 function areaAllowed(area) {
@@ -12057,6 +12081,7 @@ function renderNodeWalkthrough(eq) {
     }
     if (selectedNodeIndex !== index) return;
     const reminderItems = reminderItemsForNode(eq.id, index, nodeName);
+    const reminderMeta = equipmentOverride(eq.id).reminderMeta?.[index] || {};
     const waitingShopFix = Boolean(item.mechanicFixed && !item.resolved);
     const canEditThisComment = canEditComment(item);
     const ownerText = commentOwnerText(item);
@@ -12121,6 +12146,10 @@ function renderNodeWalkthrough(eq) {
         <details class="node-reminder">
           <summary>Памятка</summary>
           ${canEditEquipmentCatalog(eq) ? `
+            <div class="node-reminder-autofill">
+              <button type="button" class="secondary" data-autofill-reminder="${index}">Автозаполнить работы</button>
+              <small>${reminderMeta.stale ? "Название изменено — рекомендуется обновить автозаполнение." : reminderMeta.mode === "auto" ? "Автозаполнение выполнено. Список можно редактировать." : "Можно заполнить автоматически или вручную."}</small>
+            </div>
             <textarea data-node-reminder="${index}" rows="6">${escapeHtml(reminderItems.join("\n"))}</textarea>
             <div class="node-reminder-actions">
               <button type="button" data-save-reminder="${index}">Сохранить памятку</button>
@@ -12146,9 +12175,22 @@ function renderNodeWalkthrough(eq) {
     });
     row.querySelector("[data-save-reminder]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditEquipmentCatalog(eq)) return;
-      saveNodeReminder(eq.id, index, row.querySelector(`[data-node-reminder="${index}"]`)?.value || "");
+      saveNodeReminder(
+        eq.id,
+        index,
+        row.querySelector(`[data-node-reminder="${index}"]`)?.value || "",
+        { mode: row.dataset.reminderAutofill === "true" ? "auto" : "manual" }
+      );
       renderNodeWalkthrough(equipmentById(eq.id));
     }));
+    row.querySelector("[data-autofill-reminder]")?.addEventListener("click", event => {
+      if (!window.confirm("Заменить текущий список типовыми работами? После автозаполнения его можно редактировать перед сохранением.")) return;
+      const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
+      if (textarea) textarea.value = nodeReminderItems(nodeName, eq.name).join("\n");
+      row.dataset.reminderAutofill = "true";
+      const hint = event.currentTarget.parentElement?.querySelector("small");
+      if (hint) hint.textContent = "Черновик автозаполнен. Отредактируйте его и нажмите «Сохранить памятку».";
+    });
     row.querySelector("[data-cancel-reminder]")?.addEventListener("click", () => {
       const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
       if (textarea) textarea.value = reminderItems.join("\n");
@@ -12419,8 +12461,44 @@ function nodeWalkStatusText(item) {
   return "Замечаний нет";
 }
 
-function nodeReminderItems(nodeName) {
-  const name = String(nodeName || "").toLowerCase();
+function nodeReminderItems(nodeName, equipmentName = "") {
+  const name = `${equipmentName || ""} ${nodeName || ""}`.toLowerCase();
+  if (/конвейер|транспортер|транспортёр|лента/.test(name)) {
+    return [
+      "Осмотреть ленту, стыки, ролики и барабаны на повреждения и загрязнение.",
+      "Проверить натяжение, центровку ленты и отсутствие схода в сторону.",
+      "Проверить привод, редуктор, муфты, крепления, шум и вибрацию.",
+      "Проверить ограждения, аварийные тросы, кнопки остановки и блокировки.",
+      "Проверить предусмотренные точки смазки по инструкции изготовителя."
+    ];
+  }
+  if (/электродвиг|мотор|двигатель/.test(name)) {
+    return [
+      "Осмотреть корпус, крепления, клеммную коробку, кабель и заземление.",
+      "Проверить нагрев, шум, вибрацию и состояние вентиляционных отверстий.",
+      "Проверить подшипники и соединение с приводом без разборки защитных устройств.",
+      "Проверить отсутствие запаха гари, искрения и повреждения изоляции.",
+      "Измерения выполнять только обученному персоналу по инструкции изготовителя."
+    ];
+  }
+  if (/редуктор/.test(name)) {
+    return [
+      "Осмотреть корпус, крепления, уплотнения и соединения на утечки.",
+      "Проверить уровень и состояние масла по инструкции изготовителя.",
+      "Проверить шум, вибрацию, нагрев, люфт и состояние муфты.",
+      "Очистить сапун и наружные поверхности, если это допускает инструкция.",
+      "Проверить срок замены масла и смазки по паспорту оборудования."
+    ];
+  }
+  if (/пресс/.test(name)) {
+    return [
+      "Осмотреть раму, колонны, направляющие, крепления и рабочую зону.",
+      "Проверить гидравлические соединения, цилиндры, шланги и утечки.",
+      "Проверить защитные ограждения, блокировки и аварийную остановку.",
+      "Проверить шум, вибрацию, нагрев и плавность рабочего хода.",
+      "Смазку и регулировку выполнять только по карте ППР изготовителя."
+    ];
+  }
   if (/гидр|масл|клапан|цилиндр|бак|фильтр|пневм|воздух|компресс|насос/.test(name)) {
     return [
       "Осмотреть корпус, соединения, шланги и трубки на утечки.",
