@@ -4066,7 +4066,7 @@ body.editor-profile .warehouse-folders button.request-alert {
 }
 
 .compressor-journal-table th:nth-child(1) { width: 92px; }
-.compressor-journal-table th:nth-child(2) { width: 130px; }
+.compressor-journal-table th:nth-child(2) { width: 180px; }
 .compressor-journal-table th:nth-child(3) { width: 150px; }
 .compressor-journal-table th:nth-child(4) { width: 140px; }
 .compressor-journal-table th:nth-child(5) { width: 130px; }
@@ -4113,6 +4113,72 @@ body.editor-profile .warehouse-folders button.request-alert {
 .compressor-journal-table select:focus {
   background: #eff6ff;
   box-shadow: inset 0 0 0 1px #2563eb;
+}
+
+.compressor-journal-table input:disabled,
+.compressor-journal-table select:disabled {
+  background: #ecfdf5;
+  color: #14532d;
+  -webkit-text-fill-color: #14532d;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.compressor-entry-fixation {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compressor-entry-fixation > span {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.compressor-entry-fix-button {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: #047857;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.compressor-entry-fix-button.fixed,
+.compressor-entry-fix-button:disabled {
+  background: #d1fae5;
+  color: #065f46;
+  cursor: default;
+  opacity: 1;
+}
+
+.compressor-entry-status {
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.compressor-entry-status.fixed {
+  color: #047857;
+}
+
+@media screen and (max-width: 760px) {
+  .compressor-entry-fix-button {
+    min-height: 48px;
+    font-size: 14px;
+  }
+}
+
+@media print {
+  .compressor-entry-fix-button,
+  .compressor-entry-status {
+    display: none !important;
+  }
 }
 
 .equipment-schedule-table th,

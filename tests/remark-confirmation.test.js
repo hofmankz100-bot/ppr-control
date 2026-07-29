@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=321-lock-shgrp-entry/);
-  assert.match(html, /styles\.css\?v=321-lock-shgrp-entry/);
-  assert.match(serviceWorker, /app\.js\?v=321-lock-shgrp-entry/);
+  assert.match(html, /app\.js\?v=322-compressor-fixation/);
+  assert.match(html, /styles\.css\?v=322-compressor-fixation/);
+  assert.match(serviceWorker, /app\.js\?v=322-compressor-fixation/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -855,6 +855,34 @@ test("SHGRP entries require an explicit fixation after editing", () => {
   assert.match(appSource, /const locked = gasJournalEntryIsFixed\(section, gasJournalRecord\(section, date\)\)/);
   assert.match(styleSource, /\.gas-entry-fix-button/);
   assert.match(styleSource, /\.gas-journal-table input:disabled/);
+});
+
+test("compressor entries require fixation and lock after it", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styleSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  const moduleSource = fs.readFileSync(path.join(root, "modules", "compressor.js"), "utf8");
+  const testWindow = {};
+  new Function("window", moduleSource)(testWindow);
+  const completeRow = {
+    airPressure: "7",
+    airTemp: "28",
+    oilPressureTemp: "3 / 65",
+    leakGrounding: "исправно",
+    shiftTime: "день 10:15",
+    blowTime: "10:15",
+    checkedBy: "Сотрудник"
+  };
+
+  assert.equal(testWindow.PPRModules.compressor.rowComplete(completeRow), true);
+  assert.equal(testWindow.PPRModules.compressor.rowComplete({ ...completeRow, entryStatus: "draft" }), false);
+  assert.equal(testWindow.PPRModules.compressor.rowComplete({ ...completeRow, entryStatus: "fixed" }), true);
+  assert.match(appSource, /function fixCompressorJournalEntry\(rowId, button\)/);
+  assert.match(appSource, /Запись компрессорного журнала зафиксирована и сохранена/);
+  assert.match(appSource, /data-compressor-fix-entry=/);
+  assert.match(appSource, /const locked = compressorJournalRowComplete\(row\)/);
+  assert.match(appSource, /data-compressor-field="airPressure"[\s\S]*?\$\{locked \? "disabled" : ""\}/);
+  assert.match(styleSource, /\.compressor-entry-fix-button/);
+  assert.match(styleSource, /\.compressor-journal-table input:disabled/);
 });
 
 test("only the primary admin also receives the engineer workflow", () => {
