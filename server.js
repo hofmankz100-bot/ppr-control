@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
-const SERVER_VERSION = "v310-admin-codex-live";
+const SERVER_VERSION = "v312-uzbek-user-translation";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -1186,7 +1186,6 @@ function subscriptionMatchesRemarkServer(db, subscriptionEntry, remarkRecord = {
 
 async function localizedPushPayloadServer(payload, subscriptionEntry) {
   const language = ["ru", "kk", "uz"].includes(String(subscriptionEntry?.profile?.language || "")) ? String(subscriptionEntry.profile.language) : "ru";
-  if (language === "ru") return JSON.stringify(payload);
   const [title, body] = await Promise.all([
     translateExternal(String(payload.title || ""), language),
     translateExternal(String(payload.body || ""), language)
@@ -1982,13 +1981,33 @@ function translationCacheKey(target, text) {
   return `${target}::${crypto.createHash("sha1").update(text).digest("hex")}`;
 }
 
+function normalizeTranslationSource(text, target) {
+  const source = String(text || "").trim();
+  if (target !== "ru") return source;
+  const normalized = source
+    .replace(/\bkerey\b/gi, "kerak")
+    .replace(/\buvern\b/gi, "daraja ko'rsatkichi")
+    .replace(/\bkorsatmidi\b/gi, "ko'rsatmaydi");
+  const lower = normalized.toLowerCase();
+  if (
+    /\bmoy\b/.test(lower)
+    && /\bpress/.test(lower)
+    && /kamay/.test(lower)
+    && /daraja ko'rsatkichi/.test(lower)
+    && /ko'rsatmaydi/.test(lower)
+  ) {
+    return "Pressga moy qo'shish kerak. Moy darajasi kamaygan. Daraja ko'rsatkichi ishlamayapti.";
+  }
+  return normalized;
+}
+
 async function translateExternal(text, target) {
   if (!shouldTranslateText(text) || !TRANSLATE_LANGS.has(target)) return text;
-  if (target === "ru" && /^[\u0400-\u04FF0-9\s.,:;!?()"В«В»в„–%/+_-]+$/.test(text)) return text;
+  const sourceText = normalizeTranslationSource(text, target);
   const endpoint = process.env.TRANSLATE_API_URL || "https://translate.googleapis.com/translate_a/single";
   const url = endpoint.includes("translate_a/single")
-    ? `${endpoint}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
-    : `${endpoint}?sl=auto&tl=${encodeURIComponent(target)}&q=${encodeURIComponent(text)}`;
+    ? `${endpoint}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(sourceText)}`
+    : `${endpoint}?sl=auto&tl=${encodeURIComponent(target)}&q=${encodeURIComponent(sourceText)}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number(process.env.TRANSLATE_TIMEOUT_MS || 7000));
   try {

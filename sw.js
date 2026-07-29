@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v310-admin-codex-live";
+const CACHE_NAME = "ppr-v312-uzbek-user-translation";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=310-admin-codex-live",
+  "./styles.css?v=312-uzbek-user-translation",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=310-admin-codex-live",
-  "./assets/hofmann-forklift.png?v=v310-admin-codex-live",
+  "./app.js?v=312-uzbek-user-translation",
+  "./assets/hofmann-forklift.png?v=v312-uzbek-user-translation",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

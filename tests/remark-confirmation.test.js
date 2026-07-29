@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=310-admin-codex-live/);
-  assert.match(html, /styles\.css\?v=310-admin-codex-live/);
-  assert.match(serviceWorker, /app\.js\?v=310-admin-codex-live/);
+  assert.match(html, /app\.js\?v=312-uzbek-user-translation/);
+  assert.match(html, /styles\.css\?v=312-uzbek-user-translation/);
+  assert.match(serviceWorker, /app\.js\?v=312-uzbek-user-translation/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -705,6 +705,19 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /\["ready", "unsupported", "failed"\]\.includes\(setupState\)/);
   assert.match(source, /data-notification-dismiss/);
   assert.match(source, /failures >= 2/);
+});
+
+test("Uzbek Cyrillic user messages are translated for Russian recipients", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.doesNotMatch(serverSource, /if \(language === "ru"\) return JSON\.stringify\(payload\)/);
+  assert.doesNotMatch(serverSource, /target === "ru" && \/\^\[\\u0400-\\u04FF/);
+  assert.match(serverSource, /function normalizeTranslationSource\(text, target\)/);
+  assert.match(serverSource, /Pressga moy qo'shish kerak\. Moy darajasi kamaygan\. Daraja ko'rsatkichi ishlamayapti\./);
+  assert.match(appSource, /userTextWithRussianHtml\(message\.originalText/);
+  assert.match(appSource, /userTextWithRussianHtml\(message\.submittedComment/);
+  assert.match(appSource, /userTextWithRussianHtml\(entry\.resolutionReturnReason/);
+  assert.match(appSource, /userTextWithRussianHtml\(update\.text/);
 });
 
 test("push subscriptions use the authenticated employee and expose admin diagnostics", async () => {

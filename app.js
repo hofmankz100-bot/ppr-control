@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v310-admin-codex-live";
+const APP_VERSION = "v312-uzbek-user-translation";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -6077,7 +6077,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         <div class="comment-resolution-detail">
           <strong>${entry.closedWithoutScore ? "Закрыто без баллов" : `Устранили: ${escapeHtml(completedBy)}`}</strong>
           <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
-          ${entry.resolvedComment ? `<p>${escapeHtml(entry.resolvedComment)}</p>` : ""}
+          ${entry.resolvedComment ? `<p>${userTextWithRussianHtml(entry.resolvedComment)}</p>` : ""}
           ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
           <small>Подтвердил: ${escapeHtml(confirmedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(entry.confirmedAt || ""))}</small>
         </div>
@@ -6089,7 +6089,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           </div>
           <div class="comment-resolution-detail pending">
             <strong>Устранили: ${escapeHtml(submittedParticipants)}</strong>
-            ${entry.resolutionSubmittedComment ? `<p>${escapeHtml(entry.resolutionSubmittedComment)}</p>` : ""}
+            ${entry.resolutionSubmittedComment ? `<p>${userTextWithRussianHtml(entry.resolutionSubmittedComment)}</p>` : ""}
             ${entry.resolutionSubmittedPhoto ? `<img src="${entry.resolutionSubmittedPhoto}" alt="Фото устранения для подтверждения">` : ""}
           </div>
           <p class="remark-confirmation-who">Подтверждает: <strong>${escapeHtml(remarkConfirmationLabel(entry, eq))}</strong></p>
@@ -6102,7 +6102,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         ${returnedToRework ? `
           <div class="remark-returned-notice">
             <strong>Возвращено на доработку</strong>
-            <p>${escapeHtml(entry.resolutionReturnReason || "Требуется доработка")}</p>
+            <p>${userTextWithRussianHtml(entry.resolutionReturnReason || "Требуется доработка")}</p>
             <small>${escapeHtml(entry.resolutionReturnedByName || "Ответственный сотрудник")} · ${escapeHtml(dateTimeHuman(entry.resolutionReturnedAt || ""))}</small>
           </div>
         ` : ""}
@@ -6142,7 +6142,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
                 <div class="resolution-update">
                   <strong>${escapeHtml(resolutionUpdateAuthor(update))}</strong>
                   <small>${escapeHtml(dateTimeHuman(update.at || ""))}</small>
-                  <p>${escapeHtml(update.text || "")}</p>
+                  <p>${userTextWithRussianHtml(update.text || "")}</p>
                   ${update.photo ? `<img src="${update.photo}" alt="Фото выполненной работы">` : ""}
                 </div>
               `).join("")}
@@ -12744,7 +12744,7 @@ function rolePersonalMessageHtml(message) {
         </header>
         <div class="role-personal-resolution">
           <strong>Выполненные работы</strong>
-          <p>${escapeHtml(message.text)}</p>
+          <p>${userTextWithRussianHtml(message.text)}</p>
           <small>Подтверждение доступно всем инженерам. Засчитывается первый ответ.</small>
         </div>
         <div class="role-personal-actions">
@@ -12765,13 +12765,13 @@ function rolePersonalMessageHtml(message) {
       </header>
       <div class="role-personal-warning">
         <strong>Предупреждение</strong>
-        <p>${escapeHtml(message.originalText || "Без текста")}</p>
+        <p>${userTextWithRussianHtml(message.originalText || "Без текста")}</p>
         ${message.originalPhoto ? `<img src="${message.originalPhoto}" alt="Фото предупреждения">` : ""}
       </div>
       ${submitted ? `
         <div class="role-personal-resolution">
           <strong>Устранил: ${escapeHtml(message.submittedBy)}</strong>
-          <p>${escapeHtml(message.submittedComment || "Работа передана на подтверждение")}</p>
+          <p>${userTextWithRussianHtml(message.submittedComment || "Работа передана на подтверждение")}</p>
           ${message.submittedPhoto ? `<img src="${message.submittedPhoto}" alt="Фото устранения">` : ""}
           <small>Подтверждает: ${escapeHtml(message.confirmationLabel)}</small>
         </div>
@@ -12782,7 +12782,7 @@ function rolePersonalMessageHtml(message) {
       ` : `
         <div class="role-personal-return-reason">
           <strong>Комментарий к возврату</strong>
-          <p>${escapeHtml(message.text)}</p>
+          <p>${userTextWithRussianHtml(message.text)}</p>
         </div>
         <div class="role-personal-actions">
           <button type="button" data-personal-remark-open-node>Перейти в узел и доработать</button>
@@ -15825,8 +15825,8 @@ function renderDirector() {
       <div class="director-card-main">
         <strong>${msg.fromName || "Сотрудник"}</strong>
         <span>${msg.fromRole || ""}${msg.fromArea ? ` · ${msg.fromArea}` : ""}${msg.fromPhone ? ` · ${msg.fromPhone}` : ""}</span>
-        <pre class="director-memo-view full-memo-view">${escapeHtml(msg.memoFullText || msg.text)}</pre>
-        ${msg.reply ? `<div class="director-reply"><b>Ответ директора:</b><p>${escapeHtml(msg.reply)}</p></div>` : `<div class="readonly-note">Ответа директора пока нет</div>`}
+        <pre class="director-memo-view full-memo-view">${userTextWithRussianHtml(msg.memoFullText || msg.text)}</pre>
+        ${msg.reply ? `<div class="director-reply"><b>Ответ директора:</b><p>${userTextWithRussianHtml(msg.reply)}</p></div>` : `<div class="readonly-note">Ответа директора пока нет</div>`}
       </div>
       ${isDirector ? `
         <div class="director-reply-form">
