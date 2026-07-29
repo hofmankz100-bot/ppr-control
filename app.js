@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v314-refresh-translation-cache";
+const APP_VERSION = "v315-translate-warning-hall";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -9978,15 +9978,15 @@ function openAllRemarkCards() {
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
               <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
             </header>
-            <p>${escapeHtml(target.text)}</p>
+            <p>${userTextWithRussianHtml(target.text)}</p>
             ${target.pendingConfirmation ? `
               <div class="open-remark-confirmation-summary">
                 <strong>Устранил: ${escapeHtml(target.submittedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(target.submittedAt))}</strong>
-                <p>${escapeHtml(target.submittedComment)}</p>
+                <p>${userTextWithRussianHtml(target.submittedComment)}</p>
                 <small>Подтверждает: ${escapeHtml(target.confirmationLabel)}</small>
               </div>
             ` : target.returnedToRework ? `
-              <div class="open-remark-return-summary"><strong>Комментарий возврата</strong><p>${escapeHtml(target.returnReason)}</p></div>
+              <div class="open-remark-return-summary"><strong>Комментарий возврата</strong><p>${userTextWithRussianHtml(target.returnReason)}</p></div>
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
@@ -10047,6 +10047,7 @@ function openAllRemarkCards() {
     show("checklist");
   }));
   document.body.append(overlay);
+  translateUserTextsForCurrentProfile();
 }
 
 function askAdminRemarkClose(withScore = false) {

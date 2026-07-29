@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=314-refresh-translation-cache/);
-  assert.match(html, /styles\.css\?v=314-refresh-translation-cache/);
-  assert.match(serviceWorker, /app\.js\?v=314-refresh-translation-cache/);
+  assert.match(html, /app\.js\?v=315-translate-warning-hall/);
+  assert.match(html, /styles\.css\?v=315-translate-warning-hall/);
+  assert.match(serviceWorker, /app\.js\?v=315-translate-warning-hall/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -717,6 +717,10 @@ test("Uzbek Cyrillic user messages are translated for Russian recipients", () =>
   assert.match(serverSource, /const TRANSLATION_CACHE_VERSION = "v2"/);
   assert.match(serverSource, /`\$\{TRANSLATION_CACHE_VERSION\}:\$\{target\}::/);
   assert.match(appSource, /const TRANSLATION_CACHE_KEY = "ppr-translation-cache-v2"/);
+  assert.match(appSource, /<p>\$\{userTextWithRussianHtml\(target\.text\)\}<\/p>/);
+  assert.match(appSource, /<p>\$\{userTextWithRussianHtml\(target\.submittedComment\)\}<\/p>/);
+  assert.match(appSource, /userTextWithRussianHtml\(target\.returnReason\)/);
+  assert.match(appSource, /document\.body\.append\(overlay\);\s+translateUserTextsForCurrentProfile\(\);/);
   assert.match(appSource, /userTextWithRussianHtml\(message\.originalText/);
   assert.match(appSource, /userTextWithRussianHtml\(message\.submittedComment/);
   assert.match(appSource, /userTextWithRussianHtml\(entry\.resolutionReturnReason/);
