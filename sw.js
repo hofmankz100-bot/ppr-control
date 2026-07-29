@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v319-explain-downtime-attendance";
+const CACHE_NAME = "ppr-v320-fix-shgrp-entry";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=319-explain-downtime-attendance",
+  "./styles.css?v=320-fix-shgrp-entry",
   "./modules/compressor.js?v=288-print-request-pages",
-  "./modules/shgrp.js?v=288-print-request-pages",
+  "./modules/shgrp.js?v=320-fix-shgrp-entry",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=319-explain-downtime-attendance",
-  "./assets/hofmann-forklift.png?v=v319-explain-downtime-attendance",
+  "./app.js?v=320-fix-shgrp-entry",
+  "./assets/hofmann-forklift.png?v=v320-fix-shgrp-entry",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

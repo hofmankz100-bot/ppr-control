@@ -11472,6 +11472,50 @@ body.editor-profile #createTmcRequestButton.request-alert,
 
 /* Phone gas journal: one readable date card instead of a 1180px print table. */
 .gas-mobile-swipe-note { display: none; }
+
+.gas-entry-signature {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.gas-entry-signature > span {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.gas-entry-fix-button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: #047857;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.gas-entry-fix-button.fixed,
+.gas-entry-fix-button:disabled {
+  background: #d1fae5;
+  color: #065f46;
+  cursor: default;
+  opacity: 1;
+}
+
+.gas-entry-status {
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.gas-entry-status.fixed {
+  color: #047857;
+}
+
 @media screen and (max-width: 760px) {
   .gas-sheet-page-button {
     display: none !important;
@@ -11579,6 +11623,22 @@ body.editor-profile #createTmcRequestButton.request-alert,
     display: grid !important;
     font-size: 13px !important;
     line-height: 1.3 !important;
+  }
+
+  .gas-entry-fix-button {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .gas-entry-status {
+    font-size: 12px;
+  }
+}
+
+@media print {
+  .gas-entry-fix-button,
+  .gas-entry-status {
+    display: none !important;
   }
 }
 .push-diagnostics-modal {
