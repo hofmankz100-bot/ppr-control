@@ -12051,3 +12051,43 @@ body.editor-profile #createTmcRequestButton.request-alert,
     flex-direction: column;
   }
 }
+.operational-pause-control {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #b7d8c1;
+  border-radius: 12px;
+  background: #effaf2;
+}
+
+.operational-pause-control.paused {
+  border-color: #f0b36b;
+  background: #fff4e5;
+}
+
+.operational-pause-control span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.operational-paused-day {
+  background: #fff0cf !important;
+  color: #8a5200 !important;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.equipment-journal-button.equipment-operational-paused {
+  border-color: #e7a94f;
+  background: #fff4e5;
+}
+
+.node-reminder-autofill {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.node-reminder-autofill small {
+  color: var(--muted);
+}

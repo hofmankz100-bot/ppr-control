@@ -3749,7 +3749,9 @@ function canConfirmInstallation() {
 }
 
 function canEditChecklist() {
-  return Boolean(roleAccess().checklist) && attendanceAllowsEditing();
+  return Boolean(roleAccess().checklist)
+    && attendanceAllowsEditing()
+    && !activeOperationalPause(current.equipmentId, current.nodeIndex, current.date);
 }
 
 function catalogEditorRole() {
@@ -3829,9 +3831,63 @@ function allEquipment() {
       name: override.name || eq.name,
       area: override.area || eq.area,
       nodes: Array.isArray(override.nodes) ? override.nodes : eq.nodes,
-      reminders: override.reminders || {}
+      reminders: override.reminders || {},
+      reminderMeta: override.reminderMeta && typeof override.reminderMeta === "object" ? override.reminderMeta : {},
+      operationalPauses: Array.isArray(override.operationalPauses) ? override.operationalPauses : [],
+      nodeOperationalPauses: override.nodeOperationalPauses && typeof override.nodeOperationalPauses === "object"
+        ? override.nodeOperationalPauses
+        : {}
     };
   });
+}
+
+function operationalPauseApplies(pause, date = todayISO()) {
+  if (!pause?.startedAt) return false;
+  const targetDate = String(date || todayISO()).slice(0, 10);
+  const startDate = String(pause.startedAt).slice(0, 10);
+  const endDate = pause.endedAt ? String(pause.endedAt).slice(0, 10) : "";
+  return targetDate >= startDate && (!endDate || targetDate <= endDate);
+}
+
+function activeOperationalPause(equipmentOrId, nodeIndex = null, date = todayISO()) {
+  const eq = typeof equipmentOrId === "object" ? equipmentOrId : equipmentById(Number(equipmentOrId));
+  if (!eq) return null;
+  const equipmentPause = (eq.operationalPauses || []).find(pause => operationalPauseApplies(pause, date));
+  if (equipmentPause) return { ...equipmentPause, scope: "equipment" };
+  if (!Number.isInteger(nodeIndex)) return null;
+  const nodePause = (eq.nodeOperationalPauses?.[nodeIndex] || []).find(pause => operationalPauseApplies(pause, date));
+  return nodePause ? { ...nodePause, scope: "node" } : null;
+}
+
+function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
+  if (catalogEditorRole() !== "editor") return false;
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq || (nodeIndex !== null && (!Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length))) return false;
+  const item = equipmentOverride(eq.id);
+  const now = new Date().toISOString();
+  const targetName = nodeIndex === null ? eq.name : `${eq.name} · ${eq.nodes[nodeIndex]}`;
+  const list = nodeIndex === null
+    ? (item.operationalPauses ||= [])
+    : ((item.nodeOperationalPauses ||= {})[nodeIndex] ||= []);
+  const active = [...list].reverse().find(pause => pause?.startedAt && !pause.endedAt);
+  if (paused) {
+    if (active) return true;
+    list.push({
+      startedAt: now,
+      endedAt: "",
+      reason: String(reason || "").trim(),
+      changedBy: profile?.name || authenticatedProfile?.name || "Администратор"
+    });
+    recordAudit("Временно остановил", targetName, String(reason || "").trim(), "ППР и просрочки приостановлены");
+  } else {
+    if (!active) return true;
+    active.endedAt = now;
+    active.endedBy = profile?.name || authenticatedProfile?.name || "Администратор";
+    recordAudit("Возобновил работу", targetName, "", "ППР и контроль сроков включены");
+  }
+  item.updatedAt = now;
+  saveState();
+  return true;
 }
 
 function availableEquipmentAreas() {
@@ -3847,6 +3903,11 @@ function saveEquipmentCatalog(equipmentId, patch) {
   const nextArea = String(patch?.area || eq.area).trim() || eq.area;
   item.name = nextName;
   item.area = nextArea;
+  if (nextName !== eq.name && item.reminderMeta) {
+    Object.values(item.reminderMeta).forEach(meta => {
+      if (meta?.mode === "auto") meta.stale = true;
+    });
+  }
   item.updatedAt = new Date().toISOString();
   if (nextName !== eq.name) recordAudit("Изменил название оборудования", eq.name, "", `Новое название: ${nextName}`);
   if (nextArea !== eq.area) recordAudit("Изменил участок оборудования", nextName, "", `${eq.area} → ${nextArea}`);
@@ -3864,6 +3925,7 @@ function saveNodeName(equipmentId, nodeIndex, value) {
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes[nodeIndex] = nextName;
+  if (item.reminderMeta?.[nodeIndex]?.mode === "auto") item.reminderMeta[nodeIndex].stale = true;
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
   recordAudit("Изменил название узла", `${eq.name} · ${previousName}`, "", `Новое название: ${nextName}`);
@@ -3929,18 +3991,27 @@ function deleteNodeName(equipmentId, nodeIndex) {
 
 function reminderItemsForNode(equipmentId, nodeIndex, nodeName) {
   const saved = equipmentOverride(equipmentId).reminders?.[nodeIndex];
-  return Array.isArray(saved) && saved.length ? saved : nodeReminderItems(nodeName);
+  const eq = equipmentById(Number(equipmentId));
+  return Array.isArray(saved) && saved.length ? saved : nodeReminderItems(nodeName, eq?.name);
 }
 
-function saveNodeReminder(equipmentId, nodeIndex, text) {
+function saveNodeReminder(equipmentId, nodeIndex, text, options = {}) {
   if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   const item = equipmentOverride(equipmentId);
   item.reminders ||= {};
+  item.reminderMeta ||= {};
   const previous = reminderItemsForNode(equipmentId, nodeIndex, eq.nodes[nodeIndex]);
   const next = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   item.reminders[nodeIndex] = next;
+  item.reminderMeta[nodeIndex] = {
+    mode: options.mode === "auto" ? "auto" : "manual",
+    generatedFor: options.mode === "auto" ? `${eq.name} · ${eq.nodes[nodeIndex]}` : "",
+    stale: false,
+    updatedAt: new Date().toISOString(),
+    updatedBy: profile?.name || authenticatedProfile?.name || ""
+  };
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
   if (JSON.stringify(previous) !== JSON.stringify(next)) {
@@ -3948,6 +4019,14 @@ function saveNodeReminder(equipmentId, nodeIndex, text) {
   }
   saveState();
   return true;
+}
+
+function autofillNodeReminder(equipmentId, nodeIndex) {
+  if (!canEditEquipmentCatalog(equipmentId)) return false;
+  const eq = equipmentById(Number(equipmentId));
+  if (!eq || !Number.isInteger(nodeIndex) || !eq.nodes[nodeIndex]) return false;
+  const lines = nodeReminderItems(eq.nodes[nodeIndex], eq.name);
+  return saveNodeReminder(eq.id, nodeIndex, lines.join("\n"), { mode: "auto" });
 }
 
 function areaAllowed(area) {
@@ -11537,20 +11616,31 @@ function renderEquipment() {
       const compressorJournalMissingToday = compressorJournalOverdueDays > 0;
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
       const gpmEquipment = isGpmEquipment(eq);
+      const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
-            <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
+            <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">${gpmEquipment ? "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(eq.name)}</strong>
               <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
               <summary>Редактировать оборудование</summary>
+              ${catalogEditorRole() === "editor" ? (() => {
+                const pause = activeOperationalPause(eq);
+                return `<div class="operational-pause-control ${pause ? "paused" : ""}">
+                  <strong>${pause ? "Оборудование временно не работает" : "Оборудование работает"}</strong>
+                  ${pause?.reason ? `<span>Причина: ${escapeHtml(pause.reason)}</span>` : ""}
+                  <button type="button" class="${pause ? "" : "danger"}" data-toggle-equipment-pause="${eq.id}">
+                    ${pause ? "Возобновить работу" : "Временно остановить"}
+                  </button>
+                </div>`;
+              })() : ""}
               <label><span>Название оборудования</span><input data-equipment-name="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.name)}"></label>
               <label><span>Участок</span><input data-equipment-area="${eq.id}" type="text" maxlength="200" value="${escapeHtml(eq.area)}"></label>
               <div class="catalog-editor-actions">
@@ -11577,18 +11667,30 @@ function renderEquipment() {
         event.stopPropagation();
         printEquipmentQrCodes(eq);
       });
+      tr.querySelector("[data-toggle-equipment-pause]")?.addEventListener("click", event => {
+        const pause = activeOperationalPause(eq);
+        const reason = pause ? "" : window.prompt("Укажите причину временной остановки оборудования:", "")?.trim();
+        if (!pause && !reason) return;
+        if (!window.confirm(pause
+          ? `Возобновить работу оборудования «${eq.name}»?`
+          : `Временно остановить оборудование «${eq.name}»? ППР и просрочки на период остановки учитываться не будут.`)) return;
+        runButtonOperation(event.currentTarget, () => {
+          if (setOperationalPause(eq.id, null, !pause, reason)) renderEquipment();
+        }, "Сохраняется...");
+      });
       for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date);
+        const operationalPause = activeOperationalPause(eq, null, date);
         const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
         const downtimeOpen = equipmentDowntimeOpen;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        const baseClass = summary.done === summary.total ? "completed-day" : "to";
+        const baseClass = operationalPause ? "operational-paused-day" : summary.done === summary.total ? "completed-day" : "to";
         td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.textContent = summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
-        td.title = downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
+        td.textContent = operationalPause ? "Пауза" : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
+        td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
           if (!canOpenEquipmentDate(date)) return;
           current.equipmentId = eq.id;
@@ -11623,9 +11725,11 @@ function renderEquipment() {
 }
 
 function equipmentDaySummary(eq, date) {
-  const rows = eq.nodes.map((_, index) => getRecord(eq.id, index, date));
+  const activeNodeIndexes = eq.nodes.map((_, index) => index)
+    .filter(index => !activeOperationalPause(eq, index, date));
+  const rows = activeNodeIndexes.map(index => getRecord(eq.id, index, date));
   const shiftKeys = walkShiftKeysDueForDate(date);
-  const total = eq.nodes.length * Math.max(1, shiftKeys.length);
+  const total = activeNodeIndexes.length * Math.max(1, shiftKeys.length);
   const done = shiftKeys.length
     ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey)).length, 0)
     : rows.filter(rec => isNodeChecked(rec)).length;
@@ -11636,8 +11740,8 @@ function equipmentDaySummary(eq, date) {
     total,
     open,
     requestOpen,
-    overdue: isDueOrPast(date) && shiftKeys.length > 0 && done < total,
-    blinkToday: date === currentWalkShift().date && shiftKeys.length > 0 && done < total
+    overdue: total > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < total,
+    blinkToday: total > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < total
   };
 }
 
@@ -11711,17 +11815,18 @@ function renderSchedule() {
       const open = hasOpenCommentRecord(rec);
       const requestOpen = hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(current.equipmentId, nodeIndex, date);
       const activeNodeDowntime = activeDowntime(current.equipmentId, nodeIndex);
+      const operationalPause = activeOperationalPause(eq, nodeIndex, date);
       const downtimeOpen = Boolean(activeNodeDowntime);
       const downtimeBlink = Boolean(activeNodeDowntime && activeNodeDowntime.type !== "production");
-      const overdue = plan && isDueOrPast(date) && walkShiftKeysDueForDate(date).length > 0 && !isPlannedDone(rec, plan, date);
-      const blinkToday = plan && date === currentWalkShift().date && !isPlannedDone(rec, plan, date);
+      const overdue = !operationalPause && plan && isDueOrPast(date) && walkShiftKeysDueForDate(date).length > 0 && !isPlannedDone(rec, plan, date);
+      const blinkToday = !operationalPause && plan && date === currentWalkShift().date && !isPlannedDone(rec, plan, date);
       const td = document.createElement("td");
       const signalClass = downtimeOpen ? "downtime-cell" : open ? "comment-cell" : "";
-      const baseClass = isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
+      const baseClass = operationalPause ? "operational-paused-day" : isPlannedDone(rec, plan, date) ? "completed-day" : statusClass(status);
       td.className = `${baseClass} ${overdue ? "planned-overdue" : ""} ${blinkToday ? "overdue-line-blink" : ""} ${open || downtimeBlink ? "blink-cell" : ""} ${open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
       if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-      td.textContent = completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
-      td.title = downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
+      td.textContent = operationalPause ? "Пауза" : completion.complete ? "ТО" : completion.partial ? `${completion.done}/${completion.total}` : status;
+      td.title = operationalPause ? `Временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? "Идет простой по этому узлу" : open ? "Есть комментарий по узлу" : overdue ? `${plan} по утверждённому графику не выполнено` : `${status} выполнено или без замечаний`;
       td.addEventListener("click", () => {
         if (!canOpenEquipmentDate(date)) return;
         current.nodeIndex = nodeIndex;
@@ -11901,11 +12006,14 @@ function renderNodeWalkthrough(eq) {
     const activeStop = activeDowntime(eq.id, index);
     const hasUnresolvedRemark = openRemarkEntries(item).length > 0;
     const nodeDone = isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key);
+    const operationalPause = activeOperationalPause(eq, index, current.date);
     if (selectedNodeIndex === null) {
       const row = document.createElement("div");
       row.className = `node-walk-row node-walk-list-item ${hasUnresolvedRemark ? "open-comment" : ""}`;
       row.dataset.nodeWalkIndex = String(index);
-      const statusText = activeStop
+      const statusText = operationalPause
+        ? `Временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}`
+        : activeStop
         ? `Простой: ${durationText(downtimeDurationMs(activeStop))}`
         : nodeWalkStatusText(item);
       row.innerHTML = `
@@ -11922,6 +12030,11 @@ function renderNodeWalkthrough(eq) {
             <button type="button" data-save-node-name="${index}">Сохранить</button>
             <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
             ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
+            ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `
+              <button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">
+                ${operationalPause ? "Возобновить узел" : "Временно остановить узел"}
+              </button>
+            ` : ""}
           </div>
         ` : ""}
       `;
@@ -11952,11 +12065,23 @@ function renderNodeWalkthrough(eq) {
             : "Удаление запрещено: у этого или следующих узлов уже есть сохранённые обходы, заявки или простои.");
         }
       });
+      row.querySelector("[data-toggle-node-pause]")?.addEventListener("click", event => {
+        const pause = activeOperationalPause(eq, index);
+        const reason = pause ? "" : window.prompt(`Почему узел «${nodeName}» временно не работает?`, "")?.trim();
+        if (!pause && !reason) return;
+        if (!window.confirm(pause
+          ? `Возобновить работу узла «${nodeName}»?`
+          : `Остановить узел «${nodeName}»? На период остановки ППР и просрочки учитываться не будут.`)) return;
+        runButtonOperation(event.currentTarget, () => {
+          if (setOperationalPause(eq.id, index, !pause, reason)) renderNodeWalkthrough(equipmentById(eq.id));
+        }, "Сохраняется...");
+      });
       list.append(row);
       return;
     }
     if (selectedNodeIndex !== index) return;
     const reminderItems = reminderItemsForNode(eq.id, index, nodeName);
+    const reminderMeta = equipmentOverride(eq.id).reminderMeta?.[index] || {};
     const waitingShopFix = Boolean(item.mechanicFixed && !item.resolved);
     const canEditThisComment = canEditComment(item);
     const ownerText = commentOwnerText(item);
@@ -12021,6 +12146,10 @@ function renderNodeWalkthrough(eq) {
         <details class="node-reminder">
           <summary>Памятка</summary>
           ${canEditEquipmentCatalog(eq) ? `
+            <div class="node-reminder-autofill">
+              <button type="button" class="secondary" data-autofill-reminder="${index}">Автозаполнить работы</button>
+              <small>${reminderMeta.stale ? "Название изменено — рекомендуется обновить автозаполнение." : reminderMeta.mode === "auto" ? "Автозаполнение выполнено. Список можно редактировать." : "Можно заполнить автоматически или вручную."}</small>
+            </div>
             <textarea data-node-reminder="${index}" rows="6">${escapeHtml(reminderItems.join("\n"))}</textarea>
             <div class="node-reminder-actions">
               <button type="button" data-save-reminder="${index}">Сохранить памятку</button>
@@ -12046,9 +12175,22 @@ function renderNodeWalkthrough(eq) {
     });
     row.querySelector("[data-save-reminder]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
       if (!canEditEquipmentCatalog(eq)) return;
-      saveNodeReminder(eq.id, index, row.querySelector(`[data-node-reminder="${index}"]`)?.value || "");
+      saveNodeReminder(
+        eq.id,
+        index,
+        row.querySelector(`[data-node-reminder="${index}"]`)?.value || "",
+        { mode: row.dataset.reminderAutofill === "true" ? "auto" : "manual" }
+      );
       renderNodeWalkthrough(equipmentById(eq.id));
     }));
+    row.querySelector("[data-autofill-reminder]")?.addEventListener("click", event => {
+      if (!window.confirm("Заменить текущий список типовыми работами? После автозаполнения его можно редактировать перед сохранением.")) return;
+      const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
+      if (textarea) textarea.value = nodeReminderItems(nodeName, eq.name).join("\n");
+      row.dataset.reminderAutofill = "true";
+      const hint = event.currentTarget.parentElement?.querySelector("small");
+      if (hint) hint.textContent = "Черновик автозаполнен. Отредактируйте его и нажмите «Сохранить памятку».";
+    });
     row.querySelector("[data-cancel-reminder]")?.addEventListener("click", () => {
       const textarea = row.querySelector(`[data-node-reminder="${index}"]`);
       if (textarea) textarea.value = reminderItems.join("\n");
@@ -12319,8 +12461,44 @@ function nodeWalkStatusText(item) {
   return "Замечаний нет";
 }
 
-function nodeReminderItems(nodeName) {
-  const name = String(nodeName || "").toLowerCase();
+function nodeReminderItems(nodeName, equipmentName = "") {
+  const name = `${equipmentName || ""} ${nodeName || ""}`.toLowerCase();
+  if (/конвейер|транспортер|транспортёр|лента/.test(name)) {
+    return [
+      "Осмотреть ленту, стыки, ролики и барабаны на повреждения и загрязнение.",
+      "Проверить натяжение, центровку ленты и отсутствие схода в сторону.",
+      "Проверить привод, редуктор, муфты, крепления, шум и вибрацию.",
+      "Проверить ограждения, аварийные тросы, кнопки остановки и блокировки.",
+      "Проверить предусмотренные точки смазки по инструкции изготовителя."
+    ];
+  }
+  if (/электродвиг|мотор|двигатель/.test(name)) {
+    return [
+      "Осмотреть корпус, крепления, клеммную коробку, кабель и заземление.",
+      "Проверить нагрев, шум, вибрацию и состояние вентиляционных отверстий.",
+      "Проверить подшипники и соединение с приводом без разборки защитных устройств.",
+      "Проверить отсутствие запаха гари, искрения и повреждения изоляции.",
+      "Измерения выполнять только обученному персоналу по инструкции изготовителя."
+    ];
+  }
+  if (/редуктор/.test(name)) {
+    return [
+      "Осмотреть корпус, крепления, уплотнения и соединения на утечки.",
+      "Проверить уровень и состояние масла по инструкции изготовителя.",
+      "Проверить шум, вибрацию, нагрев, люфт и состояние муфты.",
+      "Очистить сапун и наружные поверхности, если это допускает инструкция.",
+      "Проверить срок замены масла и смазки по паспорту оборудования."
+    ];
+  }
+  if (/пресс/.test(name)) {
+    return [
+      "Осмотреть раму, колонны, направляющие, крепления и рабочую зону.",
+      "Проверить гидравлические соединения, цилиндры, шланги и утечки.",
+      "Проверить защитные ограждения, блокировки и аварийную остановку.",
+      "Проверить шум, вибрацию, нагрев и плавность рабочего хода.",
+      "Смазку и регулировку выполнять только по карте ППР изготовителя."
+    ];
+  }
   if (/гидр|масл|клапан|цилиндр|бак|фильтр|пневм|воздух|компресс|насос/.test(name)) {
     return [
       "Осмотреть корпус, соединения, шланги и трубки на утечки.",
@@ -13719,6 +13897,8 @@ function globalReminderItems(equipment = globalControlEquipment()) {
     }));
   equipment.forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
+    const planNodeIndex = eq.nodes.findIndex(node => node === plan.node);
+    if (activeOperationalPause(eq, planNodeIndex >= 0 ? planNodeIndex : null, plan.dueDate)) return;
     const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
     if (plan.daysUntil <= 2 && !journalComplete) {
       items.push({

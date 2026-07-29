@@ -4102,6 +4102,41 @@ async function handleApi(req, res, pathname, url) {
               item.reminders[nodeIndex] = lines.map(value => String(value || "").trim().slice(0, 1000)).filter(Boolean).slice(0, 100);
             });
           }
+          if (rawItem.reminderMeta && typeof rawItem.reminderMeta === "object") {
+            item.reminderMeta = {};
+            Object.entries(rawItem.reminderMeta).forEach(([nodeIndex, meta]) => {
+              if (!meta || typeof meta !== "object") return;
+              item.reminderMeta[nodeIndex] = {
+                mode: meta.mode === "auto" ? "auto" : "manual",
+                generatedFor: String(meta.generatedFor || "").trim().slice(0, 400),
+                stale: meta.stale === true,
+                updatedAt: String(meta.updatedAt || "").slice(0, 50),
+                updatedBy: String(meta.updatedBy || "").trim().slice(0, 200)
+              };
+            });
+          }
+          if (catalogRole === "editor" && Array.isArray(rawItem.operationalPauses)) {
+            item.operationalPauses = rawItem.operationalPauses.slice(-100).map(pause => ({
+              startedAt: String(pause?.startedAt || "").slice(0, 50),
+              endedAt: String(pause?.endedAt || "").slice(0, 50),
+              reason: String(pause?.reason || "").trim().slice(0, 1000),
+              changedBy: String(pause?.changedBy || "").trim().slice(0, 200),
+              endedBy: String(pause?.endedBy || "").trim().slice(0, 200)
+            })).filter(pause => pause.startedAt);
+          }
+          if (catalogRole === "editor" && rawItem.nodeOperationalPauses && typeof rawItem.nodeOperationalPauses === "object") {
+            item.nodeOperationalPauses = {};
+            Object.entries(rawItem.nodeOperationalPauses).forEach(([nodeIndex, pauses]) => {
+              if (!Array.isArray(pauses)) return;
+              item.nodeOperationalPauses[nodeIndex] = pauses.slice(-100).map(pause => ({
+                startedAt: String(pause?.startedAt || "").slice(0, 50),
+                endedAt: String(pause?.endedAt || "").slice(0, 50),
+                reason: String(pause?.reason || "").trim().slice(0, 1000),
+                changedBy: String(pause?.changedBy || "").trim().slice(0, 200),
+                endedBy: String(pause?.endedBy || "").trim().slice(0, 200)
+              })).filter(pause => pause.startedAt);
+            });
+          }
           if (requestedArea) item.area = requestedArea;
           if (catalogRole === "editor" && hasEditingPermissionField) {
             item.editingEnabled = requestedEditingEnabled;

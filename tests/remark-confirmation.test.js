@@ -590,6 +590,35 @@ test("node editing permission is selective per equipment and admin keeps full ac
   assert.deepEqual(after.catalog.equipment["2"].nodes, ["Changed node 2"]);
 });
 
+test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
+  assert.match(source, /function setOperationalPause\(equipmentId, nodeIndex, paused, reason = ""\)/);
+  assert.match(source, /catalogEditorRole\(\) !== "editor"/);
+  assert.match(source, /data-toggle-equipment-pause/);
+  assert.match(source, /data-toggle-node-pause/);
+  assert.match(source, /activeNodeIndexes[\s\S]*?filter\(index => !activeOperationalPause\(eq, index, date\)\)/);
+  assert.match(source, /const overdue = !operationalPause/);
+  assert.match(source, /if \(activeOperationalPause\(eq, planNodeIndex >= 0 \? planNodeIndex : null, plan\.dueDate\)\) return/);
+  assert.match(source, /recordAudit\("Временно остановил"/);
+  assert.match(source, /recordAudit\("Возобновил работу"/);
+  assert.match(styles, /\.operational-paused-day/);
+});
+
+test("maintenance work can be auto-filled from renamed equipment and node names, then edited", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(source, /function nodeReminderItems\(nodeName, equipmentName = ""\)/);
+  assert.match(source, /data-autofill-reminder/);
+  assert.match(source, /После автозаполнения его можно редактировать/);
+  assert.match(source, /meta\?\.mode === "auto"\) meta\.stale = true/);
+  assert.match(source, /item\.reminderMeta\[nodeIndex\]\.stale = true/);
+  assert.match(source, /Заменить текущий список типовыми работами/);
+  assert.match(server, /rawItem\.reminderMeta/);
+  assert.match(server, /rawItem\.operationalPauses/);
+  assert.match(server, /rawItem\.nodeOperationalPauses/);
+});
+
 test("PPR schedules only weekdays and moves weekend work to Monday", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /function isPprWorkday\(date\)/);
