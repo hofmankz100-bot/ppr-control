@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v318-finish-downtime-card";
+const APP_VERSION = "v319-explain-downtime-attendance";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -8276,6 +8276,40 @@ function downtimeCloseBlockedMessage() {
   return "";
 }
 
+function downtimeCloseButtonLabel(liveStop) {
+  if (attendanceRequired() && !attendanceAllowsEditing()) return "Сначала отсканируйте QR";
+  if (!roleAccess().checklist) return "Нет доступа";
+  return liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+}
+
+function showDowntimeCloseBlockedDialog(message) {
+  document.querySelector(".downtime-access-overlay")?.remove();
+  const attendanceBlocked = attendanceRequired() && !attendanceAllowsEditing();
+  const overlay = document.createElement("div");
+  overlay.className = "downtime-type-overlay downtime-access-overlay";
+  overlay.innerHTML = `
+    <section class="downtime-type-dialog downtime-access-dialog" role="dialog" aria-modal="true" aria-label="${attendanceBlocked ? "Вы не отметились на смене" : "Нет доступа"}">
+      <strong>${attendanceBlocked ? "Вы не отметились на смене" : "Нельзя завершить простой"}</strong>
+      <p>${escapeHtml(message)}</p>
+      ${attendanceBlocked ? `
+        <ol>
+          <li>Откройте главную страницу.</li>
+          <li>Нажмите «Кто на работе».</li>
+          <li>Отсканируйте рабочий QR-код.</li>
+          <li>Вернитесь в «Простои» и нажмите кнопку снова.</li>
+        </ol>
+      ` : ""}
+      <button type="button" data-close-downtime-access>Понятно</button>
+    </section>
+  `;
+  const close = () => overlay.remove();
+  overlay.querySelector("[data-close-downtime-access]")?.addEventListener("click", close);
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) close();
+  });
+  document.body.append(overlay);
+}
+
 function askDowntimeCloseDetails(liveStop) {
   return new Promise(resolve => {
     document.querySelector(".downtime-close-overlay")?.remove();
@@ -8349,10 +8383,10 @@ async function publishDowntimeClose(downtimeId, comment, actor = resolutionActor
 }
 
 async function closeDowntimeWithConfirmation(liveStop, button) {
-  if (!liveStop || liveStop.endedAt || button?.disabled) return null;
+  if (!liveStop || liveStop.endedAt) return null;
   const blockedMessage = downtimeCloseBlockedMessage();
   if (blockedMessage) {
-    showAppToast(blockedMessage);
+    showDowntimeCloseBlockedDialog(blockedMessage);
     return null;
   }
   const details = await askDowntimeCloseDetails(liveStop);
@@ -11684,7 +11718,7 @@ function renderNodeWalkthrough(eq) {
         <span>Причина: ${escapeHtml(activeStop.comment || "без комментария")}</span>
         <span>Записал: ${escapeHtml(activeStop.authorName || "сотрудник")}</span>
         ${closeBlockedMessage ? `<small class="downtime-close-blocked">${escapeHtml(closeBlockedMessage)}</small>` : ""}
-        <button type="button" data-close-downtime="${escapeHtml(activeStop.id)}" ${closeBlockedMessage ? "disabled" : ""}>${activeStop.type === "production" ? "Возобновить производство" : "Устранить простой / Пуск"}</button>
+        <button type="button" class="${closeBlockedMessage ? "blocked" : ""}" data-close-downtime="${escapeHtml(activeStop.id)}">${escapeHtml(downtimeCloseButtonLabel(activeStop))}</button>
       </div>
     ` : "";
     const row = document.createElement("div");
@@ -15957,8 +15991,8 @@ function renderDowntime() {
         <small>Записал: ${escapeHtml(item.authorName || "Сотрудник")}</small>
         ${closeBlockedMessage ? `<small class="downtime-close-blocked">${escapeHtml(closeBlockedMessage)}</small>` : ""}
         <span class="downtime-active-summary-actions">
-          <button type="button" data-finish-active-downtime="${escapeHtml(item.id)}" ${closeBlockedMessage ? "disabled" : ""}>
-            ${item.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск"}
+          <button type="button" class="${closeBlockedMessage ? "blocked" : ""}" data-finish-active-downtime="${escapeHtml(item.id)}">
+            ${escapeHtml(downtimeCloseButtonLabel(item))}
           </button>
           <button type="button" class="secondary" data-open-active-downtime="${escapeHtml(item.id)}">Открыть узел</button>
         </span>
