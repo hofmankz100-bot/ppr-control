@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=324-calm-mobile-journals/);
-  assert.match(html, /styles\.css\?v=324-calm-mobile-journals/);
-  assert.match(serviceWorker, /app\.js\?v=324-calm-mobile-journals/);
+  assert.match(html, /app\.js\?v=326-shgrp-mobile-simplify/);
+  assert.match(html, /styles\.css\?v=326-shgrp-mobile-simplify/);
+  assert.match(serviceWorker, /app\.js\?v=326-shgrp-mobile-simplify/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -817,10 +817,24 @@ test("the gas journal becomes readable date cards on phones", () => {
   assert.match(styleSource, /content: attr\(data-mobile-label\)/);
   assert.match(styleSource, /touch-action: manipulation/);
   assert.match(styleSource, /\.gas-journal-sheet \.gas-a4-wrap \{[\s\S]*?touch-action: pan-y !important/);
-  assert.match(appSource, /const datesA = gasJournalMobileMode\(\) \? \[mobileDate\] : gasJournalSheetDates\("A"\)/);
+  assert.match(appSource, /const datesA = mobileMode \? \[mobileDate\] : gasJournalSheetDates\("A"\)/);
   assert.match(appSource, /shiftGasJournalMobileDate\(deltaX < 0 \? 1 : -1\)/);
-  assert.match(styleSource, /\.gas-sheet-page-button \{[\s\S]*?display: none !important/);
+  assert.match(appSource, /data-gas-day-prev/);
+  assert.match(appSource, /data-gas-day-next/);
+  assert.match(appSource, /class="gas-mobile-date-panel"/);
+  assert.match(appSource, /aria-label="\$\{escapeHtml\(gasControlAriaLabel\(section, field\)\)\}"/);
+  assert.match(appSource, /el\.addEventListener\("input", commitGasValue\)/);
+  assert.match(styleSource, /\.gas-sheet-page-button,[\s\S]*?\.gas-sheet-today-button \{[\s\S]*?display: none !important/);
   assert.match(appSource, /data-gas-print="\$\{section\}"/);
+  assert.doesNotMatch(appSource, /data-gas-clear/);
+  assert.doesNotMatch(appSource, /function clearGasJournalSheet/);
+  assert.doesNotMatch(appSource, /Журнал заполняется только на русском или казахском языке/);
+  assert.doesNotMatch(appSource, /При печати система сама соберёт заполненные дни и пропустит пустые/);
+  assert.doesNotMatch(appSource, /Журнал заполняется вручную/);
+  assert.doesNotMatch(appSource, /замечания сюда не попадают/);
+  assert.doesNotMatch(appSource, /Печать появится после заполнения хотя бы одного дня/);
+  assert.doesNotMatch(appSource, /function journalEntryLanguageNotice/);
+  assert.doesNotMatch(styleSource, /\.journal-language-rule/);
 });
 
 test("SHGRP entries require an explicit fixation after editing", () => {

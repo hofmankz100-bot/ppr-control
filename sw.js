@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v324-calm-mobile-journals";
+const CACHE_NAME = "ppr-v326-shgrp-mobile-simplify";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=324-calm-mobile-journals",
-  "./modules/compressor.js?v=324-calm-mobile-journals",
-  "./modules/shgrp.js?v=324-calm-mobile-journals",
+  "./styles.css?v=326-shgrp-mobile-simplify",
+  "./modules/compressor.js?v=326-shgrp-mobile-simplify",
+  "./modules/shgrp.js?v=326-shgrp-mobile-simplify",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=324-calm-mobile-journals",
-  "./assets/hofmann-forklift.png?v=v324-calm-mobile-journals",
+  "./app.js?v=326-shgrp-mobile-simplify",
+  "./assets/hofmann-forklift.png?v=v326-shgrp-mobile-simplify",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
