@@ -47,7 +47,8 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
-const SERVER_VERSION = "v313-remove-maintenance-notice";
+const SERVER_VERSION = "v314-refresh-translation-cache";
+const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v273-required-client-update",
@@ -1978,7 +1979,7 @@ function looksLikeMojibake(value) {
 }
 
 function translationCacheKey(target, text) {
-  return `${target}::${crypto.createHash("sha1").update(text).digest("hex")}`;
+  return `${TRANSLATION_CACHE_VERSION}:${target}::${crypto.createHash("sha1").update(text).digest("hex")}`;
 }
 
 function normalizeTranslationSource(text, target) {
