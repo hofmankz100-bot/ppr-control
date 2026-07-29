@@ -5387,6 +5387,80 @@ body.editor-profile .warehouse-folders button.request-alert {
   gap: 10px;
 }
 
+.downtime-active-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.downtime-active-list[hidden] {
+  display: none;
+}
+
+.downtime-active-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #991b1b;
+}
+
+.downtime-active-list-title span {
+  display: inline-grid;
+  min-width: 30px;
+  min-height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #fff;
+  font-weight: 900;
+}
+
+.downtime-active-summary-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  border: 2px solid #dc2626;
+  border-left-width: 7px;
+  border-radius: 12px;
+  background: #fff1f2;
+  padding: 13px;
+  color: #1f2937;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 5px 16px rgba(185, 28, 28, 0.14);
+}
+
+.downtime-active-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #991b1b;
+}
+
+.downtime-active-summary-card small {
+  color: var(--muted);
+}
+
+.downtime-active-summary-card em {
+  margin-top: 3px;
+  border-radius: 8px;
+  background: #b91c1c;
+  padding: 10px 12px;
+  color: #fff;
+  font-style: normal;
+  font-weight: 900;
+  text-align: center;
+}
+
+.downtime-active-summary-card:hover,
+.downtime-active-summary-card:focus-visible {
+  border-color: #991b1b;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+}
+
 .downtime-chart {
   margin-bottom: 12px;
 }
@@ -9361,6 +9435,10 @@ textarea:disabled {
   .downtime-pie-wrap {
     grid-template-columns: 1fr;
     justify-items: center;
+  }
+
+  .downtime-active-summary-head {
+    display: grid;
   }
 
   .downtime-pie-legend {
