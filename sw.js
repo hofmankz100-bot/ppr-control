@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v312-uzbek-user-translation";
+const CACHE_NAME = "ppr-v313-remove-maintenance-notice";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=312-uzbek-user-translation",
+  "./styles.css?v=313-remove-maintenance-notice",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=312-uzbek-user-translation",
-  "./assets/hofmann-forklift.png?v=v312-uzbek-user-translation",
+  "./app.js?v=313-remove-maintenance-notice",
+  "./assets/hofmann-forklift.png?v=v313-remove-maintenance-notice",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

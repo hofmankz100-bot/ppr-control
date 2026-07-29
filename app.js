@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v312-uzbek-user-translation";
+const APP_VERSION = "v313-remove-maintenance-notice";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10158,7 +10158,6 @@ function scheduleRender(delay = 80) {
 function render() {
   renderProfile();
   renderSystemBroadcastNotice();
-  renderAdminMaintenanceNotice();
   updateDirectorBadge();
   updateDowntimeBadge();
   updateGpmBadge();
@@ -16271,28 +16270,6 @@ function renderSystemBroadcastNotice() {
   document.body.append(notice);
   notice.querySelector("[data-print-broadcast-report]")?.addEventListener("click", printSystemArchiveReport);
   notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", () => { localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1"); notice.remove(); });
-}
-
-function renderAdminMaintenanceNotice() {
-  document.querySelector("#adminMaintenanceNotice")?.remove();
-  if (!isEditorSession()) return;
-  const noticeId = `ppr-admin-maintenance-read-${APP_VERSION}`;
-  if (localStorage.getItem(noticeId) === "1") return;
-  const notice = document.createElement("aside");
-  notice.id = "adminMaintenanceNotice";
-  notice.className = "system-broadcast-notice";
-  notice.innerHTML = `
-    <div>
-      <strong>Техническая проверка завершена</strong>
-      <span>Убран паучий герой и паутина. Погрузчик сохранён. Кнопка «Назад» проверена. Добавлена безопасная проверка мусора и памяти. Проверены регистрация, роли, журналы, отчёты, QR-обходы, устранения, баллы, заявки, печать, кеш и обновление.</span>
-    </div>
-    <div><button type="button" data-read-admin-maintenance>Понятно</button></div>
-  `;
-  document.body.append(notice);
-  notice.querySelector("[data-read-admin-maintenance]")?.addEventListener("click", () => {
-    localStorage.setItem(noticeId, "1");
-    notice.remove();
-  });
 }
 
 function renderDirectorUsers() {
