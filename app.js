@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v316-preserve-translation-keys";
+const APP_VERSION = "v317-active-downtime-card";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -577,12 +577,14 @@ function ensureDowntimeUi() {
           <button id="nextDowntimeMonth" type="button">›</button>
         </div>
       </div>
+      <div id="downtimeActiveList" class="downtime-active-list" hidden></div>
       <div id="downtimeChart" class="downtime-chart"></div>
       <div id="downtimeDetails" class="downtime-details"></div>
     `;
     main?.append(section);
   }
   ui.downtimeMeta = document.querySelector("#downtimeMeta");
+  ui.downtimeActiveList = document.querySelector("#downtimeActiveList");
   ui.downtimeChart = document.querySelector("#downtimeChart");
   ui.downtimeDetails = document.querySelector("#downtimeDetails");
   ui.downtimeMonthLabel = document.querySelector("#downtimeMonthLabel");
@@ -15857,13 +15859,42 @@ function renderDirector() {
 
 function renderDowntime() {
   ui.subtitle.textContent = "Простои";
-  if (!ui.downtimeChart || !ui.downtimeDetails) return;
+  if (!ui.downtimeActiveList || !ui.downtimeChart || !ui.downtimeDetails) return;
   const monthDate = new Date(current.downtimeYear, current.downtimeMonth, 1);
   ui.downtimeMonthLabel.textContent = monthDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   const stats = downtimeChartAreas().map(area => downtimeAreaStats(area));
-  const activeCount = downtimes().filter(item => !item.endedAt).length;
+  const activeItems = downtimes()
+    .filter(item => !item.endedAt)
+    .sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
+  const activeCount = activeItems.length;
   const monthCount = downtimeMonthItems().length;
   ui.downtimeMeta.textContent = `Простоев за месяц: ${monthCount}. Активных остановок: ${activeCount}. Прессы 1540 и 2400 учитываются отдельно. Лимит простоя: 125 часов на каждое оборудование/цех за месяц.`;
+  ui.downtimeActiveList.hidden = !activeItems.length;
+  ui.downtimeActiveList.innerHTML = activeItems.length ? `
+    <div class="downtime-active-list-title">
+      <strong>Активные простои</strong>
+      <span>${activeItems.length}</span>
+    </div>
+    ${activeItems.map(item => `
+      <button type="button" class="downtime-active-summary-card" data-open-active-downtime="${escapeHtml(item.id)}">
+        <span class="downtime-active-summary-head">
+          <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
+          <b>Простой идёт: ${durationText(downtimeDurationMs(item))}</b>
+        </span>
+        <span>${escapeHtml(item.node || "Узел не указан")}</span>
+        <span>Тип: ${escapeHtml(downtimeTypeLabel(item.type))}</span>
+        <span>Причина: ${userTextWithRussianHtml(item.comment || "Без комментария")}</span>
+        <small>Записал: ${escapeHtml(item.authorName || "Сотрудник")}</small>
+        <em>Открыть и завершить простой →</em>
+      </button>
+    `).join("")}
+  ` : "";
+  ui.downtimeActiveList.querySelectorAll("[data-open-active-downtime]").forEach(button => {
+    button.addEventListener("click", () => {
+      const item = downtimes().find(entry => entry.id === button.dataset.openActiveDowntime);
+      if (item && !item.endedAt) openDowntimeComment(item);
+    });
+  });
   ui.downtimeChart.innerHTML = downtimePieChart(stats);
   ui.downtimeChart.querySelectorAll("[data-downtime-area]").forEach(button => {
     button.addEventListener("click", () => {

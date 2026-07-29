@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v316-preserve-translation-keys";
+const CACHE_NAME = "ppr-v317-active-downtime-card";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=316-preserve-translation-keys",
+  "./styles.css?v=317-active-downtime-card",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=316-preserve-translation-keys",
-  "./assets/hofmann-forklift.png?v=v316-preserve-translation-keys",
+  "./app.js?v=317-active-downtime-card",
+  "./assets/hofmann-forklift.png?v=v317-active-downtime-card",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
