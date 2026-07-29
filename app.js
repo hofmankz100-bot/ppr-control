@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v317-active-downtime-card";
+const APP_VERSION = "v318-finish-downtime-card";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -8270,6 +8270,66 @@ function selectDowntimeCloser() {
   };
 }
 
+function downtimeCloseBlockedMessage() {
+  if (!roleAccess().checklist) return "У вашей роли нет права завершать простой.";
+  if (!attendanceAllowsEditing()) return "Сначала отметьтесь через QR в разделе «Кто на работе».";
+  return "";
+}
+
+function askDowntimeCloseDetails(liveStop) {
+  return new Promise(resolve => {
+    document.querySelector(".downtime-close-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.className = "downtime-type-overlay downtime-close-overlay";
+    const actionTitle = liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+    const commentLabel = liveStop?.type === "production"
+      ? "Причина возобновления производства"
+      : "Что выполнено для устранения поломки?";
+    overlay.innerHTML = `
+      <section class="downtime-type-dialog downtime-close-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(actionTitle)}">
+        <strong>${escapeHtml(actionTitle)}</strong>
+        <p>${escapeHtml(liveStop?.equipment || liveStop?.area || "Оборудование")} · ${escapeHtml(liveStop?.node || "Узел")}</p>
+        <label>
+          <span>${escapeHtml(commentLabel)}</span>
+          <textarea rows="4" data-downtime-close-comment placeholder="Напишите, что было выполнено..."></textarea>
+        </label>
+        <label class="downtime-close-confirm">
+          <input type="checkbox" data-downtime-close-started>
+          <span>Оборудование фактически запущено</span>
+        </label>
+        <div class="downtime-type-error" data-downtime-close-error></div>
+        <button type="button" data-downtime-close-confirm>${escapeHtml(actionTitle)}</button>
+        <button type="button" data-downtime-close-cancel>Отмена</button>
+      </section>
+    `;
+    const close = result => {
+      overlay.remove();
+      resolve(result);
+    };
+    overlay.querySelector("[data-downtime-close-confirm]")?.addEventListener("click", () => {
+      const comment = String(overlay.querySelector("[data-downtime-close-comment]")?.value || "").trim();
+      const started = Boolean(overlay.querySelector("[data-downtime-close-started]")?.checked);
+      const error = overlay.querySelector("[data-downtime-close-error]");
+      if (!comment) {
+        if (error) error.textContent = "Напишите, что было выполнено.";
+        overlay.querySelector("[data-downtime-close-comment]")?.focus();
+        return;
+      }
+      if (!started) {
+        if (error) error.textContent = "Подтвердите, что оборудование фактически запущено.";
+        return;
+      }
+      close({ comment });
+    });
+    overlay.querySelector("[data-downtime-close-cancel]")?.addEventListener("click", () => close(null));
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) close(null);
+    });
+    document.body.append(overlay);
+    overlay.querySelector("[data-downtime-close-comment]")?.focus();
+  });
+}
+
 async function publishDowntimeClose(downtimeId, comment, actor = resolutionActor()) {
   const result = await apiJson("/api/downtime-close", {
     method: "POST",
@@ -8286,6 +8346,39 @@ async function publishDowntimeClose(downtimeId, comment, actor = resolutionActor
   if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
   persistStateLocally(state);
   return result;
+}
+
+async function closeDowntimeWithConfirmation(liveStop, button) {
+  if (!liveStop || liveStop.endedAt || button?.disabled) return null;
+  const blockedMessage = downtimeCloseBlockedMessage();
+  if (blockedMessage) {
+    showAppToast(blockedMessage);
+    return null;
+  }
+  const details = await askDowntimeCloseDetails(liveStop);
+  if (!details?.comment) return null;
+  const closer = selectDowntimeCloser();
+  if (!closer) return null;
+  if (button) setButtonBusy(button, true, "Сохраняем пуск...");
+  try {
+    const result = await publishDowntimeClose(liveStop.id, details.comment, closer);
+    const closed = result?.downtime;
+    if (!closed?.endedAt) throw new Error("downtime_close_not_confirmed");
+    showAppToast(`Простой закрыт. Исполнитель: ${closed.closedByName}. Длительность: ${durationText(downtimeDurationMs(closed))}`);
+    return closed;
+  } catch (error) {
+    console.error("Downtime close failed", error);
+    await loadRemoteState();
+    const confirmed = downtimes().find(item => item.id === liveStop.id && item.endedAt);
+    if (confirmed) {
+      showAppToast(`Пуск сохранён сервером. Исполнитель: ${confirmed.closedByName}.`);
+      return confirmed;
+    }
+    window.alert("Пуск не подтверждён сервером. Простой остался активным — попробуйте ещё раз.");
+    return null;
+  } finally {
+    if (button?.isConnected) setButtonBusy(button, false);
+  }
 }
 
 function updateDowntimeBadge() {
@@ -11583,13 +11676,15 @@ function renderNodeWalkthrough(eq) {
     ` : "";
     const submitRemarkDisabled = !canEditThisComment;
     const submitRemarkLabel = "Отправить";
+    const closeBlockedMessage = downtimeCloseBlockedMessage();
     const downtimeActiveBlock = activeStop ? `
       <div class="downtime-active" data-node-downtime="${index}" tabindex="-1">
         <strong>Простой идет: ${durationText(downtimeDurationMs(activeStop))}</strong>
         <span>Тип: ${escapeHtml(downtimeTypeLabel(activeStop.type))}</span>
         <span>Причина: ${escapeHtml(activeStop.comment || "без комментария")}</span>
         <span>Записал: ${escapeHtml(activeStop.authorName || "сотрудник")}</span>
-        <button type="button" data-close-downtime="${escapeHtml(activeStop.id)}" ${canEditChecklist() ? "" : "disabled"}>${activeStop.type === "production" ? "Возобновить производство" : "Устранить простой / Пуск"}</button>
+        ${closeBlockedMessage ? `<small class="downtime-close-blocked">${escapeHtml(closeBlockedMessage)}</small>` : ""}
+        <button type="button" data-close-downtime="${escapeHtml(activeStop.id)}" ${closeBlockedMessage ? "disabled" : ""}>${activeStop.type === "production" ? "Возобновить производство" : "Устранить простой / Пуск"}</button>
       </div>
     ` : "";
     const row = document.createElement("div");
@@ -11825,34 +11920,8 @@ function renderNodeWalkthrough(eq) {
       const button = event.currentTarget;
       const liveStop = activeDowntime(eq.id, index);
       if (!liveStop || button.disabled) return;
-      const promptText = liveStop.type === "production"
-        ? "Причина возобновления производства. Без комментария пуск не сохраняем."
-        : "Что выполнено для устранения поломки? Без комментария пуск не сохраняем.";
-      const comment = window.prompt(promptText);
-      if (!String(comment || "").trim()) return;
-      if (!window.confirm("Оборудование фактически запущено? Закрыть простой?")) return;
-      const closer = selectDowntimeCloser();
-      if (!closer) return;
-      setButtonBusy(button, true, "Сохраняем пуск...");
-      try {
-        const result = await publishDowntimeClose(liveStop.id, comment, closer);
-        const closed = result?.downtime;
-        if (!closed?.endedAt) throw new Error("downtime_close_not_confirmed");
-        showAppToast(`Простой закрыт. Исполнитель: ${closed.closedByName}. Длительность: ${durationText(downtimeDurationMs(closed))}`);
-        renderNodeWalkthrough(equipmentById(eq.id));
-      } catch (error) {
-        console.error("Downtime close failed", error);
-        await loadRemoteState();
-        const confirmed = downtimes().find(item => item.id === liveStop.id && item.endedAt);
-        if (confirmed) {
-          showAppToast(`Пуск сохранён сервером. Исполнитель: ${confirmed.closedByName}.`);
-          renderNodeWalkthrough(equipmentById(eq.id));
-          return;
-        }
-        window.alert("Пуск не подтверждён сервером. Простой остался активным — попробуйте ещё раз.");
-      } finally {
-        if (button.isConnected) setButtonBusy(button, false);
-      }
+      const closed = await closeDowntimeWithConfirmation(liveStop, button);
+      if (closed) renderNodeWalkthrough(equipmentById(eq.id));
     });
     row.querySelector("[data-node-comment-photo]").addEventListener("change", event => {
       const liveItem = record(eq.id, index, current.date).to;
@@ -15868,6 +15937,7 @@ function renderDowntime() {
     .sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
   const activeCount = activeItems.length;
   const monthCount = downtimeMonthItems().length;
+  const closeBlockedMessage = downtimeCloseBlockedMessage();
   ui.downtimeMeta.textContent = `Простоев за месяц: ${monthCount}. Активных остановок: ${activeCount}. Прессы 1540 и 2400 учитываются отдельно. Лимит простоя: 125 часов на каждое оборудование/цех за месяц.`;
   ui.downtimeActiveList.hidden = !activeItems.length;
   ui.downtimeActiveList.innerHTML = activeItems.length ? `
@@ -15876,7 +15946,7 @@ function renderDowntime() {
       <span>${activeItems.length}</span>
     </div>
     ${activeItems.map(item => `
-      <button type="button" class="downtime-active-summary-card" data-open-active-downtime="${escapeHtml(item.id)}">
+      <article class="downtime-active-summary-card">
         <span class="downtime-active-summary-head">
           <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
           <b>Простой идёт: ${durationText(downtimeDurationMs(item))}</b>
@@ -15885,10 +15955,24 @@ function renderDowntime() {
         <span>Тип: ${escapeHtml(downtimeTypeLabel(item.type))}</span>
         <span>Причина: ${userTextWithRussianHtml(item.comment || "Без комментария")}</span>
         <small>Записал: ${escapeHtml(item.authorName || "Сотрудник")}</small>
-        <em>Открыть и завершить простой →</em>
-      </button>
+        ${closeBlockedMessage ? `<small class="downtime-close-blocked">${escapeHtml(closeBlockedMessage)}</small>` : ""}
+        <span class="downtime-active-summary-actions">
+          <button type="button" data-finish-active-downtime="${escapeHtml(item.id)}" ${closeBlockedMessage ? "disabled" : ""}>
+            ${item.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск"}
+          </button>
+          <button type="button" class="secondary" data-open-active-downtime="${escapeHtml(item.id)}">Открыть узел</button>
+        </span>
+      </article>
     `).join("")}
   ` : "";
+  ui.downtimeActiveList.querySelectorAll("[data-finish-active-downtime]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const item = downtimes().find(entry => entry.id === button.dataset.finishActiveDowntime);
+      if (!item || item.endedAt) return;
+      const closed = await closeDowntimeWithConfirmation(item, button);
+      if (closed) renderDowntime();
+    });
+  });
   ui.downtimeActiveList.querySelectorAll("[data-open-active-downtime]").forEach(button => {
     button.addEventListener("click", () => {
       const item = downtimes().find(entry => entry.id === button.dataset.openActiveDowntime);

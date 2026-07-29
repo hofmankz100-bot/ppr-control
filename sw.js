@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v317-active-downtime-card";
+const CACHE_NAME = "ppr-v318-finish-downtime-card";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=317-active-downtime-card",
+  "./styles.css?v=318-finish-downtime-card",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=317-active-downtime-card",
-  "./assets/hofmann-forklift.png?v=v317-active-downtime-card",
+  "./app.js?v=318-finish-downtime-card",
+  "./assets/hofmann-forklift.png?v=v318-finish-downtime-card",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
