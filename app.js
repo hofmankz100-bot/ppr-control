@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v319-explain-downtime-attendance";
+const APP_VERSION = "v320-fix-shgrp-entry";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10729,8 +10729,7 @@ function gasJournalSavedDates() {
 
 function gasJournalDateHasFilledRow(section, date) {
   const row = gasJournalRecord(section, date);
-  const ignored = new Set(["id", "section", "date", "route", "updatedAt", "updatedByName", "updatedByRole"]);
-  return Object.entries(row).some(([key, value]) => !ignored.has(key) && String(value || "").trim());
+  return gasJournalEntryIsFixed(section, row);
 }
 
 function journalEntryLanguageNotice() {
@@ -10843,7 +10842,9 @@ function gasJournalButtonStatus() {
 }
 
 function gasJournalFilledCount() {
-  return Object.values(state.gasJournal || {}).filter(row => row?.section === "A" || row?.section === "B").length;
+  return Object.values(state.gasJournal || {})
+    .filter(row => (row?.section === "A" || row?.section === "B") && gasJournalEntryIsFixed(row.section, row))
+    .length;
 }
 
 function updateGasJournalRow(section, date, field, value) {
@@ -10857,16 +10858,108 @@ function updateGasJournalRow(section, date, field, value) {
     section,
     date,
     time: localTimeNow(),
-    checkedBy: profile?.name || old.checkedBy || "",
+    checkedBy: "",
     updatedAt: now.toISOString(),
     updatedByName: profile?.name || "",
     updatedByRole: profile?.role || "",
+    entryStatus: "draft",
+    fixedAt: "",
+    fixedByName: "",
     [field]: value
   };
   if (section === "B") next.route = GAS_ROUTE_LIST.join("\n");
   state.gasJournal[id] = next;
   saveState();
   return next;
+}
+
+const GAS_JOURNAL_REQUIRED_FIELDS = {
+  A: [
+    ["inletMpa", "давление на входе"],
+    ["outletMpa", "давление на выходе"],
+    ["tempInC", "температуру на входе"],
+    ["tempOutC", "температуру на выходе"],
+    ["pressureDeltaMpa", "перепад давления"],
+    ["equipmentStatus", "исправность оборудования"],
+    ["pskTrigger", "срабатывание ПСК"],
+    ["maintenance", "техническое обслуживание"],
+    ["remarks", "замечания"]
+  ],
+  B: [
+    ["wells", "трубопровод и колодцы"],
+    ["gasSmell", "запах газа"],
+    ["protectionZone", "охранную зону"],
+    ["remarks", "замечания"],
+    ["actions", "принятые меры"]
+  ]
+};
+
+function gasJournalEntryIsFixed(section, row) {
+  return section === "A"
+    ? window.PPRModules.shgrp.rowAComplete(row)
+    : window.PPRModules.shgrp.rowBComplete(row);
+}
+
+function gasJournalEntrySignatureHtml(section, date, row) {
+  const fixed = gasJournalEntryIsFixed(section, row);
+  const fixedLabel = row.fixedAt ? `Зафиксировано ${dateTimeHuman(row.fixedAt)}` : "Запись зафиксирована";
+  return `<div class="gas-entry-signature">
+    <span data-gas-entry-signer="${section}:${date}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</span>
+    <button type="button" class="gas-entry-fix-button ${fixed ? "fixed" : ""}" data-gas-fix-entry="${section}" data-gas-fix-date="${date}">${fixed ? "Зафиксировать повторно" : "Зафиксировать запись"}</button>
+    <small class="gas-entry-status ${fixed ? "fixed" : "draft"}" data-gas-entry-status="${section}:${date}">${fixed ? escapeHtml(fixedLabel) : "После заполнения нажмите кнопку"}</small>
+  </div>`;
+}
+
+function markGasJournalEntryDraftInView(section, date) {
+  const button = ui.aggregateJournalList.querySelector(`[data-gas-fix-entry="${section}"][data-gas-fix-date="${date}"]`);
+  if (button) {
+    button.disabled = false;
+    button.classList.remove("fixed");
+    button.textContent = "Зафиксировать запись";
+  }
+  const status = ui.aggregateJournalList.querySelector(`[data-gas-entry-status="${section}:${date}"]`);
+  if (status) {
+    status.className = "gas-entry-status draft";
+    status.textContent = "Есть изменения — нажмите «Зафиксировать запись»";
+  }
+  const signer = ui.aggregateJournalList.querySelector(`[data-gas-entry-signer="${section}:${date}"]`);
+  if (signer) signer.textContent = "Ожидает фиксации";
+}
+
+async function fixGasJournalEntry(section, date, button) {
+  const row = gasJournalRecord(section, date);
+  const missing = (GAS_JOURNAL_REQUIRED_FIELDS[section] || [])
+    .filter(([field]) => !String(row[field] || "").trim())
+    .map(([, label]) => label);
+  if (missing.length) {
+    showAppToast(`Сначала заполните: ${missing.join(", ")}.`, "error");
+    return;
+  }
+  const now = new Date().toISOString();
+  state.gasJournal[row.id] = {
+    ...row,
+    time: localTimeNow(),
+    checkedBy: profile?.name || "Сотрудник",
+    updatedAt: now,
+    updatedByName: profile?.name || "",
+    updatedByRole: profile?.role || "",
+    entryStatus: "fixed",
+    fixedAt: now,
+    fixedByName: profile?.name || ""
+  };
+  recordAudit("Зафиксировал запись журнала ШГРП", `Раздел ${section} · ${dateHuman(date)}`);
+  saveState();
+  setButtonBusy(button, true, "Фиксируем...");
+  await publishStateNow();
+  const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
+  renderGasJournal();
+  renderEquipment();
+  showAppToast(
+    pending
+      ? "Запись зафиксирована на телефоне и отправится на сервер после восстановления связи."
+      : "Запись ШГРП зафиксирована и сохранена.",
+    pending ? "error" : "ok"
+  );
 }
 
 function clearGasJournalSheet(section, reason = "") {
@@ -10980,7 +11073,7 @@ function renderGasJournal() {
                 <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
                 <td data-mobile-label="Техобслуживание">${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
                 <td data-mobile-label="Замечания">${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
-                <td data-mobile-label="Подпись">${escapeHtml(row.checkedBy || "")}</td>
+                <td data-mobile-label="Подпись">${gasJournalEntrySignatureHtml("A", date, row)}</td>
               </tr>`;
             }).join("")}
           </tbody>
@@ -11008,7 +11101,7 @@ function renderGasJournal() {
                 <td data-mobile-label="Охранная зона">${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"])}</td>
                 <td data-mobile-label="Замечания">${gasInputHtml("B", date, "remarks", row.remarks)}</td>
                 <td data-mobile-label="Принятые меры">${gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"])}</td>
-                <td data-mobile-label="Подпись">${escapeHtml(row.checkedBy || "")}</td>
+                <td data-mobile-label="Подпись">${gasJournalEntrySignatureHtml("B", date, row)}</td>
               </tr>`;
             }).join("")}
           </tbody>
@@ -11024,9 +11117,16 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-section]").forEach(el => {
     el.addEventListener("change", () => {
       updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
-      renderGasJournal();
+      markGasJournalEntryDraftInView(el.dataset.gasSection, el.dataset.gasDate);
       renderEquipment();
     });
+  });
+  ui.aggregateJournalList.querySelectorAll("[data-gas-fix-entry]").forEach(button => {
+    button.addEventListener("click", () => fixGasJournalEntry(
+      button.dataset.gasFixEntry,
+      button.dataset.gasFixDate,
+      button
+    ));
   });
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-prev]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetPrev, -1)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-next]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetNext, 1)));

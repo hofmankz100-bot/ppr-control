@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v319-explain-downtime-attendance";
+const APP_VERSION = "v320-fix-shgrp-entry";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

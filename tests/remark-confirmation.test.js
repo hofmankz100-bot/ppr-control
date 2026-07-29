@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=319-explain-downtime-attendance/);
-  assert.match(html, /styles\.css\?v=319-explain-downtime-attendance/);
-  assert.match(serviceWorker, /app\.js\?v=319-explain-downtime-attendance/);
+  assert.match(html, /app\.js\?v=320-fix-shgrp-entry/);
+  assert.match(html, /styles\.css\?v=320-fix-shgrp-entry/);
+  assert.match(serviceWorker, /app\.js\?v=320-fix-shgrp-entry/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -821,6 +821,36 @@ test("the gas journal becomes readable date cards on phones", () => {
   assert.match(appSource, /shiftGasJournalMobileDate\(deltaX < 0 \? 1 : -1\)/);
   assert.match(styleSource, /\.gas-sheet-page-button \{[\s\S]*?display: none !important/);
   assert.match(appSource, /data-gas-print="\$\{section\}"/);
+});
+
+test("SHGRP entries require an explicit fixation after editing", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styleSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  const moduleSource = fs.readFileSync(path.join(root, "modules", "shgrp.js"), "utf8");
+  const testWindow = {};
+  new Function("window", moduleSource)(testWindow);
+  const completeA = {
+    inletMpa: "5",
+    outletMpa: "2.5",
+    tempInC: "26",
+    tempOutC: "25",
+    pressureDeltaMpa: "0.1",
+    equipmentStatus: "Исправно",
+    pskTrigger: "Нет",
+    maintenance: "Не требуется",
+    remarks: "Нет",
+    checkedBy: "Сотрудник"
+  };
+
+  assert.equal(testWindow.PPRModules.shgrp.rowAComplete(completeA), true);
+  assert.equal(testWindow.PPRModules.shgrp.rowAComplete({ ...completeA, entryStatus: "draft" }), false);
+  assert.equal(testWindow.PPRModules.shgrp.rowAComplete({ ...completeA, entryStatus: "fixed" }), true);
+  assert.match(appSource, /function fixGasJournalEntry\(section, date, button\)/);
+  assert.match(appSource, /Зафиксировать запись/);
+  assert.match(appSource, /Запись ШГРП зафиксирована и сохранена/);
+  assert.match(appSource, /entryStatus: "draft"/);
+  assert.match(appSource, /entryStatus: "fixed"/);
+  assert.match(styleSource, /\.gas-entry-fix-button/);
 });
 
 test("only the primary admin also receives the engineer workflow", () => {
