@@ -620,7 +620,6 @@ button[data-print-aggregate-journal],
   font-weight: 800;
 }
 
-button[data-gas-clear],
 .danger-action,
 .delete-request-action {
   border-color: var(--status-red) !important;
@@ -4059,8 +4058,6 @@ body.editor-profile .warehouse-folders button.request-alert {
 .journal-date-navigation button, .journal-date-navigation select { min-height: 38px; border: 1px solid #8da8b8; border-radius: 8px; background: #fff; padding: 7px 10px; font-weight: 800; }
 .journal-date-navigation button { border-color: #14324a; background: #14324a; color: #fff; }
 .journal-date-navigation small { flex: 1 1 240px; padding-bottom: 6px; }
-.journal-language-rule { flex: 1 1 100%; border-radius: 7px; background: #fff4cf; color: #854d0e; padding: 7px 9px; font-size: 12px; }
-
 .compressor-journal-table {
   min-width: 1120px;
 }
@@ -11659,6 +11656,8 @@ body.editor-profile #createTmcRequestButton.request-alert,
 
 /* Phone gas journal: one readable date card instead of a 1180px print table. */
 .gas-mobile-swipe-note { display: none; }
+.gas-mobile-day-button,
+.gas-mobile-date-panel { display: none; }
 
 .gas-entry-signature {
   display: grid;
@@ -11714,8 +11713,59 @@ body.editor-profile #createTmcRequestButton.request-alert,
 }
 
 @media screen and (max-width: 760px) {
-  .gas-sheet-page-button {
+  .gas-sheet-page-button,
+  .gas-sheet-today-button {
     display: none !important;
+  }
+
+  .journal-date-navigation .gas-mobile-day-button {
+    display: inline-flex;
+    flex: 1 1 92px;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    font-size: 14px;
+  }
+
+  .gas-mobile-date-panel {
+    display: grid;
+    gap: 9px;
+    margin: 10px 0 12px;
+    border: 1px solid #a8c3d2;
+    border-radius: 12px;
+    background: #eef7fb;
+    padding: 12px;
+  }
+
+  .gas-mobile-date-panel > strong {
+    color: #123f5c;
+    font-size: 18px;
+    text-align: center;
+  }
+
+  .gas-mobile-date-panel > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .gas-mobile-date-panel span {
+    border-radius: 9px;
+    padding: 8px;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .gas-mobile-date-panel span.fixed {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .gas-mobile-date-panel span.draft {
+    background: #fff7d6;
+    color: #854d0e;
   }
 
   .gas-mobile-swipe-note {

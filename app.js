@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v324-calm-mobile-journals";
+const APP_VERSION = "v326-shgrp-mobile-simplify";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10833,10 +10833,6 @@ function gasJournalDateHasFilledRow(section, date) {
   return gasJournalEntryIsFixed(section, row);
 }
 
-function journalEntryLanguageNotice() {
-  return `<strong class="journal-language-rule" data-no-translate>${currentLanguage() === "kk" ? "Журнал тек орыс немесе қазақ тілінде толтырылады" : currentLanguage() === "uz" ? "Jurnal faqat rus yoki qozoq tilida to‘ldiriladi" : "Журнал заполняется только на русском или казахском языке"}</strong>`;
-}
-
 function gasJournalSheetIndex(section) {
   const key = section === "A" ? "gasSheetIndexA" : "gasSheetIndexB";
   if (!Number.isInteger(current[key]) || current[key] < 0) current[key] = 0;
@@ -11068,16 +11064,6 @@ async function fixGasJournalEntry(section, date, button) {
   );
 }
 
-function clearGasJournalSheet(section, reason = "") {
-  const sheetNo = gasJournalSheetIndex(section) + 1;
-  state.gasJournal ||= {};
-  gasJournalSheetDates(section).forEach(date => delete state.gasJournal[gasJournalKey(section, date)]);
-  recordAudit("Удалил лист журнала", `ШГРП раздел ${section}, лист ${sheetNo}`, reason);
-  saveState();
-  renderGasJournal();
-  renderEquipment();
-}
-
 function printFilledJournalDocument(title, tableHtml) {
   const popup = window.open("", "_blank", "width=1400,height=900");
   if (!popup) {
@@ -11116,9 +11102,29 @@ function printGasJournalSheet(section) {
   printFilledJournalDocument(title, `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
 }
 
+const GAS_JOURNAL_FIELD_LABELS = {
+  inletMpa: "Давление входное, МПа",
+  outletMpa: "Давление выходное, МПа",
+  tempInC: "Температура входная, °C",
+  tempOutC: "Температура выходная, °C",
+  pressureDeltaMpa: "Перепад давления, МПа",
+  equipmentStatus: "Исправность оборудования",
+  pskTrigger: "Срабатывание ПСК",
+  maintenance: "Техническое обслуживание",
+  wells: "Трубопровод и колодцы",
+  gasSmell: "Запах газа",
+  protectionZone: "Охранная зона",
+  remarks: "Замечания",
+  actions: "Принятые меры"
+};
+
+function gasControlAriaLabel(section, field) {
+  return `Раздел ${section} — ${GAS_JOURNAL_FIELD_LABELS[field] || field}`;
+}
+
 function gasSelectHtml(section, date, field, value, options) {
   const locked = gasJournalEntryIsFixed(section, gasJournalRecord(section, date));
-  return `<select data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" ${locked ? "disabled" : ""}>
+  return `<select aria-label="${escapeHtml(gasControlAriaLabel(section, field))}" data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" ${locked ? "disabled" : ""}>
     <option value=""></option>
     ${options.map(option => `<option value="${escapeHtml(option)}" ${String(value || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
   </select>`;
@@ -11126,42 +11132,50 @@ function gasSelectHtml(section, date, field, value, options) {
 
 function gasInputHtml(section, date, field, value) {
   const locked = gasJournalEntryIsFixed(section, gasJournalRecord(section, date));
-  return `<input data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" type="text" value="${escapeHtml(value || "")}" ${locked ? "disabled" : ""}>`;
+  return `<input aria-label="${escapeHtml(gasControlAriaLabel(section, field))}" data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" type="text" value="${escapeHtml(value || "")}" ${locked ? "disabled" : ""}>`;
 }
 
-function gasSheetActionsHtml(section, complete) {
+function gasSheetActionsHtml(section) {
   const label = section === "A" ? "А" : "Б";
-  const sheetNo = gasJournalSheetIndex(section) + 1;
   const hasFilledRows = Object.values(state.gasJournal || {}).some(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date));
   return `<div class="gas-sheet-actions">
     <button type="button" class="gas-sheet-page-button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
-    <button type="button" data-gas-sheet-today="${section}">Сегодня</button>
+    <button type="button" class="gas-sheet-today-button" data-gas-sheet-today="${section}">Сегодня</button>
     <button type="button" class="gas-sheet-page-button" data-gas-sheet-next="${section}">Следующий лист ›</button>
-    ${hasFilledRows ? `<button type="button" data-gas-print="${section}">${printActionLabel(`Печать всех заполненных дней раздела ${label}`, `PDF всех заполненных дней раздела ${label}`)}</button>` : `<span class="gas-sheet-note">Печать появится после заполнения хотя бы одного дня.</span>`}
-    ${complete ? `<button type="button" class="danger" data-gas-clear="${section}">Удалить лист ${label} №${sheetNo}</button>` : ""}
+    <button type="button" data-gas-print="${section}" ${hasFilledRows ? "" : "disabled"}>${printActionLabel(`Печать всех заполненных дней раздела ${label}`, `PDF всех заполненных дней раздела ${label}`)}</button>
   </div>`;
 }
 
 function renderGasJournal() {
   state.gasJournal ||= {};
+  const mobileMode = gasJournalMobileMode();
   ui.aggregateJournalTitle.textContent = "Агрегатный журнал ШГРП / ГРП / ГРУ";
-  ui.aggregateJournalMeta.textContent = `${gasJournalFilledCount()} заполненных строк. На одном листе несколько дат; одна дата не переносится на второй лист.`;
+  ui.aggregateJournalMeta.textContent = mobileMode
+    ? `${gasJournalFilledCount()} зафиксированных записей. На телефоне открыт один выбранный день.`
+    : `${gasJournalFilledCount()} зафиксированных записей. На одном листе несколько дат; одна дата не переносится на второй лист.`;
   const mobileDate = gasJournalMobileDate();
-  const datesA = gasJournalMobileMode() ? [mobileDate] : gasJournalSheetDates("A");
-  const datesB = gasJournalMobileMode() ? [mobileDate] : gasJournalSheetDates("B");
-  const completeA = gasJournalSheetHasFilledDay("A");
-  const completeB = gasJournalSheetHasFilledDay("B");
+  const datesA = mobileMode ? [mobileDate] : gasJournalSheetDates("A");
+  const datesB = mobileMode ? [mobileDate] : gasJournalSheetDates("B");
   const sheetNoA = gasJournalSheetIndex("A") + 1;
   const sheetNoB = gasJournalSheetIndex("B") + 1;
+  const mobileCompleteA = gasJournalRowCompleteA(mobileDate);
+  const mobileCompleteB = gasJournalRowCompleteB(mobileDate);
   ui.aggregateJournalList.innerHTML = `
     <div class="journal-date-navigation">
+      <button type="button" class="gas-mobile-day-button" data-gas-day-prev>‹ День</button>
       <button type="button" data-gas-all-today>Сегодня</button>
-      <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
+      <button type="button" class="gas-mobile-day-button" data-gas-day-next>День ›</button>
       <small class="gas-mobile-swipe-note">Свайп влево — следующий день, вправо — предыдущий.</small>
-      ${journalEntryLanguageNotice()}
+    </div>
+    <div class="gas-mobile-date-panel">
+      <strong>${dateHuman(mobileDate)}</strong>
+      <div>
+        <span class="${mobileCompleteA ? "fixed" : "draft"}">Раздел А: ${mobileCompleteA ? "зафиксирован ✓" : "ожидает фиксации"}</span>
+        <span class="${mobileCompleteB ? "fixed" : "draft"}">Раздел Б: ${mobileCompleteB ? "зафиксирован ✓" : "ожидает фиксации"}</span>
+      </div>
     </div>
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
-      <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span class="gas-sheet-date-label">${gasJournalMobileMode() ? dateHuman(mobileDate) : `Лист раздела А № ${sheetNoA}`}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span class="gas-sheet-date-label">${mobileMode ? dateHuman(mobileDate) : `Лист раздела А № ${sheetNoA}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-a-table">
@@ -11187,11 +11201,11 @@ function renderGasJournal() {
           </tbody>
         </table>
       </div>
-      ${gasSheetActionsHtml("A", completeA)}
+      ${gasSheetActionsHtml("A")}
     </div>
 
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-b ${datesB.includes(todayISO()) && !gasJournalRowCompleteB(todayISO()) ? "gas-missing-today" : ""}" data-print-section="B">
-      <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span class="gas-sheet-date-label">${gasJournalMobileMode() ? dateHuman(mobileDate) : `Лист раздела Б № ${sheetNoB}`}</span></div>
+      <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span class="gas-sheet-date-label">${mobileMode ? dateHuman(mobileDate) : `Лист раздела Б № ${sheetNoB}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
         <table class="aggregate-journal-table gas-journal-table gas-sheet-table gas-section-b-table">
@@ -11215,15 +11229,17 @@ function renderGasJournal() {
           </tbody>
         </table>
       </div>
-      ${gasSheetActionsHtml("B", completeB)}
+      ${gasSheetActionsHtml("B")}
     </div>
   `;
   ui.aggregateJournalList.querySelector("[data-gas-all-today]")?.addEventListener("click", () => {
     setGasJournalSheetToToday("A");
     setGasJournalSheetToToday("B");
   });
+  ui.aggregateJournalList.querySelector("[data-gas-day-prev]")?.addEventListener("click", () => shiftGasJournalMobileDate(-1));
+  ui.aggregateJournalList.querySelector("[data-gas-day-next]")?.addEventListener("click", () => shiftGasJournalMobileDate(1));
   ui.aggregateJournalList.querySelectorAll("[data-gas-section]").forEach(el => {
-    el.addEventListener("change", () => {
+    const commitGasValue = () => {
       const updated = updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
       if (!updated) {
         renderGasJournal();
@@ -11231,8 +11247,16 @@ function renderGasJournal() {
         return;
       }
       markGasJournalEntryDraftInView(el.dataset.gasSection, el.dataset.gasDate);
-      renderEquipment();
-    });
+    };
+    if (el.matches("input")) {
+      el.addEventListener("input", commitGasValue);
+      el.addEventListener("change", renderEquipment);
+    } else {
+      el.addEventListener("change", () => {
+        commitGasValue();
+        renderEquipment();
+      });
+    }
   });
   ui.aggregateJournalList.querySelectorAll("[data-gas-fix-entry]").forEach(button => {
     button.addEventListener("click", () => fixGasJournalEntry(
@@ -11272,14 +11296,6 @@ function renderGasJournal() {
     });
   }
   ui.aggregateJournalList.querySelectorAll("[data-gas-print]").forEach(btn => btn.addEventListener("click", () => printGasJournalSheet(btn.dataset.gasPrint)));
-  ui.aggregateJournalList.querySelectorAll("[data-gas-clear]").forEach(btn => btn.addEventListener("click", () => {
-    const section = btn.dataset.gasClear;
-    const sheetNo = gasJournalSheetIndex(section) + 1;
-    if (!confirm(`Удалить лист раздела ${section} №${sheetNo}?`)) return;
-    const reason = prompt("Укажите причину удаления листа:")?.trim();
-    if (!reason) return;
-    clearGasJournalSheet(section, reason);
-  }));
 }
 
 function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
@@ -11294,7 +11310,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     : compressorJournalRows(area, activeSheetIndex);
   const filled = compressorJournalFilledRows(area).length;
   ui.aggregateJournalTitle.textContent = `\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043d\u044b\u0439 \u0436\u0443\u0440\u043d\u0430\u043b: ${area}`;
-  ui.aggregateJournalMeta.textContent = `${filled} \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0445 \u0441\u0442\u0440\u043e\u043a. \u0416\u0443\u0440\u043d\u0430\u043b \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f \u0432\u0440\u0443\u0447\u043d\u0443\u044e; \u0437\u0430\u043c\u0435\u0447\u0430\u043d\u0438\u044f \u0441\u044e\u0434\u0430 \u043d\u0435 \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442.`;
+  ui.aggregateJournalMeta.textContent = `${filled} зафиксированных записей.`;
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions compressor-journal-actions">
       <div class="segmented">
@@ -11308,9 +11324,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       <button type="button" class="compressor-mobile-day-button" data-compressor-day-prev>‹ День</button>
       <button type="button" data-compressor-today>Сегодня</button>
       <button type="button" class="compressor-mobile-day-button" data-compressor-day-next>День ›</button>
-      <small>При печати система сама соберёт заполненные дни и пропустит пустые.</small>
       <small class="compressor-mobile-swipe-note">Свайп влево — следующий день, вправо — предыдущий.</small>
-      ${journalEntryLanguageNotice()}
     </div>
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
