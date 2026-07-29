@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=312-uzbek-user-translation/);
-  assert.match(html, /styles\.css\?v=312-uzbek-user-translation/);
-  assert.match(serviceWorker, /app\.js\?v=312-uzbek-user-translation/);
+  assert.match(html, /app\.js\?v=313-remove-maintenance-notice/);
+  assert.match(html, /styles\.css\?v=313-remove-maintenance-notice/);
+  assert.match(serviceWorker, /app\.js\?v=313-remove-maintenance-notice/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -871,7 +871,13 @@ test("admin garbage check is read-only and Back skips invalid history entries", 
   assert.match(app, /while \(nav\.length\)[\s\S]*?previous === current\.view \|\| !canOpenView\(previous\)/);
   assert.match(app, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
   assert.match(style, /\.storage-diagnostics-grid/);
-  assert.match(app, /Техническая проверка завершена/);
+});
+
+test("the technical maintenance update banner is not shown", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.doesNotMatch(app, /renderAdminMaintenanceNotice/);
+  assert.doesNotMatch(app, /Техническая проверка завершена/);
+  assert.doesNotMatch(app, /Убран паучий герой и паутина/);
 });
 
 test("admin repair replaces the old resolver, awards only the performer, and cannot run twice", async () => {
