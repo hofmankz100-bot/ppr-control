@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v314-refresh-translation-cache";
+const CACHE_NAME = "ppr-v315-translate-warning-hall";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=314-refresh-translation-cache",
+  "./styles.css?v=315-translate-warning-hall",
   "./modules/compressor.js?v=288-print-request-pages",
   "./modules/shgrp.js?v=288-print-request-pages",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=314-refresh-translation-cache",
-  "./assets/hofmann-forklift.png?v=v314-refresh-translation-cache",
+  "./app.js?v=315-translate-warning-hall",
+  "./assets/hofmann-forklift.png?v=v315-translate-warning-hall",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
