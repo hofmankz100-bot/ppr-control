@@ -21,7 +21,14 @@ test("press journal cards use distinct calm colors instead of the alert red", ()
 test("active downtimes are visible as actionable cards above the monthly chart", () => {
   assert.match(appSource, /id="downtimeActiveList"/);
   assert.match(appSource, /class="downtime-active-summary-card"/);
-  assert.match(appSource, /Открыть и завершить простой →/);
+  assert.match(appSource, /Завершить простой \/ Пуск/);
+  assert.match(appSource, /data-finish-active-downtime/);
+  assert.match(appSource, /function closeDowntimeWithConfirmation\(liveStop, button\)/);
+  assert.match(appSource, /function askDowntimeCloseDetails\(liveStop\)/);
+  assert.match(appSource, /data-downtime-close-comment/);
+  assert.match(appSource, /data-downtime-close-started/);
+  assert.match(appSource, /Сначала отметьтесь через QR в разделе «Кто на работе»/);
   assert.match(appSource, /data-open-active-downtime/);
   assert.match(stylesSource, /\.downtime-active-summary-card/);
+  assert.match(stylesSource, /\.downtime-close-dialog/);
 });

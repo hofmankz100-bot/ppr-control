@@ -5429,7 +5429,6 @@ body.editor-profile .warehouse-folders button.request-alert {
   font: inherit;
   font-weight: 700;
   text-align: left;
-  cursor: pointer;
   box-shadow: 0 5px 16px rgba(185, 28, 28, 0.14);
 }
 
@@ -5444,21 +5443,45 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: var(--muted);
 }
 
-.downtime-active-summary-card em {
+.downtime-active-summary-card .downtime-close-blocked,
+.downtime-active .downtime-close-blocked {
+  border-radius: 8px;
+  background: #fff7d6;
+  padding: 8px 10px;
+  color: #8a4b00;
+  font-weight: 900;
+}
+
+.downtime-active-summary-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   margin-top: 3px;
+}
+
+.downtime-active-summary-actions button {
+  min-height: 44px;
+  border: 0;
   border-radius: 8px;
   background: #b91c1c;
   padding: 10px 12px;
   color: #fff;
-  font-style: normal;
   font-weight: 900;
   text-align: center;
+  cursor: pointer;
 }
 
-.downtime-active-summary-card:hover,
-.downtime-active-summary-card:focus-visible {
-  border-color: #991b1b;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+.downtime-active-summary-actions button.secondary {
+  border: 1px solid #dc2626;
+  background: #fff;
+  color: #991b1b;
+}
+
+.downtime-active-summary-actions button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
 }
 
 .downtime-chart {
@@ -6096,6 +6119,7 @@ body.attendance-kiosk-active { overflow: hidden !important; }
 
 .downtime-type-dialog textarea {
   width: 100%;
+  box-sizing: border-box;
   min-height: 82px;
   resize: vertical;
   border: 1px solid #b8c8d1;
@@ -6104,6 +6128,27 @@ body.attendance-kiosk-active { overflow: hidden !important; }
   padding: 11px;
   color: var(--ink);
   font: inherit;
+}
+
+.downtime-close-dialog label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+}
+
+.downtime-close-dialog .downtime-close-confirm {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d8e3ec;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 11px;
+}
+
+.downtime-close-confirm input {
+  width: 22px;
+  height: 22px;
 }
 
 .downtime-type-error {
@@ -6125,6 +6170,31 @@ body.attendance-kiosk-active { overflow: hidden !important; }
 .downtime-type-dialog button:last-child {
   background: #e8eef4;
   color: var(--ink);
+}
+
+@media (max-width: 560px) {
+  .downtime-close-overlay {
+    align-items: end;
+    padding: 8px;
+  }
+
+  .downtime-close-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    border-radius: 12px 12px 8px 8px;
+    padding: 14px;
+  }
+
+  .downtime-close-dialog textarea {
+    min-height: 120px;
+    font-size: 16px;
+  }
+
+  .downtime-close-dialog button {
+    min-height: 48px;
+    font-size: 16px;
+  }
 }
 
 .send-kind-overlay {
@@ -9439,6 +9509,10 @@ textarea:disabled {
 
   .downtime-active-summary-head {
     display: grid;
+  }
+
+  .downtime-active-summary-actions {
+    grid-template-columns: 1fr;
   }
 
   .downtime-pie-legend {
