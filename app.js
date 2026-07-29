@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v320-fix-shgrp-entry";
+const APP_VERSION = "v321-lock-shgrp-entry";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10851,6 +10851,7 @@ function updateGasJournalRow(section, date, field, value) {
   state.gasJournal ||= {};
   const id = gasJournalKey(section, date);
   const old = state.gasJournal[id] || {};
+  if (gasJournalEntryIsFixed(section, { id, section, date, ...old })) return null;
   const now = new Date();
   const next = {
     ...old,
@@ -10905,7 +10906,7 @@ function gasJournalEntrySignatureHtml(section, date, row) {
   const fixedLabel = row.fixedAt ? `Зафиксировано ${dateTimeHuman(row.fixedAt)}` : "Запись зафиксирована";
   return `<div class="gas-entry-signature">
     <span data-gas-entry-signer="${section}:${date}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</span>
-    <button type="button" class="gas-entry-fix-button ${fixed ? "fixed" : ""}" data-gas-fix-entry="${section}" data-gas-fix-date="${date}">${fixed ? "Зафиксировать повторно" : "Зафиксировать запись"}</button>
+    <button type="button" class="gas-entry-fix-button ${fixed ? "fixed" : ""}" data-gas-fix-entry="${section}" data-gas-fix-date="${date}" ${fixed ? "disabled" : ""}>${fixed ? "Запись зафиксирована ✓" : "Зафиксировать запись"}</button>
     <small class="gas-entry-status ${fixed ? "fixed" : "draft"}" data-gas-entry-status="${section}:${date}">${fixed ? escapeHtml(fixedLabel) : "После заполнения нажмите кнопку"}</small>
   </div>`;
 }
@@ -10928,6 +10929,10 @@ function markGasJournalEntryDraftInView(section, date) {
 
 async function fixGasJournalEntry(section, date, button) {
   const row = gasJournalRecord(section, date);
+  if (gasJournalEntryIsFixed(section, row)) {
+    showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
+    return;
+  }
   const missing = (GAS_JOURNAL_REQUIRED_FIELDS[section] || [])
     .filter(([field]) => !String(row[field] || "").trim())
     .map(([, label]) => label);
@@ -11011,14 +11016,16 @@ function printGasJournalSheet(section) {
 }
 
 function gasSelectHtml(section, date, field, value, options) {
-  return `<select data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}">
+  const locked = gasJournalEntryIsFixed(section, gasJournalRecord(section, date));
+  return `<select data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" ${locked ? "disabled" : ""}>
     <option value=""></option>
     ${options.map(option => `<option value="${escapeHtml(option)}" ${String(value || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
   </select>`;
 }
 
 function gasInputHtml(section, date, field, value) {
-  return `<input data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" type="text" value="${escapeHtml(value || "")}">`;
+  const locked = gasJournalEntryIsFixed(section, gasJournalRecord(section, date));
+  return `<input data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" type="text" value="${escapeHtml(value || "")}" ${locked ? "disabled" : ""}>`;
 }
 
 function gasSheetActionsHtml(section, complete) {
@@ -11116,7 +11123,12 @@ function renderGasJournal() {
   });
   ui.aggregateJournalList.querySelectorAll("[data-gas-section]").forEach(el => {
     el.addEventListener("change", () => {
-      updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
+      const updated = updateGasJournalRow(el.dataset.gasSection, el.dataset.gasDate, el.dataset.gasField, el.value);
+      if (!updated) {
+        renderGasJournal();
+        showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
+        return;
+      }
       markGasJournalEntryDraftInView(el.dataset.gasSection, el.dataset.gasDate);
       renderEquipment();
     });

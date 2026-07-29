@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=320-fix-shgrp-entry/);
-  assert.match(html, /styles\.css\?v=320-fix-shgrp-entry/);
-  assert.match(serviceWorker, /app\.js\?v=320-fix-shgrp-entry/);
+  assert.match(html, /app\.js\?v=321-lock-shgrp-entry/);
+  assert.match(html, /styles\.css\?v=321-lock-shgrp-entry/);
+  assert.match(serviceWorker, /app\.js\?v=321-lock-shgrp-entry/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -850,7 +850,11 @@ test("SHGRP entries require an explicit fixation after editing", () => {
   assert.match(appSource, /Запись ШГРП зафиксирована и сохранена/);
   assert.match(appSource, /entryStatus: "draft"/);
   assert.match(appSource, /entryStatus: "fixed"/);
+  assert.match(appSource, /Запись уже зафиксирована и недоступна для редактирования/);
+  assert.match(appSource, /data-gas-fix-date="\$\{date\}" \$\{fixed \? "disabled" : ""\}/);
+  assert.match(appSource, /const locked = gasJournalEntryIsFixed\(section, gasJournalRecord\(section, date\)\)/);
   assert.match(styleSource, /\.gas-entry-fix-button/);
+  assert.match(styleSource, /\.gas-journal-table input:disabled/);
 });
 
 test("only the primary admin also receives the engineer workflow", () => {

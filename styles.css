@@ -11479,6 +11479,16 @@ body.editor-profile #createTmcRequestButton.request-alert,
   min-width: 0;
 }
 
+.gas-journal-table input:disabled,
+.gas-journal-table select:disabled {
+  border-color: #a7c8b9;
+  background: #ecfdf5;
+  color: #14532d;
+  -webkit-text-fill-color: #14532d;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
 .gas-entry-signature > span {
   font-weight: 800;
   overflow-wrap: anywhere;
