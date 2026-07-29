@@ -652,9 +652,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=323-compressor-date-fixation/);
-  assert.match(html, /styles\.css\?v=323-compressor-date-fixation/);
-  assert.match(serviceWorker, /app\.js\?v=323-compressor-date-fixation/);
+  assert.match(html, /app\.js\?v=324-calm-mobile-journals/);
+  assert.match(html, /styles\.css\?v=324-calm-mobile-journals/);
+  assert.match(serviceWorker, /app\.js\?v=324-calm-mobile-journals/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -883,6 +883,8 @@ test("one compressor button fixes and locks all three rows for a date", () => {
   assert.doesNotMatch(appSource, /data-compressor-fix-entry=/);
   assert.match(appSource, /const sheetRows = mobileMode[\s\S]*?compressorJournalDateRows\(area, mobileDate\)/);
   assert.match(appSource, /shiftCompressorJournalMobileDate\(deltaX < 0 \? 1 : -1\)/);
+  assert.match(appSource, /function compressorJournalAddDays\(dateISO, days\) \{[\s\S]*?setUTCDate\(date\.getUTCDate\(\) \+ days\)/);
+  assert.match(appSource, /function addDaysISO\(dateISO, days\) \{[\s\S]*?setUTCDate\(date\.getUTCDate\(\) \+ days\)/);
   assert.match(appSource, /data-mobile-label="Давление воздуха"/);
   assert.match(appSource, /const locked = compressorJournalRowComplete\(row\)/);
   assert.match(appSource, /data-compressor-field="airPressure"[\s\S]*?\$\{locked \? "disabled" : ""\}/);
@@ -891,6 +893,10 @@ test("one compressor button fixes and locks all three rows for a date", () => {
   assert.match(styleSource, /\.compressor-mobile-date-panel/);
   assert.match(styleSource, /\.compressor-journal-table tbody tr \{[\s\S]*?border-radius: 11px/);
   assert.match(styleSource, /\.compressor-journal-table input,[\s\S]*?font-size: 16px !important/);
+  assert.match(appSource, /aria-label="\$\{escapeHtml\(row\.compressor\)\} — утечки и заземление"/);
+  assert.match(appSource, /input\.addEventListener\("change", \(\) => \{\s*renderEquipment\(\);/);
+  assert.match(styleSource, /\.equipment-journal-cell \.compressor-journal-alert \{[\s\S]*?animation: none !important/);
+  assert.match(styleSource, /\.compressor-journal-alert \{ animation: none !important/);
 });
 
 test("only the primary admin also receives the engineer workflow", () => {

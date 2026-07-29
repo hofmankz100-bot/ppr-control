@@ -4076,10 +4076,11 @@ body.editor-profile .warehouse-folders button.request-alert {
 .compressor-journal-table th:nth-child(9) { width: 150px; }
 
 .equipment-journal-cell .compressor-journal-alert {
-  animation: compressorJournalBlink 1s infinite;
-  background: #dc2626;
-  border-color: #991b1b;
-  color: #fff;
+  animation: none !important;
+  background: #fff7d6;
+  border-color: #d97706;
+  color: #6b3f00;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .2);
 }
 
 @keyframes compressorJournalBlink {
@@ -10229,7 +10230,7 @@ textarea:disabled {
 .gas-journal-table td { font-size: 12px; }
 .gas-route-cell { min-width: 140px; white-space: normal; line-height: 1.35; }
 .gas-missing-today { outline: 2px solid #f59e0b; outline-offset: -2px; }
-.compressor-journal-alert { animation: gasJournalBlink 1s infinite; box-shadow: 0 0 0 3px rgba(245,158,11,.25); }
+.compressor-journal-alert { animation: none !important; box-shadow: 0 0 0 3px rgba(245,158,11,.25); }
 @keyframes gasJournalBlink { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.28); } }
 @media print {
   .topbar, .profile-bar, .toolbar, .quick-nav, .aggregate-print-actions, .gas-journal-actions { display: none !important; }
