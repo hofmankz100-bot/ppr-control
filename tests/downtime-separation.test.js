@@ -28,7 +28,11 @@ test("active downtimes are visible as actionable cards above the monthly chart",
   assert.match(appSource, /data-downtime-close-comment/);
   assert.match(appSource, /data-downtime-close-started/);
   assert.match(appSource, /Сначала отметьтесь через QR в разделе «Кто на работе»/);
+  assert.match(appSource, /Сначала отсканируйте QR/);
+  assert.match(appSource, /function showDowntimeCloseBlockedDialog\(message\)/);
+  assert.match(appSource, /Вы не отметились на смене/);
   assert.match(appSource, /data-open-active-downtime/);
   assert.match(stylesSource, /\.downtime-active-summary-card/);
   assert.match(stylesSource, /\.downtime-close-dialog/);
+  assert.match(stylesSource, /\.downtime-access-dialog ol/);
 });

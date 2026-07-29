@@ -5477,6 +5477,14 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: #991b1b;
 }
 
+.downtime-active-summary-actions button.blocked,
+.downtime-active button.blocked {
+  border: 2px solid #d97706;
+  background: #fbbf24;
+  color: #4a2a00;
+  cursor: pointer;
+}
+
 .downtime-active-summary-actions button:disabled {
   border-color: #cbd5e1;
   background: #e2e8f0;
@@ -6149,6 +6157,17 @@ body.attendance-kiosk-active { overflow: hidden !important; }
 .downtime-close-confirm input {
   width: 22px;
   height: 22px;
+}
+
+.downtime-access-dialog ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 10px 10px 32px;
+  border-radius: 8px;
+  background: #fff7d6;
+  color: #6b3f00;
+  font-weight: 800;
 }
 
 .downtime-type-error {
