@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v323-compressor-date-fixation";
+const APP_VERSION = "v324-calm-mobile-journals";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -10492,7 +10492,7 @@ function compressorJournalSheetIndex() {
 
 function compressorJournalAddDays(dateISO, days) {
   const date = new Date(dateISO);
-  date.setDate(date.getDate() + days);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
@@ -10849,7 +10849,7 @@ function gasJournalDaysPerSheet(section) {
 
 function addDaysISO(dateISO, days) {
   const date = new Date(dateISO);
-  date.setDate(date.getDate() + days);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
@@ -11347,7 +11347,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
                 <td data-mobile-label="Температура воздуха"><input aria-label="${escapeHtml(row.compressor)} — температура воздуха" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
                 <td data-mobile-label="Давление / температура масла"><input aria-label="${escapeHtml(row.compressor)} — давление и температура масла" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}" ${locked ? "disabled" : ""}></td>
                 <td data-mobile-label="Утечки и заземление">
-                  <select data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding" ${locked ? "disabled" : ""}>
+                  <select aria-label="${escapeHtml(row.compressor)} — утечки и заземление" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding" ${locked ? "disabled" : ""}>
                     <option value=""></option>
                     <option value="\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ${row.leakGrounding === "\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ? "selected" : ""}>\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e</option>
                     <option value="\u043d\u0435\u0442" ${row.leakGrounding === "\u043d\u0435\u0442" ? "selected" : ""}>\u043d\u0435\u0442</option>
@@ -11402,8 +11402,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
       refreshCompressorSheetControls();
     };
     input.addEventListener("input", commitCompressorValue);
-    input.addEventListener("change", event => {
-      commitCompressorValue(event);
+    input.addEventListener("change", () => {
       renderEquipment();
     });
   });
