@@ -13901,6 +13901,10 @@ function gpmAssignmentOptions(selected = "", allowEmpty = true) {
   ).join("")}`;
 }
 
+function gpmAssignmentDisplayName(value = "") {
+  return gpmUserName(value) || String(value || "").trim();
+}
+
 function gpmManagerForm() {
   const selected = gpmManagerKeys();
   return `
@@ -13950,9 +13954,9 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Регистрационный номер</span><input name="registrationNumber" value="${escapeHtml(item.registrationNumber || "")}"></label>
         <label><span>Грузоподъёмность</span><input name="capacity" value="${escapeHtml(item.capacity || "")}" placeholder="5 т"></label>
         <label><span>Год изготовления</span><input name="manufactureYear" inputmode="numeric" value="${escapeHtml(item.manufactureYear || "")}"></label>
-        <label><span>Ответственный за эксплуатацию</span><select name="operationResponsibleKey">${gpmAssignmentOptions(item.operationResponsibleKey)}</select></label>
-        <label><span>Ответственный за исправное состояние</span><select name="conditionResponsibleKey">${gpmAssignmentOptions(item.conditionResponsibleKey)}</select></label>
-        <label><span>Исполнитель ежесменного осмотра</span><select name="inspectorKey">${gpmAssignmentOptions(item.inspectorKey)}</select></label>
+        <label><span>Ответственный за эксплуатацию</span><input name="operationResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
+        <label><span>Ответственный за исправное состояние</span><input name="conditionResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
+        <label><span>Исполнитель ежесменного осмотра</span><input name="inspectorKey" value="${escapeHtml(gpmAssignmentDisplayName(item.inspectorKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>Инженеры с доступом</span><select name="engineerKeys" multiple size="4">${gpmUsers().map(user =>
           `<option value="${escapeHtml(gpmUserKey(user))}" ${selectedEngineers.has(gpmUserKey(user)) ? "selected" : ""}>${escapeHtml(user.name || "")}</option>`
         ).join("")}</select></label>
@@ -14023,9 +14027,9 @@ function gpmDetailHtml(item) {
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
       <div class="gpm-responsibles">
-        <div><span>Эксплуатация</span><strong>${escapeHtml(gpmUserName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
-        <div><span>Исправное состояние</span><strong>${escapeHtml(gpmUserName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>
-        <div><span>Ежесменный осмотр</span><strong>${escapeHtml(gpmUserName(item.inspectorKey) || "Не назначен")}</strong></div>
+        <div><span>Эксплуатация</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
+        <div><span>Исправное состояние</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>
+        <div><span>Ежесменный осмотр</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.inspectorKey) || "Не назначен")}</strong></div>
       </div>
       <div class="gpm-dates">
         <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
@@ -14096,9 +14100,9 @@ function saveGpmEquipmentForm(form) {
     capacity: String(data.get("capacity") || "").trim(),
     manufactureYear: String(data.get("manufactureYear") || "").trim(),
     sourceEquipmentId,
-    operationResponsibleKey: String(data.get("operationResponsibleKey") || ""),
-    conditionResponsibleKey: String(data.get("conditionResponsibleKey") || ""),
-    inspectorKey: String(data.get("inspectorKey") || ""),
+    operationResponsibleKey: String(data.get("operationResponsibleKey") || "").trim(),
+    conditionResponsibleKey: String(data.get("conditionResponsibleKey") || "").trim(),
+    inspectorKey: String(data.get("inspectorKey") || "").trim(),
     engineerKeys: Array.from(engineerSelect?.selectedOptions || []).map(option => option.value),
     nextPartialDate: String(data.get("nextPartialDate") || ""),
     nextFullDate: String(data.get("nextFullDate") || ""),

@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v327-ppr-autofill-refresh";
+const CACHE_NAME = "ppr-v328-gpm-manual-entry";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=327-ppr-autofill-refresh",
+  "./styles.css?v=328-gpm-manual-entry",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=327-ppr-autofill-refresh",
+  "./app.js?v=328-gpm-manual-entry",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
