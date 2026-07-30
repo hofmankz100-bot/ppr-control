@@ -8284,7 +8284,10 @@ function downtimePieChart(stats) {
         <i style="background:${colors[index % colors.length]}"></i>
         <span>${escapeHtml(item.area)}</span>
         <strong>${percent}% · ${durationText(item.totalMs)}${activeOverLimit ? " · лимит превышен, простой активен" : overLimit ? " · лимит превышен, простои закрыты" : ""}</strong>
-        <small class="downtime-legend-counts">${breakdownText} · ${productionText}</small>
+        <small class="downtime-legend-counts">
+          <span>${breakdownText} · ${durationText(item.breakdownMs)}</span>
+          <span>${productionText} · ${durationText(item.productionMs)}</span>
+        </small>
       </button>
     `;
   }).join("");

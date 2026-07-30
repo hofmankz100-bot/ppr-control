@@ -6279,6 +6279,12 @@ body.attendance-kiosk-active { overflow: hidden !important; }
   font-size: 12px;
   line-height: 1.35;
   font-weight: 800;
+  display: grid;
+  gap: 2px;
+}
+
+.downtime-legend-counts span {
+  display: block;
 }
 
 .downtime-legend-item.active {
