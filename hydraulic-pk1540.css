@@ -115,11 +115,37 @@ button { font: inherit; }
 .mode-button small { display: block; }
 .mode-button small { margin-top: 3px; color: var(--muted); }
 
+.signal-label {
+  display: inline-flex;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #e8f7f1;
+  padding: 4px 8px;
+  color: #087052;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .mode-button:hover,
 .mode-button.active {
   border-color: var(--active);
   background: #ecfdf5;
   box-shadow: 0 0 0 2px rgba(15, 159, 114, .12);
+}
+
+.mode-button.active .signal-label {
+  background: #fff0c2;
+  color: #8a4b00;
+}
+
+.signal-state {
+  margin: 8px 0;
+  border: 1px solid #f2bf48;
+  border-radius: 8px;
+  background: #fff6d9;
+  padding: 8px 10px;
+  color: #7b4500;
+  font-weight: 900;
 }
 
 .detail-card,
@@ -237,6 +263,55 @@ button { font: inherit; }
 
 .pressure-flow path { stroke: var(--pressure); }
 .return-flow path { stroke: var(--return); animation-direction: reverse; }
+
+.actuator-animation {
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
+}
+
+.cylinder-body {
+  fill: rgba(255,255,255,.94);
+  stroke: #d97706;
+  stroke-width: 7;
+}
+
+.animated-rod {
+  stroke: #ef4444;
+  stroke-width: 12;
+  stroke-linecap: round;
+  animation: cylinder-forward 1.15s ease-in-out infinite alternate;
+}
+
+.animated-rod.reverse { animation-name: cylinder-backward; }
+
+.motion-arrow {
+  fill: none;
+  stroke: #ef4444;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: arrow-forward 1.15s ease-in-out infinite alternate;
+}
+
+.motion-arrow.reverse {
+  scale: -1 1;
+  transform-origin: 0 0;
+  animation-name: arrow-backward;
+}
+
+.actuator-label {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 8;
+  fill: #7c2d12;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+@keyframes cylinder-forward { to { transform: translateX(48px); } }
+@keyframes cylinder-backward { to { transform: translateX(-48px); } }
+@keyframes arrow-forward { to { transform: translateX(48px); } }
+@keyframes arrow-backward { to { transform: translateX(48px) scaleX(-1); } }
 
 @keyframes oil-flow { to { stroke-dashoffset: -31; } }
 
