@@ -1414,3 +1414,14 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
   });
   assert.equal(removedEndpoint.status, 410);
 });
+
+test("downtime chart legend shows monthly breakdown and production stop counters", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /const productionCount = items\.filter\(item => item\.type === "production"\)\.length/);
+  assert.match(appSource, /const breakdownCount = items\.filter\(item => item\.type !== "production" && item\.type !== "remark"\)\.length/);
+  assert.match(appSource, /"поломка", "поломки", "поломок"/);
+  assert.match(appSource, /"производственная остановка"/);
+  assert.match(appSource, /class="downtime-legend-counts"/);
+  assert.match(styles, /\.downtime-legend-counts/);
+});

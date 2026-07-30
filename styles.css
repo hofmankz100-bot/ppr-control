@@ -6257,16 +6257,28 @@ body.attendance-kiosk-active { overflow: hidden !important; }
 }
 
 .downtime-legend-item span,
-.downtime-legend-item strong {
+.downtime-legend-item strong,
+.downtime-legend-counts {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.downtime-legend-item strong {
+.downtime-legend-item strong,
+.downtime-legend-counts {
   grid-column: 2;
+}
+
+.downtime-legend-item strong {
   font-size: 13px;
   line-height: 1.35;
   white-space: normal;
+}
+
+.downtime-legend-counts {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 800;
 }
 
 .downtime-legend-item.active {
