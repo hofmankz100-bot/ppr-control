@@ -444,6 +444,7 @@ async function initializeStorage() {
     const db = readDbFile();
     migrateLegacyDirectorApprovals(db);
     removeObsoletePressNoMaterialNodes(db);
+    reconcilePendingRemarkDowntimes(db);
     writeDbFile(db);
     storageStatus = { mode: "json" };
     return storageStatus;
@@ -488,6 +489,7 @@ async function initializeStorage() {
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
+      reconcilePendingRemarkDowntimes(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -502,6 +504,7 @@ async function initializeStorage() {
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
+      reconcilePendingRemarkDowntimes(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -1417,7 +1420,8 @@ const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
-  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason"
+  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds"
 ];
 
 function ensureRemarkEntriesServer(item = {}) {
@@ -1526,6 +1530,114 @@ function remarkEquipmentAreaServer(db, recordKey, requestedArea = "") {
     || requestedArea
     || ""
   ).trim().slice(0, 200);
+}
+
+function remarkEquipmentNodeServer(recordKey = "") {
+  const [equipmentIdRaw, nodeIndexRaw] = String(recordKey || "").split(":");
+  const equipmentId = Number(equipmentIdRaw);
+  const nodeIndex = Number(nodeIndexRaw);
+  return {
+    equipmentId: Number.isFinite(equipmentId) ? equipmentId : -1,
+    nodeIndex: Number.isFinite(nodeIndex) ? nodeIndex : -1
+  };
+}
+
+function closeRemarkDowntimesServer(db, recordKey, remark, actor, text, now) {
+  const { equipmentId, nodeIndex } = remarkEquipmentNodeServer(recordKey);
+  const closed = (db.downtimes || []).filter(item =>
+    item && !item.deleted && !item.endedAt
+    && Number(item.equipmentId) === equipmentId
+    && Number(item.nodeIndex) === nodeIndex
+  );
+  closed.forEach(item => {
+    item.endedAt = now;
+    item.updatedAt = now;
+    item.closeComment = text;
+    item.closedByName = actor.name;
+    item.closedByRole = actor.role;
+    item.closedByKey = actor.key;
+    item.closedParticipants = [actor];
+    item.closedByRemarkId = String(remark.id || "");
+    item.closeAwaitingConfirmation = true;
+  });
+  remark.resolutionDowntimeIds = closed.map(item => item.id);
+  remark.resolutionReturnedDowntimeIds = [];
+  return closed;
+}
+
+function reopenRemarkDowntimesServer(db, recordKey, remark, actor, reason, now) {
+  const { equipmentId, nodeIndex } = remarkEquipmentNodeServer(recordKey);
+  const alreadyActive = (db.downtimes || []).some(item =>
+    item && !item.deleted && !item.endedAt
+    && Number(item.equipmentId) === equipmentId
+    && Number(item.nodeIndex) === nodeIndex
+  );
+  if (alreadyActive) return [];
+  const sourceIds = new Set(Array.isArray(remark.resolutionDowntimeIds) ? remark.resolutionDowntimeIds : []);
+  const reopened = (db.downtimes || [])
+    .filter(item => item && sourceIds.has(item.id))
+    .map(item => ({
+      ...item,
+      id: `downtime:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
+      startedAt: now,
+      endedAt: "",
+      updatedAt: now,
+      closeComment: "",
+      closedByName: "",
+      closedByRole: "",
+      closedByKey: "",
+      closedParticipants: [],
+      closedByRemarkId: "",
+      closeAwaitingConfirmation: false,
+      continuedFromDowntimeId: item.id,
+      reopenedByRemarkId: String(remark.id || ""),
+      reopenedByName: actor.name,
+      reopenReason: reason
+    }));
+  db.downtimes ||= [];
+  db.downtimes.unshift(...reopened);
+  remark.resolutionReturnedDowntimeIds = reopened.map(item => item.id);
+  return reopened;
+}
+
+function reconcilePendingRemarkDowntimes(db) {
+  let changed = false;
+  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+    ensureRemarkEntriesServer(record?.to || {}).forEach(remark => {
+      if (!remark?.resolutionPendingConfirmation || remark.resolved || !remark.resolutionSubmittedAt) return;
+      const submittedAt = String(remark.resolutionSubmittedAt);
+      const submittedMs = Date.parse(submittedAt);
+      if (!Number.isFinite(submittedMs)) return;
+      const { equipmentId, nodeIndex } = remarkEquipmentNodeServer(recordKey);
+      const actor = {
+        key: String(remark.resolutionSubmittedByKey || ""),
+        name: String(remark.resolutionSubmittedByName || "Исполнитель"),
+        role: String(remark.resolutionSubmittedByRole || "")
+      };
+      const stops = (db.downtimes || []).filter(item =>
+        item && !item.deleted && !item.endedAt
+        && Number(item.equipmentId) === equipmentId
+        && Number(item.nodeIndex) === nodeIndex
+        && Date.parse(item.startedAt || "") <= submittedMs
+      );
+      if (!stops.length) return;
+      stops.forEach(item => {
+        item.endedAt = submittedAt;
+        item.updatedAt = submittedAt;
+        item.closeComment = String(remark.resolutionSubmittedComment || "Устранение отправлено на подтверждение");
+        item.closedByName = actor.name;
+        item.closedByRole = actor.role;
+        item.closedByKey = actor.key;
+        item.closedParticipants = actor.key ? [actor] : [];
+        item.closedByRemarkId = String(remark.id || "");
+        item.closeAwaitingConfirmation = true;
+      });
+      remark.resolutionDowntimeIds = stops.map(item => item.id);
+      remark.resolutionReturnedDowntimeIds = [];
+      changed = true;
+    });
+  });
+  return changed;
 }
 
 function latestRemarkSubmissionAtServer(remark = {}) {
@@ -4969,6 +5081,7 @@ async function handleApi(req, res, pathname, url) {
           at: now
         });
         remark.resolutionCompletedParticipants = participants;
+        closeRemarkDowntimesServer(db, recordKey, remark, actor, text, now);
         notifyParticipants = confirmationRule.users;
         pushTitle = "Устранение ждёт подтверждения";
         pushBody = `${actor.name}: ${text.slice(0, 120)}`;
@@ -5179,6 +5292,9 @@ async function handleApi(req, res, pathname, url) {
         remark.resolvedComment = remark.resolutionSubmittedComment || "";
         remark.resolvedPhoto = remark.resolutionSubmittedPhoto || "";
         remark.resolutionPendingConfirmation = false;
+        (db.downtimes || [])
+          .filter(item => (remark.resolutionDowntimeIds || []).includes(item?.id))
+          .forEach(item => { item.closeAwaitingConfirmation = false; });
         remark.confirmedAt = now;
         remark.confirmedByKey = actor.key;
         remark.confirmedByName = actor.name;
@@ -5217,6 +5333,7 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionReturnedByName = actor.name;
         remark.resolutionReturnedByRole = actor.role;
         remark.resolutionReturnReason = reason;
+        reopenRemarkDowntimesServer(db, recordKey, remark, actor, reason, now);
         const submittedUser = (db.users || []).find(user => resolutionUserKeyServer(user) === remark.resolutionSubmittedByKey);
         const noticeRecipients = submittedUser ? [sanitizeResolutionParticipant(submittedUser)] : [];
         remark.resolutionEvents.push({
@@ -5244,7 +5361,12 @@ async function handleApi(req, res, pathname, url) {
       const changed = before !== JSON.stringify(record);
       const actionId = String(body.actionId || "");
       if (changed) writeDb(db, { action: `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey });
-      const patch = { checks: { [recordKey]: record } };
+      const patch = {
+        checks: { [recordKey]: record },
+        ...(action === "resolve" || action === "confirm" || action === "return"
+          ? { downtimes: db.downtimes || [] }
+          : {})
+      };
       return {
         actionId,
         changed,

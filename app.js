@@ -5830,7 +5830,8 @@ const REMARK_COLLABORATION_FIELDS = [
   "resolutionSubmittedPhoto", "confirmationRequiredKey", "confirmationRequiredName",
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
-  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason"
+  "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds"
 ];
 
 function ensureRemarkEntries(item = {}) {
