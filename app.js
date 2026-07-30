@@ -12754,11 +12754,30 @@ function pprSheetAutofillRows(date, scheduledItems = []) {
   return generated;
 }
 
+function pprAutofillEngineer() {
+  const engineer = loadUsers().find(user =>
+    String(user?.name || "").toLocaleLowerCase("ru-RU").includes("ербол")
+    && permissionBaseRole(user?.role) === "engineer"
+  );
+  return {
+    name: engineer?.name || "Ербол",
+    role: "engineer"
+  };
+}
+
 function ensurePprSheetAutofill(date, scheduledItems = [], force = false) {
   if (!scheduledItems.length) return pprSheetRecord(date);
   const sheet = pprSheetRecord(date, true);
   const hasManualOrSavedWork = (sheet.rows || []).some(row => String(row?.work || "").trim());
   if (!force && (sheet.autofillInitialized || hasManualOrSavedWork)) {
+    if (sheet.autofillMode === "template" && !sheet.plannedAutomatically) {
+      const autofillEngineer = pprAutofillEngineer();
+      sheet.plannedByName = autofillEngineer.name;
+      sheet.plannedByRole = autofillEngineer.role;
+      sheet.plannedAt ||= sheet.autofilledAt || new Date().toISOString();
+      sheet.plannedAutomatically = true;
+      touchPprSheet(sheet);
+    }
     if (!sheet.autofillInitialized && hasManualOrSavedWork) {
       sheet.autofillInitialized = true;
       sheet.autofillMode = "existing";
@@ -12774,6 +12793,11 @@ function ensurePprSheetAutofill(date, scheduledItems = [], force = false) {
   sheet.autofillInitialized = true;
   sheet.autofillMode = "template";
   sheet.autofilledAt = new Date().toISOString();
+  const autofillEngineer = pprAutofillEngineer();
+  sheet.plannedByName = autofillEngineer.name;
+  sheet.plannedByRole = autofillEngineer.role;
+  sheet.plannedAt = sheet.autofilledAt;
+  sheet.plannedAutomatically = true;
   sheet.autofilledFor = scheduledItems.map(item => ({
     equipmentId: item?.equipmentId || "",
     equipment: item?.equipment || "",
@@ -12911,7 +12935,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
           <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
           <span>${escapeHtml(statusText)}</span>
         </div>
-        ${sheet.plannedByName || sheet.updatedByName ? `<small>План составил: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
+        ${sheet.plannedByName || sheet.updatedByName ? `<small>${sheet.plannedAutomatically ? "Автовыбор" : "План составил"}: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)} · ${escapeHtml(requestRoleLabel(sheet.plannedByRole) || sheet.plannedByRole || "")}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
         ${canPlan ? `<button type="button" class="secondary no-print" data-autofill-ppr-sheet="${date}">Автозаполнить перечень работ</button>` : ""}
