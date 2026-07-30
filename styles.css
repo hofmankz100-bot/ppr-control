@@ -12386,3 +12386,779 @@ body.editor-profile #createTmcRequestButton.request-alert,
 .node-reminder-autofill small {
   color: var(--muted);
 }
+
+/* Bilingual high-risk work permit. */
+.quick-nav button.work-permit-home-button {
+  border-color: #e1a229;
+  background: linear-gradient(135deg, #fff8df, #fffdf5);
+  color: #6d4700;
+}
+
+.quick-nav button.work-permit-home-button strong {
+  background: #f2b83f;
+  color: #392600;
+}
+
+.work-permit-screen {
+  color: #132f3f;
+}
+
+.work-permit-toolbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: 14px 20px;
+  align-items: center;
+  width: min(920px, 100%);
+  margin: 0 auto 14px;
+  padding: 16px 18px;
+  border: 1px solid #c9d8e1;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f9fcfd, #edf5f8);
+  box-shadow: 0 10px 28px rgba(19, 55, 75, .1);
+}
+
+.work-permit-intro h1 {
+  margin: 0;
+  color: #123a50;
+  font-size: 24px;
+}
+
+.work-permit-intro p {
+  margin: 4px 0 7px;
+  color: #607884;
+}
+
+.work-permit-intro small {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: #337050;
+  font-weight: 700;
+}
+
+.work-permit-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.work-permit-language-control {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  color: #425f6e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.work-permit-language-control small {
+  max-width: 230px;
+  color: #637b87;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.work-permit-language-control select,
+.work-permit-toolbar button {
+  min-height: 44px;
+  border: 1px solid #b8cad5;
+  border-radius: 11px;
+  background: #fff;
+  color: #173c50;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 800;
+}
+
+.work-permit-toolbar button {
+  align-self: end;
+  cursor: pointer;
+}
+
+.work-permit-toolbar .work-permit-print-button {
+  border-color: #146b8b;
+  background: #146b8b;
+  color: #fff;
+}
+
+.work-permit-toolbar .work-permit-clear-button {
+  color: #8b3030;
+}
+
+.work-permit-save-status {
+  position: absolute;
+  right: 18px;
+  bottom: -24px;
+  z-index: 2;
+  border-radius: 999px;
+  background: #dff5e7;
+  color: #17653b;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+}
+
+.work-permit-save-status.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.work-permit-form {
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+
+.work-permit-paper {
+  overflow: hidden;
+  border: 1px solid #b9c8d1;
+  border-radius: 14px;
+  background: #fff;
+  color: #172d39;
+  box-shadow: 0 18px 42px rgba(17, 49, 67, .12);
+}
+
+.work-permit-document-head {
+  padding: 18px 20px;
+  border-bottom: 2px solid #244b60;
+  background: #f7fafb;
+}
+
+.work-permit-company,
+.work-permit-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.work-permit-company {
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #cfdae0;
+  color: #2d5366;
+  font-size: 13px;
+}
+
+.work-permit-document-code {
+  border: 1px solid #9eb4c0;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 8px;
+  font-weight: 900;
+  letter-spacing: .05em;
+}
+
+.work-permit-title-row {
+  align-items: end;
+  padding-top: 14px;
+}
+
+.work-permit-title-row h1 {
+  margin: 0;
+  color: #102f42;
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.work-permit-title-row p {
+  margin: 5px 0 0;
+  color: #526d7b;
+  font-size: 14px;
+}
+
+.work-permit-head-fields {
+  display: grid;
+  grid-template-columns: minmax(155px, 1fr) minmax(155px, 1fr);
+  gap: 10px;
+  width: min(390px, 100%);
+}
+
+.work-permit-section {
+  padding: 16px 20px 18px;
+  border-bottom: 1px solid #cdd8de;
+}
+
+.work-permit-section > h2,
+.work-permit-reminder h2 {
+  margin: 0 0 12px;
+  color: #173f54;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.work-permit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.work-permit-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.work-permit-grid-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.work-permit-field {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  color: #405d6b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.work-permit-field-wide {
+  grid-column: 1 / -1;
+}
+
+.work-permit-form input,
+.work-permit-form select,
+.work-permit-form textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #aebfc9;
+  border-radius: 8px;
+  background: #fff;
+  color: #102f40;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: inset 0 1px 2px rgba(21, 50, 66, .04);
+}
+
+.work-permit-form textarea {
+  min-height: 58px;
+  resize: vertical;
+  overflow: hidden;
+}
+
+.work-permit-form input:focus,
+.work-permit-form select:focus,
+.work-permit-form textarea:focus {
+  border-color: #1682aa;
+  outline: 3px solid rgba(22, 130, 170, .13);
+}
+
+.work-permit-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #9fb3bf;
+  border-radius: 8px;
+}
+
+.work-permit-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.work-permit-table th,
+.work-permit-table td {
+  border: 1px solid #a9bac4;
+  padding: 5px;
+  vertical-align: top;
+}
+
+.work-permit-table th {
+  background: #eaf1f4;
+  color: #284d60;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.work-permit-table th[scope="row"] {
+  width: 34px;
+  vertical-align: middle;
+}
+
+.work-permit-table input,
+.work-permit-table select,
+.work-permit-table textarea {
+  min-height: 38px;
+  border-color: #c2ced5;
+  border-radius: 5px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.work-permit-team-table {
+  min-width: 780px;
+}
+
+.work-permit-break-table {
+  min-width: 1120px;
+}
+
+.work-permit-reminder {
+  padding: 20px;
+  background: #fff9e8;
+  color: #3f3a2a;
+}
+
+.work-permit-reminder[hidden],
+.work-permit-reminder-show[hidden] {
+  display: none !important;
+}
+
+.work-permit-reminder header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.work-permit-reminder h2 {
+  margin: 0;
+  color: #654a0a;
+}
+
+.work-permit-reminder header button,
+.work-permit-reminder-show {
+  min-height: 40px;
+  border: 1px solid #d8b962;
+  border-radius: 9px;
+  background: #fff;
+  color: #664c0d;
+  padding: 8px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.work-permit-reminder ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.work-permit-reminder-show {
+  width: calc(100% - 40px);
+  margin: 16px 20px;
+  background: #fff9e8;
+}
+
+.work-permit-print-value {
+  display: none;
+}
+
+@media screen and (max-width: 680px) {
+  .quick-nav button.work-permit-home-button {
+    grid-column: 1 / -1;
+    min-height: 52px;
+  }
+
+  .work-permit-screen {
+    margin: 0 -2px;
+  }
+
+  .work-permit-toolbar {
+    grid-template-columns: 1fr;
+    padding: 14px 12px;
+    border-radius: 15px;
+  }
+
+  .work-permit-intro h1 {
+    font-size: 22px;
+  }
+
+  .work-permit-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .work-permit-language-control,
+  .work-permit-toolbar button {
+    width: 100%;
+  }
+
+  .work-permit-language-control select,
+  .work-permit-toolbar button {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .work-permit-paper {
+    border-radius: 12px;
+  }
+
+  .work-permit-document-head,
+  .work-permit-section,
+  .work-permit-reminder {
+    padding: 14px 11px;
+  }
+
+  .work-permit-company,
+  .work-permit-title-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .work-permit-company {
+    gap: 8px;
+  }
+
+  .work-permit-document-code {
+    align-self: flex-start;
+  }
+
+  .work-permit-title-row h1 {
+    font-size: 23px;
+  }
+
+  .work-permit-head-fields,
+  .work-permit-grid,
+  .work-permit-grid-three,
+  .work-permit-grid-four {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .work-permit-form input,
+  .work-permit-form select,
+  .work-permit-form textarea {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .work-permit-table-wrap {
+    overflow: visible;
+    border: 0;
+  }
+
+  .work-permit-responsive-table,
+  .work-permit-responsive-table tbody,
+  .work-permit-responsive-table tr,
+  .work-permit-responsive-table th[scope="row"],
+  .work-permit-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .work-permit-responsive-table {
+    min-width: 0;
+  }
+
+  .work-permit-responsive-table thead {
+    display: none;
+  }
+
+  .work-permit-responsive-table tr {
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 1px solid #b9c9d2;
+    border-radius: 12px;
+    background: #f9fbfc;
+    box-shadow: 0 4px 12px rgba(24, 54, 70, .06);
+  }
+
+  .work-permit-responsive-table th[scope="row"] {
+    border: 0;
+    border-bottom: 1px solid #cbd8de;
+    background: #eaf1f4;
+    padding: 7px 10px;
+    text-align: left;
+  }
+
+  .work-permit-responsive-table td {
+    padding: 9px;
+    border: 0;
+    border-bottom: 1px solid #d8e1e6;
+  }
+
+  .work-permit-responsive-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .work-permit-responsive-table td::before {
+    content: attr(data-mobile-label);
+    display: block;
+    margin-bottom: 6px;
+    color: #405f70;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+
+  .work-permit-responsive-table input,
+  .work-permit-responsive-table select,
+  .work-permit-responsive-table textarea {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .work-permit-reminder header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .work-permit-reminder header button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .work-permit-reminder-show {
+    width: calc(100% - 22px);
+    min-height: 48px;
+    margin: 12px 11px;
+  }
+}
+
+/* Must remain after the legacy journal print rules. */
+@media print {
+  html:has(body.printing-work-permit),
+  body.printing-work-permit {
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.printing-work-permit * {
+    visibility: hidden !important;
+  }
+
+  body.printing-work-permit .topbar,
+  body.printing-work-permit .profile-bar,
+  body.printing-work-permit .mobile-nav,
+  body.printing-work-permit .view:not(#workPermitScreen),
+  body.printing-work-permit .work-permit-toolbar,
+  body.printing-work-permit .no-print,
+  body.printing-work-permit #aggregateJournalScreen {
+    display: none !important;
+  }
+
+  body.printing-work-permit .app-shell,
+  body.printing-work-permit .screen,
+  body.printing-work-permit #workPermitScreen,
+  body.printing-work-permit #workPermitScreen *,
+  body.printing-work-permit .work-permit-form,
+  body.printing-work-permit .work-permit-paper {
+    visibility: visible !important;
+  }
+
+  body.printing-work-permit .app-shell,
+  body.printing-work-permit .screen {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-work-permit #workPermitScreen {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    page: work-permit;
+  }
+
+  body.printing-work-permit .work-permit-form,
+  body.printing-work-permit .work-permit-paper {
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  body.printing-work-permit .work-permit-document-head {
+    padding: 0 0 4mm !important;
+    border-bottom: 1.5pt solid #000 !important;
+    background: #fff !important;
+  }
+
+  body.printing-work-permit .work-permit-company {
+    padding-bottom: 2mm !important;
+    border-color: #000 !important;
+    color: #000 !important;
+    font-size: 8.5pt !important;
+  }
+
+  body.printing-work-permit .work-permit-title-row {
+    padding-top: 3mm !important;
+  }
+
+  body.printing-work-permit .work-permit-title-row h1 {
+    color: #000 !important;
+    font-size: 17pt !important;
+  }
+
+  body.printing-work-permit .work-permit-title-row p {
+    color: #000 !important;
+    font-size: 9pt !important;
+  }
+
+  body.printing-work-permit .work-permit-head-fields {
+    width: 75mm !important;
+    gap: 2mm !important;
+  }
+
+  body.printing-work-permit .work-permit-section {
+    padding: 3mm 0 !important;
+    border-color: #555 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-work-permit .work-permit-section-long {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  body.printing-work-permit .work-permit-safety-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  body.printing-work-permit .work-permit-section > h2,
+  body.printing-work-permit .work-permit-reminder h2 {
+    margin: 0 0 2mm !important;
+    color: #000 !important;
+    font-size: 10pt !important;
+  }
+
+  body.printing-work-permit .work-permit-grid {
+    gap: 2mm !important;
+  }
+
+  body.printing-work-permit .work-permit-field {
+    gap: 1mm !important;
+    color: #000 !important;
+    font-size: 8pt !important;
+  }
+
+  body.printing-work-permit .work-permit-form input,
+  body.printing-work-permit .work-permit-form select,
+  body.printing-work-permit .work-permit-form textarea {
+    display: none !important;
+  }
+
+  body.printing-work-permit .work-permit-print-value {
+    display: block !important;
+    min-height: 5mm;
+    border-bottom: .7pt solid #222;
+    padding: 1mm .5mm;
+    color: #000 !important;
+    font-family: Arial, sans-serif;
+    font-size: 8.5pt;
+    font-weight: 400;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  body.printing-work-permit .work-permit-table-wrap {
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  body.printing-work-permit .work-permit-table,
+  body.printing-work-permit .work-permit-team-table,
+  body.printing-work-permit .work-permit-break-table {
+    display: table !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+
+  body.printing-work-permit .work-permit-table thead {
+    display: table-header-group !important;
+  }
+
+  body.printing-work-permit .work-permit-table tbody {
+    display: table-row-group !important;
+  }
+
+  body.printing-work-permit .work-permit-table tr {
+    display: table-row !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-work-permit .work-permit-table th,
+  body.printing-work-permit .work-permit-table td {
+    display: table-cell !important;
+    width: auto !important;
+    border: .7pt solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    padding: 1mm !important;
+    font-size: 7pt !important;
+    line-height: 1.15 !important;
+    box-shadow: none !important;
+  }
+
+  body.printing-work-permit .work-permit-table td::before {
+    content: none !important;
+  }
+
+  body.printing-work-permit .work-permit-table .work-permit-print-value {
+    min-height: 5mm;
+    border: 0;
+    padding: .5mm;
+    font-size: 7pt;
+  }
+
+  body.printing-work-permit .work-permit-break-table th,
+  body.printing-work-permit .work-permit-break-table td {
+    font-size: 6pt !important;
+  }
+
+  body.printing-work-permit .work-permit-reminder {
+    display: block;
+    padding: 5mm 0 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    break-before: page;
+    page-break-before: always;
+  }
+
+  body.printing-work-permit .work-permit-reminder[hidden] {
+    display: none !important;
+  }
+
+  body.printing-work-permit .work-permit-reminder ol {
+    gap: 2mm !important;
+    padding-left: 6mm !important;
+    color: #000 !important;
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+  }
+}
