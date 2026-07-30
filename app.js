@@ -152,6 +152,7 @@ const I18N = {
     clearRecords: "Очистить записи",
     logout: "Выйти",
     createRequest: "Создать заявку",
+    workPermit: "Наряд-допуск",
     remarks: "Предупреждения",
     director: "Директорская",
     aggregateJournal: "Агрегатный журнал"
@@ -193,6 +194,7 @@ const I18N = {
     clearRecords: "Жазбаларды тазалау",
     logout: "Шығу",
     createRequest: "Өтінім жасау",
+    workPermit: "Жұмысқа рұқсат",
     remarks: "Ескертулер",
     director: "Директорлық",
     aggregateJournal: "Агрегат журналы"
@@ -234,6 +236,7 @@ const I18N = {
     clearRecords: "Yozuvlarni tozalash",
     logout: "Chiqish",
     createRequest: "Ariza yaratish",
+    workPermit: "Ishga ruxsatnoma",
     remarks: "Ogohlantirishlar",
     director: "Direktor bo‘limi",
     aggregateJournal: "Agregat jurnali"
@@ -461,6 +464,7 @@ const ui = {
   createRequestButton: document.querySelector("#createRequestButton"),
   openRequestsButton: document.querySelector("#openRequestsButton"),
   createTmcRequestButton: document.querySelector("#createTmcRequestButton"),
+  workPermitButton: document.querySelector("#workPermitButton"),
   tmcRequestForm: document.querySelector("#tmcRequestForm"),
   tmcRequestArea: document.querySelector("#tmcRequestArea"),
   tmcRequestEquipment: document.querySelector("#tmcRequestEquipment"),
@@ -3277,6 +3281,8 @@ function applyLanguage() {
   setText('[data-mobile-view="profile"] small', t("profile"));
   const createRequestButton = document.querySelector("#createTmcRequestButton span");
   if (createRequestButton) createRequestButton.textContent = t("createRequest");
+  const workPermitButton = document.querySelector("#workPermitButton span");
+  if (workPermitButton) workPermitButton.textContent = t("workPermit");
   const alertCounterLabel = document.querySelector("#alertCounter span");
   if (alertCounterLabel) alertCounterLabel.textContent = remarksSectionLabel();
   const downtimeButton = document.querySelector("#downtimeOpenButton");
@@ -3694,6 +3700,7 @@ function canOpenView(view) {
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return isProfileReady();
   if (view === "gpm") return isProfileReady();
+  if (view === "workPermit") return isProfileReady();
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
   return true;
@@ -10665,6 +10672,10 @@ function render() {
   if (current.view === "downtime") renderDowntime();
   if (current.view === "aggregateJournal") renderAggregateJournal();
   if (current.view === "gpm") renderGpmJournal();
+  if (current.view === "workPermit") {
+    window.PprWorkPermit?.activate();
+    ui.subtitle.textContent = window.PprWorkPermit?.subtitle() || t("workPermit");
+  }
   applyLanguage();
   translateUserTextsForCurrentProfile();
   queueTranslateVisiblePage();
@@ -18862,6 +18873,11 @@ ui.createTmcRequestButton?.addEventListener("click", () => {
   if (hasEngineerInboxAccess() && engineerIncomingTmcItemCount() > 0) {
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
+});
+
+ui.workPermitButton?.addEventListener("click", () => {
+  show("workPermit");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
 ui.engineerIncomingBanner?.addEventListener("click", event => {
