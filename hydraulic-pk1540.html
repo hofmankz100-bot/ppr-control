@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b2233">
+  <title>Гидросхема ПК-1540</title>
+  <link rel="stylesheet" href="/hydraulic-pk1540.css?v=1">
+</head>
+<body>
+  <header class="app-head">
+    <div>
+      <small>Интерактивная гидравлическая схема</small>
+      <h1>Пресс ПК-1540</h1>
+    </div>
+    <div class="legend" aria-label="Обозначения потоков">
+      <span><i class="pressure"></i>Подача под давлением</span>
+      <span><i class="return"></i>Слив в бак</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="control-panel">
+      <section>
+        <h2>Режим работы</h2>
+        <p>Нажмите действие или клапан на чертеже.</p>
+        <div id="modeList" class="mode-list"></div>
+      </section>
+      <section id="detailCard" class="detail-card" aria-live="polite">
+        <span class="detail-code">Выбор элемента</span>
+        <h2>Нажмите клапан</h2>
+        <p>Приложение покажет назначение и учебный маршрут движения масла.</p>
+      </section>
+      <section class="notice">
+        <strong>Важно</strong>
+        <p>Визуализация предназначена для обучения. Перед ремонтом сверяйтесь с заводской схемой и фактической маркировкой оборудования.</p>
+      </section>
+    </aside>
+
+    <section class="diagram-panel">
+      <div class="diagram-toolbar">
+        <button id="zoomOut" type="button" aria-label="Уменьшить">−</button>
+        <strong id="zoomValue">100%</strong>
+        <button id="zoomIn" type="button" aria-label="Увеличить">+</button>
+        <button id="fitView" type="button">Весь лист</button>
+        <button id="resetFlow" type="button">Сбросить поток</button>
+      </div>
+      <div id="diagramViewport" class="diagram-viewport">
+        <div id="diagramStage" class="diagram-stage">
+          <img src="/assets/pk1540-hydraulic.webp?v=1" alt="Гидравлическая схема пресса ПК-1540">
+          <svg class="flow-layer" viewBox="0 0 2600 1836" preserveAspectRatio="none" aria-hidden="true">
+            <g id="pressurePaths" class="flow-paths pressure-flow"></g>
+            <g id="returnPaths" class="flow-paths return-flow"></g>
+          </svg>
+          <div id="hotspotLayer" class="hotspot-layer"></div>
+        </div>
+      </div>
+      <div class="mobile-hint">Двумя пальцами изменяйте масштаб. Одним пальцем перемещайте схему.</div>
+    </section>
+  </main>
+
+  <script src="/hydraulic-pk1540.js?v=1"></script>
+</body>
+</html>
