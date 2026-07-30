@@ -8069,6 +8069,20 @@ function downtimeTypeLabel(type) {
   return type === "production" ? "Производство" : "Поломка";
 }
 
+function russianCountText(count, one, few, many) {
+  const value = Math.max(0, Number(count) || 0);
+  const lastTwo = value % 100;
+  const last = value % 10;
+  const word = lastTwo >= 11 && lastTwo <= 19
+    ? many
+    : last === 1
+      ? one
+      : last >= 2 && last <= 4
+        ? few
+        : many;
+  return `${value} ${word}`;
+}
+
 function chooseDowntimeType() {
   return new Promise(resolve => {
     const overlay = document.createElement("div");
@@ -8156,6 +8170,8 @@ function downtimeAreaStats(area) {
   const remarkMs = items
     .filter(item => item.type === "remark")
     .reduce((sum, item) => sum + item.monthMs, 0);
+  const productionCount = items.filter(item => item.type === "production").length;
+  const breakdownCount = items.filter(item => item.type !== "production" && item.type !== "remark").length;
   return {
     area,
     items,
@@ -8163,6 +8179,8 @@ function downtimeAreaStats(area) {
     productionMs,
     breakdownMs,
     remarkMs,
+    productionCount,
+    breakdownCount,
     percent: monthMs ? (totalMs / monthMs) * 100 : 0,
     productionPercent: monthMs ? (productionMs / monthMs) * 100 : 0,
     breakdownPercent: monthMs ? (breakdownMs / monthMs) * 100 : 0,
@@ -8254,11 +8272,19 @@ function downtimePieChart(stats) {
     const percent = Math.round((item.totalMs / monthMs) * 100);
     const overLimit = item.totalMs > DOWNTIME_MONTH_LIMIT_MS;
     const activeOverLimit = overLimit && openAreas.has(item.area);
+    const breakdownText = russianCountText(item.breakdownCount, "поломка", "поломки", "поломок");
+    const productionText = russianCountText(
+      item.productionCount,
+      "производственная остановка",
+      "производственные остановки",
+      "производственных остановок"
+    );
     return `
       <button type="button" class="downtime-legend-item ${current.selectedDowntimeArea === item.area ? "active" : ""} ${overLimit ? "limit-exceeded" : ""} ${activeOverLimit ? "active-limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
         <i style="background:${colors[index % colors.length]}"></i>
         <span>${escapeHtml(item.area)}</span>
         <strong>${percent}% · ${durationText(item.totalMs)}${activeOverLimit ? " · лимит превышен, простой активен" : overLimit ? " · лимит превышен, простои закрыты" : ""}</strong>
+        <small class="downtime-legend-counts">${breakdownText} · ${productionText}</small>
       </button>
     `;
   }).join("");
