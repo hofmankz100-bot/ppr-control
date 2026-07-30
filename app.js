@@ -8228,6 +8228,27 @@ function polarPoint(cx, cy, radius, angle) {
   };
 }
 
+function downtimeDetailsHtml(area) {
+  if (!area) return "";
+  const selectedItems = downtimeMonthItems(area)
+    .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  return `
+    <div class="downtime-detail-head">
+      <strong>Журнал простоев · ${escapeHtml(area)}</strong>
+      <span>${selectedItems.length ? `${selectedItems.length} записей` : "За месяц простоев нет"}</span>
+    </div>
+    ${selectedItems.length ? selectedItems.map(item => `
+      <button type="button" class="downtime-entry ${item.endedAt ? "" : "active"}" data-open-downtime-comment="${escapeHtml(item.id)}">
+        <strong>${escapeHtml(item.equipment)} · ${escapeHtml(item.node)}</strong>
+        <span>${downtimeTypeLabel(item.type)} · ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "идет сейчас"} · ${durationText(downtimeDurationMs(item))}</span>
+        <p>${userTextWithRussianHtml(item.comment || "Без комментария")}</p>
+        ${item.closeComment ? `<p>Пуск: ${escapeHtml(item.closeComment)}</p>` : ""}
+        <small>${escapeHtml(item.authorName || "Сотрудник")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
+      </button>
+    `).join("") : `<div class="empty-state">По этому цеху за выбранный месяц нет комментариев простоев</div>`}
+  `;
+}
+
 function downtimePieChart(stats) {
   const activeStats = stats.filter(item => item.totalMs > 0);
   const { start, end } = monthRange(current.downtimeYear, current.downtimeMonth);
@@ -8279,18 +8300,26 @@ function downtimePieChart(stats) {
       "производственные остановки",
       "производственных остановок"
     );
+    const selected = current.selectedDowntimeArea === item.area;
     return `
-      <button type="button" class="downtime-legend-item ${current.selectedDowntimeArea === item.area ? "active" : ""} ${overLimit ? "limit-exceeded" : ""} ${activeOverLimit ? "active-limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}">
-        <i style="background:${colors[index % colors.length]}"></i>
-        <span>${escapeHtml(item.area)}</span>
-        <strong>${percent}% · ${durationText(item.totalMs)}${activeOverLimit ? " · лимит превышен, простой активен" : overLimit ? " · лимит превышен, простои закрыты" : ""}</strong>
-        <small class="downtime-legend-counts">
-          <span>${breakdownText} · ${durationText(item.breakdownMs)}</span>
-          <span>${productionText} · ${durationText(item.productionMs)}</span>
-        </small>
-      </button>
+      <div class="downtime-legend-group ${selected ? "active" : ""}">
+        <button type="button" class="downtime-legend-item ${selected ? "active" : ""} ${overLimit ? "limit-exceeded" : ""} ${activeOverLimit ? "active-limit-exceeded" : ""}" data-downtime-area="${escapeHtml(item.area)}" aria-expanded="${selected}">
+          <i style="background:${colors[index % colors.length]}"></i>
+          <span>${escapeHtml(item.area)}</span>
+          <b class="downtime-legend-chevron" aria-hidden="true">${selected ? "⌃" : "⌄"}</b>
+          <strong>${percent}% · ${durationText(item.totalMs)}${activeOverLimit ? " · лимит превышен, простой активен" : overLimit ? " · лимит превышен, простои закрыты" : ""}</strong>
+          <small class="downtime-legend-counts">
+            <span>${breakdownText} · ${durationText(item.breakdownMs)}</span>
+            <span>${productionText} · ${durationText(item.productionMs)}</span>
+          </small>
+        </button>
+        ${selected ? `<div class="downtime-expanded-mobile">${downtimeDetailsHtml(item.area)}</div>` : ""}
+      </div>
     `;
   }).join("");
+  const desktopDetails = current.selectedDowntimeArea
+    ? `<div class="downtime-expanded-desktop">${downtimeDetailsHtml(current.selectedDowntimeArea)}</div>`
+    : "";
   return `
     <div class="downtime-pie-wrap">
       <div class="downtime-pie-note">Весь круг — выбранный месяц. Цветной сектор показывает простой цеха. Превышение лимита 125 часов отмечается красным без мигания; активное состояние указано текстом.</div>
@@ -8298,7 +8327,10 @@ function downtimePieChart(stats) {
         ${slices}
         ${restSlice}
       </svg>
-      <div class="downtime-pie-legend">${legend}</div>
+      <div class="downtime-pie-legend">
+        <div class="downtime-legend-buttons">${legend}</div>
+        ${desktopDetails}
+      </div>
     </div>
   `;
 }
@@ -16585,35 +16617,20 @@ function renderDowntime() {
     });
   });
   ui.downtimeChart.innerHTML = downtimePieChart(stats);
-  ui.downtimeChart.querySelectorAll("[data-downtime-area]").forEach(button => {
-    button.addEventListener("click", () => {
-      current.selectedDowntimeArea = button.dataset.downtimeArea || "";
-      const active = activeDowntimeForArea(current.selectedDowntimeArea);
-      if (active && openDowntimeComment(active)) return;
+  ui.downtimeChart.querySelectorAll("[data-downtime-area]").forEach(control => {
+    control.addEventListener("click", () => {
+      const area = control.dataset.downtimeArea || "";
+      const canCollapse = control.matches("button") && current.selectedDowntimeArea === area;
+      current.selectedDowntimeArea = canCollapse ? "" : area;
       renderDowntime();
-      ui.downtimeDetails.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (current.selectedDowntimeArea && control.matches("button")) {
+        ui.downtimeChart.querySelector(".downtime-legend-group.active")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
     });
   });
-  const selectedArea = current.selectedDowntimeArea || stats.find(item => item.items.length)?.area || availableEquipmentAreas()[0];
-  if (!current.selectedDowntimeArea) current.selectedDowntimeArea = selectedArea;
-  const selectedItems = downtimeMonthItems(selectedArea)
-    .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
-  ui.downtimeDetails.innerHTML = `
-    <div class="downtime-detail-head">
-      <strong>${escapeHtml(selectedArea)}</strong>
-      <span>${selectedItems.length ? `${selectedItems.length} записей простоя` : "За месяц простоев нет"}</span>
-    </div>
-    ${selectedItems.length ? selectedItems.map(item => `
-      <button type="button" class="downtime-entry ${item.endedAt ? "" : "active"}" data-open-downtime-comment="${escapeHtml(item.id)}">
-        <strong>${escapeHtml(item.equipment)} · ${escapeHtml(item.node)}</strong>
-        <span>${downtimeTypeLabel(item.type)} · ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "идет сейчас"} · ${durationText(downtimeDurationMs(item))}</span>
-        <p>${userTextWithRussianHtml(item.comment || "Без комментария")}</p>
-        ${item.closeComment ? `<p>Пуск: ${escapeHtml(item.closeComment)}</p>` : ""}
-        <small>${escapeHtml(item.authorName || "Сотрудник")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
-      </button>
-    `).join("") : `<div class="empty-state">По этому цеху за выбранный месяц нет комментариев простоев</div>`}
-  `;
-  ui.downtimeDetails.querySelectorAll("[data-open-downtime-comment]").forEach(button => {
+  ui.downtimeDetails.innerHTML = "";
+  ui.downtimeDetails.hidden = true;
+  ui.downtimeChart.querySelectorAll("[data-open-downtime-comment]").forEach(button => {
     button.addEventListener("click", () => {
       const item = downtimes().find(entry => entry.id === button.dataset.openDowntimeComment);
       if (item && !item.endedAt) openDowntimeComment(item);
