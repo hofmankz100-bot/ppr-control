@@ -533,6 +533,7 @@ let current = {
   aggregateRepairEquipmentId: 0,
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
+  gpmJournalKind: "gpm",
   gpmAdminEditorOpen: false,
   directorControlEquipmentId: null,
   directorProgressOpen: false,
@@ -605,10 +606,10 @@ function ensureGpmUi() {
     section.className = "view gpm-screen";
     section.innerHTML = `
       <div class="panel-head compact">
-        <div><h1>Журнал ГПМ</h1><p>Осмотры, ПТО, ремонты, документы и допуск к работе</p></div>
+        <div><h1>Журнал ГПМ и вилочных погрузчиков</h1><p>Осмотры, ПТО, ремонты, документы и допуск к работе</p></div>
         <div class="gpm-head-actions">
           <button type="button" data-gpm-print>Печать журнала</button>
-          <button type="button" data-gpm-add hidden>Добавить ГПМ</button>
+          <button type="button" data-gpm-add hidden>Добавить карточку</button>
         </div>
       </div>
       <div id="gpmPanel" class="gpm-panel"></div>`;
@@ -8209,9 +8210,14 @@ function equipmentRowColor(eq) {
   return index >= 0 ? DOWNTIME_COLORS[(downtimeChartAreas().length + index) % DOWNTIME_COLORS.length] : downtimeAreaColor(eq.area);
 }
 
+function isForkliftEquipment(eq) {
+  const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
+  return text.includes("вилоч") || text.includes("погрузчик");
+}
+
 function isGpmEquipment(eq) {
   const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
-  return text.includes("гпм") || text.includes("грузопод");
+  return text.includes("гпм") || text.includes("грузопод") || isForkliftEquipment(eq);
 }
 
 function downtimePieSlicePath(cx, cy, radius, startAngle, endAngle) {
@@ -11894,7 +11900,7 @@ function renderEquipment() {
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
-              <span class="journal-button-title">${gpmEquipment ? "Журнал ГПМ" : "Журнал"}</span>
+              <span class="journal-button-title">${gpmEquipment ? isForkliftEquipment(eq) ? "Журнал погрузчика" : "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(eq.name)}</strong>
               <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
@@ -11930,7 +11936,9 @@ function renderEquipment() {
         show("aggregateJournal");
       });
       tr.querySelector("[data-gpm-equipment]")?.addEventListener("click", () => {
+        if (purgeLegacyForkliftGpmJournal()) saveState();
         const linked = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
+        current.gpmJournalKind = isForkliftEquipment(eq) ? "forklift" : "gpm";
         current.selectedGpmId = linked?.id || "";
         current.gpmSourceEquipmentId = Number(eq.id);
         current.gpmAdminEditorOpen = !linked && gpmCanManage();
@@ -13808,6 +13816,30 @@ function gpmStore() {
   return state.gpmJournal;
 }
 
+function gpmItemKind(item = {}) {
+  if (item.equipmentKind === "forklift") return "forklift";
+  const source = allEquipment().find(equipment => Number(equipment.id) === Number(item.sourceEquipmentId || 0));
+  const text = `${item.sourceEquipmentName || ""} ${item.name || ""} ${item.location || ""}`.toLocaleLowerCase("ru-RU");
+  return isForkliftEquipment(source) || text.includes("вилоч") || text.includes("погрузчик") ? "forklift" : "gpm";
+}
+
+function purgeLegacyForkliftGpmJournal() {
+  const store = gpmStore();
+  if (store.forkliftResetVersion === "clean-journal-v1") return false;
+  const forkliftIds = Object.values(store.equipment)
+    .filter(item => item && !item.deleted && gpmItemKind(item) === "forklift")
+    .map(item => item.id);
+  forkliftIds.forEach(id => delete store.equipment[id]);
+  Object.keys(store.inspections).forEach(id => {
+    if (forkliftIds.includes(store.inspections[id]?.gpmId)) delete store.inspections[id];
+  });
+  Object.keys(store.events).forEach(id => {
+    if (forkliftIds.includes(store.events[id]?.gpmId)) delete store.events[id];
+  });
+  store.forkliftResetVersion = "clean-journal-v1";
+  return true;
+}
+
 function gpmUserKey(user = profile) {
   return resolutionUserKey(user);
 }
@@ -13826,9 +13858,10 @@ function gpmUserName(key) {
   return gpmUserByKey(key)?.name || "";
 }
 
-function gpmEquipmentList() {
+function gpmEquipmentList(kind = "") {
   return Object.values(gpmStore().equipment)
     .filter(item => item && !item.deleted)
+    .filter(item => !kind || gpmItemKind(item) === kind)
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
 }
 
@@ -13954,9 +13987,11 @@ function saveGpmManagerForm(form) {
 
 function gpmEquipmentForm(item = {}) {
   const sourceEquipmentId = Number(item.sourceEquipmentId || current.gpmSourceEquipmentId || 0);
+  const journalKind = item.id ? gpmItemKind(item) : current.gpmJournalKind === "forklift" ? "forklift" : "gpm";
+  const journalName = journalKind === "forklift" ? "вилочный погрузчик" : "ГПМ";
   return `
     <form class="gpm-admin-form" data-gpm-equipment-form data-gpm-id="${escapeHtml(item.id || "")}">
-      <h3>${item.id ? "Настройка ГПМ" : "Добавить ГПМ"}</h3>
+      <h3>${item.id ? `Настройка: ${journalName}` : `Добавить: ${journalName}`}</h3>
       <div class="gpm-form-grid">
         <label><span>Карточка ГПМ на главном экране</span><input name="sourceEquipmentName" value="${escapeHtml(gpmSourceEquipmentDisplayName(item, sourceEquipmentId))}" placeholder="Введите название карточки вручную"></label>
         <label><span>Наименование</span><input name="name" required value="${escapeHtml(item.name || "")}" placeholder="Кран-балка №1"></label>
@@ -14120,6 +14155,7 @@ function saveGpmEquipmentForm(form) {
     manufactureYear: String(data.get("manufactureYear") || "").trim(),
     sourceEquipmentId,
     sourceEquipmentName,
+    equipmentKind: current.gpmJournalKind === "forklift" || isForkliftEquipment(sourceEquipmentMatch) || /вилоч|погрузчик/i.test(sourceEquipmentName) ? "forklift" : "gpm",
     operationResponsibleKey: String(data.get("operationResponsibleKey") || "").trim(),
     conditionResponsibleKey: String(data.get("conditionResponsibleKey") || "").trim(),
     inspectorKey: String(data.get("inspectorKey") || "").trim(),
@@ -14153,9 +14189,11 @@ function printGpmJournal() {
 
 function renderGpmJournal() {
   if (!ui.gpmPanel) return;
-  ui.subtitle.textContent = "Журнал ГПМ";
+  const forkliftJournal = current.gpmJournalKind === "forklift";
+  if (purgeLegacyForkliftGpmJournal()) saveState();
+  ui.subtitle.textContent = forkliftJournal ? "Журнал вилочных погрузчиков" : "Журнал ГПМ";
   updateGpmBadge();
-  const equipment = gpmEquipmentList();
+  const equipment = gpmEquipmentList(forkliftJournal ? "forklift" : "gpm");
   if ((!current.selectedGpmId || !equipment.some(item => item.id === current.selectedGpmId)) && !current.gpmAdminEditorOpen) current.selectedGpmId = equipment[0]?.id || "";
   const selected = equipment.find(item => item.id === current.selectedGpmId) || null;
   ui.gpmAddButton.hidden = !gpmCanManage();
@@ -14166,7 +14204,7 @@ function renderGpmJournal() {
         ${equipment.length ? equipment.map(item => {
           const status = gpmStatus(item);
           return `<button type="button" class="${item.id === current.selectedGpmId ? "active" : ""}" data-gpm-select="${escapeHtml(item.id)}"><span class="gpm-status-dot ${status.key}"></span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.location || "")} · ${status.label}</small></div></button>`;
-        }).join("") : `<div class="empty-state">ГПМ ещё не добавлены. Администратор может создать первую карточку.</div>`}
+        }).join("") : `<div class="empty-state">${forkliftJournal ? "Вилочные погрузчики" : "ГПМ"} ещё не добавлены. Администратор может создать первую карточку.</div>`}
       </aside>
       <div class="gpm-content">${current.gpmAdminEditorOpen && gpmCanManage() ? gpmEquipmentForm(selected || {}) : selected ? gpmDetailHtml(selected) : ""}</div>
     </div>`;
@@ -14368,6 +14406,8 @@ function renderGlobalReminderPanel() {
   ui.globalReminderContent.querySelectorAll("[data-open-gpm-reminder]").forEach(row => {
     const openGpm = () => {
       current.selectedGpmId = row.dataset.openGpmReminder;
+      const reminderItem = gpmEquipmentList().find(item => item.id === current.selectedGpmId);
+      current.gpmJournalKind = reminderItem ? gpmItemKind(reminderItem) : "gpm";
       closeGlobalReminderPanel();
       show("gpm");
     };

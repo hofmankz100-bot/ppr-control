@@ -56,3 +56,12 @@ test("only GPM equipment replaces its aggregate journal and no separate home but
   assert.doesNotMatch(app, /button\.id = "gpmOpenButton"/);
   assert.match(app, /const sourceEquipmentId = Number/);
 });
+
+test("forklifts use a separate clean journal and legacy GPM records are removed", () => {
+  assert.match(app, /function isForkliftEquipment\(eq\)/);
+  assert.match(app, /"Журнал погрузчика"/);
+  assert.match(app, /function purgeLegacyForkliftGpmJournal\(\)/);
+  assert.match(app, /delete store\.inspections\[id\]/);
+  assert.match(app, /delete store\.events\[id\]/);
+  assert.match(app, /equipmentKind: current\.gpmJournalKind === "forklift"/);
+});
