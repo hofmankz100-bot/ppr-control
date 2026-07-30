@@ -6575,6 +6575,103 @@ body.attendance-kiosk-active { overflow: hidden !important; }
   color: var(--muted);
 }
 
+.downtime-journal-sheet {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #b8c8d2;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: 0 6px 18px rgba(20, 50, 74, 0.08);
+}
+
+.downtime-journal-sheet-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 2px solid var(--nav);
+  padding-bottom: 9px;
+}
+
+.downtime-journal-sheet-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.downtime-journal-sheet-head small {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.downtime-journal-sheet-head button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--nav);
+  color: #fff;
+  padding: 8px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.downtime-journal-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.downtime-journal-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.downtime-journal-table th,
+.downtime-journal-table td {
+  border: 1px solid #aabcc7;
+  padding: 7px;
+  vertical-align: top;
+  font-size: 11px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.downtime-journal-table th {
+  background: #dce8ef;
+  color: #102b3b;
+  text-align: center;
+}
+
+.downtime-journal-table td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.downtime-journal-table tbody tr[data-open-downtime-comment] {
+  cursor: pointer;
+}
+
+.downtime-journal-table tbody tr.active td {
+  background: #fff1f2;
+}
+
+.downtime-print-dialog input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+}
+
+.downtime-print-dialog label {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+
 .downtime-entry {
   display: grid;
   gap: 6px;
@@ -9790,6 +9887,19 @@ textarea:disabled {
   .downtime-expanded-mobile {
     display: grid;
     margin-top: 8px;
+  }
+
+  .downtime-journal-sheet {
+    padding: 9px;
+  }
+
+  .downtime-journal-sheet-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .downtime-journal-sheet-head button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .node-walk-row {
