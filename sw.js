@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v326-shgrp-mobile-simplify";
+const CACHE_NAME = "ppr-v327-ppr-autofill-refresh";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=326-shgrp-mobile-simplify",
-  "./modules/compressor.js?v=326-shgrp-mobile-simplify",
-  "./modules/shgrp.js?v=326-shgrp-mobile-simplify",
+  "./styles.css?v=327-ppr-autofill-refresh",
+  "./modules/compressor.js?v=327-ppr-autofill-refresh",
+  "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=326-shgrp-mobile-simplify",
-  "./assets/hofmann-forklift.png?v=v326-shgrp-mobile-simplify",
+  "./app.js?v=327-ppr-autofill-refresh",
+  "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
