@@ -148,6 +148,40 @@ button { font: inherit; }
   font-weight: 900;
 }
 
+.motor-control {
+  border: 2px solid #adc7d4;
+  border-radius: 12px;
+  background: #f7fbfd;
+  padding: 12px;
+}
+
+.motor-status {
+  margin: 8px 0 10px;
+  font-weight: 900;
+}
+
+.motor-status.off { color: #9f2f2f; }
+.motor-status.on { color: #087052; }
+
+.motor-toggle {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 10px;
+  background: #087052;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.motor-toggle.on { background: #b4232f; }
+
+.drive-state {
+  border-left: 4px solid #1784b8;
+  padding-left: 9px;
+  font-weight: 800;
+}
+
 .detail-card,
 .notice {
   border: 1px solid var(--line);
@@ -268,6 +302,26 @@ button { font: inherit; }
   pointer-events: none;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
 }
+
+.motor-animation { pointer-events: none; }
+.motor-ring {
+  fill: rgba(255,255,255,.92);
+  stroke: #087052;
+  stroke-width: 8;
+}
+.motor-rotor {
+  fill: #0aa678;
+  animation: motor-spin .75s linear infinite;
+}
+.motor-label {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 8;
+  fill: #075d44;
+  font-size: 25px;
+  font-weight: 900;
+}
+@keyframes motor-spin { to { transform: rotate(360deg); } }
 
 .cylinder-body {
   fill: rgba(255,255,255,.94);

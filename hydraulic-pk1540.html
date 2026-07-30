@@ -21,6 +21,11 @@
 
   <main class="workspace">
     <aside class="control-panel">
+      <section class="motor-control">
+        <h2>Электродвигатель гидростанции</h2>
+        <p id="motorStatus" class="motor-status off">● Двигатель выключен — масло не движется</p>
+        <button id="motorToggle" class="motor-toggle" type="button" aria-pressed="false">Включить двигатель</button>
+      </section>
       <section>
         <h2>Заводские команды электромагнитов</h2>
         <p>Нажмите «Подать сигнал» или электромагнит с кодом Q непосредственно на чертеже. Повторное нажатие снимает сигнал.</p>
@@ -52,6 +57,7 @@
             <g id="pressurePaths" class="flow-paths pressure-flow"></g>
             <g id="returnPaths" class="flow-paths return-flow"></g>
             <g id="actuatorAnimation" class="actuator-animation"></g>
+            <g id="motorAnimation" class="motor-animation"></g>
           </svg>
           <div id="hotspotLayer" class="hotspot-layer"></div>
         </div>

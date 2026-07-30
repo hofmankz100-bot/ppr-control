@@ -142,6 +142,9 @@
   const pressureGroup = document.querySelector("#pressurePaths");
   const returnGroup = document.querySelector("#returnPaths");
   const actuatorGroup = document.querySelector("#actuatorAnimation");
+  const motorGroup = document.querySelector("#motorAnimation");
+  const motorToggle = document.querySelector("#motorToggle");
+  const motorStatus = document.querySelector("#motorStatus");
   const modeList = document.querySelector("#modeList");
   const detailCard = document.querySelector("#detailCard");
   const zoomValue = document.querySelector("#zoomValue");
@@ -153,6 +156,10 @@
   let dragStart = null;
   let pinchStart = null;
   let activeModeId = null;
+  let motorOn = false;
+
+  const idlePressurePaths = ["M1410 1470 L1410 850 L1710 850 L1710 705"];
+  const idleReturnPaths = ["M1710 705 L1710 850 L1510 850 L1510 1470 L1510 1585"];
 
   const actuatorByMode = {
     "shear-down": { x: 675, y: 180, axis: "vertical", reverse: false, label: "Нож опускается" },
@@ -188,6 +195,57 @@
     `;
   }
 
+  function renderMotor() {
+    motorGroup.innerHTML = motorOn ? `
+      <g transform="translate(1425 1505)">
+        <circle class="motor-ring" r="55"></circle>
+        <g class="motor-rotor">
+          <path d="M0 -40 L11 -10 L40 0 L11 10 L0 40 L-11 10 L-40 0 L-11 -10 Z"></path>
+          <circle r="10"></circle>
+        </g>
+        <text class="motor-label" x="0" y="-72" text-anchor="middle">Двигатель включён</text>
+      </g>
+    ` : "";
+  }
+
+  function renderHydraulics() {
+    if (!motorOn) {
+      pressureGroup.innerHTML = "";
+      returnGroup.innerHTML = "";
+      actuatorGroup.innerHTML = "";
+      return;
+    }
+    const mode = modes.find(item => item.id === activeModeId);
+    if (mode) {
+      pressureGroup.innerHTML = pathMarkup(mode.pressurePaths);
+      returnGroup.innerHTML = pathMarkup(mode.returnPaths);
+      renderActuator(mode.id);
+      return;
+    }
+    pressureGroup.innerHTML = pathMarkup(idlePressurePaths);
+    returnGroup.innerHTML = pathMarkup(idleReturnPaths);
+    actuatorGroup.innerHTML = "";
+  }
+
+  function setMotor(nextState) {
+    motorOn = nextState;
+    motorToggle.setAttribute("aria-pressed", String(motorOn));
+    motorToggle.textContent = motorOn ? "Отключить двигатель" : "Включить двигатель";
+    motorToggle.classList.toggle("on", motorOn);
+    motorStatus.className = `motor-status ${motorOn ? "on" : "off"}`;
+    motorStatus.textContent = motorOn
+      ? (activeModeId ? "● Двигатель включён — масло направлено к выбранному узлу" : "● Двигатель включён — масло идёт по холостому контуру в бак")
+      : "● Двигатель выключен — масло не движется";
+    const driveState = detailCard.querySelector(".drive-state");
+    if (driveState) {
+      driveState.textContent = motorOn
+        ? "Двигатель работает: масло движется, исполнительный механизм включён."
+        : "Двигатель выключен: сигнал есть, но давления и движения цилиндра нет.";
+    }
+    renderMotor();
+    renderHydraulics();
+  }
+
   function renderModes() {
     modeList.innerHTML = modes.map(mode => `
       <button type="button" class="mode-button" data-mode="${mode.id}">
@@ -215,9 +273,7 @@
       return;
     }
     activeModeId = id;
-    pressureGroup.innerHTML = pathMarkup(mode.pressurePaths);
-    returnGroup.innerHTML = pathMarkup(mode.returnPaths);
-    renderActuator(id);
+    renderHydraulics();
     document.querySelectorAll("[data-mode]").forEach(element => {
       element.classList.toggle("active", element.dataset.mode === id);
       element.setAttribute("aria-pressed", String(element.dataset.mode === id));
@@ -234,6 +290,7 @@
       <span class="detail-code">${mode.code}</span>
       <h2>${mode.name}</h2>
       <p class="signal-state">${mode.id.endsWith("-pump") ? "● Насос включён" : "● Электромагнит включён — сигнал подан"}</p>
+      <p class="drive-state">${motorOn ? "Двигатель работает: масло движется, исполнительный механизм включён." : "Двигатель выключен: сигнал есть, но давления и движения цилиндра нет."}</p>
       <p>${mode.purpose}</p>
       <dl>
         <div><dt>Узел</dt><dd>${mode.group}</dd></div>
@@ -249,6 +306,7 @@
     pressureGroup.innerHTML = "";
     returnGroup.innerHTML = "";
     actuatorGroup.innerHTML = "";
+    renderHydraulics();
     document.querySelectorAll("[data-mode]").forEach(element => {
       element.classList.remove("active");
       element.setAttribute("aria-pressed", "false");
@@ -262,6 +320,8 @@
       <p>Приложение покажет назначение и учебный маршрут движения масла.</p>
     `;
   }
+
+  motorToggle.addEventListener("click", () => setMotor(!motorOn));
 
   function applyTransform() {
     stage.style.transform = `translate(${offsetX}px,${offsetY}px) scale(${scale})`;
