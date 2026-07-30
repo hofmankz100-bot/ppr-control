@@ -13905,6 +13905,18 @@ function gpmAssignmentDisplayName(value = "") {
   return gpmUserName(value) || String(value || "").trim();
 }
 
+function gpmSourceEquipmentDisplayName(item = {}, fallbackId = 0) {
+  if (String(item.sourceEquipmentName || "").trim()) return String(item.sourceEquipmentName).trim();
+  const sourceId = Number(item.sourceEquipmentId || fallbackId || 0);
+  const equipment = allEquipment().find(entry => Number(entry.id) === sourceId);
+  return equipment ? `${equipment.name} — ${equipment.area}` : "";
+}
+
+function gpmEngineerDisplayNames(item = {}) {
+  if (String(item.engineerNames || "").trim()) return String(item.engineerNames).trim();
+  return (item.engineerKeys || []).map(key => gpmUserName(key)).filter(Boolean).join(", ");
+}
+
 function gpmManagerForm() {
   const selected = gpmManagerKeys();
   return `
@@ -13941,13 +13953,12 @@ function saveGpmManagerForm(form) {
 }
 
 function gpmEquipmentForm(item = {}) {
-  const selectedEngineers = new Set(item.engineerKeys || []);
   const sourceEquipmentId = Number(item.sourceEquipmentId || current.gpmSourceEquipmentId || 0);
   return `
     <form class="gpm-admin-form" data-gpm-equipment-form data-gpm-id="${escapeHtml(item.id || "")}">
       <h3>${item.id ? "Настройка ГПМ" : "Добавить ГПМ"}</h3>
       <div class="gpm-form-grid">
-        <label><span>Карточка ГПМ на главном экране</span><select name="sourceEquipmentId"><option value="">Без привязки</option>${allEquipment().filter(isGpmEquipment).map(eq => `<option value="${eq.id}" ${Number(eq.id) === sourceEquipmentId ? "selected" : ""}>${escapeHtml(eq.name)} — ${escapeHtml(eq.area)}</option>`).join("")}</select></label>
+        <label><span>Карточка ГПМ на главном экране</span><input name="sourceEquipmentName" value="${escapeHtml(gpmSourceEquipmentDisplayName(item, sourceEquipmentId))}" placeholder="Введите название карточки вручную"></label>
         <label><span>Наименование</span><input name="name" required value="${escapeHtml(item.name || "")}" placeholder="Кран-балка №1"></label>
         <label><span>Место установки</span><input name="location" required value="${escapeHtml(item.location || "")}" placeholder="Прессовый участок"></label>
         <label><span>Заводской номер</span><input name="serialNumber" value="${escapeHtml(item.serialNumber || "")}"></label>
@@ -13957,9 +13968,7 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Ответственный за эксплуатацию</span><input name="operationResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>Ответственный за исправное состояние</span><input name="conditionResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>Исполнитель ежесменного осмотра</span><input name="inspectorKey" value="${escapeHtml(gpmAssignmentDisplayName(item.inspectorKey))}" placeholder="Введите Ф.И.О. вручную"></label>
-        <label><span>Инженеры с доступом</span><select name="engineerKeys" multiple size="4">${gpmUsers().map(user =>
-          `<option value="${escapeHtml(gpmUserKey(user))}" ${selectedEngineers.has(gpmUserKey(user)) ? "selected" : ""}>${escapeHtml(user.name || "")}</option>`
-        ).join("")}</select></label>
+        <label><span>Инженеры с доступом</span><input name="engineerNames" value="${escapeHtml(gpmEngineerDisplayNames(item))}" placeholder="Введите Ф.И.О. через запятую"></label>
         <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
         <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
         <label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>
@@ -14081,8 +14090,18 @@ function saveGpmEquipmentForm(form) {
   const data = new FormData(form);
   const id = String(form.dataset.gpmId || `gpm:${Date.now()}:${Math.random().toString(16).slice(2)}`);
   const previous = gpmStore().equipment[id] || {};
-  const engineerSelect = form.elements.engineerKeys;
-  const sourceEquipmentId = Number(data.get("sourceEquipmentId") || 0);
+  const sourceEquipmentName = String(data.get("sourceEquipmentName") || "").trim();
+  const sourceEquipmentMatch = allEquipment().filter(isGpmEquipment).find(equipment => {
+    const fullName = `${equipment.name} — ${equipment.area}`;
+    return [equipment.name, fullName].some(value => value.localeCompare(sourceEquipmentName, undefined, { sensitivity: "accent" }) === 0);
+  });
+  const sourceEquipmentId = Number(sourceEquipmentMatch?.id || 0);
+  const engineerNames = String(data.get("engineerNames") || "").trim();
+  const enteredEngineerNames = engineerNames.split(/[,;\n]+/).map(value => value.trim()).filter(Boolean);
+  const engineerKeys = enteredEngineerNames.map(name => {
+    const user = gpmUsers().find(entry => String(entry.name || "").trim().localeCompare(name, undefined, { sensitivity: "accent" }) === 0);
+    return user ? gpmUserKey(user) : "";
+  }).filter(Boolean);
   if (sourceEquipmentId) {
     Object.values(gpmStore().equipment).forEach(item => {
       if (item?.id !== id && Number(item?.sourceEquipmentId || 0) === sourceEquipmentId) {
@@ -14100,10 +14119,12 @@ function saveGpmEquipmentForm(form) {
     capacity: String(data.get("capacity") || "").trim(),
     manufactureYear: String(data.get("manufactureYear") || "").trim(),
     sourceEquipmentId,
+    sourceEquipmentName,
     operationResponsibleKey: String(data.get("operationResponsibleKey") || "").trim(),
     conditionResponsibleKey: String(data.get("conditionResponsibleKey") || "").trim(),
     inspectorKey: String(data.get("inspectorKey") || "").trim(),
-    engineerKeys: Array.from(engineerSelect?.selectedOptions || []).map(option => option.value),
+    engineerKeys,
+    engineerNames,
     nextPartialDate: String(data.get("nextPartialDate") || ""),
     nextFullDate: String(data.get("nextFullDate") || ""),
     nextMaintenanceDate: String(data.get("nextMaintenanceDate") || ""),
