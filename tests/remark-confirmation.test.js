@@ -98,6 +98,19 @@ test.before(async () => {
       "1:1:2026-07-16": { to: { commentLog: [remark("remark-any-author", "Директор производства", "productionDirector", "Предупреждение другой роли")] } },
       "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } }
       ,
+      "3:0:2026-07-16": {
+        to: {
+          commentLog: [{
+            ...remark("remark-existing-pending", "Existing Worker", "mechanic", "Existing pending repair"),
+            resolutionPendingConfirmation: true,
+            resolutionSubmittedAt: "2026-07-16T10:30:00.000Z",
+            resolutionSubmittedByKey: "id:mechanic-1",
+            resolutionSubmittedByName: "Mechanic One",
+            resolutionSubmittedByRole: "mechanic",
+            resolutionSubmittedComment: "Repair already submitted"
+          }]
+        }
+      },
       "1:2:2026-07-16": {
         to: {
           commentLog: [{
@@ -119,25 +132,56 @@ test.before(async () => {
     catalog: {
       equipment: {
         "1": { name: "Оборудование А", area: "Цех А", nodes: ["Узел А1", "Узел А2"] },
-        "2": { name: "Оборудование Б", area: "Цех Б", nodes: ["Узел Б1"] }
+        "2": { name: "Оборудование Б", area: "Цех Б", nodes: ["Узел Б1"] },
+        "3": { name: "Paint equipment", area: "Покрасочный цех", nodes: ["Paint node"] }
       }
     },
     directorMessages: [],
     serviceCosts: [],
-    downtimes: [{
-      id: "downtime-test-1",
-      key: "1:0",
-      equipmentId: 1,
-      nodeIndex: 0,
-      equipment: "Equipment A",
-      node: "Node A1",
-      type: "breakdown",
-      comment: "Stopped for test",
-      startedAt: "2026-07-16T08:00:00.000Z",
-      endedAt: "",
-      authorName: "Electrician One",
-      authorRole: "electrician"
-    }],
+    downtimes: [
+      {
+        id: "downtime-test-1",
+        key: "1:0",
+        equipmentId: 1,
+        nodeIndex: 0,
+        equipment: "Equipment A",
+        node: "Node A1",
+        type: "breakdown",
+        comment: "Stopped for test",
+        startedAt: "2026-07-16T08:00:00.000Z",
+        endedAt: "",
+        authorName: "Electrician One",
+        authorRole: "electrician"
+      },
+      {
+        id: "downtime-resolution-flow",
+        key: "2:0",
+        equipmentId: 2,
+        nodeIndex: 0,
+        equipment: "Equipment B",
+        node: "Node B1",
+        type: "breakdown",
+        comment: "Resolution workflow stop",
+        startedAt: "2026-07-16T08:00:00.000Z",
+        endedAt: "",
+        authorName: "Mechanic One",
+        authorRole: "mechanic"
+      },
+      {
+        id: "downtime-existing-pending",
+        key: "3:0",
+        equipmentId: 3,
+        nodeIndex: 0,
+        equipment: "Paint equipment",
+        node: "Paint node",
+        type: "breakdown",
+        comment: "Existing active painting-shop stop",
+        startedAt: "2026-07-16T09:00:00.000Z",
+        endedAt: "",
+        authorName: "Existing Worker",
+        authorRole: "mechanic"
+      }
+    ],
     compressorJournal: {},
     gasJournal: {},
     pprSheets: {},
@@ -192,6 +236,16 @@ test.after(async () => {
     ]);
   }
   fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+test("startup stops an existing painting-shop downtime already awaiting chief confirmation", async () => {
+  const state = await (await fetch(`${baseUrl}/api/state`)).json();
+  const stop = state.downtimes.find(item => item.id === "downtime-existing-pending");
+  const pending = state.checks["3:0:2026-07-16"].to.commentLog.find(item => item.id === "remark-existing-pending");
+  assert.equal(stop.endedAt, pending.resolutionSubmittedAt);
+  assert.equal(stop.closeAwaitingConfirmation, true);
+  assert.equal(stop.closedByRemarkId, pending.id);
+  assert.deepEqual(pending.resolutionDowntimeIds, [stop.id]);
 });
 
 test("closes a downtime only after the dedicated server action and protects it from stale reopen", async () => {
@@ -374,6 +428,10 @@ test("falls back to the engineer, returns only to the last performer, and accept
   const firstPending = patchedRemark(firstResolve, "2:0:2026-07-16", "remark-engineer");
   assert.equal(firstPending.confirmationRequiredRole, "engineer");
   assert.deepEqual(firstPending.resolutionEvents.at(-1).recipientKeys, ["id:engineer-1"]);
+  const stoppedOnSubmission = firstResolve.state.downtimes.find(item => item.id === "downtime-resolution-flow");
+  assert.equal(stoppedOnSubmission.endedAt, firstPending.resolutionSubmittedAt);
+  assert.equal(stoppedOnSubmission.closeAwaitingConfirmation, true);
+  assert.deepEqual(firstPending.resolutionDowntimeIds, ["downtime-resolution-flow"]);
 
   const returnedResponse = await postRemark("2:0:2026-07-16", "remark-engineer", "return", engineer, {
     reason: "Нужно переделать"
@@ -384,6 +442,11 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.deepEqual(returned.resolutionEvents.at(-1).recipientKeys, ["id:mechanic-1"]);
   assert.equal(returned.resolutionEvents.at(-1).targetKey, "id:mechanic-1");
   assert.equal(returned.resolutionEvents.at(-1).targetRole, "mechanic");
+  const resumedDowntime = returnedResponse.state.downtimes.find(item =>
+    item.continuedFromDowntimeId === "downtime-resolution-flow" && !item.endedAt
+  );
+  assert.ok(resumedDowntime);
+  assert.equal(resumedDowntime.startedAt, returned.resolutionReturnedAt);
 
   const staleReturnResponse = await fetch(`${baseUrl}/api/state`, {
     method: "PUT",
@@ -426,9 +489,14 @@ test("falls back to the engineer, returns only to the last performer, and accept
   assert.equal(secondPending.resolutionSubmittedByName, "Электрик Один");
   assert.notEqual(secondPending.resolutionSubmittedAt, firstPending.resolutionSubmittedAt);
   assert.equal(secondPending.resolutionReturnedAt, "");
+  const stoppedAfterRework = secondResolve.state.downtimes.find(item => item.id === resumedDowntime.id);
+  assert.equal(stoppedAfterRework.endedAt, secondPending.resolutionSubmittedAt);
+  assert.equal(stoppedAfterRework.closeAwaitingConfirmation, true);
 
   const finalResponse = await postRemark("2:0:2026-07-16", "remark-engineer", "confirm", engineer);
   const finalRemark = patchedRemark(finalResponse, "2:0:2026-07-16", "remark-engineer");
+  const confirmedDowntime = finalResponse.state.downtimes.find(item => item.id === resumedDowntime.id);
+  assert.equal(confirmedDowntime.closeAwaitingConfirmation, false);
   assert.equal(finalRemark.resolvedAt, secondPending.resolutionSubmittedAt);
   assert.equal(finalRemark.resolvedByName, "Электрик Один");
   assert.equal(finalRemark.resolvedComment, "Повторно устранено другим сотрудником");
