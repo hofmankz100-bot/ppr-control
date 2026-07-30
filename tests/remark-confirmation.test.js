@@ -1427,3 +1427,16 @@ test("downtime chart legend shows monthly breakdown and production stop counters
   assert.match(appSource, /\$\{productionText\} · \$\{durationText\(item\.productionMs\)\}/);
   assert.match(styles, /\.downtime-legend-counts/);
 });
+
+test("downtime shop buttons expand an inline journal responsively", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /function downtimeDetailsHtml\(area\)/);
+  assert.match(appSource, /class="downtime-expanded-mobile"/);
+  assert.match(appSource, /class="downtime-expanded-desktop"/);
+  assert.match(appSource, /aria-expanded="\$\{selected\}"/);
+  assert.match(appSource, /const canCollapse = control\.matches\("button"\) && current\.selectedDowntimeArea === area/);
+  assert.match(styles, /\.downtime-legend-buttons\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fit/);
+  assert.match(styles, /@media \(max-width:\s*680px\)[\s\S]*?\.downtime-legend-buttons\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(styles, /\.downtime-expanded-mobile\s*\{[\s\S]*?display:\s*none/);
+});
