@@ -629,6 +629,10 @@ test("the planned maintenance sheet auto-fills its work rows and keeps every row
   assert.match(source, /textarea data-ppr-work-input=/);
   assert.match(source, /input\.addEventListener\("input"/);
   assert.match(source, /nodeReminderItems\(scheduled\?\.node \|\| "", scheduled\?\.equipment \|\| ""\)/);
+  assert.match(source, /function pprAutofillEngineer\(\)/);
+  assert.match(source, /includes\("ербол"\)/);
+  assert.match(source, /sheet\.plannedAutomatically = true/);
+  assert.match(source, /sheet\.plannedAutomatically \? "Автовыбор" : "План составил"/);
 });
 
 test("PPR schedules only weekdays and moves weekend work to Monday", () => {
