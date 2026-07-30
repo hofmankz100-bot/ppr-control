@@ -5,7 +5,7 @@
     {
       id: "shear-down",
       code: "LE2 / Q10.2",
-      name: "Опускание ножниц",
+      name: "Нож — опустить",
       group: "Клапанная панель ножниц",
       purpose: "Направляет масло в полость опускания гидроцилиндра ножниц.",
       pressure: "До 25 МПа по настройке контура",
@@ -16,7 +16,7 @@
     {
       id: "shear-up",
       code: "LE3 / Q10.3",
-      name: "Подъём ножниц",
+      name: "Нож — поднять",
       group: "Клапанная панель ножниц",
       purpose: "Переключает поток на обратный ход цилиндра и поднимает ножницы.",
       pressure: "До 25 МПа по настройке контура",
@@ -27,7 +27,7 @@
     {
       id: "container-open",
       code: "LE2 / Q9.4",
-      name: "Открытие контейнера",
+      name: "Контейнер №2 — открыть",
       group: "Клапанная панель контейнера",
       purpose: "Подаёт масло на открытие замка и движение контейнера в положение «Открыто».",
       pressure: "Контур контейнера",
@@ -36,9 +36,42 @@
       returnPaths: ["M1100 475 L1100 650 L940 650 L940 705"]
     },
     {
+      id: "container-1-open",
+      code: "LE4 / Q9.0",
+      name: "Контейнер №1 — открыть",
+      group: "Клапанная панель контейнера",
+      purpose: "Заводская команда «#1 Container Open»: подача сигнала на открытие контейнера №1.",
+      pressure: "Контур контейнера №1",
+      x: 46.4, y: 27.2,
+      pressurePaths: ["M1410 1470 L1410 850 L1160 850 L1160 700 L1210 700 L1210 475", "M1210 475 L1210 330"],
+      returnPaths: ["M1280 475 L1280 650 L1160 650 L1160 705"]
+    },
+    {
+      id: "container-1-close",
+      code: "LE5 / Q8.6",
+      name: "Контейнер №1 — закрыть",
+      group: "Клапанная панель контейнера",
+      purpose: "Заводская команда «#1 Container Close»: подача сигнала на закрытие контейнера №1.",
+      pressure: "Контур контейнера №1",
+      x: 50.2, y: 27.2,
+      pressurePaths: ["M1410 1470 L1410 850 L1320 850 L1320 700 L1320 475"],
+      returnPaths: ["M1250 475 L1250 650 L1410 650 L1410 705"]
+    },
+    {
+      id: "container-1-open-return",
+      code: "LE6 / Q9.1",
+      name: "Контейнер №1 — возврат масла при открытии",
+      group: "Клапанная панель контейнера",
+      purpose: "Заводская команда «#1 Container Open Oil Return»: открывает линию возврата масла при открытии контейнера №1.",
+      pressure: "Возврат масла контейнера №1",
+      x: 53.7, y: 27.2,
+      pressurePaths: ["M1410 1470 L1410 850 L1395 850 L1395 560"],
+      returnPaths: ["M1395 560 L1395 705 L1530 705"]
+    },
+    {
       id: "container-close",
       code: "LE7 / Q9.2",
-      name: "Закрытие контейнера",
+      name: "Контейнер №2 — закрыть",
       group: "Клапанная панель контейнера",
       purpose: "Направляет поток на закрытие контейнера и его фиксацию.",
       pressure: "Контур контейнера",
@@ -49,7 +82,7 @@
     {
       id: "ram-forward",
       code: "LE2 / Q8.2",
-      name: "Главный цилиндр вперёд",
+      name: "Главный цилиндр — вперёд",
       group: "Главная клапанная панель",
       purpose: "Подаёт масло в рабочую полость главного цилиндра для движения прессующей плиты вперёд.",
       pressure: "Основной контур высокого давления",
@@ -60,7 +93,7 @@
     {
       id: "ram-backward",
       code: "LE3 / Q8.0",
-      name: "Главный цилиндр назад",
+      name: "Главный цилиндр — назад",
       group: "Главная клапанная панель",
       purpose: "Переключает поток на обратный ход главного цилиндра.",
       pressure: "Основной контур высокого давления",
@@ -108,6 +141,7 @@
   const hotspotLayer = document.querySelector("#hotspotLayer");
   const pressureGroup = document.querySelector("#pressurePaths");
   const returnGroup = document.querySelector("#returnPaths");
+  const actuatorGroup = document.querySelector("#actuatorAnimation");
   const modeList = document.querySelector("#modeList");
   const detailCard = document.querySelector("#detailCard");
   const zoomValue = document.querySelector("#zoomValue");
@@ -118,9 +152,40 @@
   let dragging = false;
   let dragStart = null;
   let pinchStart = null;
+  let activeModeId = null;
+
+  const actuatorByMode = {
+    "shear-down": { x: 675, y: 180, axis: "vertical", reverse: false, label: "Нож опускается" },
+    "shear-up": { x: 675, y: 180, axis: "vertical", reverse: true, label: "Нож поднимается" },
+    "container-open": { x: 1205, y: 165, axis: "horizontal", reverse: false, label: "Контейнер №2 открывается" },
+    "container-close": { x: 1205, y: 165, axis: "horizontal", reverse: true, label: "Контейнер №2 закрывается" },
+    "container-1-open": { x: 1300, y: 245, axis: "horizontal", reverse: false, label: "Контейнер №1 открывается" },
+    "container-1-close": { x: 1300, y: 245, axis: "horizontal", reverse: true, label: "Контейнер №1 закрывается" },
+    "container-1-open-return": { x: 1300, y: 245, axis: "horizontal", reverse: false, label: "Возврат масла контейнера №1" },
+    "ram-forward": { x: 1860, y: 165, axis: "horizontal", reverse: false, label: "Главный цилиндр движется вперёд" },
+    "ram-backward": { x: 1860, y: 165, axis: "horizontal", reverse: true, label: "Главный цилиндр движется назад" },
+    "ram-release": { x: 1860, y: 165, axis: "horizontal", reverse: true, label: "Главный цилиндр разгружается" }
+  };
 
   function pathMarkup(paths) {
     return paths.map(d => `<path d="${d}"></path>`).join("");
+  }
+
+  function renderActuator(id) {
+    const actuator = actuatorByMode[id];
+    if (!actuator) {
+      actuatorGroup.innerHTML = "";
+      return;
+    }
+    const rotation = actuator.axis === "vertical" ? 90 : 0;
+    actuatorGroup.innerHTML = `
+      <g transform="translate(${actuator.x} ${actuator.y}) rotate(${rotation})">
+        <rect class="cylinder-body" x="-58" y="-22" width="116" height="44" rx="7"></rect>
+        <line class="animated-rod${actuator.reverse ? " reverse" : ""}" x1="38" y1="0" x2="126" y2="0"></line>
+        <path class="motion-arrow${actuator.reverse ? " reverse" : ""}" d="M84 -13 L112 0 L84 13"></path>
+        <text class="actuator-label" x="0" y="-34" text-anchor="middle">${actuator.label}</text>
+      </g>
+    `;
   }
 
   function renderModes() {
@@ -128,10 +193,11 @@
       <button type="button" class="mode-button" data-mode="${mode.id}">
         <strong>${mode.name}</strong>
         <small>${mode.code} · ${mode.group}</small>
+        <span class="signal-label">${mode.id.endsWith("-pump") ? "Включить насос" : "Подать сигнал"}</span>
       </button>
     `).join("");
     hotspotLayer.innerHTML = modes.map(mode => `
-      <button type="button" class="valve-hotspot" style="left:${mode.x}%;top:${mode.y}%" data-mode="${mode.id}" data-code="${mode.code}" aria-label="${mode.name}"></button>
+      <button type="button" class="valve-hotspot" style="left:${mode.x}%;top:${mode.y}%" data-mode="${mode.id}" data-code="${mode.code}" aria-label="Подать сигнал: ${mode.name}" aria-pressed="false"></button>
     `).join("");
     document.querySelectorAll("[data-mode]").forEach(button => {
       button.addEventListener("click", event => {
@@ -144,15 +210,30 @@
   function activateMode(id) {
     const mode = modes.find(item => item.id === id);
     if (!mode) return;
+    if (activeModeId === id) {
+      resetFlow();
+      return;
+    }
+    activeModeId = id;
     pressureGroup.innerHTML = pathMarkup(mode.pressurePaths);
     returnGroup.innerHTML = pathMarkup(mode.returnPaths);
+    renderActuator(id);
     document.querySelectorAll("[data-mode]").forEach(element => {
       element.classList.toggle("active", element.dataset.mode === id);
+      element.setAttribute("aria-pressed", String(element.dataset.mode === id));
+      const label = element.querySelector(".signal-label");
+      if (label) {
+        const isPump = mode.id.endsWith("-pump");
+        label.textContent = element.dataset.mode === id
+          ? (isPump ? "Насос включён · нажмите для отключения" : "Сигнал подан · нажмите для снятия")
+          : (element.dataset.mode.endsWith("-pump") ? "Включить насос" : "Подать сигнал");
+      }
     });
     detailCard.classList.add("active");
     detailCard.innerHTML = `
       <span class="detail-code">${mode.code}</span>
       <h2>${mode.name}</h2>
+      <p class="signal-state">${mode.id.endsWith("-pump") ? "● Насос включён" : "● Электромагнит включён — сигнал подан"}</p>
       <p>${mode.purpose}</p>
       <dl>
         <div><dt>Узел</dt><dd>${mode.group}</dd></div>
@@ -164,9 +245,16 @@
   }
 
   function resetFlow() {
+    activeModeId = null;
     pressureGroup.innerHTML = "";
     returnGroup.innerHTML = "";
-    document.querySelectorAll("[data-mode]").forEach(element => element.classList.remove("active"));
+    actuatorGroup.innerHTML = "";
+    document.querySelectorAll("[data-mode]").forEach(element => {
+      element.classList.remove("active");
+      element.setAttribute("aria-pressed", "false");
+      const label = element.querySelector(".signal-label");
+      if (label) label.textContent = element.dataset.mode.endsWith("-pump") ? "Включить насос" : "Подать сигнал";
+    });
     detailCard.classList.remove("active");
     detailCard.innerHTML = `
       <span class="detail-code">Выбор элемента</span>

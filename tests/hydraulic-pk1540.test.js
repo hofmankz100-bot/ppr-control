@@ -20,12 +20,22 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(html, /hydraulic-pk1540\.js/);
   assert.ok(fs.statSync(image).size > 100_000);
 
-  assert.match(script, /Опускание ножниц/);
-  assert.match(script, /Открытие контейнера/);
-  assert.match(script, /Главный цилиндр вперёд/);
+  assert.match(script, /Нож — опустить/);
+  assert.match(script, /Контейнер №1 — открыть/);
+  assert.match(script, /Контейнер №1 — закрыть/);
+  assert.match(script, /Контейнер №2 — открыть/);
+  assert.match(script, /Контейнер №2 — закрыть/);
+  assert.match(script, /Контейнер №1 — возврат масла при открытии/);
+  assert.match(script, /Главный цилиндр — вперёд/);
   assert.match(script, /Сброс давления главного цилиндра/);
   assert.match(script, /Главный насос/);
   assert.match(script, /function activateMode\(id\)/);
+  assert.match(script, /Сигнал подан · нажмите для снятия/);
+  assert.match(script, /Электромагнит включён — сигнал подан/);
+  assert.match(script, /if \(activeModeId === id\)/);
+  assert.match(script, /const actuatorByMode/);
+  assert.match(script, /function renderActuator\(id\)/);
+  assert.match(script, /Главный цилиндр движется вперёд/);
   assert.match(script, /pressureGroup\.innerHTML = pathMarkup/);
   assert.match(script, /returnGroup\.innerHTML = pathMarkup/);
   assert.match(script, /pointerdown/);
@@ -34,6 +44,8 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(styles, /@keyframes oil-flow/);
   assert.match(styles, /\.pressure-flow path/);
   assert.match(styles, /\.return-flow path/);
+  assert.match(styles, /\.signal-state/);
+  assert.match(styles, /@keyframes cylinder-forward/);
   assert.match(styles, /@media \(max-width: 820px\)/);
 });
 

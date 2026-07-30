@@ -22,8 +22,8 @@
   <main class="workspace">
     <aside class="control-panel">
       <section>
-        <h2>Режим работы</h2>
-        <p>Нажмите действие или клапан на чертеже.</p>
+        <h2>Заводские команды электромагнитов</h2>
+        <p>Нажмите «Подать сигнал» или электромагнит с кодом Q непосредственно на чертеже. Повторное нажатие снимает сигнал.</p>
         <div id="modeList" class="mode-list"></div>
       </section>
       <section id="detailCard" class="detail-card" aria-live="polite">
@@ -51,6 +51,7 @@
           <svg class="flow-layer" viewBox="0 0 2600 1836" preserveAspectRatio="none" aria-hidden="true">
             <g id="pressurePaths" class="flow-paths pressure-flow"></g>
             <g id="returnPaths" class="flow-paths return-flow"></g>
+            <g id="actuatorAnimation" class="actuator-animation"></g>
           </svg>
           <div id="hotspotLayer" class="hotspot-layer"></div>
         </div>
