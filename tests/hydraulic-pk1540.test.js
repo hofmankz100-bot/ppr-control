@@ -18,6 +18,7 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(html, /Подача под давлением/);
   assert.match(html, /Слив в бак/);
   assert.match(html, /hydraulic-pk1540\.js/);
+  assert.match(html, /Включить двигатель/);
   assert.ok(fs.statSync(image).size > 100_000);
 
   assert.match(script, /Нож — опустить/);
@@ -35,6 +36,9 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(script, /if \(activeModeId === id\)/);
   assert.match(script, /const actuatorByMode/);
   assert.match(script, /function renderActuator\(id\)/);
+  assert.match(script, /function setMotor\(nextState\)/);
+  assert.match(script, /масло идёт по холостому контуру в бак/);
+  assert.match(script, /if \(!motorOn\)/);
   assert.match(script, /Главный цилиндр движется вперёд/);
   assert.match(script, /pressureGroup\.innerHTML = pathMarkup/);
   assert.match(script, /returnGroup\.innerHTML = pathMarkup/);
@@ -46,6 +50,7 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(styles, /\.return-flow path/);
   assert.match(styles, /\.signal-state/);
   assert.match(styles, /@keyframes cylinder-forward/);
+  assert.match(styles, /@keyframes motor-spin/);
   assert.match(styles, /@media \(max-width: 820px\)/);
 });
 
