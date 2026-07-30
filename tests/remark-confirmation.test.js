@@ -1423,5 +1423,7 @@ test("downtime chart legend shows monthly breakdown and production stop counters
   assert.match(appSource, /"поломка", "поломки", "поломок"/);
   assert.match(appSource, /"производственная остановка"/);
   assert.match(appSource, /class="downtime-legend-counts"/);
+  assert.match(appSource, /\$\{breakdownText\} · \$\{durationText\(item\.breakdownMs\)\}/);
+  assert.match(appSource, /\$\{productionText\} · \$\{durationText\(item\.productionMs\)\}/);
   assert.match(styles, /\.downtime-legend-counts/);
 });
