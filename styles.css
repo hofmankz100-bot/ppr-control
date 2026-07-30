@@ -4490,6 +4490,87 @@ body.editor-profile .warehouse-folders button.request-alert {
   color: #fff;
 }
 
+.node-card-group {
+  display: grid;
+  gap: 8px;
+}
+
+.node-document-memo {
+  width: 100%;
+  border: 1px solid #b9ccd6;
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.node-document-memo > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 44px 12px 14px;
+  color: var(--nav);
+  font-weight: 900;
+  position: relative;
+}
+
+.node-document-memo > summary::-webkit-details-marker {
+  display: none;
+}
+
+.node-document-memo > summary::after {
+  content: "⌄";
+  position: absolute;
+  right: 16px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.node-document-memo[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.node-document-memo-body {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px 14px;
+}
+
+.node-document-memo-body > strong,
+.node-document-memo-body > small {
+  display: block;
+}
+
+.node-document-memo-body > small {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.node-document-memo-body ol {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+
+.node-document-memo-body li + li {
+  margin-top: 7px;
+}
+
+.node-document-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+}
+
+.node-document-legal span {
+  width: 100%;
+  color: var(--muted);
+}
+
+.node-document-legal a {
+  color: var(--nav);
+  font-weight: 700;
+}
+
 .segmented,
 .tabs {
   display: flex;

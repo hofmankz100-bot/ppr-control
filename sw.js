@@ -1,15 +1,15 @@
-const CACHE_NAME = "ppr-v330-forklift-journal";
+const CACHE_NAME = "ppr-v331-node-document-memo";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=330-forklift-journal",
+  "./styles.css?v=331-node-document-memo",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./app.js?v=330-forklift-journal",
+  "./app.js?v=331-node-document-memo",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

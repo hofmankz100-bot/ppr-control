@@ -12026,6 +12026,98 @@ function equipmentDaySummary(eq, date) {
   };
 }
 
+const NODE_DOCUMENT_MEMO_ROLES = new Set(["editor", "energyEngineer", "designEngineer", "mechanicalEngineer"]);
+
+function canViewNodeDocumentMemo(user = profile) {
+  return [user?.role, user?.jobRole, user?.editorOriginalRole].some(role => NODE_DOCUMENT_MEMO_ROLES.has(String(role || "")));
+}
+
+function nodeDocumentMemoItems(eq, nodeName) {
+  const searchText = `${eq?.name || ""} ${eq?.area || ""} ${nodeName || ""}`.toLocaleLowerCase("ru-RU");
+  const items = [
+    "Паспорт оборудования и паспорт (формуляр) узла, если он предусмотрен изготовителем.",
+    "Руководство по эксплуатации, инструкция по техническому обслуживанию и ремонту.",
+    "Актуальная схема, чертёж или спецификация узла с учётом внесённых изменений.",
+    "Утверждённый график ППР и технологическая карта работ.",
+    "Журнал осмотров, технического обслуживания и ремонта.",
+    "Дефектная ведомость или зарегистрированная заявка на неисправность.",
+    "Акт выполненного ремонта с перечнем заменённых деталей и материалов.",
+    "Протокол испытаний, измерений или проверки работоспособности после ремонта.",
+    "Документы на запасные части: сертификат, паспорт или декларация соответствия — при наличии.",
+    "Приказ о назначении ответственных лиц и инструкция по безопасности для выполняемых работ."
+  ];
+  const add = (...values) => values.forEach(value => {
+    if (!items.includes(value)) items.push(value);
+  });
+
+  if (/(электр|двигател|кабел|трансформ|подстанц|распредел|щит|автомат|контактор|реле|генератор)/u.test(searchText)) {
+    add(
+      "Однолинейная, принципиальная и монтажная электрические схемы с актуальными обозначениями.",
+      "Оперативный журнал и журнал выдачи нарядов и распоряжений.",
+      "Журнал дефектов и неисправностей электрооборудования.",
+      "Ведомость (реестр) электрооборудования и кабельный журнал.",
+      "Протоколы измерения сопротивления изоляции, заземления и проверки устройств защиты.",
+      "Паспорт, карта уставок и журнал проверки релейной защиты — если она установлена."
+    );
+  }
+  if (/(кран|таль|тельфер|лебед|подъем|подъём|гпм|строп|крюк)/u.test(searchText)) {
+    add(
+      "Паспорт грузоподъёмного механизма с записями о ремонтах и технических освидетельствованиях.",
+      "Журнал ежесменного осмотра ГПМ.",
+      "Акты частичного и полного технического освидетельствования.",
+      "Протоколы статических и динамических испытаний.",
+      "Журнал осмотра канатов, крюков, стропов и грузозахватных приспособлений."
+    );
+  }
+  if (/(вилоч|погрузчик)/u.test(searchText)) {
+    add(
+      "Паспорт и руководство по эксплуатации вилочного погрузчика.",
+      "Журнал предсменного осмотра вилочного погрузчика.",
+      "Журнал технического обслуживания и ремонта погрузчика.",
+      "Акт проверки тормозов, рулевого управления, вил и подъёмного механизма.",
+      "Документы о допуске, обучении и проверке знаний водителя погрузчика."
+    );
+  }
+  if (/(гидрав|пневм|цилиндр|насос|редуктор|подшип|муфт|вал|пресс)/u.test(searchText)) {
+    add(
+      "Актуальная гидравлическая, пневматическая или кинематическая схема — по типу узла.",
+      "Карта смазки с марками материалов и периодичностью.",
+      "Протокол проверки давления, герметичности, защит и блокировок — по применимости.",
+      "Акт дефектоскопии ответственных деталей — если это предусмотрено паспортом или правилами."
+    );
+  }
+  if (/(котел|сосуд|компресс|ресивер|давлен|газ|баллон|трубопровод)/u.test(searchText)) {
+    add(
+      "Паспорт сосуда, котла, компрессора или трубопровода — по типу оборудования.",
+      "Акты технического освидетельствования и гидравлических (пневматических) испытаний.",
+      "Документы проверки предохранительных клапанов, манометров и защит.",
+      "Журнал эксплуатации оборудования под давлением и наряды-допуски на опасные работы."
+    );
+  }
+  return items;
+}
+
+function nodeDocumentMemoHtml(eq, nodeName) {
+  if (!canViewNodeDocumentMemo()) return "";
+  return `
+    <details class="node-document-memo">
+      <summary>Список документов</summary>
+      <div class="node-document-memo-body">
+        <strong>${escapeHtml(eq.name)} · ${escapeHtml(nodeName)}</strong>
+        <small>Памятка инженеру. Наличие и применимость документов уточняются по паспорту, категории и условиям эксплуатации оборудования.</small>
+        <ol>${nodeDocumentMemoItems(eq, nodeName).map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+        <div class="node-document-legal">
+          <span>Нормативная основа Республики Казахстан:</span>
+          <a href="https://www.adilet.zan.kz/rus/docs/V1500010949" target="_blank" rel="noopener">техническая документация электроустановок</a>
+          <a href="https://adilet.zan.kz/rus/docs/V1500010889" target="_blank" rel="noopener">безопасность электроустановок</a>
+          <a href="https://www.adilet.zan.kz/rus/docs/H11T0000823" target="_blank" rel="noopener">ТР ТС 010/2011</a>
+          <a href="https://www.adilet.zan.kz/rus/docs/Z070000305_" target="_blank" rel="noopener">безопасность машин и оборудования</a>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 function renderNodes() {
   const eq = equipmentById(current.equipmentId);
   ui.subtitle.textContent = eq.name;
@@ -12040,6 +12132,8 @@ function renderNodes() {
       const [eqId, nodeIdx] = k.split(":").map(Number);
       return eqId === eq.id && nodeIdx === index && hasOpenCommentRecord(rec);
     });
+    const card = document.createElement("div");
+    card.className = "node-card-group";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "node-card";
@@ -12051,7 +12145,9 @@ function renderNodes() {
       current.nodeIndex = index;
       show("schedule");
     });
-    ui.nodeList.append(button);
+    card.append(button);
+    if (canViewNodeDocumentMemo()) card.insertAdjacentHTML("beforeend", nodeDocumentMemoHtml(eq, node));
+    ui.nodeList.append(card);
   });
 }
 
@@ -12318,6 +12414,7 @@ function renderNodeWalkthrough(eq) {
             ` : ""}
           </div>
         ` : ""}
+        ${nodeDocumentMemoHtml(eq, nodeName)}
       `;
       row.querySelector("[data-open-node-detail]")?.addEventListener("click", () => {
         current.nodeDetailIndex = index;
@@ -12443,6 +12540,7 @@ function renderNodeWalkthrough(eq) {
           `}
         </details>
       </label>
+      ${nodeDocumentMemoHtml(eq, nodeName)}
     `;
     let nodePhotoProcessing = Promise.resolve();
     row.querySelector("[data-back-node-list]")?.addEventListener("click", () => {
