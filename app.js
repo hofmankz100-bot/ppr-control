@@ -12732,6 +12732,58 @@ function pprSheetRecord(date, create = false) {
   };
 }
 
+function pprSheetAutofillRows(date, scheduledItems = []) {
+  const generated = [];
+  scheduledItems.forEach((scheduled, scheduledIndex) => {
+    const works = nodeReminderItems(scheduled?.node || "", scheduled?.equipment || "");
+    works.forEach((work, workIndex) => {
+      const clean = String(work || "").trim();
+      if (!clean || generated.some(row => row.work === clean)) return;
+      generated.push({
+        id: `${date}-auto-${scheduledIndex + 1}-${workIndex + 1}`,
+        work: clean,
+        mark: "",
+        equipmentId: scheduled?.equipmentId || "",
+        equipment: scheduled?.equipment || "",
+        node: scheduled?.node || "",
+        area: scheduled?.area || "",
+        autoFilled: true
+      });
+    });
+  });
+  return generated;
+}
+
+function ensurePprSheetAutofill(date, scheduledItems = [], force = false) {
+  if (!scheduledItems.length) return pprSheetRecord(date);
+  const sheet = pprSheetRecord(date, true);
+  const hasManualOrSavedWork = (sheet.rows || []).some(row => String(row?.work || "").trim());
+  if (!force && (sheet.autofillInitialized || hasManualOrSavedWork)) {
+    if (!sheet.autofillInitialized && hasManualOrSavedWork) {
+      sheet.autofillInitialized = true;
+      sheet.autofillMode = "existing";
+      touchPprSheet(sheet);
+    }
+    return sheet;
+  }
+  const generated = pprSheetAutofillRows(date, scheduledItems);
+  sheet.rows = generated.length ? generated : pprSheetDefaultRows(date);
+  while (sheet.rows.length < PPR_SHEET_DEFAULT_ROWS) {
+    sheet.rows.push({ id: `${date}-work-${sheet.rows.length + 1}`, work: "", mark: "" });
+  }
+  sheet.autofillInitialized = true;
+  sheet.autofillMode = "template";
+  sheet.autofilledAt = new Date().toISOString();
+  sheet.autofilledFor = scheduledItems.map(item => ({
+    equipmentId: item?.equipmentId || "",
+    equipment: item?.equipment || "",
+    node: item?.node || "",
+    area: item?.area || ""
+  }));
+  touchPprSheet(sheet);
+  return sheet;
+}
+
 function pprSheetCompletion(date) {
   const sheet = pprSheetRecord(date);
   const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
@@ -12792,7 +12844,7 @@ async function publishPprSheetAction(date, action, details = {}) {
 }
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
-  const sheet = pprSheetRecord(date);
+  const sheet = ensurePprSheetAutofill(date, scheduledItems);
   const savedRows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
   const rows = [...savedRows];
   while (rows.length < scheduledItems.length) {
@@ -12862,6 +12914,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         ${sheet.plannedByName || sheet.updatedByName ? `<small>План составил: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
+        ${canPlan ? `<button type="button" class="secondary no-print" data-autofill-ppr-sheet="${date}">Автозаполнить перечень работ</button>` : ""}
         ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
         ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
       </footer>
@@ -13127,6 +13180,16 @@ function bindPprCalendarControls(container, rerender) {
       } catch {
         saveState();
       }
+      rerender();
+    });
+  });
+  container?.querySelectorAll("[data-autofill-ppr-sheet]").forEach(button => {
+    button.addEventListener("click", () => {
+      const date = button.dataset.autofillPprSheet;
+      const selectedItems = pprCalendarMonthData(allEquipment()).itemsByDate[date] || [];
+      if (!selectedItems.length) return;
+      if (!window.confirm("Заменить перечень работ типовыми работами для оборудования и узлов по текущему графику? После заполнения каждую строку можно редактировать.")) return;
+      ensurePprSheetAutofill(date, selectedItems, true);
       rerender();
     });
   });

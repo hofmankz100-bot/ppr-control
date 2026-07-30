@@ -619,6 +619,18 @@ test("maintenance work can be auto-filled from renamed equipment and node names,
   assert.match(server, /rawItem\.nodeOperationalPauses/);
 });
 
+test("the planned maintenance sheet auto-fills its work rows and keeps every row editable", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  assert.match(source, /function pprSheetAutofillRows\(date, scheduledItems = \[\]\)/);
+  assert.match(source, /function ensurePprSheetAutofill\(date, scheduledItems = \[\], force = false\)/);
+  assert.match(source, /const sheet = ensurePprSheetAutofill\(date, scheduledItems\)/);
+  assert.match(source, /data-autofill-ppr-sheet/);
+  assert.match(source, /После заполнения каждую строку можно редактировать/);
+  assert.match(source, /textarea data-ppr-work-input=/);
+  assert.match(source, /input\.addEventListener\("input"/);
+  assert.match(source, /nodeReminderItems\(scheduled\?\.node \|\| "", scheduled\?\.equipment \|\| ""\)/);
+});
+
 test("PPR schedules only weekdays and moves weekend work to Monday", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /function isPprWorkday\(date\)/);
