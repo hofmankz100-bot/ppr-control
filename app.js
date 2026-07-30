@@ -926,6 +926,7 @@ function loadState() {
     parsed.gpmJournal.inspections ||= {};
     parsed.gpmJournal.events ||= {};
     parsed.gpmJournal.managers ||= {};
+    parsed.nodeDocumentMemoRoles ||= ["energyEngineer", "designEngineer", "mechanicalEngineer"];
     parsed.pprSheets ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
@@ -12026,10 +12027,54 @@ function equipmentDaySummary(eq, date) {
   };
 }
 
-const NODE_DOCUMENT_MEMO_ROLES = new Set(["editor", "energyEngineer", "designEngineer", "mechanicalEngineer"]);
+const DEFAULT_NODE_DOCUMENT_MEMO_ROLES = ["energyEngineer", "designEngineer", "mechanicalEngineer"];
 
 function canViewNodeDocumentMemo(user = profile) {
-  return [user?.role, user?.jobRole, user?.editorOriginalRole].some(role => NODE_DOCUMENT_MEMO_ROLES.has(String(role || "")));
+  const allowedRoles = new Set(["editor", ...(state.nodeDocumentMemoRoles || DEFAULT_NODE_DOCUMENT_MEMO_ROLES)]);
+  return [user?.role, user?.jobRole, user?.editorOriginalRole].some(role => allowedRoles.has(String(role || "")));
+}
+
+function canConfigureNodeDocumentMemo() {
+  return catalogEditorRole() === "editor";
+}
+
+function nodeDocumentMemoRoleOptionsHtml() {
+  if (!canConfigureNodeDocumentMemo()) return "";
+  const selected = new Set(state.nodeDocumentMemoRoles || DEFAULT_NODE_DOCUMENT_MEMO_ROLES);
+  const roles = Object.entries(ROLE_ACCESS)
+    .filter(([role, access]) => role !== "editor" && access.checklist && !["director", "technicalDirector", "productionDirector"].includes(role));
+  return `
+    <details class="node-document-access">
+      <summary>Кто видит памятку</summary>
+      <div class="node-document-access-options">
+        <label><input type="checkbox" checked disabled> Админ (всегда)</label>
+        ${roles.map(([role, access]) => `
+          <label><input type="checkbox" data-document-memo-role="${escapeHtml(role)}" ${selected.has(role) ? "checked" : ""}> ${escapeHtml(access.label)}</label>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function bindNodeDocumentMemoControls(root, rerender) {
+  root?.querySelectorAll("[data-document-memo-role]").forEach(input => {
+    input.addEventListener("change", () => {
+      if (!canConfigureNodeDocumentMemo()) return;
+      const roles = new Set(state.nodeDocumentMemoRoles || DEFAULT_NODE_DOCUMENT_MEMO_ROLES);
+      if (input.checked) roles.add(input.dataset.documentMemoRole);
+      else roles.delete(input.dataset.documentMemoRole);
+      state.nodeDocumentMemoRoles = [...roles];
+      recordAudit(
+        "Изменил доступ к списку документов",
+        input.dataset.documentMemoRole,
+        "",
+        input.checked ? "Доступ разрешён" : "Доступ закрыт"
+      );
+      saveState();
+      showAppToast("Доступ к памятке сохранён.");
+      if (typeof rerender === "function") rerender();
+    });
+  });
 }
 
 function nodeDocumentMemoItems(eq, nodeName) {
@@ -12113,6 +12158,7 @@ function nodeDocumentMemoHtml(eq, nodeName) {
           <a href="https://www.adilet.zan.kz/rus/docs/H11T0000823" target="_blank" rel="noopener">ТР ТС 010/2011</a>
           <a href="https://www.adilet.zan.kz/rus/docs/Z070000305_" target="_blank" rel="noopener">безопасность машин и оборудования</a>
         </div>
+        ${nodeDocumentMemoRoleOptionsHtml()}
       </div>
     </details>
   `;
@@ -12146,7 +12192,10 @@ function renderNodes() {
       show("schedule");
     });
     card.append(button);
-    if (canViewNodeDocumentMemo()) card.insertAdjacentHTML("beforeend", nodeDocumentMemoHtml(eq, node));
+    if (canViewNodeDocumentMemo()) {
+      card.insertAdjacentHTML("beforeend", nodeDocumentMemoHtml(eq, node));
+      bindNodeDocumentMemoControls(card, renderNodes);
+    }
     ui.nodeList.append(card);
   });
 }
@@ -12421,6 +12470,7 @@ function renderNodeWalkthrough(eq) {
         current.nodeIndex = index;
         renderNodeWalkthrough(eq);
       });
+      bindNodeDocumentMemoControls(row, () => renderNodeWalkthrough(equipmentById(eq.id)));
       row.querySelector("[data-save-node-name]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
         const input = row.querySelector("[data-node-name-list]");
         if (!saveNodeName(eq.id, index, input?.value || nodeName)) return;
@@ -12547,6 +12597,7 @@ function renderNodeWalkthrough(eq) {
       current.nodeDetailIndex = null;
       renderNodeWalkthrough(eq);
     });
+    bindNodeDocumentMemoControls(row, () => renderNodeWalkthrough(equipmentById(eq.id)));
     row.querySelector("[data-node-name]")?.addEventListener("change", event => {
       if (!canEditCatalog()) return;
       saveNodeName(eq.id, index, event.target.value);

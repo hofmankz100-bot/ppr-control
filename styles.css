@@ -4571,6 +4571,40 @@ body.editor-profile .warehouse-folders button.request-alert {
   font-weight: 700;
 }
 
+.node-document-access {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.node-document-access > summary {
+  cursor: pointer;
+  padding: 10px;
+  font-weight: 800;
+}
+
+.node-document-access-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.node-document-access-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--soft);
+}
+
+.node-document-access-options input {
+  width: 19px;
+  height: 19px;
+}
+
 .segmented,
 .tabs {
   display: flex;
