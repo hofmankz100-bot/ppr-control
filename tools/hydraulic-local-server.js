@@ -16,7 +16,7 @@ const files = new Map([
 
 function openBrowser(url) {
   if (process.platform === "win32") {
-    execFile("cmd.exe", ["/d", "/s", "/c", `start "" "${url}"`], { windowsHide: true });
+    execFile("explorer.exe", [url], { windowsHide: true });
     return;
   }
   execFile(process.platform === "darwin" ? "open" : "xdg-open", [url]);
