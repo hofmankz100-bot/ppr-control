@@ -8229,25 +8229,236 @@ function polarPoint(cx, cy, radius, angle) {
   };
 }
 
+const DOWNTIME_JOURNAL_ROWS_PER_SHEET = 6;
+
+function downtimeLinkedRemark(item) {
+  const remarkId = String(item?.closedByRemarkId || "");
+  if (!remarkId) return null;
+  for (const record of Object.values(state.checks || {})) {
+    const found = ensureRemarkEntries(record?.to || {}).find(entry => stableRemarkId(entry) === remarkId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function downtimeJournalRowData(item, index) {
+  const remark = downtimeLinkedRemark(item);
+  const performers = resolutionParticipants(remark || {})
+    .map(participant => participant.name)
+    .filter(Boolean);
+  const confirmer = remark?.confirmedByName
+    || (remark?.resolutionPendingConfirmation ? "Ожидает подтверждения" : "");
+  return {
+    index: index + 1,
+    equipment: item.equipment || item.area || "Оборудование",
+    node: item.node || "Узел не указан",
+    type: downtimeTypeLabel(item.type),
+    startedAt: dateTimeHuman(item.startedAt || ""),
+    endedAt: item.endedAt ? dateTimeHuman(item.endedAt) : "Идёт сейчас",
+    duration: durationText(item.monthMs || downtimeDurationMs(item)),
+    reason: item.comment || "Не указана",
+    work: remark?.resolutionSubmittedComment || item.closeComment || (item.endedAt ? "Не указано" : "Простой активен"),
+    author: item.authorName || "Сотрудник",
+    performers: performers.join(", ") || remark?.resolutionSubmittedByName || item.closedByName || "—",
+    confirmer: confirmer || "—"
+  };
+}
+
+function downtimeJournalTableHtml(items, startIndex = 0, interactive = true) {
+  const rows = items.map((item, localIndex) => {
+    const row = downtimeJournalRowData(item, startIndex + localIndex);
+    return `
+      <tr ${interactive ? `data-open-downtime-comment="${escapeHtml(item.id)}"` : ""} class="${item.endedAt ? "" : "active"}">
+        <td>${row.index}</td>
+        <td><strong>${escapeHtml(row.equipment)}</strong><small>${escapeHtml(row.node)}</small></td>
+        <td>${escapeHtml(row.type)}</td>
+        <td>${escapeHtml(row.startedAt)}</td>
+        <td>${escapeHtml(row.endedAt)}</td>
+        <td>${escapeHtml(row.duration)}</td>
+        <td>${userTextWithRussianHtml(row.reason)}</td>
+        <td>${userTextWithRussianHtml(row.work)}</td>
+        <td>${escapeHtml(row.author)}</td>
+        <td>${escapeHtml(row.performers)}</td>
+        <td>${escapeHtml(row.confirmer)}</td>
+      </tr>
+    `;
+  }).join("");
+  return `
+    <div class="downtime-journal-table-wrap">
+      <table class="downtime-journal-table">
+        <thead><tr>
+          <th>№</th><th>Оборудование / узел</th><th>Тип</th><th>Начало</th><th>Пуск</th>
+          <th>Время</th><th>Причина</th><th>Выполненная работа</th><th>Записал</th><th>Устранили</th><th>Подтвердил</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function downtimeJournalSheetsHtml(area, selectedItems) {
+  const pageCount = Math.max(1, Math.ceil(selectedItems.length / DOWNTIME_JOURNAL_ROWS_PER_SHEET));
+  return Array.from({ length: pageCount }, (_, pageIndex) => {
+    const start = pageIndex * DOWNTIME_JOURNAL_ROWS_PER_SHEET;
+    const pageItems = selectedItems.slice(start, start + DOWNTIME_JOURNAL_ROWS_PER_SHEET);
+    return `
+      <section class="downtime-journal-sheet">
+        <header class="downtime-journal-sheet-head">
+          <div>
+            <small>Журнал простоев</small>
+            <strong>${escapeHtml(area)} · ${escapeHtml(ui.downtimeMonthLabel?.textContent || "")}</strong>
+          </div>
+          <span>Лист ${pageIndex + 1} из ${pageCount}</span>
+          <button type="button" data-open-downtime-print="${pageIndex + 1}">Печать</button>
+        </header>
+        ${pageItems.length
+          ? downtimeJournalTableHtml(pageItems, start)
+          : `<div class="empty-state">За выбранный месяц простоев нет</div>`}
+      </section>
+    `;
+  }).join("");
+}
+
 function downtimeDetailsHtml(area) {
   if (!area) return "";
   const selectedItems = downtimeMonthItems(area)
     .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  const pageCount = Math.max(1, Math.ceil(selectedItems.length / DOWNTIME_JOURNAL_ROWS_PER_SHEET));
   return `
     <div class="downtime-detail-head">
-      <strong>Журнал простоев · ${escapeHtml(area)}</strong>
-      <span>${selectedItems.length ? `${selectedItems.length} записей` : "За месяц простоев нет"}</span>
+      <strong>Единый журнал простоев · ${escapeHtml(area)}</strong>
+      <span>${selectedItems.length} записей · ${pageCount} ${pageCount === 1 ? "лист" : pageCount < 5 ? "листа" : "листов"}</span>
     </div>
-    ${selectedItems.length ? selectedItems.map(item => `
-      <button type="button" class="downtime-entry ${item.endedAt ? "" : "active"}" data-open-downtime-comment="${escapeHtml(item.id)}">
-        <strong>${escapeHtml(item.equipment)} · ${escapeHtml(item.node)}</strong>
-        <span>${downtimeTypeLabel(item.type)} · ${dateTimeHuman(item.startedAt)} - ${item.endedAt ? dateTimeHuman(item.endedAt) : "идет сейчас"} · ${durationText(downtimeDurationMs(item))}</span>
-        <p>${userTextWithRussianHtml(item.comment || "Без комментария")}</p>
-        ${item.closeComment ? `<p>Пуск: ${escapeHtml(item.closeComment)}</p>` : ""}
-        <small>${escapeHtml(item.authorName || "Сотрудник")} ${item.authorRole ? `(${escapeHtml(ROLE_ACCESS[item.authorRole]?.label || item.authorRole)})` : ""}</small>
-      </button>
-    `).join("") : `<div class="empty-state">По этому цеху за выбранный месяц нет комментариев простоев</div>`}
+    ${downtimeJournalSheetsHtml(area, selectedItems)}
   `;
+}
+
+function parseDowntimePrintPages(value, pageCount) {
+  const pages = new Set();
+  const tokens = String(value || "").split(/[,\s;]+/).map(token => token.trim()).filter(Boolean);
+  for (const token of tokens) {
+    const range = token.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const from = Number(range[1]);
+      const to = Number(range[2]);
+      if (from < 1 || to < from || to > pageCount) return [];
+      for (let page = from; page <= to; page += 1) pages.add(page);
+      continue;
+    }
+    const page = Number(token);
+    if (!Number.isInteger(page) || page < 1 || page > pageCount) return [];
+    pages.add(page);
+  }
+  return [...pages].sort((a, b) => a - b);
+}
+
+function printDowntimeJournal(area, pageNumbers = []) {
+  const items = downtimeMonthItems(area)
+    .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  const pageCount = Math.max(1, Math.ceil(items.length / DOWNTIME_JOURNAL_ROWS_PER_SHEET));
+  const selectedPages = pageNumbers.length ? pageNumbers : Array.from({ length: pageCount }, (_, index) => index + 1);
+  const stats = downtimeAreaStats(area);
+  const monthLabel = ui.downtimeMonthLabel?.textContent || "";
+  const pages = selectedPages.map(pageNumber => {
+    const start = (pageNumber - 1) * DOWNTIME_JOURNAL_ROWS_PER_SHEET;
+    const pageItems = items.slice(start, start + DOWNTIME_JOURNAL_ROWS_PER_SHEET);
+    return `
+      <section class="print-sheet">
+        <header>
+          <div><small>ППР Контроль · журнал простоев</small><h1>${escapeHtml(area)}</h1></div>
+          <div class="page-meta"><strong>${escapeHtml(monthLabel)}</strong><span>Лист ${pageNumber} из ${pageCount}</span></div>
+        </header>
+        <div class="summary">
+          <span>Всего: <b>${items.length}</b></span>
+          <span>Поломки: <b>${stats.breakdownCount} · ${durationText(stats.breakdownMs)}</b></span>
+          <span>Производственные: <b>${stats.productionCount} · ${durationText(stats.productionMs)}</b></span>
+        </div>
+        ${pageItems.length ? downtimeJournalTableHtml(pageItems, start, false) : `<p>За выбранный месяц простоев нет.</p>`}
+        <footer><span>Сформировано автоматически: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</span><span>Ответственный: ____________________</span></footer>
+      </section>
+    `;
+  }).join("");
+  const popup = window.open("", "_blank", "width=1400,height=900");
+  if (!popup) {
+    window.alert("Браузер заблокировал окно печати. Разрешите всплывающие окна и повторите.");
+    return;
+  }
+  popup.document.write(`<!doctype html>
+    <html lang="ru"><head><meta charset="utf-8"><title>Журнал простоев — ${escapeHtml(area)}</title>
+      <style>
+        @page{size:A4 landscape;margin:7mm}
+        *{box-sizing:border-box}html,body{margin:0;background:#fff;color:#111;font-family:Arial,sans-serif}
+        .print-sheet{width:283mm;min-height:196mm;padding:0;break-after:page;page-break-after:always;display:flex;flex-direction:column}
+        .print-sheet:last-of-type{break-after:auto;page-break-after:auto}
+        header{display:flex;justify-content:space-between;gap:10mm;align-items:flex-end;border-bottom:.6mm solid #14324a;padding-bottom:2mm;margin-bottom:2mm}
+        h1{font-size:16pt;margin:1mm 0 0}header small{font-size:8pt;color:#475569}.page-meta{text-align:right;display:grid;gap:1mm;font-size:9pt}
+        .summary{display:flex;gap:3mm;margin-bottom:2mm}.summary span{border:.3mm solid #94a3b8;padding:1.5mm 2mm;border-radius:2mm;font-size:8pt}
+        .downtime-journal-table-wrap{overflow:visible}.downtime-journal-table{width:100%;border-collapse:collapse;table-layout:fixed}
+        thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}
+        th,td{border:.25mm solid #64748b;padding:1.1mm;vertical-align:top;font-size:6.4pt;line-height:1.18;overflow-wrap:anywhere}
+        th{background:#dce8ef;text-align:center;font-weight:700}td small{display:block;margin-top:.7mm;color:#475569}
+        th:nth-child(1),td:nth-child(1){width:3%;text-align:center}th:nth-child(2),td:nth-child(2){width:13%}
+        th:nth-child(3),td:nth-child(3){width:7%}th:nth-child(4),td:nth-child(4),th:nth-child(5),td:nth-child(5){width:8%}
+        th:nth-child(6),td:nth-child(6){width:6%}th:nth-child(7),td:nth-child(7){width:12%}
+        th:nth-child(8),td:nth-child(8){width:14%}th:nth-child(9),td:nth-child(9){width:8%}
+        th:nth-child(10),td:nth-child(10){width:11%}th:nth-child(11),td:nth-child(11){width:10%}
+        footer{display:flex;justify-content:space-between;margin-top:auto;padding-top:2mm;font-size:7pt;color:#475569}
+        .actions{position:sticky;bottom:0;display:flex;justify-content:center;padding:12px;background:#eef3f6}
+        button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:11px 22px;font-weight:800}
+        @media print{.actions{display:none}.print-sheet{width:auto;min-height:0}}
+      </style>
+    </head><body>${pages}<div class="actions"><button onclick="window.print()">Печатать выбранные листы</button></div>
+      <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script>
+    </body></html>`);
+  popup.document.close();
+}
+
+function openDowntimePrintDialog(area, currentPage = 1) {
+  document.querySelector(".downtime-print-overlay")?.remove();
+  const itemCount = downtimeMonthItems(area).length;
+  const pageCount = Math.max(1, Math.ceil(itemCount / DOWNTIME_JOURNAL_ROWS_PER_SHEET));
+  const overlay = document.createElement("div");
+  overlay.className = "downtime-type-overlay downtime-print-overlay";
+  overlay.innerHTML = `
+    <section class="downtime-type-dialog downtime-print-dialog" role="dialog" aria-modal="true" aria-label="Печать журнала простоев">
+      <strong>Печать журнала · ${escapeHtml(area)}</strong>
+      <p>Всего листов: ${pageCount}. Выберите, что напечатать.</p>
+      <button type="button" data-print-downtime-current>Текущий лист ${currentPage}</button>
+      <button type="button" data-print-downtime-all>Все листы</button>
+      <label>
+        <span>Отдельные листы или диапазон</span>
+        <input type="text" data-downtime-print-pages placeholder="Например: 1, 3 или 2-4">
+      </label>
+      <div class="downtime-type-error" data-downtime-print-error></div>
+      <button type="button" data-print-downtime-selected>Печатать выбранные</button>
+      <button type="button" class="secondary" data-print-downtime-cancel>Отмена</button>
+    </section>
+  `;
+  const close = () => overlay.remove();
+  overlay.querySelector("[data-print-downtime-current]")?.addEventListener("click", () => {
+    close();
+    printDowntimeJournal(area, [currentPage]);
+  });
+  overlay.querySelector("[data-print-downtime-all]")?.addEventListener("click", () => {
+    close();
+    printDowntimeJournal(area);
+  });
+  overlay.querySelector("[data-print-downtime-selected]")?.addEventListener("click", () => {
+    const input = overlay.querySelector("[data-downtime-print-pages]");
+    const pages = parseDowntimePrintPages(input?.value, pageCount);
+    if (!pages.length) {
+      overlay.querySelector("[data-downtime-print-error]").textContent = `Укажите листы от 1 до ${pageCount}.`;
+      input?.focus();
+      return;
+    }
+    close();
+    printDowntimeJournal(area, pages);
+  });
+  overlay.querySelector("[data-print-downtime-cancel]")?.addEventListener("click", close);
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) close();
+  });
+  document.body.append(overlay);
 }
 
 function downtimePieChart(stats) {
@@ -16631,6 +16842,12 @@ function renderDowntime() {
   });
   ui.downtimeDetails.innerHTML = "";
   ui.downtimeDetails.hidden = true;
+  ui.downtimeChart.querySelectorAll("[data-open-downtime-print]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      openDowntimePrintDialog(current.selectedDowntimeArea, Number(button.dataset.openDowntimePrint || 1));
+    });
+  });
   ui.downtimeChart.querySelectorAll("[data-open-downtime-comment]").forEach(button => {
     button.addEventListener("click", () => {
       const item = downtimes().find(entry => entry.id === button.dataset.openDowntimeComment);

@@ -1508,3 +1508,21 @@ test("downtime shop buttons expand an inline journal responsively", () => {
   assert.match(styles, /@media \(max-width:\s*680px\)[\s\S]*?\.downtime-legend-buttons\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   assert.match(styles, /\.downtime-expanded-mobile\s*\{[\s\S]*?display:\s*none/);
 });
+
+test("downtime journal paginates A4 sheets and prints current, selected, or all pages", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /const DOWNTIME_JOURNAL_ROWS_PER_SHEET = 6/);
+  assert.match(appSource, /function downtimeJournalSheetsHtml\(area, selectedItems\)/);
+  assert.match(appSource, /Лист \$\{pageIndex \+ 1\} из \$\{pageCount\}/);
+  assert.match(appSource, /function parseDowntimePrintPages\(value, pageCount\)/);
+  assert.match(appSource, /function printDowntimeJournal\(area, pageNumbers = \[\]\)/);
+  assert.match(appSource, /function openDowntimePrintDialog\(area, currentPage = 1\)/);
+  assert.match(appSource, /Текущий лист \$\{currentPage\}/);
+  assert.match(appSource, /Все листы/);
+  assert.match(appSource, /Например: 1, 3 или 2-4/);
+  assert.match(appSource, /@page\{size:A4 landscape/);
+  assert.match(appSource, /<th>Подтвердил<\/th>/);
+  assert.match(styles, /\.downtime-journal-sheet/);
+  assert.match(styles, /\.downtime-journal-table/);
+});
