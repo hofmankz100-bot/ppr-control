@@ -1,9 +1,7 @@
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -13,7 +11,6 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   const html = fs.readFileSync(path.join(root, "hydraulic-pk1540.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "hydraulic-pk1540.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "hydraulic-pk1540.css"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const image = path.join(root, "assets", "pk1540-hydraulic.webp");
 
   assert.match(html, /lang="ru"/);
@@ -38,12 +35,12 @@ test("standalone PK-1540 hydraulic app is Russian and interactive", () => {
   assert.match(styles, /\.pressure-flow path/);
   assert.match(styles, /\.return-flow path/);
   assert.match(styles, /@media \(max-width: 820px\)/);
+});
 
-  assert.match(server, /"hydraulic-pk1540\.html"/);
-  assert.match(server, /"assets\/pk1540-hydraulic\.webp"/);
-  assert.match(server, /const protectedHydraulicPaths = new Set/);
-  assert.match(server, /!isPrimaryAdminEngineerServer\(user\)/);
-  assert.match(server, /"private, no-store"/);
+test("main PPR server does not publish the private hydraulic app", () => {
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.doesNotMatch(server, /"hydraulic-pk1540\.html"/);
+  assert.doesNotMatch(server, /"assets\/pk1540-hydraulic\.webp"/);
 });
 
 async function freePort() {
@@ -57,64 +54,40 @@ async function freePort() {
   return port;
 }
 
-async function waitForServer(url, child) {
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error("Hydraulic security test server stopped early");
-    try {
-      if ((await fetch(`${url}/api/health`)).ok) return;
-    } catch {}
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  throw new Error("Hydraulic security test server did not start");
-}
+test("local hydraulic server binds to loopback and exposes only app files", async () => {
+  const source = fs.readFileSync(path.join(root, "tools", "hydraulic-local-server.js"), "utf8");
+  const launcher = fs.readFileSync(path.join(root, "START-HYDRAULIC-PK1540.bat"), "utf8");
+  assert.match(source, /const host = "127\.0\.0\.1"/);
+  assert.match(source, /HYDRAULIC_NO_OPEN/);
+  assert.match(source, /"Cache-Control": "no-store"/);
+  assert.match(launcher, /tools\\hydraulic-local-server\.js/);
 
-test("only the primary admin account can load the hydraulic application", async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "ppr-hydraulic-auth-"));
   const port = await freePort();
-  const qrPort = await freePort();
-  const primaryToken = "primary-hydraulic-session";
-  const otherToken = "other-hydraulic-session";
-  const expiresAt = new Date(Date.now() + 60_000).toISOString();
-  const tokenHash = token => crypto.createHash("sha256").update(token).digest("hex");
-  fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify({
-    users: [
-      { id: "primary", employeeId: "87064091893", name: "Primary Admin", role: "editor", approved: true },
-      { id: "other", employeeId: "other", name: "Other Admin", role: "editor", approved: true }
-    ],
-    authSessions: [
-      { userId: "primary", tokenHash: tokenHash(primaryToken), expiresAt },
-      { userId: "other", tokenHash: tokenHash(otherToken), expiresAt }
-    ]
-  }));
-  const child = spawn(process.execPath, [path.join(root, "server.js")], {
+  const child = spawn(process.execPath, [path.join(root, "tools", "hydraulic-local-server.js")], {
     cwd: root,
     env: {
       ...process.env,
-      PORT: String(port),
-      QR_PORT: String(qrPort),
-      DATA_DIR: dataDir,
-      DATABASE_URL: "",
-      REQUIRE_POSTGRES: "false",
-      NODE_ENV: "production"
+      HYDRAULIC_PORT: String(port),
+      HYDRAULIC_NO_OPEN: "1"
     },
     stdio: "ignore"
   });
   const base = `http://127.0.0.1:${port}`;
   try {
-    await waitForServer(base, child);
-    assert.equal((await fetch(`${base}/hydraulic-pk1540.html`)).status, 401);
-    assert.equal((await fetch(`${base}/hydraulic-pk1540.html`, {
-      headers: { cookie: `ppr_session=${otherToken}` }
-    })).status, 403);
-    const allowed = await fetch(`${base}/hydraulic-pk1540.html`, {
-      headers: { cookie: `ppr_session=${primaryToken}` }
-    });
-    assert.equal(allowed.status, 200);
-    assert.equal(allowed.headers.get("cache-control"), "private, no-store");
-    assert.match(await allowed.text(), /Пресс ПК-1540/);
+    const deadline = Date.now() + 10_000;
+    let response;
+    while (Date.now() < deadline) {
+      try {
+        response = await fetch(`${base}/`);
+        if (response.ok) break;
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    assert.equal(response?.status, 200);
+    assert.match(await response.text(), /Пресс ПК-1540/);
+    assert.equal((await fetch(`${base}/assets/pk1540-hydraulic.webp`)).status, 200);
+    assert.equal((await fetch(`${base}/server.js`)).status, 404);
   } finally {
     child.kill("SIGTERM");
-    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });

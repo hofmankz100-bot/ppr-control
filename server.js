@@ -111,10 +111,7 @@ const publicRootFiles = new Set([
   "phone-fix.html",
   "cache-clear.html",
   "update.html",
-  "ppr-ios-profile.mobileconfig",
-  "hydraulic-pk1540.html",
-  "hydraulic-pk1540.css",
-  "hydraulic-pk1540.js"
+  "ppr-ios-profile.mobileconfig"
 ]);
 
 function isPublicStaticPath(relativePath = "") {
@@ -122,7 +119,6 @@ function isPublicStaticPath(relativePath = "") {
   if (publicRootFiles.has(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   if (normalized === "assets/hofmann-forklift.png") return true;
-  if (normalized === "assets/pk1540-hydraulic.webp") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js";
 }
 
@@ -5657,25 +5653,6 @@ async function handleApi(req, res, pathname, url) {
 
 function serveStatic(req, res, pathname) {
   const requestUrl = new URL(req.url || "/", "http://localhost");
-  const protectedHydraulicPaths = new Set([
-    "/hydraulic-pk1540.html",
-    "/hydraulic-pk1540.css",
-    "/hydraulic-pk1540.js",
-    "/assets/pk1540-hydraulic.webp"
-  ]);
-  const protectedHydraulic = protectedHydraulicPaths.has(pathname);
-  if (protectedHydraulic) {
-    const user = authenticatedUser(req);
-    if (!user || !isPrimaryAdminEngineerServer(user)) {
-      res.writeHead(user ? 403 : 401, {
-        ...securityHeaders(req),
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store"
-      });
-      res.end(user ? "Доступ запрещён" : "Требуется вход в ППР");
-      return;
-    }
-  }
   const legacyRefreshRequest = pathname === "/" && requestUrl.searchParams.has("refresh");
   const cleanPath = legacyRefreshRequest ? "update.html" : pathname === "/" ? "index.html" : pathname.slice(1);
   const file = path.resolve(root, cleanPath);
@@ -5696,9 +5673,7 @@ function serveStatic(req, res, pathname) {
     const extension = path.extname(file).toLowerCase();
     const contentType = contentTypes[extension] || "application/octet-stream";
     const versioned = Boolean(requestUrl.searchParams.get("v"));
-    const cacheControl = protectedHydraulic
-      ? "private, no-store"
-      : pathname === "/" || extension === ".html"
+    const cacheControl = pathname === "/" || extension === ".html"
       ? cleanPath === "update.html" ? "no-store" : "no-cache"
       : versioned
         ? "public, max-age=31536000, immutable"
