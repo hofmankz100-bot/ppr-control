@@ -2,16 +2,28 @@
   "use strict";
 
   const screen = document.querySelector("#workPermitScreen");
+
   if (!screen) return;
 
-  const DRAFT_KEY = "ppr-work-permit-draft-v2";
-  const LANGUAGE_KEY = "ppr-work-permit-language-v1";
+  /*
+   * ============================================================
+   * 1. ОСНОВНЫЕ НАСТРОЙКИ
+   * ============================================================
+   */
 
-  const TEAM_ROW_COUNT = 10;
-  const BREAK_ROW_COUNT = 4;
-  const CHANGE_ROW_COUNT = 4;
-  const MEASURE_ROW_COUNT = 6;
-  const APPROVAL_ROW_COUNT = 3;
+  const DRAFT_KEY = "ppr-work-permit-draft-v3";
+  const LANGUAGE_KEY = "ppr-work-permit-language-v1";
+  const LOCAL_NUMBER_KEY = "ppr-work-permit-local-number-v1";
+
+  /*
+   * Пока серверный API автоматической нумерации не подключён,
+   * используется локальный номер.
+   *
+   * В дальнейшем функцию getNextPermitNumber() можно подключить
+   * к PostgreSQL через серверный API.
+   */
+
+  const DEFAULT_COMPANY_NAME = "ТОО «Aluminium of Kazakhstan»";
 
   const OPTIONAL_SECTION_IDS = [
     "leader",
@@ -20,6 +32,54 @@
     "brigade",
     "breaks",
     "changes"
+  ];
+
+  const SAFETY_MEASURES = [
+    {
+      id: "5.1",
+      key: "safetyStop",
+      fieldName: "safety_stop"
+    },
+    {
+      id: "5.2",
+      key: "safetyDisconnect",
+      fieldName: "safety_disconnect"
+    },
+    {
+      id: "5.3",
+      key: "safetyInstall",
+      fieldName: "safety_install"
+    },
+    {
+      id: "5.4",
+      key: "safetyAir",
+      fieldName: "safety_air"
+    },
+    {
+      id: "5.5",
+      key: "safetyFence",
+      fieldName: "safety_fence"
+    },
+    {
+      id: "5.6",
+      key: "safetyHeight",
+      fieldName: "safety_height"
+    },
+    {
+      id: "5.7",
+      key: "safetyWarn",
+      fieldName: "safety_warn"
+    },
+    {
+      id: "5.8",
+      key: "safetyRoute",
+      fieldName: "safety_route"
+    },
+    {
+      id: "5.9",
+      key: "safetyAdditional",
+      fieldName: "safety_additional"
+    }
   ];
 
   const OPTIONAL_SECTION_TITLE_KEYS = {
@@ -31,11 +91,18 @@
     changes: "changesSection"
   };
 
+  /*
+   * ============================================================
+   * 2. ТЕКСТЫ И ПЕРЕВОДЫ
+   * ============================================================
+   */
+
   const TEXT = {
     ru: {
       screenTitle: "Наряд-допуск",
+
       screenDescription:
-        "Форма для выполнения работ повышенной опасности",
+        "Электронное оформление работ повышенной опасности",
 
       draftLocal:
         "Черновик автоматически сохраняется на этом устройстве",
@@ -43,20 +110,12 @@
       language: "Язык наряда",
 
       languageHint:
-        "Выбранный язык применяется ко всему наряду и печати",
+        "Выбранный язык применяется к форме и печати",
 
       russian: "Русский",
       kazakh: "Қазақша",
 
-      print: "Печать / PDF",
-      clear: "Очистить форму",
-
-      clearConfirm:
-        "Очистить все заполненные поля наряда-допуска?",
-
-      saved: "Черновик сохранён",
-
-      companyName: "ТОО «Aluminium of Kazakhstan»",
+      companyName: DEFAULT_COMPANY_NAME,
 
       permitTitle: "Наряд-допуск",
 
@@ -65,8 +124,60 @@
 
       permitNumber: "№ наряда-допуска",
       permitDate: "Дата выдачи",
+      createdDateTime: "Дата и время создания",
 
-      generalInformation: "Основные сведения",
+      print: "Печать / PDF",
+      clear: "Очистить форму",
+      finishPermit: "Завершить работу",
+
+      clearConfirm:
+        "Очистить все заполненные данные наряда-допуска?",
+
+      finishConfirm:
+        "Завершить наряд-допуск и подготовить его к печати?",
+
+      saved: "Черновик сохранён",
+      completed: "Наряд-допуск завершён",
+
+      selectEmployee: "Выберите сотрудника",
+      selectEquipment: "Выберите оборудование",
+      selectWorkshop: "Выберите цех",
+      selectPosition: "Выберите должность",
+
+      manualInput: "Ввести вручную",
+      notSelected: "Не выбрано",
+      noData: "Нет данных",
+
+      addSection: "Добавить раздел",
+      addSelectedSections: "Добавить выбранные",
+      close: "Закрыть",
+      remove: "Убрать",
+      collapse: "Свернуть",
+      expand: "Развернуть",
+
+      addRow: "Добавить строку",
+      deleteRow: "Удалить строку",
+
+      addLeader: "Добавить ответственного руководителя",
+      addCompletedMeasure: "Добавить выполненное мероприятие",
+      addApproval: "Добавить согласование",
+      addBrigadeMember: "Добавить члена бригады",
+      addBreak: "Добавить перерыв",
+      addBrigadeChange: "Добавить изменение состава",
+
+      optionalSections: "Дополнительные разделы",
+
+      optionalSectionsHint:
+        "Добавьте только те разделы, которые необходимы для этого наряда",
+
+      optionalSection:
+        "Добавляется при необходимости",
+
+      removeSectionConfirm:
+        "В разделе есть заполненные данные. Удалить раздел и очистить его?",
+
+      removeRowConfirm:
+        "Удалить эту строку и введённые в ней данные?",
 
       producerSection: "1. Производитель работ",
 
@@ -94,7 +205,7 @@
       brigadeSection:
         "9. Допуск бригады к работе",
 
-      startSection:
+      brigadeStarted:
         "Бригада к работе приступила",
 
       breaksSection:
@@ -116,43 +227,52 @@
       dateTime: "Дата и время",
 
       equipment: "Оборудование",
+      workshop: "Цех",
       workPlace: "Место выполнения работ",
 
       workScope:
         "Краткое содержание работ",
 
-      stopEquipment:
-        "5.1 Остановить (техническое устройство)",
+      safetyStop:
+        "5.1 Остановить техническое устройство",
 
-      disconnectEquipment:
-        "5.2 Отключить (рубильник, задвижку, магистраль и т. п.)",
+      safetyDisconnect:
+        "5.2 Отключить рубильник, задвижку, магистраль и т. п.",
 
-      installSafety:
-        "5.3 Установить (тупики, заглушки, сигнальные лампы и т. п.)",
+      safetyInstall:
+        "5.3 Установить тупики, заглушки, сигнальные лампы и т. п.",
 
-      airAnalysis:
-        "5.4 Выполнить анализ воздушной среды (место)",
+      safetyAir:
+        "5.4 Выполнить анализ воздушной среды",
 
-      fenceArea:
-        "5.5 Оградить (зону работ, установить плакаты)",
+      safetyFence:
+        "5.5 Оградить зону работ, установить плакаты",
 
-      heightWork:
-        "5.6 Работа на высоте или в колодцах (леса, пояса, верёвки и т. п.)",
+      safetyHeight:
+        "5.6 Работа на высоте или в колодцах",
 
-      warnPersonnel:
+      safetyWarn:
         "5.7 Предупредить персонал цеха",
 
-      route:
-        "5.8 Указать маршруты следования (при необходимости приложить схему)",
+      safetyRoute:
+        "5.8 Указать маршруты следования",
 
-      additionalMeasures:
-        "5.9 Дополнительные мероприятия (ПЛА, ПОР, ПТМ, сети, подрядчики, огневые работы и т. п.)",
+      safetyAdditional:
+        "5.9 Дополнительные мероприятия",
 
-      measureNumber: "№ мероприятия",
-      completedBy: "Выполнил",
+      safetyMeasureDetails:
+        "Уточнение мероприятия",
+
+      safetyChecked:
+        "Мероприятие требуется",
+
+      measureNumber:
+        "№ мероприятия",
+
+      completedBy:
+        "Выполнил",
 
       approvalNumber: "№",
-      teamNumber: "№",
 
       briefingDateTime:
         "Дата и время инструктажа",
@@ -167,16 +287,19 @@
         "Подпись об ознакомлении",
 
       instructor:
-        "Инструктаж провёл (ФИО, подпись)",
+        "Инструктаж провёл",
 
-      workStartDate: "Дата начала",
-      workStartTime: "Время начала",
+      workStartDate:
+        "Дата начала",
+
+      workStartTime:
+        "Время начала",
 
       producerNameSignature:
-        "Производитель работ (ФИО, подпись)",
+        "Производитель работ",
 
       admitterNameSignature:
-        "Допускающий (ФИО, подпись)",
+        "Допускающий",
 
       breakNumber: "№",
 
@@ -187,41 +310,42 @@
         "Рабочее место сдал / принял",
 
       breakProducer:
-        "Производитель работ (ФИО, подпись)",
+        "Производитель работ",
 
       breakAdmitter:
-        "Допускающий (ФИО, подпись)",
+        "Допускающий",
 
       resumeDateTime:
         "Возобновление: дата и время",
 
       resumeProducer:
-        "Производитель работ (ФИО, подпись)",
+        "Производитель работ",
 
       resumeAdmitter:
-        "Допускающий (ФИО, подпись)",
+        "Допускающий",
 
-      changeType: "Изменение",
+      changeType:
+        "Вид изменения",
 
       removedMembers:
-        "Выведены из состава",
+        "Выведен из состава",
 
       addedMembers:
-        "Введены в состав",
+        "Введён в состав",
 
-      changedMembers:
-        "Члены бригады",
+      changedMember:
+        "Сотрудник",
 
       changeIssuer:
-        "Изменение разрешил (ФИО, подпись)",
+        "Изменение разрешил",
 
       changeDateTime:
-        "Дата и время",
+        "Дата и время изменения",
 
-      workFinishedDate:
+      finishDate:
         "Дата окончания",
 
-      workFinishedTime:
+      finishTime:
         "Время окончания",
 
       workCompleted:
@@ -231,118 +355,41 @@
         "Рабочее место убрано",
 
       permitReturned:
-        "Наряд-допуск сдал (ФИО, должность, подпись)",
+        "Наряд-допуск сдал",
 
       permitAccepted:
-        "Наряд-допуск принял (ФИО, должность, подпись)",
+        "Наряд-допуск принял",
 
-      reminderTitle:
-        "ПАМЯТКА О НАРЯДЕ-ДОПУСКЕ",
+      checkboxYes: "Да",
 
-      hideReminder:
-        "Скрыть памятку",
+      issuerAutoHint:
+        "Автоматически подставляется текущий инженер",
 
-      showReminder:
-        "Показать памятку",
+      producerAutoHint:
+        "После выбора сотрудника должность и организация подставятся автоматически",
 
-      reminder1:
-        "Наряд-допуск оформляют на работы повышенной опасности, выполняемые в действующих цехах, на территории предприятия и на объектах, где действуют опасные производственные факторы.",
+      admitterAutoHint:
+        "Выбранный допускающий будет автоматически подставлен в связанные разделы",
 
-      reminder2:
-        "Наряд-допуск оформляют в двух экземплярах в цехе заказчика до начала выполнения работ.",
-
-      reminder3:
-        "Все графы заполняют разборчиво, чернилами, без исправлений. В незаполняемых графах ставят прочерк.",
-
-      reminder4:
-        "Срок действия наряда-допуска не должен превышать пяти календарных дней.",
-
-      reminder5:
-        "Один наряд-допуск выдают на один объект или одну технологическую установку.",
-
-      reminder6:
-        "При одновременной работе нескольких подрядных организаций дополнительные меры безопасности указывают в пункте 5.9.",
-
-      reminder7:
-        "При работах около линий электропередачи, скрытых коммуникаций и в газоопасных местах специальные меры указывают в пункте 5.9.",
-
-      reminder8:
-        "Один экземпляр находится у производителя работ, второй — у допускающего.",
-
-      blankOption: "Выберите",
-
-      addSection:
-        "Добавить раздел",
-
-      addSelectedSections:
-        "Добавить выбранные",
-
-      closeSectionSelector:
-        "Закрыть",
-
-      sectionConstructor:
-        "Дополнительные разделы наряда",
-
-      collapseSection:
-        "Свернуть",
-
-      expandSection:
-        "Развернуть",
-
-      removeSection:
-        "Убрать",
-
-      removeSectionConfirm:
-        "В этом разделе имеются заполненные данные. Удалить раздел и очистить его данные?",
-
-      sectionAdded:
-        "Раздел добавлен",
-
-      sectionRemoved:
-        "Раздел удалён",
-
-      noSectionsSelected:
-        "Выберите хотя бы один раздел",
-
-      selectRequiredSections:
-        "Выберите разделы, которые необходимо добавить в наряд",
-
-      requiredSection:
-        "Основной раздел",
-
-      optionalSection:
-        "Добавляется при необходимости"
+      blankOption: "Выберите"
     },
 
     kk: {
       screenTitle: "Жұмысқа рұқсат",
 
       screenDescription:
-        "Қауіптілігі жоғары жұмыстарды орындауға арналған нысан",
+        "Қауіптілігі жоғары жұмыстарды электрондық рәсімдеу",
 
       draftLocal:
         "Жоба осы құрылғыда автоматты түрде сақталады",
 
-      language:
-        "Жұмысқа рұқсат тілі",
+      language: "Жұмысқа рұқсат тілі",
 
       languageHint:
-        "Таңдалған тіл бүкіл нысанға және басып шығаруға қолданылады",
+        "Таңдалған тіл нысанға және басып шығаруға қолданылады",
 
       russian: "Русский",
       kazakh: "Қазақша",
-
-      print:
-        "Басып шығару / PDF",
-
-      clear:
-        "Нысанды тазалау",
-
-      clearConfirm:
-        "Жұмысқа рұқсаттың барлық толтырылған өрістерін тазалау керек пе?",
-
-      saved:
-        "Жоба сақталды",
 
       companyName:
         "«Aluminium of Kazakhstan» ЖШС",
@@ -359,8 +406,107 @@
       permitDate:
         "Берілген күні",
 
-      generalInformation:
-        "Негізгі мәліметтер",
+      createdDateTime:
+        "Жасалған күні мен уақыты",
+
+      print:
+        "Басып шығару / PDF",
+
+      clear:
+        "Нысанды тазалау",
+
+      finishPermit:
+        "Жұмысты аяқтау",
+
+      clearConfirm:
+        "Жұмысқа рұқсаттағы барлық деректерді тазалау керек пе?",
+
+      finishConfirm:
+        "Жұмысқа рұқсатты аяқтап, басып шығаруға дайындау керек пе?",
+
+      saved:
+        "Жоба сақталды",
+
+      completed:
+        "Жұмысқа рұқсат аяқталды",
+
+      selectEmployee:
+        "Қызметкерді таңдаңыз",
+
+      selectEquipment:
+        "Жабдықты таңдаңыз",
+
+      selectWorkshop:
+        "Цехты таңдаңыз",
+
+      selectPosition:
+        "Лауазымды таңдаңыз",
+
+      manualInput:
+        "Қолмен енгізу",
+
+      notSelected:
+        "Таңдалмаған",
+
+      noData:
+        "Деректер жоқ",
+
+      addSection:
+        "Бөлім қосу",
+
+      addSelectedSections:
+        "Таңдалған бөлімдерді қосу",
+
+      close:
+        "Жабу",
+
+      remove:
+        "Алып тастау",
+
+      collapse:
+        "Жинау",
+
+      expand:
+        "Ашу",
+
+      addRow:
+        "Жол қосу",
+
+      deleteRow:
+        "Жолды жою",
+
+      addLeader:
+        "Жауапты басшыны қосу",
+
+      addCompletedMeasure:
+        "Орындалған шараны қосу",
+
+      addApproval:
+        "Келісуді қосу",
+
+      addBrigadeMember:
+        "Бригада мүшесін қосу",
+
+      addBreak:
+        "Үзіліс қосу",
+
+      addBrigadeChange:
+        "Құрам өзгерісін қосу",
+
+      optionalSections:
+        "Қосымша бөлімдер",
+
+      optionalSectionsHint:
+        "Осы жұмысқа рұқсат үшін қажетті бөлімдерді ғана қосыңыз",
+
+      optionalSection:
+        "Қажет болғанда қосылады",
+
+      removeSectionConfirm:
+        "Бөлімде толтырылған деректер бар. Бөлімді жойып, деректерді тазалау керек пе?",
+
+      removeRowConfirm:
+        "Осы жолды және енгізілген деректерді жою керек пе?",
 
       producerSection:
         "1. Жұмыс жүргізушісі",
@@ -389,7 +535,7 @@
       brigadeSection:
         "9. Бригаданы жұмысқа жіберу",
 
-      startSection:
+      brigadeStarted:
         "Бригада жұмысқа кірісті",
 
       breaksSection:
@@ -408,11 +554,10 @@
 
       date: "Күні",
       time: "Уақыты",
-
-      dateTime:
-        "Күні мен уақыты",
+      dateTime: "Күні мен уақыты",
 
       equipment: "Жабдық",
+      workshop: "Цех",
 
       workPlace:
         "Жұмыс орны",
@@ -420,32 +565,38 @@
       workScope:
         "Жұмыстың қысқаша мазмұны",
 
-      stopEquipment:
-        "5.1 Тоқтату (техникалық құрылғы)",
+      safetyStop:
+        "5.1 Техникалық құрылғыны тоқтату",
 
-      disconnectEquipment:
-        "5.2 Ажырату (ажыратқыш, ысырма, магистраль және т. б.)",
+      safetyDisconnect:
+        "5.2 Ажыратқышты, ысырманы, магистральды ажырату",
 
-      installSafety:
-        "5.3 Орнату (тіректер, бітеуіштер, дабыл шамдары және т. б.)",
+      safetyInstall:
+        "5.3 Тіректерді, бітеуіштерді, дабыл шамдарын орнату",
 
-      airAnalysis:
-        "5.4 Ауа ортасына талдау жүргізу (орны)",
+      safetyAir:
+        "5.4 Ауа ортасына талдау жүргізу",
 
-      fenceArea:
-        "5.5 Қоршау (жұмыс аймағы, плакаттар)",
+      safetyFence:
+        "5.5 Жұмыс аймағын қоршау, плакаттар орнату",
 
-      heightWork:
-        "5.6 Биіктікте немесе құдықтарда жұмыс (мінбелер, белдіктер, арқандар және т. б.)",
+      safetyHeight:
+        "5.6 Биіктікте немесе құдықтарда жұмыс",
 
-      warnPersonnel:
+      safetyWarn:
         "5.7 Цех персоналын ескерту",
 
-      route:
-        "5.8 Жүру маршруттарын көрсету (қажет болғанда сұлба қоса беріледі)",
+      safetyRoute:
+        "5.8 Жүру бағыттарын көрсету",
 
-      additionalMeasures:
-        "5.9 Қосымша шаралар (АЖЖ, ЖӨЖ, жүк көтергіш тетіктер, желілер, мердігерлер, отты жұмыстар және т. б.)",
+      safetyAdditional:
+        "5.9 Қосымша шаралар",
+
+      safetyMeasureDetails:
+        "Шараны нақтылау",
+
+      safetyChecked:
+        "Шара қажет",
 
       measureNumber:
         "Шара №",
@@ -454,7 +605,6 @@
         "Орындаған",
 
       approvalNumber: "№",
-      teamNumber: "№",
 
       briefingDateTime:
         "Нұсқама күні мен уақыты",
@@ -469,7 +619,7 @@
         "Танысқаны туралы қолы",
 
       instructor:
-        "Нұсқама өткізген (Т.А.Ә., қолы)",
+        "Нұсқама өткізген",
 
       workStartDate:
         "Басталған күні",
@@ -478,10 +628,10 @@
         "Басталған уақыты",
 
       producerNameSignature:
-        "Жұмыс жүргізушісі (Т.А.Ә., қолы)",
+        "Жұмыс жүргізушісі",
 
       admitterNameSignature:
-        "Жұмысқа жіберуші (Т.А.Ә., қолы)",
+        "Жұмысқа жіберуші",
 
       breakNumber: "№",
 
@@ -492,22 +642,22 @@
         "Жұмыс орнын тапсырды / қабылдады",
 
       breakProducer:
-        "Жұмыс жүргізушісі (Т.А.Ә., қолы)",
+        "Жұмыс жүргізушісі",
 
       breakAdmitter:
-        "Жұмысқа жіберуші (Т.А.Ә., қолы)",
+        "Жұмысқа жіберуші",
 
       resumeDateTime:
         "Қайта бастау: күні мен уақыты",
 
       resumeProducer:
-        "Жұмыс жүргізушісі (Т.А.Ә., қолы)",
+        "Жұмыс жүргізушісі",
 
       resumeAdmitter:
-        "Жұмысқа жіберуші (Т.А.Ә., қолы)",
+        "Жұмысқа жіберуші",
 
       changeType:
-        "Өзгеріс",
+        "Өзгеріс түрі",
 
       removedMembers:
         "Құрамнан шығарылды",
@@ -515,19 +665,19 @@
       addedMembers:
         "Құрамға енгізілді",
 
-      changedMembers:
-        "Бригада мүшелері",
+      changedMember:
+        "Қызметкер",
 
       changeIssuer:
-        "Өзгеріске рұқсат берген (Т.А.Ә., қолы)",
+        "Өзгеріске рұқсат берген",
 
       changeDateTime:
-        "Күні мен уақыты",
+        "Өзгеріс күні мен уақыты",
 
-      workFinishedDate:
+      finishDate:
         "Аяқталған күні",
 
-      workFinishedTime:
+      finishTime:
         "Аяқталған уақыты",
 
       workCompleted:
@@ -537,98 +687,79 @@
         "Жұмыс орны тазаланды",
 
       permitReturned:
-        "Жұмысқа рұқсатты тапсырған (Т.А.Ә., лауазымы, қолы)",
+        "Жұмысқа рұқсатты тапсырған",
 
       permitAccepted:
-        "Жұмысқа рұқсатты қабылдаған (Т.А.Ә., лауазымы, қолы)",
+        "Жұмысқа рұқсатты қабылдаған",
 
-      reminderTitle:
-        "ЖҰМЫСҚА РҰҚСАТ ТУРАЛЫ ЕСКЕРТПЕ",
+      checkboxYes:
+        "Иә",
 
-      hideReminder:
-        "Ескертпені жасыру",
+      issuerAutoHint:
+        "Ағымдағы инженер автоматты түрде қойылады",
 
-      showReminder:
-        "Ескертпені көрсету",
+      producerAutoHint:
+        "Қызметкерді таңдағаннан кейін лауазымы мен ұйымы автоматты түрде қойылады",
 
-      reminder1:
-        "Жұмысқа рұқсат қолданыстағы цехтарда, кәсіпорын аумағында және қауіпті өндірістік факторлар әсер ететін объектілерде орындалатын қауіптілігі жоғары жұмыстарға рәсімделеді.",
-
-      reminder2:
-        "Жұмысқа рұқсат жұмыстар басталғанға дейін тапсырыс беруші цехта екі данада рәсімделеді.",
-
-      reminder3:
-        "Барлық жолдар анық, өшпейтін сиямен, түзетусіз толтырылады. Толтырылмайтын жолдарға сызықша қойылады.",
-
-      reminder4:
-        "Жұмысқа рұқсаттың қолданылу мерзімі бес күнтізбелік күннен аспауға тиіс.",
-
-      reminder5:
-        "Бір жұмысқа рұқсат бір объектіге немесе бір технологиялық қондырғыға беріледі.",
-
-      reminder6:
-        "Бірнеше мердігер ұйым бір мезгілде жұмыс істегенде қосымша қауіпсіздік шаралары 5.9-тармақта көрсетіледі.",
-
-      reminder7:
-        "Электр беру желілерінің, жасырын коммуникациялардың жанында және газ қауіпті орындарда жұмыс істегенде арнайы шаралар 5.9-тармақта көрсетіледі.",
-
-      reminder8:
-        "Бір данасы жұмыс жүргізушісінде, екіншісі жұмысқа жіберушіде сақталады.",
+      admitterAutoHint:
+        "Таңдалған жіберуші байланысты бөлімдерге автоматты түрде қойылады",
 
       blankOption:
-        "Таңдаңыз",
-
-      addSection:
-        "Бөлім қосу",
-
-      addSelectedSections:
-        "Таңдалған бөлімдерді қосу",
-
-      closeSectionSelector:
-        "Жабу",
-
-      sectionConstructor:
-        "Жұмысқа рұқсаттың қосымша бөлімдері",
-
-      collapseSection:
-        "Жинау",
-
-      expandSection:
-        "Ашу",
-
-      removeSection:
-        "Алып тастау",
-
-      removeSectionConfirm:
-        "Бұл бөлімде толтырылған деректер бар. Бөлімді жойып, деректерді тазалау керек пе?",
-
-      sectionAdded:
-        "Бөлім қосылды",
-
-      sectionRemoved:
-        "Бөлім жойылды",
-
-      noSectionsSelected:
-        "Кемінде бір бөлімді таңдаңыз",
-
-      selectRequiredSections:
-        "Жұмысқа рұқсатқа қосылатын бөлімдерді таңдаңыз",
-
-      requiredSection:
-        "Негізгі бөлім",
-
-      optionalSection:
-        "Қажет болған жағдайда қосылады"
+        "Таңдаңыз"
     }
   };
 
+  /*
+   * ============================================================
+   * 3. ТЕКУЩЕЕ СОСТОЯНИЕ НАРЯДА
+   * ============================================================
+   */
+
   let language = loadLanguage();
-  let reminderVisible = true;
-  let sectionSelectorVisible = false;
   let saveTimer = 0;
+  let sectionSelectorVisible = false;
 
   let activeOptionalSections = new Set();
   let collapsedOptionalSections = new Set();
+
+  const dynamicRows = {
+    leaders: [],
+    completedMeasures: [],
+    approvals: [],
+    brigade: [],
+    breaks: [],
+    changes: []
+  };
+
+  const permitState = {
+    status: "draft",
+
+    permitNumber: "",
+
+    createdAt: "",
+
+    completedAt: "",
+
+    createdBy: null,
+
+    producer: null,
+
+    admitter: null,
+
+    issuer: null,
+
+    acceptedBy: null,
+
+    selectedWorkshop: null,
+
+    selectedEquipment: null
+  };
+
+  /*
+   * ============================================================
+   * 4. ОБЩИЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+   * ============================================================
+   */
 
   function loadLanguage() {
     try {
@@ -644,12 +775,335 @@
     return TEXT[language]?.[key] || TEXT.ru[key] || key;
   }
 
-  function i18n(key, tag = "span", className = "") {
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function generateId(prefix = "row") {
+    if (
+      window.crypto &&
+      typeof window.crypto.randomUUID === "function"
+    ) {
+      return `${prefix}-${window.crypto.randomUUID()}`;
+    }
+
+    return `${prefix}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+  }
+
+  function currentIsoDateTime() {
+    return new Date().toISOString();
+  }
+
+  function localDateValue(date = new Date()) {
+    const offset = date.getTimezoneOffset() * 60000;
+
+    return new Date(date.getTime() - offset)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  function localTimeValue(date = new Date()) {
+    return date.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+  }
+
+  function localDateTimeValue(date = new Date()) {
+    const offset = date.getTimezoneOffset() * 60000;
+
+    return new Date(date.getTime() - offset)
+      .toISOString()
+      .slice(0, 16);
+  }
+
+  function formatDateTimeForPrint(value) {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleString(
+      language === "kk" ? "kk-KZ" : "ru-RU",
+      {
+        dateStyle: "short",
+        timeStyle: "short"
+      }
+    );
+  }
+
+  function formatDateForPrint(value) {
+    if (!value) return "";
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleDateString(
+      language === "kk" ? "kk-KZ" : "ru-RU"
+    );
+  }
+
+  /*
+   * ============================================================
+   * 5. ПОЛУЧЕНИЕ ДАННЫХ ИЗ ОСНОВНОГО ПРИЛОЖЕНИЯ
+   * ============================================================
+   */
+
+  function getCurrentUser() {
+    const candidates = [
+      window.currentUser,
+      window.appState?.currentUser,
+      window.PPR?.currentUser,
+      window.PprApp?.currentUser,
+      window.authUser
+    ];
+
+    const user = candidates.find(
+      candidate =>
+        candidate &&
+        typeof candidate === "object"
+    );
+
+    if (!user) {
+      return {
+        id: "",
+        name: "",
+        position: "",
+        organization: DEFAULT_COMPANY_NAME
+      };
+    }
+
+    return normalizeEmployee(user);
+  }
+
+  function getEmployees() {
+    const candidates = [
+      window.employees,
+      window.users,
+      window.appState?.employees,
+      window.appState?.users,
+      window.PPR?.employees,
+      window.PprApp?.employees
+    ];
+
+    const list = candidates.find(Array.isArray) || [];
+
+    return list
+      .map(normalizeEmployee)
+      .filter(employee => employee.name);
+  }
+
+  function getEquipmentList() {
+    const candidates = [
+      window.equipment,
+      window.appState?.equipment,
+      window.PPR?.equipment,
+      window.PprApp?.equipment
+    ];
+
+    const list = candidates.find(Array.isArray) || [];
+
+    return list.map(item => ({
+      id: String(
+        item.id ??
+        item._id ??
+        item.code ??
+        item.name ??
+        ""
+      ),
+
+      name: String(
+        item.name ??
+        item.title ??
+        item.equipmentName ??
+        ""
+      ),
+
+      workshop: String(
+        item.workshop ??
+        item.department ??
+        item.shop ??
+        item.location ??
+        ""
+      )
+    }));
+  }
+
+  function normalizeEmployee(source = {}) {
+    const firstName =
+      source.firstName ??
+      source.first_name ??
+      "";
+
+    const lastName =
+      source.lastName ??
+      source.last_name ??
+      "";
+
+    const middleName =
+      source.middleName ??
+      source.middle_name ??
+      "";
+
+    const generatedName = [
+      lastName,
+      firstName,
+      middleName
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return {
+      id: String(
+        source.id ??
+        source._id ??
+        source.userId ??
+        source.login ??
+        ""
+      ),
+
+      name: String(
+        source.fullName ??
+        source.full_name ??
+        source.name ??
+        source.fio ??
+        generatedName
+      ).trim(),
+
+      position: String(
+        source.position ??
+        source.jobTitle ??
+        source.job_title ??
+        source.roleName ??
+        source.role ??
+        ""
+      ).trim(),
+
+      organization: String(
+        source.organization ??
+        source.company ??
+        source.companyName ??
+        DEFAULT_COMPANY_NAME
+      ).trim(),
+
+      role: String(
+        source.role ??
+        source.roleName ??
+        ""
+      ).trim()
+    };
+  }
+
+  /*
+   * ============================================================
+   * 6. АВТОМАТИЧЕСКИЙ НОМЕР НАРЯДА
+   * ============================================================
+   */
+
+  function readLocalPermitNumber() {
+    try {
+      const value = Number(
+        localStorage.getItem(LOCAL_NUMBER_KEY) || "0"
+      );
+
+      return Number.isFinite(value) && value >= 0
+        ? value
+        : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function formatPermitNumber(number) {
+    return String(number).padStart(4, "0");
+  }
+
+  function getNextLocalPermitNumber() {
+    const nextNumber = readLocalPermitNumber() + 1;
+
+    return formatPermitNumber(nextNumber);
+  }
+
+  function confirmUsedPermitNumber(permitNumber) {
+    const parsed = Number(permitNumber);
+
+    if (!Number.isFinite(parsed)) return;
+
+    try {
+      const current = readLocalPermitNumber();
+
+      if (parsed > current) {
+        localStorage.setItem(
+          LOCAL_NUMBER_KEY,
+          String(parsed)
+        );
+      }
+    } catch {}
+  }
+
+  /*
+   * В будущем здесь можно сделать запрос:
+   *
+   * GET /api/work-permits/next-number
+   *
+   * Сервер должен выдавать уникальный номер из PostgreSQL.
+   */
+
+  async function getNextPermitNumber() {
+    try {
+      const response = await fetch(
+        "/api/work-permits/next-number",
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+
+        if (result?.number) {
+          return String(result.number);
+        }
+      }
+    } catch {}
+
+    return getNextLocalPermitNumber();
+  }
+
+  /*
+   * ============================================================
+   * 7. ШАБЛОНЫ HTML-ЭЛЕМЕНТОВ
+   * ============================================================
+   */
+
+  function i18n(
+    key,
+    tag = "span",
+    className = ""
+  ) {
     return `
       <${tag}
         ${className ? `class="${className}"` : ""}
         data-work-permit-i18n="${key}">
-        ${text(key)}
+        ${escapeHtml(text(key))}
       </${tag}>
     `;
   }
@@ -658,7 +1112,7 @@
     return `
       <span
         class="work-permit-print-value"
-        data-work-permit-print-for="${name}"
+        data-work-permit-print-for="${escapeHtml(name)}"
         aria-hidden="true">
       </span>
     `;
@@ -667,15 +1121,25 @@
   function inputControl(
     name,
     labelKey,
-    type = "text"
+    options = {}
   ) {
+    const {
+      type = "text",
+      value = "",
+      readonly = false,
+      placeholder = ""
+    } = options;
+
     return `
       <input
-        name="${name}"
-        type="${type}"
+        name="${escapeHtml(name)}"
+        type="${escapeHtml(type)}"
+        value="${escapeHtml(value)}"
+        ${readonly ? "readonly" : ""}
+        placeholder="${escapeHtml(placeholder)}"
         autocomplete="off"
-        data-work-permit-aria="${labelKey}"
-        aria-label="${text(labelKey)}">
+        data-work-permit-aria="${escapeHtml(labelKey)}"
+        aria-label="${escapeHtml(text(labelKey))}">
 
       ${printMirror(name)}
     `;
@@ -684,370 +1148,1943 @@
   function textareaControl(
     name,
     labelKey,
-    rows = 2
+    options = {}
   ) {
-    return `
-      <textarea
-        name="${name}"
-        rows="${rows}"
-        data-work-permit-aria="${labelKey}"
-        aria-label="${text(labelKey)}">
-      </textarea>
-
-      ${printMirror(name)}
-    `;
-  }  function field(name, labelKey, options = {}) {
     const {
-      type = "text",
-      textarea = false,
       rows = 2,
-      wide = false
+      value = "",
+      readonly = false,
+      placeholder = ""
     } = options;
 
     return `
-      <label class="work-permit-field${wide ? " work-permit-field-wide" : ""}">
+      <textarea
+        name="${escapeHtml(name)}"
+        rows="${rows}"
+        ${readonly ? "readonly" : ""}
+        placeholder="${escapeHtml(placeholder)}"
+        data-work-permit-aria="${escapeHtml(labelKey)}"
+        aria-label="${escapeHtml(text(labelKey))}">${escapeHtml(value)}</textarea>
+
+      ${printMirror(name)}
+    `;
+  }
+
+  function checkboxControl(
+    name,
+    labelKey,
+    options = {}
+  ) {
+    const {
+      checked = false,
+      value = "1",
+      className = ""
+    } = options;
+
+    return `
+      <label class="work-permit-checkbox ${escapeHtml(className)}">
+        <input
+          name="${escapeHtml(name)}"
+          type="checkbox"
+          value="${escapeHtml(value)}"
+          ${checked ? "checked" : ""}
+          data-work-permit-aria="${escapeHtml(labelKey)}"
+          aria-label="${escapeHtml(text(labelKey))}">
+
+        <span class="work-permit-checkbox-mark">
+          ✓
+        </span>
+
+        <span data-work-permit-i18n="${escapeHtml(labelKey)}">
+          ${escapeHtml(text(labelKey))}
+        </span>
+      </label>
+
+      ${printMirror(name)}
+    `;
+  }
+
+  function employeeOptions(
+    selectedId = "",
+    includeBlank = true
+  ) {
+    const employees = getEmployees();
+
+    const blankOption = includeBlank
+      ? `
+          <option value="">
+            ${escapeHtml(text("selectEmployee"))}
+          </option>
+        `
+      : "";
+
+    const options = employees
+      .map(employee => `
+        <option
+          value="${escapeHtml(employee.id)}"
+          ${String(employee.id) === String(selectedId)
+            ? "selected"
+            : ""}>
+          ${escapeHtml(employee.name)}
+          ${employee.position
+            ? ` — ${escapeHtml(employee.position)}`
+            : ""}
+        </option>
+      `)
+      .join("");
+
+    return `
+      ${blankOption}
+      ${options}
+
+      <option value="manual">
+        ${escapeHtml(text("manualInput"))}
+      </option>
+    `;
+  }
+
+  function employeeSelect(
+    name,
+    labelKey,
+    selectedId = ""
+  ) {
+    return `
+      <select
+        name="${escapeHtml(name)}"
+        data-employee-select
+        data-work-permit-aria="${escapeHtml(labelKey)}"
+        aria-label="${escapeHtml(text(labelKey))}">
+
+        ${employeeOptions(selectedId)}
+      </select>
+
+      ${printMirror(name)}
+    `;
+  }
+    function field(
+    name,
+    labelKey,
+    options = {}
+  ) {
+    const {
+      type = "text",
+      value = "",
+      textarea = false,
+      rows = 2,
+      readonly = false,
+      wide = false,
+      placeholder = "",
+      employee = false,
+      selectedEmployeeId = "",
+      hintKey = ""
+    } = options;
+
+    let control = "";
+
+    if (employee) {
+      control = employeeSelect(
+        name,
+        labelKey,
+        selectedEmployeeId
+      );
+    } else if (textarea) {
+      control = textareaControl(
+        name,
+        labelKey,
+        {
+          rows,
+          value,
+          readonly,
+          placeholder
+        }
+      );
+    } else {
+      control = inputControl(
+        name,
+        labelKey,
+        {
+          type,
+          value,
+          readonly,
+          placeholder
+        }
+      );
+    }
+
+    return `
+      <label
+        class="
+          work-permit-field
+          ${wide ? "work-permit-field-wide" : ""}
+        ">
+
         ${i18n(labelKey)}
 
+        ${control}
+
         ${
-          textarea
-            ? textareaControl(name, labelKey, rows)
-            : inputControl(name, labelKey, type)
+          hintKey
+            ? `
+              <small
+                class="work-permit-field-hint"
+                data-work-permit-i18n="${escapeHtml(hintKey)}">
+                ${escapeHtml(text(hintKey))}
+              </small>
+            `
+            : ""
         }
       </label>
     `;
   }
 
-  function tableCell(name, labelKey, options = {}) {
+  function tableCell(
+    content,
+    labelKey,
+    options = {}
+  ) {
     const {
-      type = "text",
-      textarea = false,
-      rows = 2,
-      content = ""
+      className = "",
+      colspan = 1
     } = options;
-
-    const control =
-      content ||
-      (
-        textarea
-          ? textareaControl(name, labelKey, rows)
-          : inputControl(name, labelKey, type)
-      );
 
     return `
       <td
-        data-work-permit-label="${labelKey}"
-        data-mobile-label="${text(labelKey)}">
-        ${control}
+        class="${escapeHtml(className)}"
+        colspan="${colspan}"
+        data-work-permit-label="${escapeHtml(labelKey)}"
+        data-mobile-label="${escapeHtml(text(labelKey))}">
+        ${content}
       </td>
     `;
   }
 
-  function responsibleLeaderRows() {
-    return Array.from(
-      { length: 2 },
-      (_, index) => `
-        <tr>
-          <th scope="row">${index + 1}</th>
+  function employeeFieldGroup(
+    prefix,
+    options = {}
+  ) {
+    const {
+      includeOrganization = true,
+      includeSignature = false,
+      hintKey = "",
+      selectedEmployeeId = ""
+    } = options;
 
-          ${tableCell(
-            `leader_${index}_name`,
-            "fullName"
-          )}
+    return `
+      <div
+        class="work-permit-employee-group"
+        data-employee-group="${escapeHtml(prefix)}">
 
-          ${tableCell(
-            `leader_${index}_position`,
-            "position"
-          )}
+        ${field(
+          `${prefix}_employee_id`,
+          "fullName",
+          {
+            employee: true,
+            selectedEmployeeId,
+            hintKey
+          }
+        )}
 
-          ${tableCell(
-            `leader_${index}_signature`,
-            "signature"
-          )}
-        </tr>
-      `
-    ).join("");
+        ${field(
+          `${prefix}_name`,
+          "fullName",
+          {
+            readonly: false
+          }
+        )}
+
+        ${field(
+          `${prefix}_position`,
+          "position",
+          {
+            readonly: false
+          }
+        )}
+
+        ${
+          includeOrganization
+            ? field(
+                `${prefix}_organization`,
+                "organization",
+                {
+                  readonly: false
+                }
+              )
+            : ""
+        }
+
+        ${
+          includeSignature
+            ? field(
+                `${prefix}_signature`,
+                "signature"
+              )
+            : ""
+        }
+      </div>
+    `;
   }
 
-  function measureRows() {
-    return Array.from(
-      { length: MEASURE_ROW_COUNT },
-      (_, index) => `
-        <tr>
-          ${tableCell(
-            `measure_${index}_number`,
-            "measureNumber"
-          )}
+  function getWorkshops() {
+    const workshops = new Set();
 
-          ${tableCell(
-            `measure_${index}_name`,
-            "completedBy"
-          )}
+    getEquipmentList().forEach(item => {
+      if (item.workshop) {
+        workshops.add(item.workshop);
+      }
+    });
 
-          ${tableCell(
-            `measure_${index}_position`,
-            "position"
-          )}
-
-          ${tableCell(
-            `measure_${index}_signature`,
-            "signature"
-          )}
-        </tr>
-      `
-    ).join("");
+    return [...workshops]
+      .filter(Boolean)
+      .sort((a, b) =>
+        a.localeCompare(
+          b,
+          language === "kk"
+            ? "kk"
+            : "ru"
+        )
+      );
   }
 
-  function approvalRows() {
-    return Array.from(
-      { length: APPROVAL_ROW_COUNT },
-      (_, index) => `
-        <tr>
-          <th scope="row">${index + 1}</th>
+  function workshopOptions(
+    selectedWorkshop = ""
+  ) {
+    const workshops = getWorkshops();
 
-          ${tableCell(
-            `approval_${index}_position`,
-            "position"
-          )}
+    return `
+      <option value="">
+        ${escapeHtml(text("selectWorkshop"))}
+      </option>
 
-          ${tableCell(
-            `approval_${index}_name`,
-            "fullName"
-          )}
+      ${workshops
+        .map(workshop => `
+          <option
+            value="${escapeHtml(workshop)}"
+            ${workshop === selectedWorkshop
+              ? "selected"
+              : ""}>
+            ${escapeHtml(workshop)}
+          </option>
+        `)
+        .join("")}
 
-          ${tableCell(
-            `approval_${index}_signature`,
-            "signature"
-          )}
-
-          ${tableCell(
-            `approval_${index}_date`,
-            "date",
-            {
-              type: "date"
-            }
-          )}
-        </tr>
-      `
-    ).join("");
+      <option value="manual">
+        ${escapeHtml(text("manualInput"))}
+      </option>
+    `;
   }
 
-  function teamRows() {
-    return Array.from(
-      { length: TEAM_ROW_COUNT },
-      (_, index) => `
-        <tr>
-          <th scope="row">${index + 1}</th>
-
-          ${tableCell(
-            `team_${index}_briefing`,
-            "briefingDateTime",
-            {
-              type: "datetime-local"
-            }
-          )}
-
-          ${tableCell(
-            `team_${index}_name`,
-            "teamMember"
-          )}
-
-          ${tableCell(
-            `team_${index}_profession`,
-            "profession"
-          )}
-
-          ${tableCell(
-            `team_${index}_signature`,
-            "memberSignature"
-          )}
-
-          ${tableCell(
-            `team_${index}_instructor`,
-            "instructor"
-          )}
-        </tr>
-      `
-    ).join("");
-  }
-
-  function breakRows() {
-    return Array.from(
-      { length: BREAK_ROW_COUNT },
-      (_, index) => `
-        <tr>
-          <th scope="row">${index + 1}</th>
-
-          ${tableCell(
-            `break_${index}_start`,
-            "breakDateTime",
-            {
-              type: "datetime-local"
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_workplace`,
-            "workplaceHandover",
-            {
-              textarea: true,
-              rows: 2
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_producer`,
-            "breakProducer",
-            {
-              textarea: true,
-              rows: 2
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_admitter`,
-            "breakAdmitter",
-            {
-              textarea: true,
-              rows: 2
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_resume`,
-            "resumeDateTime",
-            {
-              type: "datetime-local"
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_resume_producer`,
-            "resumeProducer",
-            {
-              textarea: true,
-              rows: 2
-            }
-          )}
-
-          ${tableCell(
-            `break_${index}_resume_admitter`,
-            "resumeAdmitter",
-            {
-              textarea: true,
-              rows: 2
-            }
-          )}
-        </tr>
-      `
-    ).join("");
-  }
-
-  function changeTypeControl(name) {
+  function workshopSelect(
+    name,
+    selectedWorkshop = ""
+  ) {
     return `
       <select
-        name="${name}"
-        data-work-permit-aria="changeType"
-        aria-label="${text("changeType")}">
+        name="${escapeHtml(name)}"
+        data-workshop-select
+        data-work-permit-aria="workshop"
+        aria-label="${escapeHtml(text("workshop"))}">
 
-        <option
-          value=""
-          data-work-permit-i18n="blankOption">
-          ${text("blankOption")}
-        </option>
-
-        <option
-          value="removed"
-          data-work-permit-i18n="removedMembers">
-          ${text("removedMembers")}
-        </option>
-
-        <option
-          value="added"
-          data-work-permit-i18n="addedMembers">
-          ${text("addedMembers")}
-        </option>
+        ${workshopOptions(selectedWorkshop)}
       </select>
 
       ${printMirror(name)}
     `;
   }
 
-  function changeRows() {
-    return Array.from(
-      { length: CHANGE_ROW_COUNT },
-      (_, index) => `
-        <tr>
-          <th scope="row">${index + 1}</th>
+  function equipmentOptions(
+    selectedEquipmentId = "",
+    selectedWorkshop = ""
+  ) {
+    const equipment = getEquipmentList()
+      .filter(item => {
+        if (!selectedWorkshop) return true;
 
-          ${tableCell(
-            `change_${index}_type`,
-            "changeType",
+        return item.workshop === selectedWorkshop;
+      });
+
+    return `
+      <option value="">
+        ${escapeHtml(text("selectEquipment"))}
+      </option>
+
+      ${equipment
+        .map(item => `
+          <option
+            value="${escapeHtml(item.id)}"
+            data-equipment-name="${escapeHtml(item.name)}"
+            data-equipment-workshop="${escapeHtml(item.workshop)}"
+            ${String(item.id) === String(selectedEquipmentId)
+              ? "selected"
+              : ""}>
+
+            ${escapeHtml(item.name)}
+
+            ${
+              item.workshop
+                ? ` — ${escapeHtml(item.workshop)}`
+                : ""
+            }
+          </option>
+        `)
+        .join("")}
+
+      <option value="manual">
+        ${escapeHtml(text("manualInput"))}
+      </option>
+    `;
+  }
+
+  function equipmentSelect(
+    name,
+    selectedEquipmentId = "",
+    selectedWorkshop = ""
+  ) {
+    return `
+      <select
+        name="${escapeHtml(name)}"
+        data-equipment-select
+        data-work-permit-aria="equipment"
+        aria-label="${escapeHtml(text("equipment"))}">
+
+        ${equipmentOptions(
+          selectedEquipmentId,
+          selectedWorkshop
+        )}
+      </select>
+
+      ${printMirror(name)}
+    `;
+  }
+
+  function workLocationBlock() {
+    return `
+      <div class="work-permit-grid work-permit-grid-two">
+        <label class="work-permit-field">
+          ${i18n("workshop")}
+
+          ${workshopSelect(
+            "workshop_id",
+            permitState.selectedWorkshop?.name || ""
+          )}
+        </label>
+
+        <label class="work-permit-field">
+          ${i18n("equipment")}
+
+          ${equipmentSelect(
+            "equipment_id",
+            permitState.selectedEquipment?.id || "",
+            permitState.selectedWorkshop?.name || ""
+          )}
+        </label>
+
+        ${field(
+          "workshop_manual",
+          "workshop",
+          {
+            wide: false,
+            placeholder: text("manualInput")
+          }
+        )}
+
+        ${field(
+          "equipment_manual",
+          "equipment",
+          {
+            wide: false,
+            placeholder: text("manualInput")
+          }
+        )}
+
+        ${field(
+          "work_place",
+          "workPlace",
+          {
+            wide: true
+          }
+        )}
+      </div>
+    `;
+  }
+
+  function safetyMeasureBlock(measure) {
+    const checkboxName =
+      `${measure.fieldName}_enabled`;
+
+    return `
+      <div
+        class="work-permit-safety-item"
+        data-safety-item="${escapeHtml(measure.id)}">
+
+        <label class="work-permit-safety-check">
+          <input
+            type="checkbox"
+            name="${escapeHtml(checkboxName)}"
+            value="1"
+            data-safety-toggle="${escapeHtml(measure.id)}">
+
+          <span class="work-permit-checkbox-mark">
+            ✓
+          </span>
+
+          <strong data-work-permit-i18n="${escapeHtml(measure.key)}">
+            ${escapeHtml(text(measure.key))}
+          </strong>
+        </label>
+
+        <div
+          class="work-permit-safety-details"
+          data-safety-details="${escapeHtml(measure.id)}"
+          hidden>
+
+          ${textareaControl(
+            measure.fieldName,
+            "safetyMeasureDetails",
             {
-              content: changeTypeControl(
-                `change_${index}_type`
-              )
+              rows: measure.id === "5.9" ? 3 : 2
             }
           )}
+        </div>
+      </div>
+    `;
+  }
 
-          ${tableCell(
-            `change_${index}_members`,
-            "changedMembers",
+  function safetyMeasuresHtml() {
+    return SAFETY_MEASURES
+      .map(safetyMeasureBlock)
+      .join("");
+  }
+
+  function dynamicRowDeleteButton(
+    collection,
+    rowId
+  ) {
+    return `
+      <button
+        type="button"
+        class="work-permit-delete-row no-print"
+        data-delete-dynamic-row="${escapeHtml(collection)}"
+        data-row-id="${escapeHtml(rowId)}">
+
+        ${escapeHtml(text("deleteRow"))}
+      </button>
+    `;
+  }
+
+  function addRowButton(
+    collection,
+    labelKey
+  ) {
+    return `
+      <button
+        type="button"
+        class="work-permit-add-row no-print"
+        data-add-dynamic-row="${escapeHtml(collection)}">
+
+        ＋ ${escapeHtml(text(labelKey))}
+      </button>
+    `;
+  }
+
+  function leaderRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `leader_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="leaders"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          employeeSelect(
+            `${prefix}_employee_id`,
+            row.employeeId || ""
+          ),
+          "fullName"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_name`,
+            "fullName",
             {
-              textarea: true,
-              rows: 2
+              value: row.name || ""
             }
-          )}
+          ),
+          "fullName"
+        )}
 
-          ${tableCell(
-            `change_${index}_issuer`,
+        ${tableCell(
+          inputControl(
+            `${prefix}_position`,
+            "position",
+            {
+              value: row.position || ""
+            }
+          ),
+          "position"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_signature`,
+            "signature",
+            {
+              value: row.signature || ""
+            }
+          ),
+          "signature"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "leaders",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
+  }
+
+  function completedMeasureOptions(
+    selectedValue = ""
+  ) {
+    const selectedMeasures =
+      SAFETY_MEASURES.filter(measure => {
+        const checkbox = screen.querySelector(
+          `[name="${measure.fieldName}_enabled"]`
+        );
+
+        return checkbox?.checked;
+      });
+
+    const source =
+      selectedMeasures.length
+        ? selectedMeasures
+        : SAFETY_MEASURES;
+
+    return `
+      <option value="">
+        ${escapeHtml(text("blankOption"))}
+      </option>
+
+      ${source
+        .map(measure => `
+          <option
+            value="${escapeHtml(measure.id)}"
+            ${measure.id === selectedValue
+              ? "selected"
+              : ""}>
+            ${escapeHtml(measure.id)}
+          </option>
+        `)
+        .join("")}
+    `;
+  }
+
+  function completedMeasureRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `completed_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="completedMeasures"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          `
+            <select
+              name="${escapeHtml(`${prefix}_number`)}"
+              data-completed-measure-select
+              data-work-permit-aria="measureNumber"
+              aria-label="${escapeHtml(text("measureNumber"))}">
+
+              ${completedMeasureOptions(
+                row.number || ""
+              )}
+            </select>
+
+            ${printMirror(`${prefix}_number`)}
+          `,
+          "measureNumber"
+        )}
+
+        ${tableCell(
+          employeeSelect(
+            `${prefix}_employee_id`,
+            row.employeeId || ""
+          ),
+          "completedBy"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_name`,
+            "completedBy",
+            {
+              value: row.name || ""
+            }
+          ),
+          "completedBy"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_position`,
+            "position",
+            {
+              value: row.position || ""
+            }
+          ),
+          "position"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_signature`,
+            "signature",
+            {
+              value: row.signature || ""
+            }
+          ),
+          "signature"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "completedMeasures",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
+  }
+
+  function approvalRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `approval_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="approvals"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_position`,
+            "position",
+            {
+              value: row.position || ""
+            }
+          ),
+          "position"
+        )}
+
+        ${tableCell(
+          employeeSelect(
+            `${prefix}_employee_id`,
+            row.employeeId || ""
+          ),
+          "fullName"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_name`,
+            "fullName",
+            {
+              value: row.name || ""
+            }
+          ),
+          "fullName"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_signature`,
+            "signature",
+            {
+              value: row.signature || ""
+            }
+          ),
+          "signature"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_date`,
+            "date",
+            {
+              type: "date",
+              value: row.date || ""
+            }
+          ),
+          "date"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "approvals",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
+  }
+
+  function brigadeRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `brigade_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="brigade"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_briefing`,
+            "briefingDateTime",
+            {
+              type: "datetime-local",
+              value: row.briefing || ""
+            }
+          ),
+          "briefingDateTime"
+        )}
+
+        ${tableCell(
+          employeeSelect(
+            `${prefix}_employee_id`,
+            row.employeeId || ""
+          ),
+          "teamMember"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_name`,
+            "teamMember",
+            {
+              value: row.name || ""
+            }
+          ),
+          "teamMember"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_profession`,
+            "profession",
+            {
+              value: row.profession || ""
+            }
+          ),
+          "profession"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_signature`,
+            "memberSignature",
+            {
+              value: row.signature || ""
+            }
+          ),
+          "memberSignature"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_instructor`,
+            "instructor",
+            {
+              value: row.instructor || ""
+            }
+          ),
+          "instructor"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "brigade",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
+  }
+
+  function breakRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `break_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="breaks"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_start`,
+            "breakDateTime",
+            {
+              type: "datetime-local",
+              value: row.start || ""
+            }
+          ),
+          "breakDateTime"
+        )}
+
+        ${tableCell(
+          textareaControl(
+            `${prefix}_workplace`,
+            "workplaceHandover",
+            {
+              rows: 2,
+              value: row.workplace || ""
+            }
+          ),
+          "workplaceHandover"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_producer`,
+            "breakProducer",
+            {
+              value: row.producer || ""
+            }
+          ),
+          "breakProducer"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_admitter`,
+            "breakAdmitter",
+            {
+              value: row.admitter || ""
+            }
+          ),
+          "breakAdmitter"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_resume`,
+            "resumeDateTime",
+            {
+              type: "datetime-local",
+              value: row.resume || ""
+            }
+          ),
+          "resumeDateTime"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_resume_producer`,
+            "resumeProducer",
+            {
+              value: row.resumeProducer || ""
+            }
+          ),
+          "resumeProducer"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_resume_admitter`,
+            "resumeAdmitter",
+            {
+              value: row.resumeAdmitter || ""
+            }
+          ),
+          "resumeAdmitter"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "breaks",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
+  }
+
+  function brigadeChangeTypeOptions(
+    selectedValue = ""
+  ) {
+    return `
+      <option value="">
+        ${escapeHtml(text("blankOption"))}
+      </option>
+
+      <option
+        value="added"
+        ${selectedValue === "added"
+          ? "selected"
+          : ""}>
+        ${escapeHtml(text("addedMembers"))}
+      </option>
+
+      <option
+        value="removed"
+        ${selectedValue === "removed"
+          ? "selected"
+          : ""}>
+        ${escapeHtml(text("removedMembers"))}
+      </option>
+    `;
+  }
+
+  function changeRowHtml(
+    row,
+    index
+  ) {
+    const prefix =
+      `change_${row.id}`;
+
+    return `
+      <tr
+        data-dynamic-row="changes"
+        data-row-id="${escapeHtml(row.id)}">
+
+        <th scope="row">
+          ${index + 1}
+        </th>
+
+        ${tableCell(
+          `
+            <select
+              name="${escapeHtml(`${prefix}_type`)}"
+              data-work-permit-aria="changeType"
+              aria-label="${escapeHtml(text("changeType"))}">
+
+              ${brigadeChangeTypeOptions(
+                row.type || ""
+              )}
+            </select>
+
+            ${printMirror(`${prefix}_type`)}
+          `,
+          "changeType"
+        )}
+
+        ${tableCell(
+          employeeSelect(
+            `${prefix}_employee_id`,
+            row.employeeId || ""
+          ),
+          "changedMember"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_member`,
+            "changedMember",
+            {
+              value: row.member || ""
+            }
+          ),
+          "changedMember"
+        )}
+
+        ${tableCell(
+          inputControl(
+            `${prefix}_issuer`,
             "changeIssuer",
             {
-              textarea: true,
-              rows: 2
+              value: row.issuer || ""
             }
-          )}
+          ),
+          "changeIssuer"
+        )}
 
-          ${tableCell(
-            `change_${index}_date`,
+        ${tableCell(
+          inputControl(
+            `${prefix}_date`,
             "changeDateTime",
             {
-              type: "datetime-local"
+              type: "datetime-local",
+              value: row.date || ""
             }
-          )}
-        </tr>
-      `
-    ).join("");
+          ),
+          "changeDateTime"
+        )}
+
+        ${tableCell(
+          dynamicRowDeleteButton(
+            "changes",
+            row.id
+          ),
+          "deleteRow",
+          {
+            className:
+              "work-permit-row-actions no-print"
+          }
+        )}
+      </tr>
+    `;
   }
 
-  function optionalSectionTitle(sectionId) {
-    const titleKey =
-      OPTIONAL_SECTION_TITLE_KEYS[sectionId];
+  function renderDynamicRows(
+    collection
+  ) {
+    const container = screen.querySelector(
+      `[data-dynamic-rows-container="${collection}"]`
+    );
 
-    return text(titleKey || sectionId);
+    if (!container) return;
+
+    const rendererMap = {
+      leaders: leaderRowHtml,
+      completedMeasures: completedMeasureRowHtml,
+      approvals: approvalRowHtml,
+      brigade: brigadeRowHtml,
+      breaks: breakRowHtml,
+      changes: changeRowHtml
+    };
+
+    const renderer =
+      rendererMap[collection];
+
+    if (!renderer) return;
+
+    container.innerHTML =
+      dynamicRows[collection]
+        .map((row, index) =>
+          renderer(row, index)
+        )
+        .join("");
+
+    syncAllPrintValues();
+    growAllTextareas();
   }
 
-  function optionalSectionToolbar(sectionId) {
+  function createEmptyDynamicRow(
+    collection
+  ) {
+    const base = {
+      id: generateId(collection)
+    };
+
+    if (collection === "leaders") {
+      return {
+        ...base,
+        employeeId: "",
+        name: "",
+        position: "",
+        signature: ""
+      };
+    }
+
+    if (collection === "completedMeasures") {
+      return {
+        ...base,
+        number: "",
+        employeeId: "",
+        name: "",
+        position: "",
+        signature: ""
+      };
+    }
+
+    if (collection === "approvals") {
+      return {
+        ...base,
+        employeeId: "",
+        position: "",
+        name: "",
+        signature: "",
+        date: localDateValue()
+      };
+    }
+
+    if (collection === "brigade") {
+      return {
+        ...base,
+        briefing: localDateTimeValue(),
+        employeeId: "",
+        name: "",
+        profession: "",
+        signature: "",
+        instructor: ""
+      };
+    }
+
+    if (collection === "breaks") {
+      return {
+        ...base,
+        start: localDateTimeValue(),
+        workplace: "",
+        producer:
+          permitState.producer?.name || "",
+        admitter:
+          permitState.admitter?.name || "",
+        resume: "",
+        resumeProducer:
+          permitState.producer?.name || "",
+        resumeAdmitter:
+          permitState.admitter?.name || ""
+      };
+    }
+
+    if (collection === "changes") {
+      return {
+        ...base,
+        type: "",
+        employeeId: "",
+        member: "",
+        issuer:
+          permitState.issuer?.name || "",
+        date: localDateTimeValue()
+      };
+    }
+
+    return base;
+  }
+
+  function ensureInitialDynamicRows() {
+    Object.keys(dynamicRows)
+      .forEach(collection => {
+        if (!dynamicRows[collection].length) {
+          dynamicRows[collection].push(
+            createEmptyDynamicRow(collection)
+          );
+        }
+      });
+  }
+    /*
+   * ============================================================
+   * 8. ДОБАВЛЕНИЕ И УДАЛЕНИЕ ДИНАМИЧЕСКИХ СТРОК
+   * ============================================================
+   */
+
+  function addDynamicRow(collection) {
+    if (!dynamicRows[collection]) return;
+
+    dynamicRows[collection].push(
+      createEmptyDynamicRow(collection)
+    );
+
+    renderDynamicRows(collection);
+    saveDraft(true);
+  }
+
+  function removeDynamicRow(
+    collection,
+    rowId
+  ) {
+    if (!dynamicRows[collection]) return;
+
+    const row = dynamicRows[collection]
+      .find(item => item.id === rowId);
+
+    if (!row) return;
+
+    const containsData = Object.entries(row)
+      .some(([key, value]) => {
+        if (key === "id") return false;
+
+        return String(value ?? "")
+          .trim() !== "";
+      });
+
+    if (
+      containsData &&
+      !window.confirm(
+        text("removeRowConfirm")
+      )
+    ) {
+      return;
+    }
+
+    dynamicRows[collection] =
+      dynamicRows[collection]
+        .filter(item => item.id !== rowId);
+
+    if (!dynamicRows[collection].length) {
+      dynamicRows[collection].push(
+        createEmptyDynamicRow(collection)
+      );
+    }
+
+    renderDynamicRows(collection);
+    saveDraft(true);
+  }
+
+  function updateDynamicRowValue(
+    collection,
+    rowId,
+    fieldName,
+    value
+  ) {
+    const row = dynamicRows[collection]
+      ?.find(item => item.id === rowId);
+
+    if (!row) return;
+
+    row[fieldName] = value;
+  }
+
+  function findDynamicRowContext(
+    control
+  ) {
+    const rowElement = control.closest(
+      "[data-dynamic-row]"
+    );
+
+    if (!rowElement) return null;
+
+    return {
+      collection:
+        rowElement.dataset.dynamicRow,
+
+      rowId:
+        rowElement.dataset.rowId
+    };
+  }
+
+  function dynamicFieldKey(
+    controlName,
+    collection,
+    rowId
+  ) {
+    if (!controlName) return "";
+
+    const prefixes = {
+      leaders: `leader_${rowId}_`,
+      completedMeasures:
+        `completed_${rowId}_`,
+      approvals:
+        `approval_${rowId}_`,
+      brigade:
+        `brigade_${rowId}_`,
+      breaks:
+        `break_${rowId}_`,
+      changes:
+        `change_${rowId}_`
+    };
+
+    const prefix =
+      prefixes[collection] || "";
+
+    if (
+      prefix &&
+      controlName.startsWith(prefix)
+    ) {
+      return controlName.slice(
+        prefix.length
+      );
+    }
+
+    return "";
+  }
+
+  /*
+   * ============================================================
+   * 9. АВТОМАТИЧЕСКАЯ ПОДСТАНОВКА СОТРУДНИКОВ
+   * ============================================================
+   */
+
+  function findEmployeeById(employeeId) {
+    return getEmployees().find(
+      employee =>
+        String(employee.id) ===
+        String(employeeId)
+    ) || null;
+  }
+
+  function setControlValue(
+    name,
+    value,
+    options = {}
+  ) {
+    const {
+      dispatch = false
+    } = options;
+
+    const control = screen.querySelector(
+      `[name="${CSS.escape(name)}"]`
+    );
+
+    if (!control) return;
+
+    control.value =
+      value == null
+        ? ""
+        : String(value);
+
+    syncPrintValue(control);
+
+    if (
+      control.tagName === "TEXTAREA"
+    ) {
+      growTextarea(control);
+    }
+
+    if (dispatch) {
+      control.dispatchEvent(
+        new Event("change", {
+          bubbles: true
+        })
+      );
+    }
+  }
+
+  function fillEmployeeFields(
+    prefix,
+    employee
+  ) {
+    if (!employee) return;
+
+    setControlValue(
+      `${prefix}_name`,
+      employee.name
+    );
+
+    setControlValue(
+      `${prefix}_position`,
+      employee.position
+    );
+
+    setControlValue(
+      `${prefix}_organization`,
+      employee.organization
+    );
+  }
+
+  function fillDynamicEmployeeFields(
+    collection,
+    rowId,
+    employee
+  ) {
+    if (!employee) return;
+
+    const row =
+      dynamicRows[collection]
+        ?.find(item => item.id === rowId);
+
+    if (!row) return;
+
+    if (collection === "leaders") {
+      row.employeeId = employee.id;
+      row.name = employee.name;
+      row.position = employee.position;
+
+      setControlValue(
+        `leader_${rowId}_name`,
+        employee.name
+      );
+
+      setControlValue(
+        `leader_${rowId}_position`,
+        employee.position
+      );
+    }
+
+    if (
+      collection ===
+      "completedMeasures"
+    ) {
+      row.employeeId = employee.id;
+      row.name = employee.name;
+      row.position = employee.position;
+
+      setControlValue(
+        `completed_${rowId}_name`,
+        employee.name
+      );
+
+      setControlValue(
+        `completed_${rowId}_position`,
+        employee.position
+      );
+    }
+
+    if (collection === "approvals") {
+      row.employeeId = employee.id;
+      row.name = employee.name;
+
+      if (!row.position) {
+        row.position =
+          employee.position;
+      }
+
+      setControlValue(
+        `approval_${rowId}_name`,
+        employee.name
+      );
+
+      if (
+        !screen.querySelector(
+          `[name="approval_${rowId}_position"]`
+        )?.value
+      ) {
+        setControlValue(
+          `approval_${rowId}_position`,
+          employee.position
+        );
+      }
+    }
+
+    if (collection === "brigade") {
+      row.employeeId = employee.id;
+      row.name = employee.name;
+      row.profession =
+        employee.position;
+
+      setControlValue(
+        `brigade_${rowId}_name`,
+        employee.name
+      );
+
+      setControlValue(
+        `brigade_${rowId}_profession`,
+        employee.position
+      );
+    }
+
+    if (collection === "changes") {
+      row.employeeId = employee.id;
+      row.member = employee.name;
+
+      setControlValue(
+        `change_${rowId}_member`,
+        employee.name
+      );
+    }
+  }
+
+  function updateRelatedProducerFields() {
+    const name =
+      permitState.producer?.name || "";
+
+    setControlValue(
+      "start_producer",
+      name
+    );
+
+    setControlValue(
+      "permit_returned",
+      name
+    );
+
+    dynamicRows.breaks.forEach(row => {
+      row.producer = name;
+      row.resumeProducer = name;
+
+      setControlValue(
+        `break_${row.id}_producer`,
+        name
+      );
+
+      setControlValue(
+        `break_${row.id}_resume_producer`,
+        name
+      );
+    });
+  }
+
+  function updateRelatedAdmitterFields() {
+    const name =
+      permitState.admitter?.name || "";
+
+    setControlValue(
+      "start_admitter",
+      name
+    );
+
+    dynamicRows.breaks.forEach(row => {
+      row.admitter = name;
+      row.resumeAdmitter = name;
+
+      setControlValue(
+        `break_${row.id}_admitter`,
+        name
+      );
+
+      setControlValue(
+        `break_${row.id}_resume_admitter`,
+        name
+      );
+    });
+  }
+
+  function updateRelatedIssuerFields() {
+    const name =
+      permitState.issuer?.name || "";
+
+    dynamicRows.changes.forEach(row => {
+      if (!row.issuer) {
+        row.issuer = name;
+
+        setControlValue(
+          `change_${row.id}_issuer`,
+          name
+        );
+      }
+    });
+
+    if (!permitState.acceptedBy) {
+      setControlValue(
+        "permit_accepted",
+        name
+      );
+    }
+  }
+
+  function handleEmployeeSelection(
+    select
+  ) {
+    const employeeId =
+      select.value;
+
+    if (!employeeId) return;
+
+    if (employeeId === "manual") {
+      return;
+    }
+
+    const employee =
+      findEmployeeById(employeeId);
+
+    if (!employee) return;
+
+    const dynamicContext =
+      findDynamicRowContext(select);
+
+    if (dynamicContext) {
+      fillDynamicEmployeeFields(
+        dynamicContext.collection,
+        dynamicContext.rowId,
+        employee
+      );
+
+      const key =
+        dynamicFieldKey(
+          select.name,
+          dynamicContext.collection,
+          dynamicContext.rowId
+        );
+
+      if (key === "employee_id") {
+        updateDynamicRowValue(
+          dynamicContext.collection,
+          dynamicContext.rowId,
+          "employeeId",
+          employee.id
+        );
+      }
+
+      saveDraft(false);
+      return;
+    }
+
+    if (
+      select.name ===
+      "producer_employee_id"
+    ) {
+      permitState.producer =
+        employee;
+
+      fillEmployeeFields(
+        "producer",
+        employee
+      );
+
+      updateRelatedProducerFields();
+    }
+
+    if (
+      select.name ===
+      "admitter_employee_id"
+    ) {
+      permitState.admitter =
+        employee;
+
+      fillEmployeeFields(
+        "admitter",
+        employee
+      );
+
+      updateRelatedAdmitterFields();
+    }
+
+    if (
+      select.name ===
+      "issuer_employee_id"
+    ) {
+      permitState.issuer =
+        employee;
+
+      fillEmployeeFields(
+        "issuer",
+        employee
+      );
+
+      updateRelatedIssuerFields();
+    }
+
+    if (
+      select.name ===
+      "accepted_employee_id"
+    ) {
+      permitState.acceptedBy =
+        employee;
+
+      setControlValue(
+        "permit_accepted",
+        employee.name
+      );
+    }
+
+    saveDraft(false);
+  }
+
+  /*
+   * ============================================================
+   * 10. ВЫБОР ЦЕХА И ОБОРУДОВАНИЯ
+   * ============================================================
+   */
+
+  function refreshEquipmentOptions(
+    selectedWorkshop
+  ) {
+    const equipmentSelectElement =
+      screen.querySelector(
+        "[data-equipment-select]"
+      );
+
+    if (!equipmentSelectElement) return;
+
+    const currentValue =
+      equipmentSelectElement.value;
+
+    equipmentSelectElement.innerHTML =
+      equipmentOptions(
+        currentValue,
+        selectedWorkshop
+      );
+
+    syncPrintValue(
+      equipmentSelectElement
+    );
+  }
+
+  function handleWorkshopSelection(
+    select
+  ) {
+    const value = select.value;
+
+    if (!value) {
+      permitState.selectedWorkshop =
+        null;
+
+      refreshEquipmentOptions("");
+      return;
+    }
+
+    if (value === "manual") {
+      permitState.selectedWorkshop =
+        null;
+
+      const manual =
+        screen.querySelector(
+          '[name="workshop_manual"]'
+        );
+
+      manual?.focus();
+      return;
+    }
+
+    permitState.selectedWorkshop = {
+      name: value
+    };
+
+    setControlValue(
+      "work_place",
+      value
+    );
+
+    refreshEquipmentOptions(value);
+    saveDraft(false);
+  }
+
+  function handleEquipmentSelection(
+    select
+  ) {
+    const value = select.value;
+
+    if (!value) {
+      permitState.selectedEquipment =
+        null;
+
+      return;
+    }
+
+    if (value === "manual") {
+      permitState.selectedEquipment =
+        null;
+
+      const manual =
+        screen.querySelector(
+          '[name="equipment_manual"]'
+        );
+
+      manual?.focus();
+      return;
+    }
+
+    const selectedOption =
+      select.selectedOptions[0];
+
+    const equipment = {
+      id: value,
+
+      name:
+        selectedOption
+          ?.dataset
+          ?.equipmentName || "",
+
+      workshop:
+        selectedOption
+          ?.dataset
+          ?.equipmentWorkshop || ""
+    };
+
+    permitState.selectedEquipment =
+      equipment;
+
+    if (equipment.name) {
+      setControlValue(
+        "work_equipment",
+        equipment.name
+      );
+    }
+
+    if (
+      equipment.workshop &&
+      !permitState.selectedWorkshop
+    ) {
+      permitState.selectedWorkshop = {
+        name: equipment.workshop
+      };
+
+      setControlValue(
+        "workshop_id",
+        equipment.workshop
+      );
+    }
+
+    saveDraft(false);
+  }
+
+  /*
+   * ============================================================
+   * 11. ДОПОЛНИТЕЛЬНЫЕ РАЗДЕЛЫ
+   * ============================================================
+   */
+
+  function optionalSectionTitle(
+    sectionId
+  ) {
+    const key =
+      OPTIONAL_SECTION_TITLE_KEYS[
+        sectionId
+      ];
+
+    return text(key || sectionId);
+  }
+
+  function optionalSectionToolbar(
+    sectionId
+  ) {
     return `
-      <div class="work-permit-optional-toolbar no-print">
+      <div
+        class="work-permit-optional-toolbar no-print">
+
         <span
-          class="work-permit-optional-label"
-          data-optional-label="${sectionId}">
-          ${text("optionalSection")}
+          class="work-permit-optional-label">
+          ${escapeHtml(text("optionalSection"))}
         </span>
 
         <div class="work-permit-optional-actions">
           <button
             type="button"
-            class="work-permit-collapse-section"
-            data-collapse-section="${sectionId}">
-            ${text("collapseSection")}
+            data-collapse-section="${escapeHtml(sectionId)}">
+
+            ${escapeHtml(text("collapse"))}
           </button>
 
           <button
             type="button"
-            class="work-permit-remove-section"
-            data-remove-section="${sectionId}">
-            ${text("removeSection")}
+            data-remove-section="${escapeHtml(sectionId)}">
+
+            ${escapeHtml(text("remove"))}
           </button>
         </div>
       </div>
@@ -1057,25 +3094,26 @@
   function sectionSelectorHtml() {
     return `
       <section
-        id="workPermitSectionConstructor"
         class="work-permit-section-constructor no-print">
 
-        <div class="work-permit-constructor-head">
+        <div class="work-permit-constructor-heading">
           <div>
-            <h2 data-work-permit-i18n="sectionConstructor">
-              ${text("sectionConstructor")}
-            </h2>
+            ${i18n(
+              "optionalSections",
+              "h2"
+            )}
 
-            <p data-work-permit-i18n="selectRequiredSections">
-              ${text("selectRequiredSections")}
-            </p>
+            ${i18n(
+              "optionalSectionsHint",
+              "p"
+            )}
           </div>
 
           <button
             id="workPermitOpenSectionSelector"
-            class="work-permit-add-section-button"
             type="button">
-            ＋ ${text("addSection")}
+
+            ＋ ${escapeHtml(text("addSection"))}
           </button>
         </div>
 
@@ -1085,1132 +3123,49 @@
           hidden>
 
           <div class="work-permit-section-options">
-            ${OPTIONAL_SECTION_IDS.map(sectionId => `
-              <label
-                class="work-permit-section-option"
-                data-section-option-label="${sectionId}">
+            ${OPTIONAL_SECTION_IDS
+              .map(sectionId => `
+                <label>
+                  <input
+                    type="checkbox"
+                    value="${escapeHtml(sectionId)}"
+                    data-optional-section-checkbox>
 
-                <input
-                  type="checkbox"
-                  value="${sectionId}"
-                  data-section-selector-option>
-
-                <span>
-                  ${optionalSectionTitle(sectionId)}
-                </span>
-              </label>
-            `).join("")}
+                  <span
+                    data-optional-section-title="${escapeHtml(sectionId)}">
+                    ${escapeHtml(
+                      optionalSectionTitle(
+                        sectionId
+                      )
+                    )}
+                  </span>
+                </label>
+              `)
+              .join("")}
           </div>
 
           <div class="work-permit-section-selector-actions">
             <button
               id="workPermitAddSelectedSections"
-              class="work-permit-add-selected-button"
               type="button">
-              ${text("addSelectedSections")}
+
+              ${escapeHtml(
+                text(
+                  "addSelectedSections"
+                )
+              )}
             </button>
 
             <button
               id="workPermitCloseSectionSelector"
-              class="work-permit-close-selector-button"
               type="button">
-              ${text("closeSectionSelector")}
+
+              ${escapeHtml(text("close"))}
             </button>
           </div>
         </div>
       </section>
     `;
-  }
-
-  function installOptionalSectionStyles() {
-    if (
-      document.querySelector(
-        "#workPermitOptionalSectionStyles"
-      )
-    ) {
-      return;
-    }
-
-    const style = document.createElement("style");
-
-    style.id = "workPermitOptionalSectionStyles";
-
-    style.textContent = `
-      .work-permit-section-constructor {
-        margin: 0 0 18px;
-        padding: 14px;
-        border: 1px solid #cbd5e1;
-        border-radius: 12px;
-        background: #f8fafc;
-      }
-
-      .work-permit-constructor-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 15px;
-      }
-
-      .work-permit-constructor-head h2 {
-        margin: 0 0 4px;
-        font-size: 17px;
-      }
-
-      .work-permit-constructor-head p {
-        margin: 0;
-        color: #475569;
-        font-size: 13px;
-      }
-
-      .work-permit-add-section-button {
-        flex-shrink: 0;
-        min-height: 42px;
-        padding: 9px 16px;
-        border: 0;
-        border-radius: 8px;
-        background: #0f766e;
-        color: #ffffff;
-        font-weight: 700;
-        cursor: pointer;
-      }
-
-      .work-permit-add-section-button:hover {
-        filter: brightness(0.95);
-      }
-
-      .work-permit-section-selector {
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px solid #cbd5e1;
-      }
-
-      .work-permit-section-selector[hidden] {
-        display: none !important;
-      }
-
-      .work-permit-section-options {
-        display: grid;
-        grid-template-columns:
-          repeat(auto-fit, minmax(260px, 1fr));
-        gap: 10px;
-      }
-
-      .work-permit-section-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-height: 44px;
-        padding: 10px 12px;
-        border: 1px solid #dbe3ea;
-        border-radius: 8px;
-        background: #ffffff;
-        cursor: pointer;
-      }
-
-      .work-permit-section-option:hover {
-        border-color: #94a3b8;
-      }
-
-      .work-permit-section-option:has(input:disabled) {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-
-      .work-permit-section-option input {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
-      }
-
-      .work-permit-section-option span {
-        font-size: 14px;
-        font-weight: 600;
-      }
-
-      .work-permit-section-selector-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 14px;
-      }
-
-      .work-permit-section-selector-actions button {
-        min-height: 38px;
-        padding: 8px 14px;
-        border-radius: 7px;
-        cursor: pointer;
-      }
-
-      .work-permit-add-selected-button {
-        border: 0;
-        background: #166534;
-        color: #ffffff;
-        font-weight: 700;
-      }
-
-      .work-permit-close-selector-button {
-        border: 1px solid #94a3b8;
-        background: #ffffff;
-        color: #1e293b;
-      }
-
-      .work-permit-optional-section[hidden] {
-        display: none !important;
-      }
-
-      .work-permit-optional-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 10px;
-        padding: 8px 10px;
-        border-radius: 7px;
-        background: #f1f5f9;
-      }
-
-      .work-permit-optional-label {
-        color: #475569;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .work-permit-optional-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-      }
-
-      .work-permit-optional-actions button {
-        min-height: 32px;
-        padding: 6px 10px;
-        border-radius: 6px;
-        background: #ffffff;
-        cursor: pointer;
-      }
-
-      .work-permit-collapse-section {
-        border: 1px solid #94a3b8;
-        color: #334155;
-      }
-
-      .work-permit-remove-section {
-        border: 1px solid #fecaca;
-        color: #991b1b;
-      }
-
-      .work-permit-optional-section.is-collapsed
-        > :not(
-          .work-permit-optional-toolbar
-        ):not(h2) {
-        display: none;
-      }
-
-      @media (max-width: 700px) {
-        .work-permit-constructor-head {
-          align-items: stretch;
-          flex-direction: column;
-        }
-
-        .work-permit-add-section-button {
-          width: 100%;
-        }
-
-        .work-permit-section-options {
-          grid-template-columns: 1fr;
-        }
-
-        .work-permit-optional-toolbar {
-          align-items: stretch;
-          flex-direction: column;
-        }
-
-        .work-permit-optional-actions {
-          width: 100%;
-        }
-
-        .work-permit-optional-actions button {
-          flex: 1;
-        }
-      }
-
-      @media print {
-        .work-permit-section-constructor,
-        .work-permit-optional-toolbar {
-          display: none !important;
-        }
-
-        .work-permit-optional-section {
-          display: block;
-        }
-
-        .work-permit-optional-section[hidden] {
-          display: none !important;
-        }
-
-        .work-permit-optional-section.is-collapsed
-          > :not(
-            .work-permit-optional-toolbar
-          ):not(h2) {
-          display: block !important;
-        }
-      }
-    `;
-
-    document.head.append(style);
-  }
-
-  function buildScreen() {
-    screen.innerHTML = `
-      <header class="work-permit-toolbar no-print">
-        <div class="work-permit-intro">
-          ${i18n("screenTitle", "h1")}
-          ${i18n("screenDescription", "p")}
-
-          <small>
-            <span aria-hidden="true">✓</span>
-            ${i18n("draftLocal")}
-          </small>
-        </div>
-
-        <div class="work-permit-toolbar-actions">
-          <label class="work-permit-language-control">
-            ${i18n("language")}
-
-            <select
-              id="workPermitLanguageSelect"
-              aria-label="${text("language")}">
-
-              <option value="ru">
-                ${text("russian")}
-              </option>
-
-              <option value="kk">
-                ${text("kazakh")}
-              </option>
-            </select>
-
-            ${i18n("languageHint", "small")}
-          </label>
-
-          <button
-            id="workPermitPrintButton"
-            class="work-permit-print-button"
-            type="button">
-
-            <span aria-hidden="true">⎙</span>
-            ${i18n("print")}
-          </button>
-
-          <button
-            id="workPermitClearButton"
-            class="work-permit-clear-button"
-            type="button">
-
-            ${i18n("clear")}
-          </button>
-        </div>
-
-        <div
-          id="workPermitSaveStatus"
-          class="work-permit-save-status"
-          role="status"
-          aria-live="polite">
-        </div>
-      </header>
-
-      <form
-        id="workPermitForm"
-        class="work-permit-form"
-        autocomplete="off">
-
-        <article class="work-permit-paper">
-
-          ${sectionSelectorHtml()}
-
-          <header class="work-permit-document-head">
-            <div class="work-permit-company">
-              ${i18n("companyName", "strong")}
-
-              <span class="work-permit-document-code">
-                НД / ЖР
-              </span>
-            </div>
-
-            <div class="work-permit-title-row">
-              <div>
-                ${i18n("permitTitle", "h1")}
-                ${i18n("permitSubtitle", "p")}
-              </div>
-
-              <div class="work-permit-head-fields">
-                ${field(
-                  "permit_number",
-                  "permitNumber"
-                )}
-
-                ${field(
-                  "permit_date",
-                  "permitDate",
-                  {
-                    type: "date"
-                  }
-                )}
-              </div>
-            </div>
-          </header>         
-          <section class="work-permit-section">
-            ${i18n("producerSection", "h2")}
-
-            <div class="work-permit-grid work-permit-grid-three">
-              ${field(
-                "producer_name",
-                "fullName"
-              )}
-
-              ${field(
-                "producer_position",
-                "position"
-              )}
-
-              ${field(
-                "producer_organization",
-                "organization"
-              )}
-            </div>
-          </section>
-
-          <section class="work-permit-section">
-            ${i18n("assignedWorkSection", "h2")}
-
-            <div class="work-permit-grid">
-              ${field(
-                "work_equipment",
-                "equipment"
-              )}
-
-              ${field(
-                "work_place",
-                "workPlace"
-              )}
-
-              ${field(
-                "work_scope",
-                "workScope",
-                {
-                  textarea: true,
-                  rows: 3,
-                  wide: true
-                }
-              )}
-            </div>
-          </section>
-
-          <section class="work-permit-section">
-            ${i18n("admitterSection", "h2")}
-
-            <div class="work-permit-grid">
-              ${field(
-                "admitter_name",
-                "fullName"
-              )}
-
-              ${field(
-                "admitter_position",
-                "position"
-              )}
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-optional-section
-            "
-            data-optional-section="leader"
-            hidden>
-
-            ${optionalSectionToolbar("leader")}
-
-            ${i18n("leaderSection", "h2")}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th>№</th>
-
-                    <th data-work-permit-i18n="fullName">
-                      ${text("fullName")}
-                    </th>
-
-                    <th data-work-permit-i18n="position">
-                      ${text("position")}
-                    </th>
-
-                    <th data-work-permit-i18n="signature">
-                      ${text("signature")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${responsibleLeaderRows()}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-safety-section
-            ">
-
-            ${i18n("safetySection", "h2")}
-
-            <div class="work-permit-grid">
-              ${field(
-                "safety_stop",
-                "stopEquipment",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_disconnect",
-                "disconnectEquipment",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_install",
-                "installSafety",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_air",
-                "airAnalysis",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_fence",
-                "fenceArea",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_height",
-                "heightWork",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_warn",
-                "warnPersonnel",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_route",
-                "route",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "safety_additional",
-                "additionalMeasures",
-                {
-                  textarea: true,
-                  rows: 3,
-                  wide: true
-                }
-              )}
-            </div>
-          </section>
-
-          <section class="work-permit-section">
-            ${i18n("issuerSection", "h2")}
-
-            <div
-              class="
-                work-permit-grid
-                work-permit-grid-four
-              ">
-
-              ${field(
-                "issuer_name",
-                "fullName"
-              )}
-
-              ${field(
-                "issuer_position",
-                "position"
-              )}
-
-              ${field(
-                "issuer_signature",
-                "signature"
-              )}
-
-              ${field(
-                "issuer_date",
-                "date",
-                {
-                  type: "date"
-                }
-              )}
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-section-long
-              work-permit-optional-section
-            "
-            data-optional-section="completedMeasures"
-            hidden>
-
-            ${optionalSectionToolbar(
-              "completedMeasures"
-            )}
-
-            ${i18n(
-              "completedMeasuresSection",
-              "h2"
-            )}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th data-work-permit-i18n="measureNumber">
-                      ${text("measureNumber")}
-                    </th>
-
-                    <th data-work-permit-i18n="completedBy">
-                      ${text("completedBy")}
-                    </th>
-
-                    <th data-work-permit-i18n="position">
-                      ${text("position")}
-                    </th>
-
-                    <th data-work-permit-i18n="signature">
-                      ${text("signature")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${measureRows()}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-optional-section
-            "
-            data-optional-section="approval"
-            hidden>
-
-            ${optionalSectionToolbar("approval")}
-
-            ${i18n("approvalSection", "h2")}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th data-work-permit-i18n="approvalNumber">
-                      ${text("approvalNumber")}
-                    </th>
-
-                    <th data-work-permit-i18n="position">
-                      ${text("position")}
-                    </th>
-
-                    <th data-work-permit-i18n="fullName">
-                      ${text("fullName")}
-                    </th>
-
-                    <th data-work-permit-i18n="signature">
-                      ${text("signature")}
-                    </th>
-
-                    <th data-work-permit-i18n="date">
-                      ${text("date")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${approvalRows()}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-section-long
-              work-permit-optional-section
-            "
-            data-optional-section="brigade"
-            hidden>
-
-            ${optionalSectionToolbar("brigade")}
-
-            ${i18n("brigadeSection", "h2")}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                  work-permit-team-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th data-work-permit-i18n="teamNumber">
-                      ${text("teamNumber")}
-                    </th>
-
-                    <th data-work-permit-i18n="briefingDateTime">
-                      ${text("briefingDateTime")}
-                    </th>
-
-                    <th data-work-permit-i18n="teamMember">
-                      ${text("teamMember")}
-                    </th>
-
-                    <th data-work-permit-i18n="profession">
-                      ${text("profession")}
-                    </th>
-
-                    <th data-work-permit-i18n="memberSignature">
-                      ${text("memberSignature")}
-                    </th>
-
-                    <th data-work-permit-i18n="instructor">
-                      ${text("instructor")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${teamRows()}
-                </tbody>
-              </table>
-            </div>
-
-            ${i18n("startSection", "h2")}
-
-            <div
-              class="
-                work-permit-grid
-                work-permit-grid-four
-              ">
-
-              ${field(
-                "start_date",
-                "workStartDate",
-                {
-                  type: "date"
-                }
-              )}
-
-              ${field(
-                "start_time",
-                "workStartTime",
-                {
-                  type: "time"
-                }
-              )}
-
-              ${field(
-                "start_producer",
-                "producerNameSignature",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "start_admitter",
-                "admitterNameSignature",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-section-long
-              work-permit-optional-section
-            "
-            data-optional-section="breaks"
-            hidden>
-
-            ${optionalSectionToolbar("breaks")}
-
-            ${i18n("breaksSection", "h2")}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                  work-permit-break-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th data-work-permit-i18n="breakNumber">
-                      ${text("breakNumber")}
-                    </th>
-
-                    <th data-work-permit-i18n="breakDateTime">
-                      ${text("breakDateTime")}
-                    </th>
-
-                    <th data-work-permit-i18n="workplaceHandover">
-                      ${text("workplaceHandover")}
-                    </th>
-
-                    <th data-work-permit-i18n="breakProducer">
-                      ${text("breakProducer")}
-                    </th>
-
-                    <th data-work-permit-i18n="breakAdmitter">
-                      ${text("breakAdmitter")}
-                    </th>
-
-                    <th data-work-permit-i18n="resumeDateTime">
-                      ${text("resumeDateTime")}
-                    </th>
-
-                    <th data-work-permit-i18n="resumeProducer">
-                      ${text("resumeProducer")}
-                    </th>
-
-                    <th data-work-permit-i18n="resumeAdmitter">
-                      ${text("resumeAdmitter")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${breakRows()}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section
-            class="
-              work-permit-section
-              work-permit-section-long
-              work-permit-optional-section
-            "
-            data-optional-section="changes"
-            hidden>
-
-            ${optionalSectionToolbar("changes")}
-
-            ${i18n("changesSection", "h2")}
-
-            <div class="work-permit-table-wrap">
-              <table
-                class="
-                  work-permit-table
-                  work-permit-responsive-table
-                ">
-
-                <thead>
-                  <tr>
-                    <th>№</th>
-
-                    <th data-work-permit-i18n="changeType">
-                      ${text("changeType")}
-                    </th>
-
-                    <th data-work-permit-i18n="changedMembers">
-                      ${text("changedMembers")}
-                    </th>
-
-                    <th data-work-permit-i18n="changeIssuer">
-                      ${text("changeIssuer")}
-                    </th>
-
-                    <th data-work-permit-i18n="changeDateTime">
-                      ${text("changeDateTime")}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  ${changeRows()}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="work-permit-section">
-            ${i18n("finishSection", "h2")}
-
-            <div
-              class="
-                work-permit-grid
-                work-permit-grid-four
-              ">
-
-              ${field(
-                "finish_date",
-                "workFinishedDate",
-                {
-                  type: "date"
-                }
-              )}
-
-              ${field(
-                "finish_time",
-                "workFinishedTime",
-                {
-                  type: "time"
-                }
-              )}
-
-              ${field(
-                "work_completed",
-                "workCompleted",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "workplace_cleared",
-                "workplaceCleared",
-                {
-                  textarea: true,
-                  rows: 2
-                }
-              )}
-
-              ${field(
-                "permit_returned",
-                "permitReturned",
-                {
-                  textarea: true,
-                  rows: 2,
-                  wide: true
-                }
-              )}
-
-              ${field(
-                "permit_accepted",
-                "permitAccepted",
-                {
-                  textarea: true,
-                  rows: 2,
-                  wide: true
-                }
-              )}
-            </div>
-          </section>
-
-          <section
-            id="workPermitReminder"
-            class="work-permit-reminder">
-
-            <header>
-              ${i18n("reminderTitle", "h2")}
-
-              <button
-                id="workPermitReminderToggle"
-                class="no-print"
-                type="button"
-                aria-expanded="true">
-
-                ${i18n("hideReminder")}
-              </button>
-            </header>
-
-            <ol>
-              ${
-                Array.from(
-                  { length: 8 },
-                  (_, index) => `
-                    <li
-                      data-work-permit-i18n="reminder${index + 1}">
-                      ${text(`reminder${index + 1}`)}
-                    </li>
-                  `
-                ).join("")
-              }
-            </ol>
-          </section>
-
-          <button
-            id="workPermitReminderShow"
-            class="
-              work-permit-reminder-show
-              no-print
-            "
-            type="button"
-            hidden>
-
-            ${i18n("showReminder")}
-          </button>
-        </article>
-      </form>
-    `;
-  }  
-  function controls() {
-    return [
-      ...screen.querySelectorAll(
-        "#workPermitForm input[name], " +
-        "#workPermitForm textarea[name], " +
-        "#workPermitForm select[name]"
-      )
-    ];
-  }
-
-  function formatControlValue(control) {
-    if (!control?.value) return "";
-
-    if (control.tagName === "SELECT") {
-      return (
-        control.selectedOptions[0]
-          ?.textContent
-          ?.trim() || ""
-      );
-    }
-
-    if (control.type === "date") {
-      const date = new Date(
-        `${control.value}T00:00:00`
-      );
-
-      return Number.isNaN(date.getTime())
-        ? control.value
-        : date.toLocaleDateString(
-            language === "kk"
-              ? "kk-KZ"
-              : "ru-RU"
-          );
-    }
-
-    if (control.type === "datetime-local") {
-      const date = new Date(control.value);
-
-      return Number.isNaN(date.getTime())
-        ? control.value
-        : date.toLocaleString(
-            language === "kk"
-              ? "kk-KZ"
-              : "ru-RU",
-            {
-              dateStyle: "short",
-              timeStyle: "short"
-            }
-          );
-    }
-
-    return control.value;
-  }
-
-  function syncPrintValue(control) {
-    if (!control?.name) return;
-
-    const mirror = screen.querySelector(
-      `[data-work-permit-print-for="${control.name}"]`
-    );
-
-    if (mirror) {
-      mirror.textContent =
-        formatControlValue(control);
-    }
-  }
-
-  function syncAllPrintValues() {
-    controls().forEach(syncPrintValue);
-  }
-
-  function growTextarea(textarea) {
-    if (
-      !textarea ||
-      textarea.tagName !== "TEXTAREA"
-    ) {
-      return;
-    }
-
-    textarea.style.height = "auto";
-
-    textarea.style.height =
-      `${Math.max(
-        textarea.scrollHeight,
-        58
-      )}px`;
-  }
-
-  function growAllTextareas() {
-    screen
-      .querySelectorAll("textarea")
-      .forEach(growTextarea);
   }
 
   function sectionElement(sectionId) {
@@ -2230,13 +3185,21 @@
         "input[name], textarea[name], select[name]"
       )
     ].some(control => {
+      if (
+        control.type === "checkbox"
+      ) {
+        return control.checked;
+      }
+
       return String(
-        control.value || ""
+        control.value ?? ""
       ).trim() !== "";
     });
   }
 
-  function clearSectionValues(sectionId) {
+  function clearSectionControls(
+    sectionId
+  ) {
     const section =
       sectionElement(sectionId);
 
@@ -2247,15 +3210,21 @@
         "input[name], textarea[name], select[name]"
       )
       .forEach(control => {
-        control.value = "";
+        if (
+          control.type === "checkbox"
+        ) {
+          control.checked = false;
+        } else {
+          control.value = "";
+        }
+
+        syncPrintValue(control);
 
         if (
           control.tagName === "TEXTAREA"
         ) {
           growTextarea(control);
         }
-
-        syncPrintValue(control);
       });
   }
 
@@ -2265,24 +3234,16 @@
     persist = true
   ) {
     if (
-      !OPTIONAL_SECTION_IDS.includes(
-        sectionId
-      )
+      !OPTIONAL_SECTION_IDS
+        .includes(sectionId)
     ) {
       return;
     }
-
-    const section =
-      sectionElement(sectionId);
-
-    if (!section) return;
 
     if (visible) {
       activeOptionalSections.add(
         sectionId
       );
-
-      section.hidden = false;
     } else {
       activeOptionalSections.delete(
         sectionId
@@ -2290,12 +3251,6 @@
 
       collapsedOptionalSections.delete(
         sectionId
-      );
-
-      section.hidden = true;
-
-      section.classList.remove(
-        "is-collapsed"
       );
     }
 
@@ -2308,14 +3263,8 @@
 
   function setSectionCollapsed(
     sectionId,
-    collapsed,
-    persist = true
+    collapsed
   ) {
-    const section =
-      sectionElement(sectionId);
-
-    if (!section) return;
-
     if (collapsed) {
       collapsedOptionalSections.add(
         sectionId
@@ -2326,30 +3275,13 @@
       );
     }
 
-    section.classList.toggle(
-      "is-collapsed",
-      collapsed
-    );
-
-    const button =
-      section.querySelector(
-        `[data-collapse-section="${sectionId}"]`
-      );
-
-    if (button) {
-      button.textContent = collapsed
-        ? text("expandSection")
-        : text("collapseSection");
-    }
-
-    if (persist) {
-      saveDraft(false);
-    }
+    updateOptionalSectionsUi();
+    saveDraft(false);
   }
 
   function updateOptionalSectionsUi() {
-    OPTIONAL_SECTION_IDS.forEach(
-      sectionId => {
+    OPTIONAL_SECTION_IDS
+      .forEach(sectionId => {
         const section =
           sectionElement(sectionId);
 
@@ -2380,54 +3312,20 @@
         if (collapseButton) {
           collapseButton.textContent =
             collapsed
-              ? text("expandSection")
-              : text("collapseSection");
+              ? text("expand")
+              : text("collapse");
         }
 
-        const removeButton =
-          section.querySelector(
-            `[data-remove-section="${sectionId}"]`
-          );
-
-        if (removeButton) {
-          removeButton.textContent =
-            text("removeSection");
-        }
-
-        const optionalLabel =
-          section.querySelector(
-            `[data-optional-label="${sectionId}"]`
-          );
-
-        if (optionalLabel) {
-          optionalLabel.textContent =
-            text("optionalSection");
-        }
-
-        const selectorCheckbox =
+        const checkbox =
           screen.querySelector(
-            `[data-section-selector-option][value="${sectionId}"]`
+            `[data-optional-section-checkbox][value="${sectionId}"]`
           );
 
-        if (selectorCheckbox) {
-          selectorCheckbox.checked = false;
-          selectorCheckbox.disabled =
-            active;
+        if (checkbox) {
+          checkbox.checked = false;
+          checkbox.disabled = active;
         }
-
-        const selectorLabel =
-          screen.querySelector(
-            `[data-section-option-label="${sectionId}"] span`
-          );
-
-        if (selectorLabel) {
-          selectorLabel.textContent =
-            optionalSectionTitle(
-              sectionId
-            );
-        }
-      }
-    );
+      });
   }
 
   function setSectionSelectorVisible(
@@ -2447,6 +3345,1428 @@
     }
   }
 
+  function addSelectedOptionalSections() {
+    const selected = [
+      ...screen.querySelectorAll(
+        "[data-optional-section-checkbox]:checked"
+      )
+    ];
+
+    selected.forEach(checkbox => {
+      const sectionId =
+        checkbox.value;
+
+      setOptionalSectionVisible(
+        sectionId,
+        true,
+        false
+      );
+
+      if (
+        dynamicRows[sectionId]
+      ) {
+        renderDynamicRows(
+          sectionId
+        );
+      }
+    });
+
+    setSectionSelectorVisible(false);
+    updateOptionalSectionsUi();
+    saveDraft(true);
+  }
+
+  function removeOptionalSection(
+    sectionId
+  ) {
+    if (
+      sectionHasValues(sectionId) &&
+      !window.confirm(
+        text(
+          "removeSectionConfirm"
+        )
+      )
+    ) {
+      return;
+    }
+
+    clearSectionControls(sectionId);
+
+    if (
+      sectionId === "leader"
+    ) {
+      dynamicRows.leaders = [
+        createEmptyDynamicRow(
+          "leaders"
+        )
+      ];
+    }
+
+    if (
+      sectionId ===
+      "completedMeasures"
+    ) {
+      dynamicRows.completedMeasures = [
+        createEmptyDynamicRow(
+          "completedMeasures"
+        )
+      ];
+    }
+
+    if (
+      sectionId === "approval"
+    ) {
+      dynamicRows.approvals = [
+        createEmptyDynamicRow(
+          "approvals"
+        )
+      ];
+    }
+
+    if (
+      sectionId === "brigade"
+    ) {
+      dynamicRows.brigade = [
+        createEmptyDynamicRow(
+          "brigade"
+        )
+      ];
+    }
+
+    if (
+      sectionId === "breaks"
+    ) {
+      dynamicRows.breaks = [
+        createEmptyDynamicRow(
+          "breaks"
+        )
+      ];
+    }
+
+    if (
+      sectionId === "changes"
+    ) {
+      dynamicRows.changes = [
+        createEmptyDynamicRow(
+          "changes"
+        )
+      ];
+    }
+
+    setOptionalSectionVisible(
+      sectionId,
+      false,
+      false
+    );
+
+    saveDraft(true);
+  }
+
+  /*
+   * ============================================================
+   * 12. НАЧАЛО ПОСТРОЕНИЯ ФОРМЫ
+   * ============================================================
+   */
+
+  function buildScreen() {
+    const currentUser =
+      getCurrentUser();
+
+    permitState.createdBy =
+      currentUser;
+
+    permitState.issuer =
+      currentUser;
+
+    if (!permitState.createdAt) {
+      permitState.createdAt =
+        currentIsoDateTime();
+    }
+
+    screen.innerHTML = `
+      <header
+        class="work-permit-toolbar no-print">
+
+        <div class="work-permit-intro">
+          ${i18n(
+            "screenTitle",
+            "h1"
+          )}
+
+          ${i18n(
+            "screenDescription",
+            "p"
+          )}
+
+          <small>
+            ✓ ${escapeHtml(
+              text("draftLocal")
+            )}
+          </small>
+        </div>
+
+        <div class="work-permit-toolbar-actions">
+          <label>
+            ${i18n("language")}
+
+            <select
+              id="workPermitLanguageSelect">
+
+              <option value="ru">
+                ${escapeHtml(
+                  text("russian")
+                )}
+              </option>
+
+              <option value="kk">
+                ${escapeHtml(
+                  text("kazakh")
+                )}
+              </option>
+            </select>
+          </label>
+
+          <button
+            id="workPermitFinishButton"
+            type="button">
+
+            ${escapeHtml(
+              text("finishPermit")
+            )}
+          </button>
+
+          <button
+            id="workPermitPrintButton"
+            type="button">
+
+            ${escapeHtml(
+              text("print")
+            )}
+          </button>
+
+          <button
+            id="workPermitClearButton"
+            type="button">
+
+            ${escapeHtml(
+              text("clear")
+            )}
+          </button>
+        </div>
+
+        <div
+          id="workPermitSaveStatus"
+          role="status"
+          aria-live="polite">
+        </div>
+      </header>
+
+      <form
+        id="workPermitForm"
+        class="work-permit-form"
+        autocomplete="off">
+
+        <article class="work-permit-paper">
+
+          ${sectionSelectorHtml()}
+
+          <header
+            class="work-permit-document-head">
+
+            <div class="work-permit-company">
+              <strong
+                data-work-permit-i18n="companyName">
+                ${escapeHtml(
+                  text("companyName")
+                )}
+              </strong>
+
+              <span>
+                НД / ЖР
+              </span>
+            </div>
+
+            <div class="work-permit-title-row">
+              <div>
+                ${i18n(
+                  "permitTitle",
+                  "h1"
+                )}
+
+                ${i18n(
+                  "permitSubtitle",
+                  "p"
+                )}
+              </div>
+
+              <div class="work-permit-head-fields">
+                ${field(
+                  "permit_number",
+                  "permitNumber",
+                  {
+                    value:
+                      permitState
+                        .permitNumber,
+                    readonly: true
+                  }
+                )}
+
+                ${field(
+                  "permit_date",
+                  "permitDate",
+                  {
+                    type: "date",
+                    value:
+                      localDateValue()
+                  }
+                )}
+
+                ${field(
+                  "created_at",
+                  "createdDateTime",
+                  {
+                    type:
+                      "datetime-local",
+                    value:
+                      localDateTimeValue(
+                        new Date(
+                          permitState
+                            .createdAt
+                        )
+                      ),
+                    readonly: true
+                  }
+                )}
+              </div>
+            </div>
+          </header>
+
+          <section
+            class="work-permit-section">
+
+            ${i18n(
+              "producerSection",
+              "h2"
+            )}
+
+            ${employeeFieldGroup(
+              "producer",
+              {
+                includeOrganization: true,
+                includeSignature: false,
+                hintKey:
+                  "producerAutoHint"
+              }
+            )}
+          </section>
+
+          <section
+            class="work-permit-section">
+
+            ${i18n(
+              "assignedWorkSection",
+              "h2"
+            )}
+
+            ${workLocationBlock()}
+
+            ${field(
+              "work_equipment",
+              "equipment",
+              {
+                wide: true
+              }
+            )}
+
+            ${field(
+              "work_scope",
+              "workScope",
+              {
+                textarea: true,
+                rows: 3,
+                wide: true
+              }
+            )}
+          </section>
+
+          <section
+            class="work-permit-section">
+
+            ${i18n(
+              "admitterSection",
+              "h2"
+            )}
+
+            ${employeeFieldGroup(
+              "admitter",
+              {
+                includeOrganization: false,
+                includeSignature: false,
+                hintKey:
+                  "admitterAutoHint"
+              }
+            )}
+          </section>
+                    <section
+            class="work-permit-section work-permit-optional-section"
+            data-optional-section="leader"
+            hidden>
+
+            ${optionalSectionToolbar("leader")}
+
+            ${i18n(
+              "leaderSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="work-permit-table work-permit-responsive-table">
+
+                <thead>
+                  <tr>
+                    <th>№</th>
+
+                    <th data-work-permit-i18n="fullName">
+                      ${escapeHtml(text("fullName"))}
+                    </th>
+
+                    <th data-work-permit-i18n="fullName">
+                      ${escapeHtml(text("fullName"))}
+                    </th>
+
+                    <th data-work-permit-i18n="position">
+                      ${escapeHtml(text("position"))}
+                    </th>
+
+                    <th data-work-permit-i18n="signature">
+                      ${escapeHtml(text("signature"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="leaders">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "leaders",
+              "addLeader"
+            )}
+          </section>
+
+          <section
+            class="work-permit-section work-permit-safety-section">
+
+            ${i18n(
+              "safetySection",
+              "h2"
+            )}
+
+            <div class="work-permit-safety-list">
+              ${safetyMeasuresHtml()}
+            </div>
+          </section>
+
+          <section class="work-permit-section">
+
+            ${i18n(
+              "issuerSection",
+              "h2"
+            )}
+
+            <div
+              class="work-permit-grid work-permit-grid-four">
+
+              ${field(
+                "issuer_employee_id",
+                "fullName",
+                {
+                  employee: true,
+                  selectedEmployeeId:
+                    permitState.issuer?.id || "",
+                  hintKey:
+                    "issuerAutoHint"
+                }
+              )}
+
+              ${field(
+                "issuer_name",
+                "fullName",
+                {
+                  value:
+                    permitState.issuer?.name || ""
+                }
+              )}
+
+              ${field(
+                "issuer_position",
+                "position",
+                {
+                  value:
+                    permitState.issuer?.position || ""
+                }
+              )}
+
+              ${field(
+                "issuer_signature",
+                "signature"
+              )}
+
+              ${field(
+                "issuer_date",
+                "date",
+                {
+                  type: "date",
+                  value: localDateValue()
+                }
+              )}
+            </div>
+          </section>
+
+          <section
+            class="
+              work-permit-section
+              work-permit-section-long
+              work-permit-optional-section
+            "
+            data-optional-section="completedMeasures"
+            hidden>
+
+            ${optionalSectionToolbar(
+              "completedMeasures"
+            )}
+
+            ${i18n(
+              "completedMeasuresSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="work-permit-table work-permit-responsive-table">
+
+                <thead>
+                  <tr>
+                    <th>№</th>
+
+                    <th data-work-permit-i18n="measureNumber">
+                      ${escapeHtml(text("measureNumber"))}
+                    </th>
+
+                    <th data-work-permit-i18n="completedBy">
+                      ${escapeHtml(text("completedBy"))}
+                    </th>
+
+                    <th data-work-permit-i18n="completedBy">
+                      ${escapeHtml(text("completedBy"))}
+                    </th>
+
+                    <th data-work-permit-i18n="position">
+                      ${escapeHtml(text("position"))}
+                    </th>
+
+                    <th data-work-permit-i18n="signature">
+                      ${escapeHtml(text("signature"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="completedMeasures">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "completedMeasures",
+              "addCompletedMeasure"
+            )}
+          </section>
+
+          <section
+            class="work-permit-section work-permit-optional-section"
+            data-optional-section="approval"
+            hidden>
+
+            ${optionalSectionToolbar(
+              "approval"
+            )}
+
+            ${i18n(
+              "approvalSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="work-permit-table work-permit-responsive-table">
+
+                <thead>
+                  <tr>
+                    <th data-work-permit-i18n="approvalNumber">
+                      ${escapeHtml(text("approvalNumber"))}
+                    </th>
+
+                    <th data-work-permit-i18n="position">
+                      ${escapeHtml(text("position"))}
+                    </th>
+
+                    <th data-work-permit-i18n="fullName">
+                      ${escapeHtml(text("fullName"))}
+                    </th>
+
+                    <th data-work-permit-i18n="fullName">
+                      ${escapeHtml(text("fullName"))}
+                    </th>
+
+                    <th data-work-permit-i18n="signature">
+                      ${escapeHtml(text("signature"))}
+                    </th>
+
+                    <th data-work-permit-i18n="date">
+                      ${escapeHtml(text("date"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="approvals">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "approvals",
+              "addApproval"
+            )}
+          </section>
+
+          <section
+            class="
+              work-permit-section
+              work-permit-section-long
+              work-permit-optional-section
+            "
+            data-optional-section="brigade"
+            hidden>
+
+            ${optionalSectionToolbar(
+              "brigade"
+            )}
+
+            ${i18n(
+              "brigadeSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="
+                  work-permit-table
+                  work-permit-responsive-table
+                  work-permit-team-table
+                ">
+
+                <thead>
+                  <tr>
+                    <th>№</th>
+
+                    <th data-work-permit-i18n="briefingDateTime">
+                      ${escapeHtml(text("briefingDateTime"))}
+                    </th>
+
+                    <th data-work-permit-i18n="teamMember">
+                      ${escapeHtml(text("teamMember"))}
+                    </th>
+
+                    <th data-work-permit-i18n="teamMember">
+                      ${escapeHtml(text("teamMember"))}
+                    </th>
+
+                    <th data-work-permit-i18n="profession">
+                      ${escapeHtml(text("profession"))}
+                    </th>
+
+                    <th data-work-permit-i18n="memberSignature">
+                      ${escapeHtml(text("memberSignature"))}
+                    </th>
+
+                    <th data-work-permit-i18n="instructor">
+                      ${escapeHtml(text("instructor"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="brigade">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "brigade",
+              "addBrigadeMember"
+            )}
+
+            <div class="work-permit-subsection">
+              ${i18n(
+                "brigadeStarted",
+                "h3"
+              )}
+
+              <div
+                class="work-permit-grid work-permit-grid-four">
+
+                ${field(
+                  "start_date",
+                  "workStartDate",
+                  {
+                    type: "date"
+                  }
+                )}
+
+                ${field(
+                  "start_time",
+                  "workStartTime",
+                  {
+                    type: "time"
+                  }
+                )}
+
+                ${field(
+                  "start_producer",
+                  "producerNameSignature",
+                  {
+                    value:
+                      permitState.producer?.name || ""
+                  }
+                )}
+
+                ${field(
+                  "start_admitter",
+                  "admitterNameSignature",
+                  {
+                    value:
+                      permitState.admitter?.name || ""
+                  }
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section
+            class="
+              work-permit-section
+              work-permit-section-long
+              work-permit-optional-section
+            "
+            data-optional-section="breaks"
+            hidden>
+
+            ${optionalSectionToolbar(
+              "breaks"
+            )}
+
+            ${i18n(
+              "breaksSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="
+                  work-permit-table
+                  work-permit-responsive-table
+                  work-permit-break-table
+                ">
+
+                <thead>
+                  <tr>
+                    <th>№</th>
+
+                    <th data-work-permit-i18n="breakDateTime">
+                      ${escapeHtml(text("breakDateTime"))}
+                    </th>
+
+                    <th data-work-permit-i18n="workplaceHandover">
+                      ${escapeHtml(text("workplaceHandover"))}
+                    </th>
+
+                    <th data-work-permit-i18n="breakProducer">
+                      ${escapeHtml(text("breakProducer"))}
+                    </th>
+
+                    <th data-work-permit-i18n="breakAdmitter">
+                      ${escapeHtml(text("breakAdmitter"))}
+                    </th>
+
+                    <th data-work-permit-i18n="resumeDateTime">
+                      ${escapeHtml(text("resumeDateTime"))}
+                    </th>
+
+                    <th data-work-permit-i18n="resumeProducer">
+                      ${escapeHtml(text("resumeProducer"))}
+                    </th>
+
+                    <th data-work-permit-i18n="resumeAdmitter">
+                      ${escapeHtml(text("resumeAdmitter"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="breaks">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "breaks",
+              "addBreak"
+            )}
+          </section>
+
+          <section
+            class="
+              work-permit-section
+              work-permit-section-long
+              work-permit-optional-section
+            "
+            data-optional-section="changes"
+            hidden>
+
+            ${optionalSectionToolbar(
+              "changes"
+            )}
+
+            ${i18n(
+              "changesSection",
+              "h2"
+            )}
+
+            <div class="work-permit-table-wrap">
+              <table
+                class="work-permit-table work-permit-responsive-table">
+
+                <thead>
+                  <tr>
+                    <th>№</th>
+
+                    <th data-work-permit-i18n="changeType">
+                      ${escapeHtml(text("changeType"))}
+                    </th>
+
+                    <th data-work-permit-i18n="changedMember">
+                      ${escapeHtml(text("changedMember"))}
+                    </th>
+
+                    <th data-work-permit-i18n="changedMember">
+                      ${escapeHtml(text("changedMember"))}
+                    </th>
+
+                    <th data-work-permit-i18n="changeIssuer">
+                      ${escapeHtml(text("changeIssuer"))}
+                    </th>
+
+                    <th data-work-permit-i18n="changeDateTime">
+                      ${escapeHtml(text("changeDateTime"))}
+                    </th>
+
+                    <th class="no-print"></th>
+                  </tr>
+                </thead>
+
+                <tbody
+                  data-dynamic-rows-container="changes">
+                </tbody>
+              </table>
+            </div>
+
+            ${addRowButton(
+              "changes",
+              "addBrigadeChange"
+            )}
+          </section>
+
+          <section class="work-permit-section">
+
+            ${i18n(
+              "finishSection",
+              "h2"
+            )}
+
+            <div
+              class="work-permit-grid work-permit-grid-four">
+
+              ${field(
+                "finish_date",
+                "finishDate",
+                {
+                  type: "date"
+                }
+              )}
+
+              ${field(
+                "finish_time",
+                "finishTime",
+                {
+                  type: "time"
+                }
+              )}
+            </div>
+
+            <div class="work-permit-completion-checks">
+              ${checkboxControl(
+                "work_completed",
+                "workCompleted"
+              )}
+
+              ${checkboxControl(
+                "workplace_cleared",
+                "workplaceCleared"
+              )}
+            </div>
+
+            <div
+              class="work-permit-grid work-permit-grid-two">
+
+              ${field(
+                "permit_returned",
+                "permitReturned",
+                {
+                  value:
+                    permitState.producer?.name || "",
+                  wide: true
+                }
+              )}
+
+              ${field(
+                "accepted_employee_id",
+                "permitAccepted",
+                {
+                  employee: true,
+                  wide: true
+                }
+              )}
+
+              ${field(
+                "permit_accepted",
+                "permitAccepted",
+                {
+                  value:
+                    permitState.acceptedBy?.name ||
+                    permitState.issuer?.name ||
+                    "",
+                  wide: true
+                }
+              )}
+            </div>
+          </section>
+        </article>
+      </form>
+    `;
+
+    ensureInitialDynamicRows();
+
+    renderDynamicRows("leaders");
+    renderDynamicRows("completedMeasures");
+    renderDynamicRows("approvals");
+    renderDynamicRows("brigade");
+    renderDynamicRows("breaks");
+    renderDynamicRows("changes");
+
+    updateOptionalSectionsUi();
+    updateSafetyMeasuresUi();
+    syncAllPrintValues();
+    growAllTextareas();
+  }
+    /*
+   * ============================================================
+   * 13. ПОЛУЧЕНИЕ ВСЕХ ПОЛЕЙ ФОРМЫ
+   * ============================================================
+   */
+
+  function controls() {
+    return [
+      ...screen.querySelectorAll(
+        "#workPermitForm input[name], " +
+        "#workPermitForm textarea[name], " +
+        "#workPermitForm select[name]"
+      )
+    ];
+  }
+
+  function controlValue(control) {
+    if (!control) return "";
+
+    if (control.type === "checkbox") {
+      return control.checked;
+    }
+
+    return control.value;
+  }
+
+  function setStoredControlValue(
+    control,
+    value
+  ) {
+    if (!control) return;
+
+    if (control.type === "checkbox") {
+      control.checked =
+        value === true ||
+        value === "true" ||
+        value === 1 ||
+        value === "1";
+
+      return;
+    }
+
+    control.value =
+      value == null
+        ? ""
+        : String(value);
+  }
+
+  /*
+   * ============================================================
+   * 14. ПЕЧАТНЫЕ ЗНАЧЕНИЯ
+   * ============================================================
+   */
+
+  function formatControlValue(
+    control
+  ) {
+    if (!control) return "";
+
+    if (control.type === "checkbox") {
+      return control.checked
+        ? "✓"
+        : "";
+    }
+
+    if (!control.value) return "";
+
+    if (control.tagName === "SELECT") {
+      const selected =
+        control.selectedOptions?.[0];
+
+      if (!selected) return "";
+
+      if (
+        selected.value === "manual"
+      ) {
+        return text("manualInput");
+      }
+
+      return selected.textContent
+        ?.trim() || "";
+    }
+
+    if (control.type === "date") {
+      return formatDateForPrint(
+        control.value
+      );
+    }
+
+    if (
+      control.type ===
+      "datetime-local"
+    ) {
+      return formatDateTimeForPrint(
+        control.value
+      );
+    }
+
+    return control.value;
+  }
+
+  function syncPrintValue(
+    control
+  ) {
+    if (!control?.name) return;
+
+    const mirror =
+      screen.querySelector(
+        `[data-work-permit-print-for="${CSS.escape(
+          control.name
+        )}"]`
+      );
+
+    if (!mirror) return;
+
+    mirror.textContent =
+      formatControlValue(control);
+
+    if (
+      control.type === "checkbox"
+    ) {
+      mirror.classList.toggle(
+        "is-checked",
+        control.checked
+      );
+    }
+  }
+
+  function syncAllPrintValues() {
+    controls().forEach(
+      syncPrintValue
+    );
+  }
+
+  /*
+   * ============================================================
+   * 15. АВТОМАТИЧЕСКАЯ ВЫСОТА ТЕКСТОВЫХ ПОЛЕЙ
+   * ============================================================
+   */
+
+  function growTextarea(
+    textarea
+  ) {
+    if (
+      !textarea ||
+      textarea.tagName !== "TEXTAREA"
+    ) {
+      return;
+    }
+
+    textarea.style.height = "auto";
+
+    textarea.style.height =
+      `${Math.max(
+        textarea.scrollHeight,
+        58
+      )}px`;
+  }
+
+  function growAllTextareas() {
+    screen
+      .querySelectorAll("textarea")
+      .forEach(growTextarea);
+  }
+
+  /*
+   * ============================================================
+   * 16. ЛОГИКА МЕРОПРИЯТИЙ 5.1–5.9
+   * ============================================================
+   */
+
+  function safetyToggle(
+    measureId
+  ) {
+    return screen.querySelector(
+      `[data-safety-toggle="${CSS.escape(
+        measureId
+      )}"]`
+    );
+  }
+
+  function safetyDetails(
+    measureId
+  ) {
+    return screen.querySelector(
+      `[data-safety-details="${CSS.escape(
+        measureId
+      )}"]`
+    );
+  }
+
+  function updateSafetyMeasureUi(
+    measureId
+  ) {
+    const checkbox =
+      safetyToggle(measureId);
+
+    const details =
+      safetyDetails(measureId);
+
+    if (!checkbox || !details) {
+      return;
+    }
+
+    details.hidden =
+      !checkbox.checked;
+
+    const item =
+      checkbox.closest(
+        "[data-safety-item]"
+      );
+
+    item?.classList.toggle(
+      "is-enabled",
+      checkbox.checked
+    );
+
+    const textarea =
+      details.querySelector(
+        "textarea"
+      );
+
+    if (
+      checkbox.checked &&
+      textarea
+    ) {
+      growTextarea(textarea);
+    }
+  }
+
+  function updateSafetyMeasuresUi() {
+    SAFETY_MEASURES.forEach(
+      measure => {
+        updateSafetyMeasureUi(
+          measure.id
+        );
+      }
+    );
+
+    refreshCompletedMeasureSelects();
+  }
+
+  function selectedSafetyMeasures() {
+    return SAFETY_MEASURES
+      .filter(measure => {
+        return Boolean(
+          safetyToggle(
+            measure.id
+          )?.checked
+        );
+      })
+      .map(measure => {
+        const details =
+          safetyDetails(
+            measure.id
+          );
+
+        const textarea =
+          details?.querySelector(
+            `textarea[name="${CSS.escape(
+              measure.fieldName
+            )}"]`
+          );
+
+        return {
+          id: measure.id,
+          key: measure.key,
+          enabled: true,
+          details:
+            textarea?.value || ""
+        };
+      });
+  }
+
+  function refreshCompletedMeasureSelects() {
+    const selectedIds =
+      selectedSafetyMeasures()
+        .map(item => item.id);
+
+    screen
+      .querySelectorAll(
+        "[data-completed-measure-select]"
+      )
+      .forEach(select => {
+        const currentValue =
+          select.value;
+
+        const availableIds =
+          selectedIds.length
+            ? selectedIds
+            : SAFETY_MEASURES.map(
+                item => item.id
+              );
+
+        select.innerHTML = `
+          <option value="">
+            ${escapeHtml(
+              text("blankOption")
+            )}
+          </option>
+
+          ${availableIds
+            .map(measureId => `
+              <option
+                value="${escapeHtml(measureId)}"
+                ${measureId === currentValue
+                  ? "selected"
+                  : ""}>
+                ${escapeHtml(measureId)}
+              </option>
+            `)
+            .join("")}
+        `;
+
+        syncPrintValue(select);
+      });
+  }
+
+  /*
+   * ============================================================
+   * 17. СБОР ЗНАЧЕНИЙ ФОРМЫ
+   * ============================================================
+   */
+
+  function draftValues() {
+    return controls().reduce(
+      (result, control) => {
+        result[control.name] =
+          controlValue(control);
+
+        return result;
+      },
+      {}
+    );
+  }
+
+  function serializeDynamicRows() {
+    return Object.fromEntries(
+      Object.entries(
+        dynamicRows
+      ).map(
+        ([collection, rows]) => [
+          collection,
+          rows.map(row => ({
+            ...row
+          }))
+        ]
+      )
+    );
+  }
+
+  function restoreDynamicRows(
+    storedRows
+  ) {
+    if (
+      !storedRows ||
+      typeof storedRows !== "object"
+    ) {
+      ensureInitialDynamicRows();
+      return;
+    }
+
+    Object.keys(dynamicRows)
+      .forEach(collection => {
+        const rows =
+          storedRows[collection];
+
+        if (Array.isArray(rows)) {
+          dynamicRows[collection] =
+            rows
+              .filter(
+                row =>
+                  row &&
+                  typeof row === "object"
+              )
+              .map(row => ({
+                ...row,
+                id:
+                  row.id ||
+                  generateId(
+                    collection
+                  )
+              }));
+        }
+
+        if (
+          !dynamicRows[collection]
+            .length
+        ) {
+          dynamicRows[collection].push(
+            createEmptyDynamicRow(
+              collection
+            )
+          );
+        }
+      });
+  }
+
+  function collectPermitState() {
+    const permitNumber =
+      screen.querySelector(
+        '[name="permit_number"]'
+      )?.value || "";
+
+    const createdAt =
+      screen.querySelector(
+        '[name="created_at"]'
+      )?.value || "";
+
+    permitState.permitNumber =
+      permitNumber;
+
+    if (createdAt) {
+      permitState.createdAt =
+        new Date(
+          createdAt
+        ).toISOString();
+    }
+
+    return {
+      ...permitState,
+
+      producer:
+        permitState.producer
+          ? {
+              ...permitState.producer
+            }
+          : null,
+
+      admitter:
+        permitState.admitter
+          ? {
+              ...permitState.admitter
+            }
+          : null,
+
+      issuer:
+        permitState.issuer
+          ? {
+              ...permitState.issuer
+            }
+          : null,
+
+      acceptedBy:
+        permitState.acceptedBy
+          ? {
+              ...permitState.acceptedBy
+            }
+          : null,
+
+      selectedWorkshop:
+        permitState.selectedWorkshop
+          ? {
+              ...permitState
+                .selectedWorkshop
+            }
+          : null,
+
+      selectedEquipment:
+        permitState.selectedEquipment
+          ? {
+              ...permitState
+                .selectedEquipment
+            }
+          : null
+    };
+  }
+
+  /*
+   * ============================================================
+   * 18. СТАТУС СОХРАНЕНИЯ
+   * ============================================================
+   */
+
   function showSaveStatus(
     messageKey = "saved"
   ) {
@@ -2460,115 +4780,65 @@
     status.textContent =
       text(messageKey);
 
-    status.classList.add("visible");
+    status.classList.add(
+      "visible"
+    );
 
     window.setTimeout(() => {
       status.classList.remove(
         "visible"
       );
-    }, 1400);
+    }, 1500);
   }
 
-  function addSelectedOptionalSections() {
-    const selected = [
-      ...screen.querySelectorAll(
-        "[data-section-selector-option]:checked"
-      )
-    ];
-
-    if (!selected.length) {
-      window.alert(
-        text("noSectionsSelected")
-      );
-
-      return;
-    }
-
-    selected.forEach(checkbox => {
-      setOptionalSectionVisible(
-        checkbox.value,
-        true,
-        false
-      );
-
-      checkbox.checked = false;
-    });
-
-    setSectionSelectorVisible(false);
-
-    updateOptionalSectionsUi();
-    growAllTextareas();
-    syncAllPrintValues();
-    saveDraft(false);
-    showSaveStatus("sectionAdded");
-  }
-
-  function removeOptionalSection(
-    sectionId
-  ) {
-    const section =
-      sectionElement(sectionId);
-
-    if (!section) return;
-
-    if (sectionHasValues(sectionId)) {
-      const confirmed =
-        window.confirm(
-          text("removeSectionConfirm")
-        );
-
-      if (!confirmed) return;
-    }
-
-    clearSectionValues(sectionId);
-
-    setOptionalSectionVisible(
-      sectionId,
-      false,
-      false
-    );
-
-    saveDraft(false);
-
-    showSaveStatus(
-      "sectionRemoved"
-    );
-  }
-
-  function draftValues() {
-    return controls().reduce(
-      (values, control) => {
-        values[control.name] =
-          control.value;
-
-        return values;
-      },
-      {}
-    );
-  }
+  /*
+   * ============================================================
+   * 19. СОХРАНЕНИЕ ЧЕРНОВИКА
+   * ============================================================
+   */
 
   function saveDraft(
     showStatus = true
   ) {
-    window.clearTimeout(saveTimer);
+    window.clearTimeout(
+      saveTimer
+    );
+
+    const payload = {
+      version: 3,
+
+      language,
+
+      permitState:
+        collectPermitState(),
+
+      activeOptionalSections: [
+        ...activeOptionalSections
+      ],
+
+      collapsedOptionalSections: [
+        ...collapsedOptionalSections
+      ],
+
+      dynamicRows:
+        serializeDynamicRows(),
+
+      safetyMeasures:
+        selectedSafetyMeasures(),
+
+      values:
+        draftValues(),
+
+      updatedAt:
+        currentIsoDateTime()
+    };
 
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({
-          version: 2,
-          language,
-          reminderVisible,
-          optionalSections: [
-            ...activeOptionalSections
-          ],
-          collapsedSections: [
-            ...collapsedOptionalSections
-          ],
-          values: draftValues(),
-          updatedAt:
-            new Date().toISOString()
-        })
+        JSON.stringify(
+          payload
+        )
       );
 
       localStorage.setItem(
@@ -2578,20 +4848,207 @@
     } catch {}
 
     if (showStatus) {
-      showSaveStatus("saved");
+      showSaveStatus(
+        "saved"
+      );
     }
   }
 
   function scheduleSave() {
-    window.clearTimeout(saveTimer);
+    window.clearTimeout(
+      saveTimer
+    );
 
     saveTimer =
       window.setTimeout(() => {
         saveDraft(true);
-      }, 250);
+      }, 300);
   }
 
-  function restoreDraft() {
+  /*
+   * ============================================================
+   * 20. ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ НАРЯДА
+   * ============================================================
+   */
+
+  function restorePermitState(
+    storedState
+  ) {
+    if (
+      !storedState ||
+      typeof storedState !== "object"
+    ) {
+      return;
+    }
+
+    permitState.status =
+      storedState.status ||
+      "draft";
+
+    permitState.permitNumber =
+      storedState.permitNumber ||
+      "";
+
+    permitState.createdAt =
+      storedState.createdAt ||
+      permitState.createdAt;
+
+    permitState.completedAt =
+      storedState.completedAt ||
+      "";
+
+    permitState.createdBy =
+      storedState.createdBy ||
+      permitState.createdBy;
+
+    permitState.producer =
+      storedState.producer ||
+      null;
+
+    permitState.admitter =
+      storedState.admitter ||
+      null;
+
+    permitState.issuer =
+      storedState.issuer ||
+      permitState.issuer;
+
+    permitState.acceptedBy =
+      storedState.acceptedBy ||
+      null;
+
+    permitState.selectedWorkshop =
+      storedState.selectedWorkshop ||
+      null;
+
+    permitState.selectedEquipment =
+      storedState.selectedEquipment ||
+      null;
+  }
+
+  function restoreOptionalSections(
+    draft
+  ) {
+    activeOptionalSections =
+      new Set(
+        Array.isArray(
+          draft?.activeOptionalSections
+        )
+          ? draft
+              .activeOptionalSections
+              .filter(sectionId =>
+                OPTIONAL_SECTION_IDS
+                  .includes(
+                    sectionId
+                  )
+              )
+          : []
+      );
+
+    collapsedOptionalSections =
+      new Set(
+        Array.isArray(
+          draft
+            ?.collapsedOptionalSections
+        )
+          ? draft
+              .collapsedOptionalSections
+              .filter(sectionId =>
+                OPTIONAL_SECTION_IDS
+                  .includes(
+                    sectionId
+                  )
+              )
+          : []
+      );
+  }
+
+  function restoreSafetyMeasures(
+    storedMeasures
+  ) {
+    const measureMap =
+      new Map(
+        Array.isArray(
+          storedMeasures
+        )
+          ? storedMeasures.map(
+              measure => [
+                measure.id,
+                measure
+              ]
+            )
+          : []
+      );
+
+    SAFETY_MEASURES.forEach(
+      measure => {
+        const stored =
+          measureMap.get(
+            measure.id
+          );
+
+        const checkbox =
+          safetyToggle(
+            measure.id
+          );
+
+        const textarea =
+          screen.querySelector(
+            `[name="${CSS.escape(
+              measure.fieldName
+            )}"]`
+          );
+
+        if (checkbox) {
+          checkbox.checked =
+            Boolean(
+              stored?.enabled
+            );
+        }
+
+        if (textarea) {
+          textarea.value =
+            stored?.details || "";
+        }
+
+        updateSafetyMeasureUi(
+          measure.id
+        );
+      }
+    );
+  }
+
+  function restoreFormValues(
+    values
+  ) {
+    if (
+      !values ||
+      typeof values !== "object"
+    ) {
+      return;
+    }
+
+    controls().forEach(
+      control => {
+        if (
+          Object.prototype
+            .hasOwnProperty.call(
+              values,
+              control.name
+            )
+        ) {
+          setStoredControlValue(
+            control,
+            values[
+              control.name
+            ]
+          );
+        }
+      }
+    );
+  }
+
+  async function restoreDraft() {
     let draft = null;
 
     try {
@@ -2606,161 +5063,97 @@
       draft?.language === "ru" ||
       draft?.language === "kk"
     ) {
-      language = draft.language;
+      language =
+        draft.language;
     }
 
-    reminderVisible =
-      draft?.reminderVisible !== false;
+    restorePermitState(
+      draft?.permitState
+    );
 
-    const values =
-      draft?.values &&
-      typeof draft.values === "object"
-        ? draft.values
-        : {};
+    restoreOptionalSections(
+      draft
+    );
 
-    activeOptionalSections =
-      new Set(
-        Array.isArray(
-          draft?.optionalSections
-        )
-          ? draft.optionalSections.filter(
-              sectionId =>
-                OPTIONAL_SECTION_IDS.includes(
-                  sectionId
-                )
-            )
-          : []
-      );
-
-    collapsedOptionalSections =
-      new Set(
-        Array.isArray(
-          draft?.collapsedSections
-        )
-          ? draft.collapsedSections.filter(
-              sectionId =>
-                OPTIONAL_SECTION_IDS.includes(
-                  sectionId
-                )
-            )
-          : []
-      );
-
-    controls().forEach(control => {
-      if (
-        Object.prototype.hasOwnProperty.call(
-          values,
-          control.name
-        )
-      ) {
-        control.value = String(
-          values[control.name] ?? ""
-        );
-      }
-    });
+    restoreDynamicRows(
+      draft?.dynamicRows
+    );
 
     if (
-      draft &&
-      !Array.isArray(
-        draft.optionalSections
-      )
+      !permitState.permitNumber
     ) {
-      OPTIONAL_SECTION_IDS.forEach(
-        sectionId => {
-          if (
-            sectionHasValues(sectionId)
-          ) {
-            activeOptionalSections.add(
-              sectionId
-            );
-          }
-        }
-      );
+      permitState.permitNumber =
+        await getNextPermitNumber();
     }
 
-    const permitDate =
-      screen.querySelector(
-        '[name="permit_date"]'
-      );
-
-    if (
-      permitDate &&
-      !permitDate.value &&
-      !draft
-    ) {
-      const now = new Date();
-
-      const localDate =
-        new Date(
-          now.getTime() -
-          now.getTimezoneOffset() *
-          60000
-        )
-          .toISOString()
-          .slice(0, 10);
-
-      permitDate.value =
-        localDate;
+    if (!permitState.createdAt) {
+      permitState.createdAt =
+        currentIsoDateTime();
     }
 
-    setReminderVisible(
-      reminderVisible,
-      false
+    buildScreen();
+
+    restoreFormValues(
+      draft?.values
+    );
+
+    restoreSafetyMeasures(
+      draft?.safetyMeasures
     );
 
     updateOptionalSectionsUi();
-    growAllTextareas();
     syncAllPrintValues();
+    growAllTextareas();
+
+    const permitNumberControl =
+      screen.querySelector(
+        '[name="permit_number"]'
+      );
+
+    if (
+      permitNumberControl &&
+      !permitNumberControl.value
+    ) {
+      permitNumberControl.value =
+        permitState.permitNumber;
+
+      syncPrintValue(
+        permitNumberControl
+      );
+    }
+
+    const createdAtControl =
+      screen.querySelector(
+        '[name="created_at"]'
+      );
+
+    if (
+      createdAtControl &&
+      !createdAtControl.value
+    ) {
+      createdAtControl.value =
+        localDateTimeValue(
+          new Date(
+            permitState.createdAt
+          )
+        );
+
+      syncPrintValue(
+        createdAtControl
+      );
+    }
+
+    updateRelatedProducerFields();
+    updateRelatedAdmitterFields();
+    updateRelatedIssuerFields();
   }
+    /*
+   * ============================================================
+   * 21. ПЕРЕКЛЮЧЕНИЕ ЯЗЫКА
+   * ============================================================
+   */
 
-  function setReminderVisible(
-    visible,
-    persist = true
-  ) {
-    reminderVisible =
-      Boolean(visible);
-
-    const reminder =
-      screen.querySelector(
-        "#workPermitReminder"
-      );
-
-    const hideButton =
-      screen.querySelector(
-        "#workPermitReminderToggle"
-      );
-
-    const showButton =
-      screen.querySelector(
-        "#workPermitReminderShow"
-      );
-
-    if (reminder) {
-      reminder.hidden =
-        !reminderVisible;
-    }
-
-    if (showButton) {
-      showButton.hidden =
-        reminderVisible;
-    }
-
-    if (hideButton) {
-      hideButton.setAttribute(
-        "aria-expanded",
-        String(reminderVisible)
-      );
-
-      hideButton.setAttribute(
-        "aria-label",
-        text("hideReminder")
-      );
-    }
-
-    if (persist) {
-      saveDraft(false);
-    }
-  }  function applyLanguage(
+  function applyLanguage(
     nextLanguage = language
   ) {
     language =
@@ -2782,8 +5175,7 @@
       )
       .forEach(element => {
         const key =
-          element.dataset
-            .workPermitI18n;
+          element.dataset.workPermitI18n;
 
         element.textContent =
           text(key);
@@ -2794,12 +5186,12 @@
         "[data-work-permit-aria]"
       )
       .forEach(element => {
+        const key =
+          element.dataset.workPermitAria;
+
         element.setAttribute(
           "aria-label",
-          text(
-            element.dataset
-              .workPermitAria
-          )
+          text(key)
         );
       });
 
@@ -2808,11 +5200,11 @@
         "[data-work-permit-label]"
       )
       .forEach(element => {
+        const key =
+          element.dataset.workPermitLabel;
+
         element.dataset.mobileLabel =
-          text(
-            element.dataset
-              .workPermitLabel
-          );
+          text(key);
       });
 
     const languageSelect =
@@ -2823,50 +5215,25 @@
     if (languageSelect) {
       languageSelect.value =
         language;
-
-      languageSelect.setAttribute(
-        "aria-label",
-        text("language")
-      );
     }
 
-    const openSelectorButton =
-      screen.querySelector(
-        "#workPermitOpenSectionSelector"
-      );
+    screen
+      .querySelectorAll(
+        "[data-optional-section-title]"
+      )
+      .forEach(element => {
+        const sectionId =
+          element.dataset
+            .optionalSectionTitle;
 
-    if (openSelectorButton) {
-      openSelectorButton.textContent =
-        `＋ ${text("addSection")}`;
-    }
-
-    const addSelectedButton =
-      screen.querySelector(
-        "#workPermitAddSelectedSections"
-      );
-
-    if (addSelectedButton) {
-      addSelectedButton.textContent =
-        text("addSelectedSections");
-    }
-
-    const closeSelectorButton =
-      screen.querySelector(
-        "#workPermitCloseSectionSelector"
-      );
-
-    if (closeSelectorButton) {
-      closeSelectorButton.textContent =
-        text("closeSectionSelector");
-    }
+        element.textContent =
+          optionalSectionTitle(
+            sectionId
+          );
+      });
 
     updateOptionalSectionsUi();
-
-    setReminderVisible(
-      reminderVisible,
-      false
-    );
-
+    updateSafetyMeasuresUi();
     syncAllPrintValues();
 
     try {
@@ -2877,7 +5244,124 @@
     } catch {}
   }
 
-  function clearForm() {
+  /*
+   * ============================================================
+   * 22. СОХРАНЕНИЕ ЗНАЧЕНИЙ ДИНАМИЧЕСКИХ СТРОК
+   * ============================================================
+   */
+
+  function handleDynamicControlInput(
+    control
+  ) {
+    const context =
+      findDynamicRowContext(
+        control
+      );
+
+    if (!context) return;
+
+    const key =
+      dynamicFieldKey(
+        control.name,
+        context.collection,
+        context.rowId
+      );
+
+    if (!key) return;
+
+    updateDynamicRowValue(
+      context.collection,
+      context.rowId,
+      key,
+      controlValue(control)
+    );
+  }
+
+  /*
+   * ============================================================
+   * 23. ЗАВЕРШЕНИЕ НАРЯДА
+   * ============================================================
+   */
+
+  function completePermit() {
+    if (
+      permitState.status ===
+      "completed"
+    ) {
+      showSaveStatus(
+        "completed"
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        text("finishConfirm")
+      );
+
+    if (!confirmed) return;
+
+    const now =
+      new Date();
+
+    const finishDate =
+      screen.querySelector(
+        '[name="finish_date"]'
+      );
+
+    const finishTime =
+      screen.querySelector(
+        '[name="finish_time"]'
+      );
+
+    if (
+      finishDate &&
+      !finishDate.value
+    ) {
+      finishDate.value =
+        localDateValue(now);
+
+      syncPrintValue(
+        finishDate
+      );
+    }
+
+    if (
+      finishTime &&
+      !finishTime.value
+    ) {
+      finishTime.value =
+        localTimeValue(now);
+
+      syncPrintValue(
+        finishTime
+      );
+    }
+
+    permitState.status =
+      "completed";
+
+    permitState.completedAt =
+      currentIsoDateTime();
+
+    confirmUsedPermitNumber(
+      permitState.permitNumber
+    );
+
+    saveDraft(false);
+    showSaveStatus(
+      "completed"
+    );
+  }
+
+  /*
+   * ============================================================
+   * 24. ОЧИСТКА И НОВЫЙ НАРЯД
+   * ============================================================
+   */
+
+  async function clearForm() {
     const confirmed =
       window.confirm(
         text("clearConfirm")
@@ -2885,64 +5369,115 @@
 
     if (!confirmed) return;
 
-    const form =
-      screen.querySelector(
-        "#workPermitForm"
-      );
-
-    form?.reset();
-
     try {
       localStorage.removeItem(
         DRAFT_KEY
       );
     } catch {}
 
-    const permitDate =
-      screen.querySelector(
-        '[name="permit_date"]'
-      );
-
-    if (permitDate) {
-      const now =
-        new Date();
-
-      permitDate.value =
-        new Date(
-          now.getTime() -
-          now.getTimezoneOffset() *
-          60000
-        )
-          .toISOString()
-          .slice(0, 10);
-    }
-
-    reminderVisible = true;
-    sectionSelectorVisible = false;
-
     activeOptionalSections.clear();
     collapsedOptionalSections.clear();
 
-    setSectionSelectorVisible(
-      false
-    );
+    Object.keys(
+      dynamicRows
+    ).forEach(collection => {
+      dynamicRows[collection] = [];
+    });
 
-    setReminderVisible(
-      true,
-      false
-    );
+    permitState.status =
+      "draft";
 
-    updateOptionalSectionsUi();
-    growAllTextareas();
-    syncAllPrintValues();
+    permitState.permitNumber =
+      await getNextPermitNumber();
+
+    permitState.createdAt =
+      currentIsoDateTime();
+
+    permitState.completedAt =
+      "";
+
+    permitState.createdBy =
+      getCurrentUser();
+
+    permitState.producer =
+      null;
+
+    permitState.admitter =
+      null;
+
+    permitState.issuer =
+      getCurrentUser();
+
+    permitState.acceptedBy =
+      null;
+
+    permitState.selectedWorkshop =
+      null;
+
+    permitState.selectedEquipment =
+      null;
+
+    ensureInitialDynamicRows();
+    buildScreen();
+    applyLanguage(language);
+    bindEvents();
     saveDraft(true);
   }
 
-  function prepareOptionalSectionsForPrint() {
-    OPTIONAL_SECTION_IDS.forEach(
-      sectionId => {
+  /*
+   * ============================================================
+   * 25. ПОДГОТОВКА ПЕЧАТИ
+   * ============================================================
+   */
+
+  function removeEmptyDynamicRowsFromPrint() {
+    screen
+      .querySelectorAll(
+        "[data-dynamic-row]"
+      )
+      .forEach(rowElement => {
+        const controlsInRow = [
+          ...rowElement.querySelectorAll(
+            "input[name], textarea[name], select[name]"
+          )
+        ];
+
+        const hasValue =
+          controlsInRow.some(
+            control => {
+              if (
+                control.type ===
+                "checkbox"
+              ) {
+                return control.checked;
+              }
+
+              return String(
+                control.value ?? ""
+              ).trim() !== "";
+            }
+          );
+
+        rowElement.classList.toggle(
+          "work-permit-print-empty-row",
+          !hasValue
+        );
+      });
+  }
+
+  function prepareForPrint() {
+    updateOptionalSectionsUi();
+    updateSafetyMeasuresUi();
+    growAllTextareas();
+    syncAllPrintValues();
+    removeEmptyDynamicRowsFromPrint();
+
+    OPTIONAL_SECTION_IDS
+      .forEach(sectionId => {
         const section =
-          sectionElement(sectionId);
+          sectionElement(
+            sectionId
+          );
 
         if (!section) return;
 
@@ -2954,32 +5489,52 @@
         section.classList.remove(
           "is-collapsed"
         );
-      }
-    );
+      });
   }
 
-  function restoreOptionalSectionsAfterPrint() {
+  function restoreAfterPrint() {
+    screen
+      .querySelectorAll(
+        ".work-permit-print-empty-row"
+      )
+      .forEach(row => {
+        row.classList.remove(
+          "work-permit-print-empty-row"
+        );
+      });
+
     updateOptionalSectionsUi();
   }
 
   function printPermit() {
     saveDraft(false);
-    growAllTextareas();
-    syncAllPrintValues();
-    prepareOptionalSectionsForPrint();
+    prepareForPrint();
 
     const oldTitle =
       document.title;
 
-    const printStyle =
+    const number =
+      screen.querySelector(
+        '[name="permit_number"]'
+      )?.value || "";
+
+    document.title =
+      `${text("permitTitle")} ${number}`
+        .trim();
+
+    document.body.classList.add(
+      "printing-work-permit"
+    );
+
+    const style =
       document.createElement(
         "style"
       );
 
-    printStyle.id =
-      "workPermitPrintPageStyle";
+    style.id =
+      "workPermitDynamicPrintStyle";
 
-    printStyle.textContent = `
+    style.textContent = `
       @page {
         size: A4 portrait;
         margin: 10mm;
@@ -2987,59 +5542,87 @@
 
       @media print {
         body.printing-work-permit
+        .no-print {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-section-constructor {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-print-empty-row {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-optional-section[hidden] {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-optional-section {
+          display: block;
+        }
+
+        body.printing-work-permit
         .work-permit-paper {
-          box-shadow: none !important;
           border: none !important;
+          box-shadow: none !important;
         }
 
         body.printing-work-permit
         .work-permit-section {
-          break-inside: avoid;
           page-break-inside: avoid;
+          break-inside: avoid;
         }
 
         body.printing-work-permit
         .work-permit-section-long {
-          break-inside: auto;
           page-break-inside: auto;
+          break-inside: auto;
         }
 
         body.printing-work-permit
-        .work-permit-table {
+        input,
+        body.printing-work-permit
+        textarea,
+        body.printing-work-permit
+        select {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-print-value {
+          display: block !important;
+          min-height: 18px;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+
+        body.printing-work-permit
+        .work-permit-checkbox-mark {
+          display: inline-block !important;
+        }
+
+        body.printing-work-permit
+        table {
           width: 100%;
           border-collapse: collapse;
         }
 
         body.printing-work-permit
-        .work-permit-table th,
+        th,
         body.printing-work-permit
-        .work-permit-table td {
-          border: 1px solid #000;
-        }
-
-        body.printing-work-permit
-        .work-permit-print-value {
-          white-space: pre-wrap;
-          overflow-wrap: anywhere;
+        td {
+          border: 1px solid #000 !important;
         }
       }
     `;
 
     document.head.append(
-      printStyle
-    );
-
-    const permitNumber =
-      screen.querySelector(
-        '[name="permit_number"]'
-      )?.value || "";
-
-    document.title =
-      `${text("permitTitle")} ${permitNumber}`
-        .trim();
-
-    document.body.classList.add(
-      "printing-work-permit"
+      style
     );
 
     let cleaned = false;
@@ -3056,9 +5639,9 @@
         "printing-work-permit"
       );
 
-      printStyle.remove();
+      style.remove();
 
-      restoreOptionalSectionsAfterPrint();
+      restoreAfterPrint();
 
       window.removeEventListener(
         "afterprint",
@@ -3083,6 +5666,12 @@
     );
   }
 
+  /*
+   * ============================================================
+   * 26. СОБЫТИЯ ФОРМЫ
+   * ============================================================
+   */
+
   function bindEvents() {
     const form =
       screen.querySelector(
@@ -3092,18 +5681,26 @@
     form?.addEventListener(
       "input",
       event => {
-        const target =
+        const control =
           event.target;
 
         if (
-          target.matches(
-            "textarea"
-          )
+          control.tagName ===
+          "TEXTAREA"
         ) {
-          growTextarea(target);
+          growTextarea(
+            control
+          );
         }
 
-        syncPrintValue(target);
+        handleDynamicControlInput(
+          control
+        );
+
+        syncPrintValue(
+          control
+        );
+
         scheduleSave();
       }
     );
@@ -3111,74 +5708,130 @@
     form?.addEventListener(
       "change",
       event => {
+        const control =
+          event.target;
+
+        handleDynamicControlInput(
+          control
+        );
+
+        if (
+          control.matches(
+            "[data-employee-select]"
+          )
+        ) {
+          handleEmployeeSelection(
+            control
+          );
+        }
+
+        if (
+          control.matches(
+            "[data-workshop-select]"
+          )
+        ) {
+          handleWorkshopSelection(
+            control
+          );
+        }
+
+        if (
+          control.matches(
+            "[data-equipment-select]"
+          )
+        ) {
+          handleEquipmentSelection(
+            control
+          );
+        }
+
+        if (
+          control.matches(
+            "[data-safety-toggle]"
+          )
+        ) {
+          updateSafetyMeasureUi(
+            control.dataset
+              .safetyToggle
+          );
+
+          refreshCompletedMeasureSelects();
+        }
+
         syncPrintValue(
-          event.target
+          control
         );
 
         scheduleSave();
       }
     );
 
-    screen
-      .querySelector(
-        "#workPermitLanguageSelect"
-      )
-      ?.addEventListener(
-        "change",
-        event => {
-          saveDraft(false);
-
-          applyLanguage(
-            event.currentTarget.value
+    screen.addEventListener(
+      "click",
+      event => {
+        const addRowButton =
+          event.target.closest(
+            "[data-add-dynamic-row]"
           );
 
-          saveDraft(true);
+        if (addRowButton) {
+          addDynamicRow(
+            addRowButton.dataset
+              .addDynamicRow
+          );
+
+          return;
         }
-      );
 
-    screen
-      .querySelector(
-        "#workPermitPrintButton"
-      )
-      ?.addEventListener(
-        "click",
-        printPermit
-      );
+        const deleteRowButton =
+          event.target.closest(
+            "[data-delete-dynamic-row]"
+          );
 
-    screen
-      .querySelector(
-        "#workPermitClearButton"
-      )
-      ?.addEventListener(
-        "click",
-        clearForm
-      );
+        if (deleteRowButton) {
+          removeDynamicRow(
+            deleteRowButton.dataset
+              .deleteDynamicRow,
+            deleteRowButton.dataset
+              .rowId
+          );
 
-    screen
-      .querySelector(
-        "#workPermitReminderToggle"
-      )
-      ?.addEventListener(
-        "click",
-        () => {
-          setReminderVisible(
-            false
+          return;
+        }
+
+        const collapseButton =
+          event.target.closest(
+            "[data-collapse-section]"
+          );
+
+        if (collapseButton) {
+          const sectionId =
+            collapseButton.dataset
+              .collapseSection;
+
+          setSectionCollapsed(
+            sectionId,
+            !collapsedOptionalSections.has(
+              sectionId
+            )
+          );
+
+          return;
+        }
+
+        const removeSectionButton =
+          event.target.closest(
+            "[data-remove-section]"
+          );
+
+        if (removeSectionButton) {
+          removeOptionalSection(
+            removeSectionButton.dataset
+              .removeSection
           );
         }
-      );
-
-    screen
-      .querySelector(
-        "#workPermitReminderShow"
-      )
-      ?.addEventListener(
-        "click",
-        () => {
-          setReminderVisible(
-            true
-          );
-        }
-      );
+      }
+    );
 
     screen
       .querySelector(
@@ -3215,64 +5868,56 @@
         addSelectedOptionalSections
       );
 
-    screen.addEventListener(
-      "click",
-      event => {
-        const collapseButton =
-          event.target.closest(
-            "[data-collapse-section]"
+    screen
+      .querySelector(
+        "#workPermitLanguageSelect"
+      )
+      ?.addEventListener(
+        "change",
+        event => {
+          applyLanguage(
+            event.currentTarget.value
           );
 
-        if (collapseButton) {
-          const sectionId =
-            collapseButton.dataset
-              .collapseSection;
-
-          setSectionCollapsed(
-            sectionId,
-            !collapsedOptionalSections.has(
-              sectionId
-            )
-          );
-
-          return;
+          saveDraft(true);
         }
+      );
 
-        const removeButton =
-          event.target.closest(
-            "[data-remove-section]"
-          );
+    screen
+      .querySelector(
+        "#workPermitFinishButton"
+      )
+      ?.addEventListener(
+        "click",
+        completePermit
+      );
 
-        if (removeButton) {
-          const sectionId =
-            removeButton.dataset
-              .removeSection;
+    screen
+      .querySelector(
+        "#workPermitPrintButton"
+      )
+      ?.addEventListener(
+        "click",
+        printPermit
+      );
 
-          removeOptionalSection(
-            sectionId
-          );
-        }
-      }
-    );
+    screen
+      .querySelector(
+        "#workPermitClearButton"
+      )
+      ?.addEventListener(
+        "click",
+        clearForm
+      );
 
     window.addEventListener(
       "beforeprint",
-      () => {
-        if (
-          document.body.classList.contains(
-            "printing-work-permit"
-          )
-        ) {
-          prepareOptionalSectionsForPrint();
-          growAllTextareas();
-          syncAllPrintValues();
-        }
-      }
+      prepareForPrint
     );
 
     window.addEventListener(
       "afterprint",
-      restoreOptionalSectionsAfterPrint
+      restoreAfterPrint
     );
 
     window.addEventListener(
@@ -3283,26 +5928,252 @@
     );
   }
 
-  function activate() {
+  /*
+   * ============================================================
+   * 27. СТИЛИ НОВОЙ ЛОГИКИ
+   * ============================================================
+   */
+
+  function installStyles() {
+    if (
+      document.querySelector(
+        "#workPermitV3Styles"
+      )
+    ) {
+      return;
+    }
+
+    const style =
+      document.createElement(
+        "style"
+      );
+
+    style.id =
+      "workPermitV3Styles";
+
+    style.textContent = `
+      .work-permit-section-constructor {
+        margin-bottom: 18px;
+        padding: 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        background: #f8fafc;
+      }
+
+      .work-permit-constructor-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+      }
+
+      .work-permit-constructor-heading h2,
+      .work-permit-constructor-heading p {
+        margin: 0;
+      }
+
+      .work-permit-section-selector {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid #cbd5e1;
+      }
+
+      .work-permit-section-options {
+        display: grid;
+        grid-template-columns:
+          repeat(auto-fit, minmax(250px, 1fr));
+        gap: 10px;
+      }
+
+      .work-permit-section-options label {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px;
+        border: 1px solid #dbe3ea;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .work-permit-section-selector-actions,
+      .work-permit-optional-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .work-permit-section-selector-actions {
+        margin-top: 14px;
+      }
+
+      .work-permit-optional-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border-radius: 7px;
+        background: #f1f5f9;
+      }
+
+      .work-permit-optional-section[hidden] {
+        display: none !important;
+      }
+
+      .work-permit-optional-section.is-collapsed
+      > :not(.work-permit-optional-toolbar):not(h2) {
+        display: none;
+      }
+
+      .work-permit-employee-group {
+        display: grid;
+        grid-template-columns:
+          repeat(auto-fit, minmax(210px, 1fr));
+        gap: 12px;
+      }
+
+      .work-permit-safety-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .work-permit-safety-item {
+        padding: 10px;
+        border: 1px solid #dbe3ea;
+        border-radius: 8px;
+      }
+
+      .work-permit-safety-item.is-enabled {
+        border-color: #16a34a;
+        background: #f0fdf4;
+      }
+
+      .work-permit-safety-check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .work-permit-safety-details {
+        margin-top: 10px;
+      }
+
+      .work-permit-add-row,
+      .work-permit-delete-row {
+        margin-top: 10px;
+        padding: 7px 12px;
+        cursor: pointer;
+      }
+
+      .work-permit-row-actions {
+        width: 1%;
+        white-space: nowrap;
+      }
+
+      .work-permit-completion-checks {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin: 12px 0;
+      }
+
+      .work-permit-checkbox {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      @media print {
+        .work-permit-optional-section.is-collapsed
+        > :not(.work-permit-optional-toolbar):not(h2) {
+          display: block !important;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .work-permit-constructor-heading {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .work-permit-section-options {
+          grid-template-columns: 1fr;
+        }
+
+        .work-permit-optional-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+      }
+    `;
+
+    document.head.append(
+      style
+    );
+  }
+
+  /*
+   * ============================================================
+   * 28. ЗАПУСК
+   * ============================================================
+   */
+
+  async function activate() {
     applyLanguage(language);
     updateOptionalSectionsUi();
+    updateSafetyMeasuresUi();
     growAllTextareas();
     syncAllPrintValues();
   }
 
-  installOptionalSectionStyles();
-  buildScreen();
-  restoreDraft();
-  applyLanguage(language);
-  bindEvents();
+  async function initialize() {
+    installStyles();
+
+    permitState.createdBy =
+      getCurrentUser();
+
+    permitState.issuer =
+      getCurrentUser();
+
+    permitState.createdAt =
+      currentIsoDateTime();
+
+    ensureInitialDynamicRows();
+
+    await restoreDraft();
+
+    applyLanguage(language);
+    bindEvents();
+    saveDraft(false);
+  }
+
+  initialize();
 
   window.PprWorkPermit = {
     activate,
     print: printPermit,
+    complete: completePermit,
+    clear: clearForm,
+
     subtitle: () =>
       text("screenTitle"),
+
     language: () =>
-      language
+      language,
+
+    state: () => ({
+      ...collectPermitState(),
+
+      activeOptionalSections: [
+        ...activeOptionalSections
+      ],
+
+      dynamicRows:
+        serializeDynamicRows(),
+
+      safetyMeasures:
+        selectedSafetyMeasures()
+    })
   };
 })();
-  
