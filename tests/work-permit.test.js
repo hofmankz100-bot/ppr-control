@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=348-work-permit-official-print/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=348-work-permit-official-print/);
-  assert.match(html, /modules\/work-permit\.js\?v=348-work-permit-official-print/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=349-work-permit-clean-print/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=349-work-permit-clean-print/);
+  assert.match(html, /modules\/work-permit\.js\?v=349-work-permit-clean-print/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -33,6 +33,8 @@ test("all permit sections stay visible while optional rows remain dynamic", () =
   assert.match(permit, /data-delete-dynamic-row/);
   assert.match(permit, /if \(index === 0\) return ""/);
   assert.match(permit, /dynamicRows\[collection\]\[0\]\?\.id === rowId/);
+  assert.match(permit, /section\.hidden\s*=\s*!activeOptionalSections\.has\(sectionId\)\s*\|\|\s*collapsedOptionalSections\.has\(sectionId\)/);
+  assert.match(permit, /work-permit-table td\.no-print[\s\S]*?display:\s*none !important/);
 });
 
 test("people are selected once and reused in related fields", () => {
@@ -138,10 +140,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v348-work-permit-official-print/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=348-work-permit-official-print/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=348-work-permit-official-print/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=348-work-permit-official-print/);
-  assert.match(serviceWorker, /styles\.css\?v=348-work-permit-official-print/);
-  assert.match(serviceWorker, /app\.js\?v=348-work-permit-official-print/);
+  assert.match(serviceWorker, /ppr-v349-work-permit-clean-print/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=349-work-permit-clean-print/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=349-work-permit-clean-print/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=349-work-permit-clean-print/);
+  assert.match(serviceWorker, /styles\.css\?v=349-work-permit-clean-print/);
+  assert.match(serviceWorker, /app\.js\?v=349-work-permit-clean-print/);
 });

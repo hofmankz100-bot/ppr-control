@@ -5966,10 +5966,7 @@
 
         section.hidden =
           !activeOptionalSections.has(sectionId) ||
-          (
-            collapsedOptionalSections.has(sectionId) &&
-            !sectionHasValues(sectionId)
-          );
+          collapsedOptionalSections.has(sectionId);
 
         section.classList.remove(
           "is-collapsed"
@@ -7245,6 +7242,15 @@
         line-height: 1.12 !important;
         vertical-align: middle !important;
         box-shadow: none !important;
+      }
+
+      .work-permit-paper.is-print-layout
+      .work-permit-optional-section[hidden],
+      .work-permit-paper.is-print-layout
+      .work-permit-table th.no-print,
+      .work-permit-paper.is-print-layout
+      .work-permit-table td.no-print {
+        display: none !important;
       }
 
       .work-permit-paper.is-print-layout .work-permit-table .work-permit-print-value {
