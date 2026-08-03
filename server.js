@@ -4143,17 +4143,41 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/work-permits/claim-number" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const requestId = String(body?.requestId || "").trim();
+    if (!/^output-[A-Za-z0-9-]{8,150}$/.test(requestId)) {
+      sendJson(res, 400, { ok: false, error: "invalid_request_id" });
+      return true;
+    }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      if (!db.workPermitNumberClaims || typeof db.workPermitNumberClaims !== "object") {
+        db.workPermitNumberClaims = {};
+      }
+      const previous = Number(db.workPermitNumberClaims[requestId]?.number || 0);
+      if (Number.isSafeInteger(previous) && previous > 0) return previous;
       const current = Number(db.workPermitLastNumber || 0);
       const nextNumber = Number.isSafeInteger(current) && current >= 0
         ? current + 1
         : 1;
       db.workPermitLastNumber = nextNumber;
+      db.workPermitNumberClaims[requestId] = {
+        number: nextNumber,
+        claimedAt: new Date().toISOString(),
+        userId: String(req.authUser?.id || "")
+      };
+      const claimEntries = Object.entries(db.workPermitNumberClaims);
+      if (claimEntries.length > 2000) {
+        claimEntries
+          .sort((a, b) => String(a[1]?.claimedAt || "").localeCompare(String(b[1]?.claimedAt || "")))
+          .slice(0, claimEntries.length - 2000)
+          .forEach(([id]) => delete db.workPermitNumberClaims[id]);
+      }
       writeDb(db, {
         action: "work_permit_number_claimed",
         user: req.authUser,
-        number: nextNumber
+        number: nextNumber,
+        requestId
       });
       return nextNumber;
     });

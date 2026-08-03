@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=352-work-permit-mobile-pdf/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=352-work-permit-mobile-pdf/);
-  assert.match(html, /modules\/work-permit\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=353-work-permit-required-fields/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=353-work-permit-required-fields/);
+  assert.match(html, /modules\/work-permit\.js\?v=353-work-permit-required-fields/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -156,6 +156,11 @@ test("printing claims the next shared permit number and refreshes its timestamp"
   assert.match(permit, /async function printPermit\(\)[\s\S]*?await claimPermitNumber\(\)/);
   assert.match(permit, /async function sharePermitPdf\(\)[\s\S]*?await claimPermitNumber\(\)/);
   assert.match(server, /workPermitLastNumber/);
+  assert.match(server, /workPermitNumberClaims/);
+  assert.match(server, /const previous = Number\(db\.workPermitNumberClaims\[requestId\]/);
+  assert.match(permit, /pendingOutputRequestId/);
+  assert.match(permit, /requestId: permitState\.pendingOutputRequestId/);
+  assert.match(permit, /function completeOutputNumberClaim\(\)/);
   assert.match(server, /work_permit_number_claimed/);
   assert.match(server, /String\(result\)\.padStart\(4, "0"\)/);
   assert.match(permit, /start_date:\s*localDateValue\(now\)/);
@@ -166,11 +171,29 @@ test("printing claims the next shared permit number and refreshes its timestamp"
   assert.match(permit, /readonly:\s*false,[\s\S]*?organization \|\| DEFAULT_COMPANY_NAME/);
 });
 
+test("section six reuses the manually entered admitter from section three", () => {
+  assert.match(permit, /function updateRelatedAdmitterFields\(\)[\s\S]*?permitState\.issuer = \{[\s\S]*?setControlValue\("issuer_name", name\)[\s\S]*?setControlValue\("issuer_position", position\)/);
+  assert.match(permit, /"issuer_name"[\s\S]*?readonly: true/);
+  assert.match(permit, /"issuer_position"[\s\S]*?readonly: true/);
+  assert.match(permit, /issuer:\s*null/);
+});
+
+test("permit output requires manual fields and acknowledged instructions", () => {
+  assert.match(permit, /if \(measureId === "5\.9"\)[\s\S]*?checkbox\.checked = true;[\s\S]*?checkbox\.disabled = true/);
+  assert.match(permit, /function isManualRequiredControl\(control\)/);
+  assert.match(permit, /if \(\/signature\/i\.test\(control\.name\)\) return false/);
+  assert.match(permit, /control\.dataset\.autofilled === "true"/);
+  assert.match(permit, /function validatePermitForOutput\(\)/);
+  assert.match(permit, /selectedInstructions\.length \|\| missingAcknowledgement/);
+  assert.match(permit, /if \(!validatePermitForOutput\(\)\) return;[\s\S]*?claimPermitNumber/);
+  assert.match(permit, /work-permit-validation-error/);
+});
+
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v352-work-permit-mobile-pdf/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=352-work-permit-mobile-pdf/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=352-work-permit-mobile-pdf/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=352-work-permit-mobile-pdf/);
-  assert.match(serviceWorker, /styles\.css\?v=352-work-permit-mobile-pdf/);
-  assert.match(serviceWorker, /app\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /ppr-v353-work-permit-required-fields/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=353-work-permit-required-fields/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=353-work-permit-required-fields/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=353-work-permit-required-fields/);
+  assert.match(serviceWorker, /styles\.css\?v=353-work-permit-required-fields/);
+  assert.match(serviceWorker, /app\.js\?v=353-work-permit-required-fields/);
 });

@@ -190,6 +190,18 @@
       printNumberConfirm:
         "Сформировать документ? Будут присвоены новый общий номер, текущая дата и время.",
 
+      requiredFieldsMessage:
+        "Заполните обязательное поле: {field}",
+
+      instructionRequiredMessage:
+        "Выберите минимум одну инструкцию и подтвердите «Прочитал и ознакомился» для каждой выбранной инструкции.",
+
+      connectionRequiredMessage:
+        "Нет устойчивой связи с сервером. Черновик сохранён. Подключитесь к интернету и повторите — номер не будет выдан повторно.",
+
+      gettingNumber:
+        "Проверяем связь и получаем номер…",
+
       saved: "Черновик сохранён",
       completed: "Наряд-допуск завершён",
       acknowledgedWith: "Ознакомился с:",
@@ -485,6 +497,18 @@
 
       printNumberConfirm:
         "Құжатты қалыптастыру керек пе? Жаңа жалпы нөмір, ағымдағы күн мен уақыт беріледі.",
+
+      requiredFieldsMessage:
+        "Міндетті өрісті толтырыңыз: {field}",
+
+      instructionRequiredMessage:
+        "Кемінде бір нұсқаулықты таңдап, әр таңдалған нұсқаулық үшін «Оқыдым және таныстым» батырмасын басыңыз.",
+
+      connectionRequiredMessage:
+        "Сервермен тұрақты байланыс жоқ. Жоба сақталды. Интернетке қосылып, қайталап көріңіз — нөмір қайта берілмейді.",
+
+      gettingNumber:
+        "Байланысты тексеріп, нөмір алып жатырмыз…",
 
       saved:
         "Жоба сақталды",
@@ -811,6 +835,8 @@
 
     permitNumber: "",
 
+    pendingOutputRequestId: "",
+
     createdAt: "",
 
     completedAt: "",
@@ -988,12 +1014,13 @@
     Object.assign(permitState, {
       status: "draft",
       permitNumber: "",
+      pendingOutputRequestId: "",
       createdAt: currentIsoDateTime(),
       completedAt: "",
       createdBy: getCurrentUser(),
       producer: null,
       admitter: null,
-      issuer: getCurrentUser(),
+      issuer: null,
       acceptedBy: null,
       selectedWorkshop: null,
       selectedEquipment: null
@@ -1211,6 +1238,12 @@
 
   async function claimPermitNumber() {
     updatePermitPrintTimestamp();
+    if (!permitState.pendingOutputRequestId) {
+      permitState.pendingOutputRequestId = generateId("output");
+      saveDraft(false);
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20000);
     try {
       const response = await fetch(
         "/api/work-permits/claim-number",
@@ -1220,7 +1253,10 @@
             Accept: "application/json",
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({})
+          body: JSON.stringify({
+            requestId: permitState.pendingOutputRequestId
+          }),
+          signal: controller.signal
         }
       );
 
@@ -1238,17 +1274,15 @@
           return permitState.permitNumber;
         }
       }
-    } catch {}
-
-    permitState.permitNumber = getNextLocalPermitNumber();
-    confirmUsedPermitNumber(permitState.permitNumber);
-    const control = screen.querySelector('[name="permit_number"]');
-    if (control) {
-      control.value = permitState.permitNumber;
-      syncPrintValue(control);
+      throw new Error("number_unavailable");
+    } finally {
+      window.clearTimeout(timeout);
     }
+  }
+
+  function completeOutputNumberClaim() {
+    permitState.pendingOutputRequestId = "";
     saveDraft(false);
-    return permitState.permitNumber;
   }
 
   /*
@@ -2947,6 +2981,17 @@
   function updateRelatedAdmitterFields() {
     const name =
       permitState.admitter?.name || "";
+    const position =
+      permitState.admitter?.position || "";
+
+    permitState.issuer = {
+      ...(permitState.admitter || {}),
+      id: permitState.admitter?.id || "manual",
+      name,
+      position
+    };
+    setControlValue("issuer_name", name);
+    setControlValue("issuer_position", position);
 
     setControlValue(
       "start_admitter",
@@ -3741,7 +3786,9 @@
       currentUser;
 
     permitState.issuer =
-      currentUser;
+      permitState.admitter
+        ? { ...permitState.admitter }
+        : null;
 
     if (!permitState.createdAt) {
       permitState.createdAt =
@@ -4030,7 +4077,8 @@
                 {
                   value:
                     permitState.issuer?.name || "",
-                  hintKey: "issuerAutoHint"
+                  hintKey: "issuerAutoHint",
+                  readonly: true
                 }
               )}
 
@@ -4039,7 +4087,8 @@
                 "position",
                 {
                   value:
-                    permitState.issuer?.position || ""
+                    permitState.issuer?.position || "",
+                  readonly: true
                 }
               )}
 
@@ -4724,6 +4773,11 @@
 
     if (!checkbox || !details) {
       return;
+    }
+
+    if (measureId === "5.9") {
+      checkbox.checked = true;
+      checkbox.disabled = true;
     }
 
     details.hidden =
@@ -5426,6 +5480,10 @@
       storedState.permitNumber ||
       "";
 
+    permitState.pendingOutputRequestId =
+      storedState.pendingOutputRequestId ||
+      "";
+
     permitState.createdAt =
       storedState.createdAt ||
       permitState.createdAt;
@@ -5447,8 +5505,9 @@
       null;
 
     permitState.issuer =
-      storedState.issuer ||
-      permitState.issuer;
+      permitState.admitter
+        ? { ...permitState.admitter }
+        : null;
 
     permitState.acceptedBy =
       storedState.acceptedBy ||
@@ -5913,6 +5972,8 @@
 
     permitState.permitNumber = "";
 
+    permitState.pendingOutputRequestId = "";
+
     permitState.createdAt =
       currentIsoDateTime();
 
@@ -5929,7 +5990,7 @@
       null;
 
     permitState.issuer =
-      getCurrentUser();
+      null;
 
     permitState.acceptedBy =
       null;
@@ -6034,6 +6095,65 @@
     updateOptionalSectionsUi();
   }
 
+  function isManualRequiredControl(control) {
+    if (!control?.name || control.disabled || control.readOnly) return false;
+    if (!["INPUT", "TEXTAREA", "SELECT"].includes(control.tagName)) return false;
+    if (["hidden", "button", "submit", "checkbox", "radio", "file"].includes(control.type)) return false;
+    if (!control.getClientRects().length) return false;
+    if (control.closest("[hidden], .is-collapsed")) return false;
+    if (/signature/i.test(control.name)) return false;
+    if (control.dataset.autofilled === "true") return false;
+    if (/^(permit_number|permit_date|created_at|issuer_date|start_date|start_time|producer_organization)$/.test(control.name)) return false;
+    if (/^brigade_.*_(briefing|instructor)$/.test(control.name)) return false;
+    if (/^approval_.*_date$/.test(control.name)) return false;
+    if (/^change_.*_(issuer|date)$/.test(control.name)) return false;
+    return true;
+  }
+
+  function clearValidationErrors() {
+    screen.querySelectorAll(".work-permit-validation-error").forEach(element => {
+      element.classList.remove("work-permit-validation-error");
+    });
+  }
+
+  function showValidationError(target, message) {
+    const container = target?.closest?.(".work-permit-field, td, .work-permit-instruction-list, .work-permit-safety-item") || target;
+    container?.classList?.add("work-permit-validation-error");
+    target?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    if (typeof target?.focus === "function") target.focus({ preventScroll: true });
+    window.alert(message);
+  }
+
+  function validatePermitForOutput() {
+    clearValidationErrors();
+    const controls = [...screen.querySelectorAll("#workPermitForm input[name], #workPermitForm textarea[name], #workPermitForm select[name]")];
+    const emptyControl = controls.find(control =>
+      isManualRequiredControl(control) && !String(control.value ?? "").trim()
+    );
+    if (emptyControl) {
+      const fieldName = emptyControl.getAttribute("aria-label") ||
+        emptyControl.closest("[data-mobile-label]")?.dataset.mobileLabel ||
+        emptyControl.name;
+      showValidationError(
+        emptyControl,
+        text("requiredFieldsMessage").replace("{field}", fieldName)
+      );
+      return false;
+    }
+
+    const selectedInstructions = [...screen.querySelectorAll("[data-instruction-toggle]:checked")];
+    const acknowledged = acknowledgedInstructionIds();
+    const missingAcknowledgement = selectedInstructions.some(control =>
+      !acknowledged.has(control.dataset.instructionToggle)
+    );
+    if (!selectedInstructions.length || missingAcknowledgement) {
+      const instructionList = screen.querySelector(".work-permit-instruction-list");
+      showValidationError(instructionList, text("instructionRequiredMessage"));
+      return false;
+    }
+    return true;
+  }
+
   async function sharePermitPdf() {
     const button = screen.querySelector("#workPermitSharePdfButton");
     const paper = screen.querySelector(".work-permit-paper");
@@ -6042,15 +6162,28 @@
       return;
     }
 
+    if (!validatePermitForOutput()) return;
     if (!window.confirm(text("printNumberConfirm"))) return;
-    await claimPermitNumber();
-    saveDraft(false);
-    prepareForPrint();
     const originalText = button?.textContent || "PDF / WhatsApp";
     if (button) {
       button.disabled = true;
-      button.textContent = "Создаём PDF…";
+      button.textContent = text("gettingNumber");
     }
+    try {
+      await claimPermitNumber();
+    } catch (error) {
+      console.warn("Permit number unavailable", error);
+      saveDraft(false);
+      window.alert(text("connectionRequiredMessage"));
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+      return;
+    }
+    saveDraft(false);
+    prepareForPrint();
+    if (button) button.textContent = "Создаём PDF…";
 
     try {
       const number = screen.querySelector('[name="permit_number"]')?.value || "draft";
@@ -6095,6 +6228,7 @@
         window.setTimeout(() => URL.revokeObjectURL(url), 30000);
         window.alert("PDF скачан. Прикрепите его в WhatsApp как документ.");
       }
+      completeOutputNumberClaim();
     } catch (error) {
       if (error?.name !== "AbortError") {
         console.error("Permit PDF share failed", error);
@@ -6110,8 +6244,16 @@
   }
 
   async function printPermit() {
+    if (!validatePermitForOutput()) return;
     if (!window.confirm(text("printNumberConfirm"))) return;
-    await claimPermitNumber();
+    try {
+      await claimPermitNumber();
+    } catch (error) {
+      console.warn("Permit number unavailable", error);
+      saveDraft(false);
+      window.alert(text("connectionRequiredMessage"));
+      return;
+    }
     saveDraft(false);
     prepareForPrint();
 
@@ -6277,6 +6419,7 @@
     window.requestAnimationFrame(
       () => {
         window.print();
+        completeOutputNumberClaim();
 
         window.setTimeout(
           cleanup,
@@ -6306,6 +6449,9 @@
       event => {
         const control =
           event.target;
+
+        control.closest?.(".work-permit-validation-error")
+          ?.classList.remove("work-permit-validation-error");
 
         if (!['permit_date', 'created_at'].includes(control.name)) {
           updatePermitPrintTimestamp();
@@ -6937,6 +7083,18 @@
 
       .work-permit-section > h2 {
         color: #0b6684;
+      }
+
+      .work-permit-validation-error {
+        border-color: #dc2626 !important;
+        background: #fff1f2 !important;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, .14) !important;
+      }
+
+      .work-permit-validation-error input,
+      .work-permit-validation-error textarea,
+      .work-permit-validation-error select {
+        border-color: #dc2626 !important;
       }
 
       .work-permit-safety-item {
