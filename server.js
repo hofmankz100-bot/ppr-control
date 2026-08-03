@@ -4142,6 +4142,28 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/work-permits/claim-number" && req.method === "POST") {
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const current = Number(db.workPermitLastNumber || 0);
+      const nextNumber = Number.isSafeInteger(current) && current >= 0
+        ? current + 1
+        : 1;
+      db.workPermitLastNumber = nextNumber;
+      writeDb(db, {
+        action: "work_permit_number_claimed",
+        user: req.authUser,
+        number: nextNumber
+      });
+      return nextNumber;
+    });
+    sendJson(res, 200, {
+      ok: true,
+      number: String(result).padStart(4, "0")
+    });
+    return true;
+  }
+
   if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
     const db = readDb();
     const actorKey = attendanceUserKey(req.authUser || {});

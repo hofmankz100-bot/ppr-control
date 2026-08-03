@@ -187,6 +187,9 @@
       finishConfirm:
         "Завершить наряд-допуск и подготовить его к печати?",
 
+      printNumberConfirm:
+        "Сформировать документ? Будут присвоены новый общий номер, текущая дата и время.",
+
       saved: "Черновик сохранён",
       completed: "Наряд-допуск завершён",
       acknowledgedWith: "Ознакомился с:",
@@ -479,6 +482,9 @@
 
       finishConfirm:
         "Жұмысқа рұқсатты аяқтап, басып шығаруға дайындау керек пе?",
+
+      printNumberConfirm:
+        "Құжатты қалыптастыру керек пе? Жаңа жалпы нөмір, ағымдағы күн мен уақыт беріледі.",
 
       saved:
         "Жоба сақталды",
@@ -1178,15 +1184,33 @@
    * Сервер должен выдавать уникальный номер из PostgreSQL.
    */
 
-  async function getNextPermitNumber() {
+  function updatePermitPrintTimestamp() {
+    const now = new Date();
+    permitState.createdAt = now.toISOString();
+    const values = {
+      permit_date: localDateValue(now),
+      created_at: localDateTimeValue(now)
+    };
+    Object.entries(values).forEach(([name, value]) => {
+      const control = screen.querySelector(`[name="${name}"]`);
+      if (!control) return;
+      control.value = value;
+      syncPrintValue(control);
+    });
+  }
+
+  async function claimPermitNumber() {
+    updatePermitPrintTimestamp();
     try {
       const response = await fetch(
-        "/api/work-permits/next-number",
+        "/api/work-permits/claim-number",
         {
-          method: "GET",
+          method: "POST",
           headers: {
-            Accept: "application/json"
-          }
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({})
         }
       );
 
@@ -1194,12 +1218,27 @@
         const result = await response.json();
 
         if (result?.number) {
-          return String(result.number);
+          permitState.permitNumber = String(result.number);
+          const control = screen.querySelector('[name="permit_number"]');
+          if (control) {
+            control.value = permitState.permitNumber;
+            syncPrintValue(control);
+          }
+          saveDraft(false);
+          return permitState.permitNumber;
         }
       }
     } catch {}
 
-    return getNextLocalPermitNumber();
+    permitState.permitNumber = getNextLocalPermitNumber();
+    confirmUsedPermitNumber(permitState.permitNumber);
+    const control = screen.querySelector('[name="permit_number"]');
+    if (control) {
+      control.value = permitState.permitNumber;
+      syncPrintValue(control);
+    }
+    saveDraft(false);
+    return permitState.permitNumber;
   }
 
   /*
@@ -1461,10 +1500,13 @@
       className = "",
       colspan = 1
     } = options;
+    const emptyClass = String(content ?? "").trim()
+      ? ""
+      : " work-permit-empty-cell";
 
     return `
       <td
-        class="${escapeHtml(className)}"
+        class="${escapeHtml(`${className}${emptyClass}`.trim())}"
         colspan="${colspan}"
         data-work-permit-label="${escapeHtml(labelKey)}"
         data-mobile-label="${escapeHtml(text(labelKey))}">
@@ -5590,13 +5632,6 @@
       draft?.dynamicRows
     );
 
-    if (
-      !permitState.permitNumber
-    ) {
-      permitState.permitNumber =
-        await getNextPermitNumber();
-    }
-
     if (!permitState.createdAt) {
       permitState.createdAt =
         currentIsoDateTime();
@@ -5866,8 +5901,7 @@
     permitState.status =
       "draft";
 
-    permitState.permitNumber =
-      await getNextPermitNumber();
+    permitState.permitNumber = "";
 
     permitState.createdAt =
       currentIsoDateTime();
@@ -5998,6 +6032,8 @@
       return;
     }
 
+    if (!window.confirm(text("printNumberConfirm"))) return;
+    await claimPermitNumber();
     saveDraft(false);
     prepareForPrint();
     const originalText = button?.textContent || "PDF / WhatsApp";
@@ -6055,7 +6091,9 @@
     }
   }
 
-  function printPermit() {
+  async function printPermit() {
+    if (!window.confirm(text("printNumberConfirm"))) return;
+    await claimPermitNumber();
     saveDraft(false);
     prepareForPrint();
 
@@ -6247,6 +6285,10 @@
       event => {
         const control =
           event.target;
+
+        if (!['permit_date', 'created_at'].includes(control.name)) {
+          updatePermitPrintTimestamp();
+        }
 
         if (
           control.tagName ===
@@ -7374,11 +7416,33 @@
 
       @media (max-width: 700px) {
         .work-permit-screen {
-          padding-bottom: 24px;
+          margin: 0 !important;
+          padding: 6px 6px calc(104px + env(safe-area-inset-bottom));
         }
 
         .work-permit-final-actions {
-          grid-template-columns: 1fr;
+          position: sticky;
+          z-index: 12;
+          bottom: calc(68px + env(safe-area-inset-bottom));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          padding: 9px;
+          border: 1px solid rgba(15, 112, 142, .2);
+          border-radius: 16px;
+          background: rgba(248, 253, 255, .96);
+          box-shadow: 0 12px 32px rgba(8, 49, 67, .2);
+          backdrop-filter: blur(14px);
+        }
+
+        .work-permit-final-actions #workPermitFinishButton {
+          grid-column: 1 / -1;
+        }
+
+        .work-permit-final-actions button {
+          min-width: 0;
+          min-height: 48px;
+          padding: 9px 7px;
+          font-size: 13px;
         }
 
         .work-permit-instruction-permissions > div {
@@ -7386,19 +7450,31 @@
         }
 
         .work-permit-paper {
-          border-radius: 16px;
+          border: 0;
+          border-radius: 18px;
           box-shadow: 0 12px 32px rgba(24, 65, 84, .1);
         }
 
         .work-permit-flow {
-          grid-template-columns: repeat(2, 1fr);
-          top: 4px;
+          position: sticky;
+          z-index: 8;
+          top: 61px;
+          grid-template-columns: repeat(4, minmax(66px, 1fr));
+          gap: 4px;
+          overflow-x: auto;
+          padding: 6px;
+          border-radius: 13px;
+          box-shadow: 0 8px 22px rgba(10, 65, 85, .13);
         }
 
         .work-permit-flow span {
-          justify-content: flex-start;
-          padding: 0 7px;
-          font-size: 11px;
+          flex-direction: column;
+          justify-content: center;
+          gap: 1px;
+          min-height: 46px;
+          padding: 3px;
+          font-size: 9px;
+          text-align: center;
         }
 
         .work-permit-toolbar-actions {
@@ -7427,8 +7503,9 @@
         }
 
         .work-permit-section {
-          padding: 14px;
-          border-radius: 14px;
+          margin: 7px;
+          padding: 14px 12px;
+          border-radius: 15px;
         }
 
         .work-permit-grid,
@@ -7438,7 +7515,18 @@
 
         .work-permit-safety-check {
           align-items: center;
-          min-height: 40px;
+          min-height: 58px;
+          padding: 10px;
+        }
+
+        .work-permit-safety-check > input {
+          width: 26px;
+          height: 26px;
+        }
+
+        .work-permit-safety-check strong {
+          font-size: 14px;
+          line-height: 1.35;
         }
 
         .work-permit-safety-options {
@@ -7473,8 +7561,24 @@
         }
 
         .work-permit-optional-toolbar {
-          align-items: stretch;
-          flex-direction: column;
+          align-items: center;
+          flex-direction: row;
+          gap: 8px;
+        }
+
+        .work-permit-optional-label {
+          flex: 1 1 auto;
+          font-size: 15px;
+        }
+
+        .work-permit-optional-actions button {
+          min-height: 42px;
+          padding: 8px 12px;
+          white-space: nowrap;
+        }
+
+        .work-permit-row-actions.work-permit-empty-cell {
+          display: none !important;
         }
       }
     `;

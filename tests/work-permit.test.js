@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=349-work-permit-clean-print/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=349-work-permit-clean-print/);
-  assert.match(html, /modules\/work-permit\.js\?v=349-work-permit-clean-print/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(html, /modules\/work-permit\.js\?v=350-work-permit-mobile-sequence/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -137,13 +137,28 @@ test("phone layout is card based with final actions and PDF sharing", () => {
   assert.match(permit, /navigator\.canShare/);
   assert.match(permit, /manualInput[\s\S]*?\$\{options\}/);
   assert.match(permit, /function dynamicEmployeeEntry/);
+  assert.match(permit, /position:\s*sticky;[\s\S]*?work-permit-final-actions/);
+  assert.match(permit, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(permit, /work-permit-row-actions\.work-permit-empty-cell/);
+});
+
+test("printing claims the next shared permit number and refreshes its timestamp", () => {
+  assert.match(permit, /async function claimPermitNumber\(\)/);
+  assert.match(permit, /\/api\/work-permits\/claim-number/);
+  assert.match(permit, /function updatePermitPrintTimestamp\(\)/);
+  assert.match(permit, /window\.confirm\(text\("printNumberConfirm"\)\)/);
+  assert.match(permit, /async function printPermit\(\)[\s\S]*?await claimPermitNumber\(\)/);
+  assert.match(permit, /async function sharePermitPdf\(\)[\s\S]*?await claimPermitNumber\(\)/);
+  assert.match(server, /workPermitLastNumber/);
+  assert.match(server, /work_permit_number_claimed/);
+  assert.match(server, /String\(result\)\.padStart\(4, "0"\)/);
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v349-work-permit-clean-print/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=349-work-permit-clean-print/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=349-work-permit-clean-print/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=349-work-permit-clean-print/);
-  assert.match(serviceWorker, /styles\.css\?v=349-work-permit-clean-print/);
-  assert.match(serviceWorker, /app\.js\?v=349-work-permit-clean-print/);
+  assert.match(serviceWorker, /ppr-v350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /styles\.css\?v=350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /app\.js\?v=350-work-permit-mobile-sequence/);
 });
