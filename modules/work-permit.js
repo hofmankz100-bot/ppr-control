@@ -1478,6 +1478,10 @@
         ${escapeHtml(text("selectWorkshop"))}
       </option>
 
+      <option value="manual">
+        ${escapeHtml(text("manualInput"))}
+      </option>
+
       ${workshops
         .map(workshop => `
           <option
@@ -1490,9 +1494,6 @@
         `)
         .join("")}
 
-      <option value="manual">
-        ${escapeHtml(text("manualInput"))}
-      </option>
     `;
   }
 
@@ -1530,6 +1531,10 @@
         ${escapeHtml(text("selectEquipment"))}
       </option>
 
+      <option value="manual">
+        ${escapeHtml(text("manualInput"))}
+      </option>
+
       ${equipment
         .map(item => `
           <option
@@ -1551,9 +1556,6 @@
         `)
         .join("")}
 
-      <option value="manual">
-        ${escapeHtml(text("manualInput"))}
-      </option>
     `;
   }
 
@@ -1582,42 +1584,23 @@
   function workLocationBlock() {
     return `
       <div class="work-permit-grid work-permit-grid-two">
-        <label class="work-permit-field">
-          ${i18n("workshop")}
+        <div class="work-permit-location-entry" data-location-entry="workshop">
+          <label class="work-permit-field work-permit-location-choice">
+            ${i18n("workshop")}
+            ${workshopSelect("workshop_id", permitState.selectedWorkshop?.name || "")}
+          </label>
+          ${field("workshop_manual", "workshop", { placeholder: text("manualInput"), className: "work-permit-location-manual" })}
+          <button type="button" class="work-permit-location-back no-print" data-location-use-list>← Выбрать из списка</button>
+        </div>
 
-          ${workshopSelect(
-            "workshop_id",
-            permitState.selectedWorkshop?.name || ""
-          )}
-        </label>
-
-        <label class="work-permit-field">
-          ${i18n("equipment")}
-
-          ${equipmentSelect(
-            "equipment_id",
-            permitState.selectedEquipment?.id || "",
-            permitState.selectedWorkshop?.name || ""
-          )}
-        </label>
-
-        ${field(
-          "workshop_manual",
-          "workshop",
-          {
-            wide: false,
-            placeholder: text("manualInput")
-          }
-        )}
-
-        ${field(
-          "equipment_manual",
-          "equipment",
-          {
-            wide: false,
-            placeholder: text("manualInput")
-          }
-        )}
+        <div class="work-permit-location-entry" data-location-entry="equipment">
+          <label class="work-permit-field work-permit-location-choice">
+            ${i18n("equipment")}
+            ${equipmentSelect("equipment_id", permitState.selectedEquipment?.id || "", permitState.selectedWorkshop?.name || "")}
+          </label>
+          ${field("equipment_manual", "equipment", { placeholder: text("manualInput"), className: "work-permit-location-manual" })}
+          <button type="button" class="work-permit-location-back no-print" data-location-use-list>← Выбрать из списка</button>
+        </div>
 
         ${field(
           "work_place",
@@ -3020,6 +3003,8 @@
     select
   ) {
     const value = select.value;
+    select.closest("[data-location-entry]")
+      ?.classList.toggle("is-manual", value === "manual");
 
     if (!value) {
       permitState.selectedWorkshop =
@@ -3046,11 +3031,6 @@
       name: value
     };
 
-    setControlValue(
-      "work_place",
-      value
-    );
-
     refreshEquipmentOptions(value);
     saveDraft(false);
   }
@@ -3059,6 +3039,8 @@
     select
   ) {
     const value = select.value;
+    select.closest("[data-location-entry]")
+      ?.classList.toggle("is-manual", value === "manual");
 
     if (!value) {
       permitState.selectedEquipment =
@@ -3099,13 +3081,6 @@
 
     permitState.selectedEquipment =
       equipment;
-
-    if (equipment.name) {
-      setControlValue(
-        "work_equipment",
-        equipment.name
-      );
-    }
 
     if (
       equipment.workshop &&
@@ -3742,14 +3717,6 @@
             )}
 
             ${workLocationBlock()}
-
-            ${field(
-              "work_equipment",
-              "equipment",
-              {
-                wide: true
-              }
-            )}
 
             ${field(
               "work_scope",
@@ -4698,6 +4665,28 @@
     saveDraft(false);
   }
 
+  function updateLocationEntryModes() {
+    screen.querySelectorAll("[data-location-entry]")
+      .forEach(group => {
+        const select = group.querySelector("select");
+        group.classList.toggle(
+          "is-manual",
+          select?.value === "manual"
+        );
+      });
+  }
+
+  function useLocationList(button) {
+    const group = button.closest("[data-location-entry]");
+    const select = group?.querySelector("select");
+    if (!group || !select) return;
+    select.value = "";
+    group.classList.remove("is-manual");
+    select.focus();
+    syncPrintValue(select);
+    saveDraft(false);
+  }
+
   function syncCompletedMeasuresPrintRows() {
     const body = screen.querySelector(
       "#workPermitCompletedMeasuresPrintRows"
@@ -5240,6 +5229,7 @@
 
     updateOptionalSectionsUi();
     updateEmployeeEntryModes();
+    updateLocationEntryModes();
     syncAllPrintValues();
     growAllTextareas();
 
@@ -5988,6 +5978,14 @@
     screen.addEventListener(
       "click",
       event => {
+        const locationListButton = event.target.closest(
+          "[data-location-use-list]"
+        );
+        if (locationListButton) {
+          useLocationList(locationListButton);
+          return;
+        }
+
         const employeeListButton =
           event.target.closest(
             "[data-employee-use-list]"
@@ -6422,8 +6420,30 @@
       }
 
       .work-permit-employee-manual,
-      .work-permit-employee-back {
+      .work-permit-employee-back,
+      .work-permit-location-manual,
+      .work-permit-location-back {
         display: none;
+      }
+
+      .work-permit-location-entry {
+        display: grid;
+        gap: 8px;
+      }
+
+      .work-permit-location-entry.is-manual .work-permit-location-choice {
+        display: none;
+      }
+
+      .work-permit-location-entry.is-manual .work-permit-location-manual {
+        display: flex;
+      }
+
+      .work-permit-location-entry.is-manual .work-permit-location-back {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
       }
 
       .work-permit-employee-group.is-manual .work-permit-employee-choice {
@@ -6506,11 +6526,21 @@
 
       @media print {
         .work-permit-employee-choice,
-        .work-permit-employee-back {
+        .work-permit-employee-back,
+        .work-permit-location-back {
           display: none !important;
         }
 
         .work-permit-employee-manual {
+          display: flex !important;
+        }
+
+        .work-permit-location-entry:not(.is-manual) .work-permit-location-manual,
+        .work-permit-location-entry.is-manual .work-permit-location-choice {
+          display: none !important;
+        }
+
+        .work-permit-location-entry.is-manual .work-permit-location-manual {
           display: flex !important;
         }
         .work-permit-print-only {

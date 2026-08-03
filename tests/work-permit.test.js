@@ -13,8 +13,8 @@ const serviceWorker = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=337-work-permit-print/);
-  assert.match(html, /modules\/work-permit\.js\?v=337-work-permit-print/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=338-work-permit-fields/);
+  assert.match(html, /modules\/work-permit\.js\?v=338-work-permit-fields/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -46,6 +46,10 @@ test("people are selected once and reused in related fields", () => {
   assert.match(permit, /brigade_\$\{row\.id\}_instructor/);
   assert.match(permit, /row\.instructor = name/);
   assert.doesNotMatch(permit, /data-add-dynamic-row="completedMeasures"/);
+  assert.match(permit, /data-location-entry="workshop"/);
+  assert.match(permit, /data-location-entry="equipment"/);
+  assert.match(permit, /function updateLocationEntryModes\(\)/);
+  assert.doesNotMatch(permit, /"work_equipment"/);
 });
 
 test("selected safety measures are combined into one section seven field", () => {
@@ -83,9 +87,9 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v337-work-permit-print/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=337-work-permit-print/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=337-work-permit-print/);
-  assert.match(serviceWorker, /styles\.css\?v=337-work-permit-print/);
-  assert.match(serviceWorker, /app\.js\?v=337-work-permit-print/);
+  assert.match(serviceWorker, /ppr-v338-work-permit-fields/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=338-work-permit-fields/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=338-work-permit-fields/);
+  assert.match(serviceWorker, /styles\.css\?v=338-work-permit-fields/);
+  assert.match(serviceWorker, /app\.js\?v=338-work-permit-fields/);
 });
