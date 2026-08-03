@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=333-work-permit/);
-  assert.match(html, /styles\.css\?v=333-work-permit/);
-  assert.match(serviceWorker, /app\.js\?v=333-work-permit/);
+  assert.match(html, /app\.js\?v=334-work-permit-mobile/);
+  assert.match(html, /styles\.css\?v=334-work-permit-mobile/);
+  assert.match(serviceWorker, /app\.js\?v=334-work-permit-mobile/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -820,13 +820,16 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /failures >= 2/);
 });
 
-test("Uzbek Cyrillic user messages are translated for Russian recipients", () => {
+test("automatic translation runs only for users who selected Uzbek", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.doesNotMatch(serverSource, /if \(language === "ru"\) return JSON\.stringify\(payload\)/);
-  assert.doesNotMatch(serverSource, /target === "ru" && \/\^\[\\u0400-\\u04FF/);
-  assert.match(serverSource, /function normalizeTranslationSource\(text, target\)/);
-  assert.match(serverSource, /Pressga moy qo'shish kerak\. Moy darajasi kamaygan\. Daraja ko'rsatkichi ishlamayapti\./);
+  assert.match(appSource, /const AUTO_TRANSLATION_TARGET_LANG = "uz"/);
+  assert.match(appSource, /targetLanguage !== AUTO_TRANSLATION_TARGET_LANG/);
+  assert.match(appSource, /target !== AUTO_TRANSLATION_TARGET_LANG/);
+  assert.match(appSource, /currentLanguage\(\) !== AUTO_TRANSLATION_TARGET_LANG/);
+  assert.match(serverSource, /if \(language !== "uz"\) return JSON\.stringify\(payload\)/);
+  assert.match(serverSource, /if \(target !== "uz" \|\| !shouldTranslateText\(text\)\) return text/);
+  assert.match(serverSource, /const lang = target === "uz" \? "uz" : ""/);
   assert.match(serverSource, /const TRANSLATION_CACHE_VERSION = "v2"/);
   assert.match(serverSource, /`\$\{TRANSLATION_CACHE_VERSION\}:\$\{target\}::/);
   assert.match(serverSource, /const originals = \[\.\.\.new Set/);

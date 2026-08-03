@@ -719,7 +719,7 @@
   let saveTimer = 0;
   let sectionSelectorVisible = false;
 
-  let activeOptionalSections = new Set();
+  let activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
   let collapsedOptionalSections = new Set();
 
   const dynamicRows = {
@@ -891,13 +891,20 @@
   }
 
   function getEmployees() {
+    let storedUsers = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem("ppr-pwa-users-v1") || "[]");
+      if (Array.isArray(parsed)) storedUsers = parsed;
+    } catch {}
+
     const candidates = [
       window.employees,
       window.users,
       window.appState?.employees,
       window.appState?.users,
       window.PPR?.employees,
-      window.PprApp?.employees
+      window.PprApp?.employees,
+      storedUsers
     ];
 
     const list = candidates.find(Array.isArray) || [];
@@ -974,6 +981,8 @@
         source._id ??
         source.userId ??
         source.login ??
+        source.employeeId ??
+        source.phone ??
         ""
       ),
 
@@ -2806,6 +2815,17 @@
     if (!employeeId) return;
 
     if (employeeId === "manual") {
+      const container =
+        select.closest("[data-dynamic-row]") ||
+        select.closest("[data-employee-group]") ||
+        select.closest(".work-permit-grid") ||
+        select.parentElement?.parentElement;
+      const manualInput = container?.querySelector(
+        'input[name$="_name"], input[name$="_member"], input[type="text"]'
+      );
+      manualInput?.removeAttribute("readonly");
+      manualInput?.focus();
+      manualInput?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -2887,6 +2907,16 @@
       );
 
       updateRelatedIssuerFields();
+    }
+
+    if (
+      select.name ===
+      "completed_by_employee_id"
+    ) {
+      fillEmployeeFields(
+        "completed_by",
+        employee
+      );
     }
 
     if (
@@ -3063,6 +3093,9 @@
   function optionalSectionToolbar(
     sectionId
   ) {
+    // Every section is permanently visible. Only optional rows are added on demand.
+    return "";
+    /* legacy removable-section toolbar
     return `
       <div
         class="work-permit-optional-toolbar no-print">
@@ -3089,9 +3122,13 @@
         </div>
       </div>
     `;
+    */
   }
 
   function sectionSelectorHtml() {
+    // The complete permit structure is always present on screen.
+    return "";
+    /* legacy section picker
     return `
       <section
         class="work-permit-section-constructor no-print">
@@ -3166,6 +3203,7 @@
         </div>
       </section>
     `;
+    */
   }
 
   function sectionElement(sectionId) {
@@ -3287,17 +3325,12 @@
 
         if (!section) return;
 
-        const active =
-          activeOptionalSections.has(
-            sectionId
-          );
+        const active = true;
+        const collapsed = false;
 
-        const collapsed =
-          collapsedOptionalSections.has(
-            sectionId
-          );
-
-        section.hidden = !active;
+        activeOptionalSections.add(sectionId);
+        collapsedOptionalSections.delete(sectionId);
+        section.hidden = false;
 
         section.classList.toggle(
           "is-collapsed",
@@ -3545,6 +3578,14 @@
           </button>
 
           <button
+            id="workPermitSharePdfButton"
+            class="work-permit-share-button"
+            type="button">
+
+            PDF / WhatsApp
+          </button>
+
+          <button
             id="workPermitClearButton"
             type="button">
 
@@ -3567,6 +3608,13 @@
         autocomplete="off">
 
         <article class="work-permit-paper">
+
+          <nav class="work-permit-flow no-print" aria-label="Этапы наряда-допуска">
+            <span><b>1</b> Создание</span>
+            <span><b>2</b> Безопасность</span>
+            <span><b>3</b> Бригада</span>
+            <span><b>4</b> Завершение</span>
+          </nav>
 
           ${sectionSelectorHtml()}
 
@@ -3845,6 +3893,40 @@
               "completedMeasuresSection",
               "h2"
             )}
+
+            <div class="work-permit-completed-summary">
+              <label class="work-permit-field work-permit-field-wide">
+                <span data-work-permit-i18n="measureNumber">
+                  ${escapeHtml(text("measureNumber"))}
+                </span>
+                ${textareaControl(
+                  "completed_measures_summary",
+                  "measureNumber",
+                  { rows: 5, readonly: true }
+                )}
+                <small>Заполняется автоматически из выбранных пунктов раздела 5</small>
+              </label>
+
+              <details class="work-permit-extra-details no-print">
+                <summary>＋ Добавить дополнительное уточнение</summary>
+                ${textareaControl(
+                  "completed_measures_extra",
+                  "safetyAdditional",
+                  { rows: 2 }
+                )}
+              </details>
+
+              <div class="work-permit-grid work-permit-grid-four">
+                ${field(
+                  "completed_by_employee_id",
+                  "completedBy",
+                  { employee: true }
+                )}
+                ${field("completed_by_name", "completedBy")}
+                ${field("completed_by_position", "position")}
+                ${field("completed_by_signature", "signature")}
+              </div>
+            </div>
 
             <div class="work-permit-table-wrap">
               <table
@@ -4533,6 +4615,7 @@
     );
 
     refreshCompletedMeasureSelects();
+    syncCompletedMeasuresSummary();
   }
 
   function selectedSafetyMeasures() {
@@ -4565,6 +4648,25 @@
             textarea?.value || ""
         };
       });
+  }
+
+  function syncCompletedMeasuresSummary() {
+    const summary = screen.querySelector(
+      '[name="completed_measures_summary"]'
+    );
+
+    if (!summary) return;
+
+    summary.value = selectedSafetyMeasures()
+      .map(item => {
+        const measure = SAFETY_MEASURES.find(entry => entry.id === item.id);
+        const title = measure ? text(measure.key) : item.id;
+        return item.details ? `${title} — ${item.details}` : title;
+      })
+      .join("\n");
+
+    syncPrintValue(summary);
+    growTextarea(summary);
   }
 
   function refreshCompletedMeasureSelects() {
@@ -4929,38 +5031,8 @@
   function restoreOptionalSections(
     draft
   ) {
-    activeOptionalSections =
-      new Set(
-        Array.isArray(
-          draft?.activeOptionalSections
-        )
-          ? draft
-              .activeOptionalSections
-              .filter(sectionId =>
-                OPTIONAL_SECTION_IDS
-                  .includes(
-                    sectionId
-                  )
-              )
-          : []
-      );
-
-    collapsedOptionalSections =
-      new Set(
-        Array.isArray(
-          draft
-            ?.collapsedOptionalSections
-        )
-          ? draft
-              .collapsedOptionalSections
-              .filter(sectionId =>
-                OPTIONAL_SECTION_IDS
-                  .includes(
-                    sectionId
-                  )
-              )
-          : []
-      );
+    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+    collapsedOptionalSections = new Set();
   }
 
   function restoreSafetyMeasures(
@@ -5375,7 +5447,7 @@
       );
     } catch {}
 
-    activeOptionalSections.clear();
+    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
     collapsedOptionalSections.clear();
 
     Object.keys(
@@ -5504,6 +5576,71 @@
       });
 
     updateOptionalSectionsUi();
+  }
+
+  async function sharePermitPdf() {
+    const button = screen.querySelector("#workPermitSharePdfButton");
+    const paper = screen.querySelector(".work-permit-paper");
+    if (!paper || typeof window.html2pdf !== "function") {
+      window.alert("Создание PDF пока недоступно. Обновите страницу и попробуйте снова.");
+      return;
+    }
+
+    saveDraft(false);
+    prepareForPrint();
+    const originalText = button?.textContent || "PDF / WhatsApp";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Создаём PDF…";
+    }
+
+    try {
+      const number = screen.querySelector('[name="permit_number"]')?.value || "draft";
+      const fileName = `naryad-dopusk-${number}.pdf`;
+      const worker = window.html2pdf()
+        .set({
+          margin: [8, 8, 8, 8],
+          filename: fileName,
+          image: { type: "jpeg", quality: 0.96 },
+          html2canvas: { scale: 1.55, useCORS: true, backgroundColor: "#ffffff" },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"], avoid: [".work-permit-section"] }
+        })
+        .from(paper)
+        .toPdf();
+      const pdf = await worker.get("pdf");
+      const blob = pdf.output("blob");
+      const file = new File([blob], fileName, { type: "application/pdf" });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: `${text("permitTitle")} ${number}`,
+          text: `${text("permitTitle")} № ${number}`,
+          files: [file]
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+        window.alert("PDF скачан. Прикрепите его в WhatsApp как документ.");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.error("Permit PDF share failed", error);
+        window.alert("Не удалось создать PDF. Используйте кнопку «Печать / PDF».");
+      }
+    } finally {
+      restoreAfterPrint();
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
   }
 
   function printPermit() {
@@ -5696,6 +5833,12 @@
         handleDynamicControlInput(
           control
         );
+
+        if (
+          SAFETY_MEASURES.some(measure => measure.fieldName === control.name)
+        ) {
+          syncCompletedMeasuresSummary();
+        }
 
         syncPrintValue(
           control
@@ -5903,6 +6046,15 @@
 
     screen
       .querySelector(
+        "#workPermitSharePdfButton"
+      )
+      ?.addEventListener(
+        "click",
+        sharePermitPdf
+      );
+
+    screen
+      .querySelector(
         "#workPermitClearButton"
       )
       ?.addEventListener(
@@ -6084,6 +6236,146 @@
         align-items: center;
       }
 
+      .work-permit-screen {
+        background:
+          radial-gradient(circle at 8% 0%, rgba(20, 184, 219, .16), transparent 32%),
+          linear-gradient(180deg, #edf8fb 0, #f6f8fb 360px, #eef2f6 100%);
+      }
+
+      .work-permit-toolbar {
+        border: 1px solid rgba(20, 126, 160, .18);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, .94);
+        box-shadow: 0 18px 48px rgba(22, 69, 91, .13);
+        backdrop-filter: blur(16px);
+      }
+
+      .work-permit-toolbar-actions button,
+      .work-permit-add-row,
+      .work-permit-extra-details summary {
+        min-height: 44px;
+        border: 0;
+        border-radius: 12px;
+        background: #e9f6fa;
+        color: #075d78;
+        font-weight: 800;
+      }
+
+      .work-permit-share-button {
+        color: #fff !important;
+        background: linear-gradient(135deg, #12a864, #087a49) !important;
+        box-shadow: 0 8px 20px rgba(8, 122, 73, .24);
+      }
+
+      .work-permit-paper {
+        border: 1px solid rgba(24, 91, 113, .13);
+        border-radius: 22px;
+        box-shadow: 0 24px 70px rgba(24, 65, 84, .13);
+      }
+
+      .work-permit-flow {
+        position: sticky;
+        top: 8px;
+        z-index: 8;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin: 0 0 18px;
+        padding: 8px;
+        border: 1px solid #d5e8ef;
+        border-radius: 16px;
+        background: rgba(246, 252, 254, .94);
+        backdrop-filter: blur(12px);
+      }
+
+      .work-permit-flow span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 38px;
+        border-radius: 11px;
+        color: #315e70;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .work-permit-flow b {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        color: #fff;
+        background: #1286aa;
+      }
+
+      .work-permit-section {
+        border: 1px solid #dce8ed;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(35, 77, 95, .055);
+      }
+
+      .work-permit-section > h2 {
+        color: #0b6684;
+      }
+
+      .work-permit-safety-item {
+        transition: border-color .18s ease, background .18s ease, transform .18s ease;
+      }
+
+      .work-permit-safety-item.is-enabled {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(22, 163, 74, .09);
+      }
+
+      .work-permit-completed-summary {
+        display: grid;
+        gap: 14px;
+      }
+
+      [data-optional-section="completedMeasures"] > .work-permit-table-wrap,
+      [data-optional-section="completedMeasures"] > .work-permit-add-row {
+        display: none !important;
+      }
+
+      [name="completed_measures_summary"] {
+        min-height: 132px;
+        border-color: #92d5b0 !important;
+        background: #f0fbf5 !important;
+        color: #145f3b;
+        font-weight: 700;
+      }
+
+      .work-permit-extra-details {
+        border: 1px dashed #a9cbd7;
+        border-radius: 13px;
+        padding: 8px;
+        background: #f8fcfd;
+      }
+
+      .work-permit-extra-details summary {
+        display: flex;
+        align-items: center;
+        width: max-content;
+        padding: 0 14px;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      .work-permit-extra-details[open] textarea {
+        margin-top: 10px;
+      }
+
+      [name="start_producer"],
+      [name="start_admitter"],
+      [name="permit_returned"],
+      [name="permit_accepted"] {
+        border-color: #9ad1e1 !important;
+        background: #f0f9fc !important;
+      }
+
       @media print {
         .work-permit-optional-section.is-collapsed
         > :not(.work-permit-optional-toolbar):not(h2) {
@@ -6092,6 +6384,88 @@
       }
 
       @media (max-width: 700px) {
+        .work-permit-screen {
+          padding-bottom: 92px;
+        }
+
+        .work-permit-paper {
+          border-radius: 16px;
+          box-shadow: 0 12px 32px rgba(24, 65, 84, .1);
+        }
+
+        .work-permit-flow {
+          grid-template-columns: repeat(2, 1fr);
+          top: 4px;
+        }
+
+        .work-permit-flow span {
+          justify-content: flex-start;
+          padding: 0 7px;
+          font-size: 11px;
+        }
+
+        .work-permit-toolbar-actions {
+          position: fixed;
+          z-index: 1000;
+          right: 8px;
+          bottom: calc(8px + env(safe-area-inset-bottom));
+          left: 8px;
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 6px;
+          padding: 8px;
+          border: 1px solid rgba(13, 100, 126, .2);
+          border-radius: 17px;
+          background: rgba(255, 255, 255, .96);
+          box-shadow: 0 16px 44px rgba(10, 48, 65, .28);
+          backdrop-filter: blur(18px);
+        }
+
+        .work-permit-toolbar-actions label {
+          display: none;
+        }
+
+        .work-permit-toolbar-actions button {
+          min-width: 0;
+          min-height: 48px;
+          padding: 6px;
+          font-size: 10px;
+          line-height: 1.15;
+        }
+
+        .work-permit-section {
+          padding: 14px;
+          border-radius: 14px;
+        }
+
+        .work-permit-grid,
+        .work-permit-employee-group {
+          grid-template-columns: 1fr !important;
+        }
+
+        .work-permit-safety-check {
+          align-items: flex-start;
+          min-height: 48px;
+        }
+
+        .work-permit-add-row {
+          width: 100%;
+          min-height: 48px;
+        }
+
+        .work-permit-responsive-table tbody tr {
+          margin-bottom: 12px;
+          border: 1px solid #d9e7ec;
+          border-radius: 14px;
+          background: #fbfdfe;
+          box-shadow: 0 6px 18px rgba(27, 73, 91, .06);
+        }
+
+        .work-permit-responsive-table td,
+        .work-permit-responsive-table th {
+          padding: 9px !important;
+        }
+
         .work-permit-constructor-heading {
           align-items: stretch;
           flex-direction: column;

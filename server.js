@@ -119,7 +119,8 @@ function isPublicStaticPath(relativePath = "") {
   if (publicRootFiles.has(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   if (normalized === "assets/hofmann-forklift.png") return true;
-  return normalized === "node_modules/jsqr/dist/jsQR.js";
+  return normalized === "node_modules/jsqr/dist/jsQR.js"
+    || normalized === "node_modules/html2pdf.js/dist/html2pdf.bundle.min.js";
 }
 
 function directoryStorageStats(directory) {
@@ -1190,6 +1191,7 @@ function subscriptionMatchesRemarkServer(db, subscriptionEntry, remarkRecord = {
 
 async function localizedPushPayloadServer(payload, subscriptionEntry) {
   const language = ["ru", "kk", "uz"].includes(String(subscriptionEntry?.profile?.language || "")) ? String(subscriptionEntry.profile.language) : "ru";
+  if (language !== "uz") return JSON.stringify(payload);
   const [title, body] = await Promise.all([
     translateExternal(String(payload.title || ""), language),
     translateExternal(String(payload.body || ""), language)
@@ -2115,7 +2117,7 @@ function normalizeTranslationSource(text, target) {
 }
 
 async function translateExternal(text, target) {
-  if (!shouldTranslateText(text) || !TRANSLATE_LANGS.has(target)) return text;
+  if (target !== "uz" || !shouldTranslateText(text)) return text;
   const sourceText = normalizeTranslationSource(text, target);
   const endpoint = process.env.TRANSLATE_API_URL || "https://translate.googleapis.com/translate_a/single";
   const url = endpoint.includes("translate_a/single")
@@ -2143,7 +2145,14 @@ async function translateExternal(text, target) {
 }
 
 async function translateTexts(texts, target) {
-  const lang = TRANSLATE_LANGS.has(target) ? target : "ru";
+  const lang = target === "uz" ? "uz" : "";
+  if (!lang) {
+    return Object.fromEntries((Array.isArray(texts) ? texts : [])
+      .map(value => String(value ?? "").trim())
+      .filter(shouldTranslateText)
+      .slice(0, 250)
+      .map(text => [text, text]));
+  }
   const db = readDb();
   db.translationCache ||= {};
   const result = {};
@@ -4201,7 +4210,7 @@ async function handleApi(req, res, pathname, url) {
     const target = String(body.target || "ru").trim();
     const texts = Array.isArray(body.texts) ? body.texts : [];
     const translations = await translateTexts(texts, target);
-    sendJson(res, 200, { ok: true, target: TRANSLATE_LANGS.has(target) ? target : "ru", translations });
+    sendJson(res, 200, { ok: true, target: target === "uz" ? "uz" : target, translations });
     return true;
   }
 

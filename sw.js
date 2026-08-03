@@ -1,16 +1,17 @@
-const CACHE_NAME = "ppr-v333-work-permit";
+const CACHE_NAME = "ppr-v334-work-permit-mobile";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=333-work-permit",
+  "./styles.css?v=334-work-permit-mobile",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./modules/work-permit.js?v=333-work-permit",
-  "./app.js?v=333-work-permit",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=334-work-permit-mobile",
+  "./modules/work-permit.js?v=334-work-permit-mobile",
+  "./app.js?v=334-work-permit-mobile",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
