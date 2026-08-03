@@ -4175,7 +4175,8 @@
                   "start_date",
                   "workStartDate",
                   {
-                    type: "date"
+                    type: "date",
+                    value: localDateValue()
                   }
                 )}
 
@@ -4183,7 +4184,8 @@
                   "start_time",
                   "workStartTime",
                   {
-                    type: "time"
+                    type: "time",
+                    value: localTimeValue()
                   }
                 )}
 
@@ -5423,6 +5425,27 @@
     );
   }
 
+  function applyCurrentDateTimeDefaults() {
+    const now = new Date();
+    const defaults = {
+      issuer_date: localDateValue(now),
+      start_date: localDateValue(now),
+      start_time: localTimeValue(now)
+    };
+
+    Object.entries(defaults).forEach(([name, value]) => {
+      const control = screen.querySelector(
+        `[name="${CSS.escape(name)}"]`
+      );
+      if (!control) return;
+
+      if (name === "issuer_date" || !control.value) {
+        control.value = value;
+        syncPrintValue(control);
+      }
+    });
+  }
+
   async function restoreDraft() {
     let draft = null;
 
@@ -5471,6 +5494,8 @@
     restoreFormValues(
       draft?.values
     );
+
+    applyCurrentDateTimeDefaults();
 
     restoreSafetyMeasures(
       draft?.safetyMeasures
