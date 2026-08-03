@@ -99,6 +99,7 @@ const AGGREGATE_JOURNAL_ROWS_PER_SHEET = 10;
 const LANGUAGE_KEY = "ppr-user-language-v1";
 const TRANSLATION_CACHE_KEY = "ppr-translation-cache-v2";
 const TRANSLATION_SOURCE_LANG = "ru";
+const AUTO_TRANSLATION_TARGET_LANG = "uz";
 const translatedNodeOriginals = new WeakMap();
 const translatedTextNodes = new Set();
 const translatedAttributeTargets = new Set();
@@ -3466,7 +3467,7 @@ function userTextWithRussianHtml(value) {
   const text = String(value || "").trim();
   if (!text) return "";
   const target = currentLanguage();
-  const cached = getCachedTranslation(target, text);
+  const cached = target === AUTO_TRANSLATION_TARGET_LANG ? getCachedTranslation(target, text) : "";
   return `<span class="user-text-original" data-user-text-localized="${escapeHtml(encodeURIComponent(text))}" data-no-translate>${escapeHtml(cached || text)}</span>`;
 }
 
@@ -3474,6 +3475,14 @@ async function translateUserTextsForCurrentProfile() {
   const targets = [...document.querySelectorAll("[data-user-text-localized]")];
   if (!targets.length) return;
   const targetLanguage = currentLanguage();
+  if (targetLanguage !== AUTO_TRANSLATION_TARGET_LANG) {
+    targets.forEach(el => {
+      try {
+        el.textContent = decodeURIComponent(el.dataset.userTextLocalized || "").trim();
+      } catch {}
+    });
+    return;
+  }
   const byText = new Map();
   targets.forEach(el => {
     try {
@@ -3525,7 +3534,7 @@ function restoreTranslatedPage(root = document.body) {
 async function translateVisiblePage(force = false) {
   const target = currentLanguage();
   const root = translationRoot();
-  if (!root || target === TRANSLATION_SOURCE_LANG) {
+  if (!root || target !== AUTO_TRANSLATION_TARGET_LANG) {
     if (translatedTextNodes.size || translatedAttributeTargets.size) restoreTranslatedPage(root || document.body);
     return;
   }
@@ -3585,7 +3594,7 @@ async function translateVisiblePage(force = false) {
 
 function queueTranslateVisiblePage(force = false) {
   clearTimeout(translationTimer);
-  if (currentLanguage() === TRANSLATION_SOURCE_LANG) {
+  if (currentLanguage() !== AUTO_TRANSLATION_TARGET_LANG) {
     if (translatedTextNodes.size || translatedAttributeTargets.size) {
       restoreTranslatedPage(translationRoot() || document.body);
     }
