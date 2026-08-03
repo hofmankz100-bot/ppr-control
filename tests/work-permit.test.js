@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=350-work-permit-mobile-sequence/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=350-work-permit-mobile-sequence/);
-  assert.match(html, /modules\/work-permit\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=351-work-permit-live-times/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=351-work-permit-live-times/);
+  assert.match(html, /modules\/work-permit\.js\?v=351-work-permit-live-times/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -152,13 +152,19 @@ test("printing claims the next shared permit number and refreshes its timestamp"
   assert.match(server, /workPermitLastNumber/);
   assert.match(server, /work_permit_number_claimed/);
   assert.match(server, /String\(result\)\.padStart\(4, "0"\)/);
+  assert.match(permit, /start_date:\s*localDateValue\(now\)/);
+  assert.match(permit, /start_time:\s*localTimeValue\(now\)/);
+  assert.match(permit, /dynamicRows\.brigade\.forEach\(row =>/);
+  assert.match(permit, /row\.briefing = localDateTimeValue\(now\)/);
+  assert.match(permit, /value:\s*permitState\[prefix\]\?\.organization \|\| DEFAULT_COMPANY_NAME/);
+  assert.match(permit, /readonly:\s*false,[\s\S]*?organization \|\| DEFAULT_COMPANY_NAME/);
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v350-work-permit-mobile-sequence/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=350-work-permit-mobile-sequence/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=350-work-permit-mobile-sequence/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=350-work-permit-mobile-sequence/);
-  assert.match(serviceWorker, /styles\.css\?v=350-work-permit-mobile-sequence/);
-  assert.match(serviceWorker, /app\.js\?v=350-work-permit-mobile-sequence/);
+  assert.match(serviceWorker, /ppr-v351-work-permit-live-times/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=351-work-permit-live-times/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=351-work-permit-live-times/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=351-work-permit-live-times/);
+  assert.match(serviceWorker, /styles\.css\?v=351-work-permit-live-times/);
+  assert.match(serviceWorker, /app\.js\?v=351-work-permit-live-times/);
 });

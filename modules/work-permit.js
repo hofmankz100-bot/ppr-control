@@ -1189,12 +1189,22 @@
     permitState.createdAt = now.toISOString();
     const values = {
       permit_date: localDateValue(now),
-      created_at: localDateTimeValue(now)
+      created_at: localDateTimeValue(now),
+      start_date: localDateValue(now),
+      start_time: localTimeValue(now)
     };
     Object.entries(values).forEach(([name, value]) => {
       const control = screen.querySelector(`[name="${name}"]`);
       if (!control) return;
       control.value = value;
+      syncPrintValue(control);
+    });
+
+    dynamicRows.brigade.forEach(row => {
+      row.briefing = localDateTimeValue(now);
+      const control = screen.querySelector(`[name="brigade_${CSS.escape(row.id)}_briefing"]`);
+      if (!control) return;
+      control.value = row.briefing;
       syncPrintValue(control);
     });
   }
@@ -1557,7 +1567,7 @@
                 "organization",
                 {
                   readonly: false,
-                  value: permitState[prefix]?.organization || ""
+                  value: permitState[prefix]?.organization || DEFAULT_COMPANY_NAME
                 }
               )
             : ""
