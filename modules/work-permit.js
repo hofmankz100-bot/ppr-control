@@ -11,7 +11,7 @@
    * ============================================================
    */
 
-  const DRAFT_KEY = "ppr-work-permit-draft-v3";
+  const DRAFT_KEY_PREFIX = "ppr-work-permit-draft-v4";
   const LANGUAGE_KEY = "ppr-work-permit-language-v1";
   const LOCAL_NUMBER_KEY = "ppr-work-permit-local-number-v1";
 
@@ -746,6 +746,7 @@
 
   let language = loadLanguage();
   let saveTimer = 0;
+  let activeDraftOwnerKey = "";
   let sectionSelectorVisible = false;
   let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
@@ -919,6 +920,42 @@
     }
 
     return normalizeEmployee(user);
+  }
+
+  function draftOwnerKey() {
+    const employee = getCurrentUser();
+    const identity = [
+      employee.id,
+      employee.name
+    ].filter(Boolean).join("|").toLowerCase() || "anonymous";
+    let hash = 2166136261;
+    for (let index = 0; index < identity.length; index += 1) {
+      hash ^= identity.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${DRAFT_KEY_PREFIX}-${(hash >>> 0).toString(36)}`;
+  }
+
+  function resetRuntimeForDraftOwner() {
+    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+    collapsedOptionalSections.clear();
+    Object.keys(dynamicRows).forEach(collection => {
+      dynamicRows[collection] = [];
+    });
+    Object.assign(permitState, {
+      status: "draft",
+      permitNumber: "",
+      createdAt: currentIsoDateTime(),
+      completedAt: "",
+      createdBy: getCurrentUser(),
+      producer: null,
+      admitter: null,
+      issuer: getCurrentUser(),
+      acceptedBy: null,
+      selectedWorkshop: null,
+      selectedEquipment: null
+    });
+    ensureInitialDynamicRows();
   }
 
   function getEmployees() {
@@ -5242,7 +5279,7 @@
 
     try {
       localStorage.setItem(
-        DRAFT_KEY,
+        draftOwnerKey(),
         JSON.stringify(
           payload
         )
@@ -5452,7 +5489,7 @@
     try {
       draft = JSON.parse(
         localStorage.getItem(
-          DRAFT_KEY
+          draftOwnerKey()
         ) || "null"
       );
     } catch {}
@@ -5773,7 +5810,7 @@
 
     try {
       localStorage.removeItem(
-        DRAFT_KEY
+        draftOwnerKey()
       );
     } catch {}
 
@@ -7171,6 +7208,11 @@
    */
 
   async function activate() {
+    const nextDraftOwnerKey = draftOwnerKey();
+    if (activeDraftOwnerKey !== nextDraftOwnerKey) {
+      resetRuntimeForDraftOwner();
+      activeDraftOwnerKey = nextDraftOwnerKey;
+    }
     await loadInstructionRecords();
     await restoreDraft();
     applyLanguage(language);
@@ -7194,6 +7236,8 @@
       currentIsoDateTime();
 
     ensureInitialDynamicRows();
+
+    activeDraftOwnerKey = draftOwnerKey();
 
     await loadInstructionRecords();
     await restoreDraft();
