@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=346-work-permit-manual-events/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=346-work-permit-manual-events/);
-  assert.match(html, /modules\/work-permit\.js\?v=346-work-permit-manual-events/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=347-work-permit-inline-sections/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=347-work-permit-inline-sections/);
+  assert.match(html, /modules\/work-permit\.js\?v=347-work-permit-inline-sections/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -25,6 +25,10 @@ test("all permit sections stay visible while optional rows remain dynamic", () =
   assert.match(permit, /let activeOptionalSections = new Set\(OPTIONAL_SECTION_IDS\)/);
   assert.match(permit, /function sectionSelectorHtml\(\)[\s\S]*?return ""/);
   assert.match(permit, /section\.hidden = false/);
+  assert.match(permit, /data-collapse-section=/);
+  assert.match(permit, /collapsedOptionalSections\.has\(sectionId\)/);
+  assert.match(permit, /text\("openSection"\)/);
+  assert.match(permit, /text\("closeSection"\)/);
   assert.match(permit, /data-add-dynamic-row/);
   assert.match(permit, /data-delete-dynamic-row/);
   assert.match(permit, /if \(index === 0\) return ""/);
@@ -118,10 +122,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v346-work-permit-manual-events/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=346-work-permit-manual-events/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=346-work-permit-manual-events/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=346-work-permit-manual-events/);
-  assert.match(serviceWorker, /styles\.css\?v=346-work-permit-manual-events/);
-  assert.match(serviceWorker, /app\.js\?v=346-work-permit-manual-events/);
+  assert.match(serviceWorker, /ppr-v347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /styles\.css\?v=347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /app\.js\?v=347-work-permit-inline-sections/);
 });

@@ -180,6 +180,8 @@
       remove: "Убрать",
       collapse: "Свернуть",
       expand: "Развернуть",
+      openSection: "Открыть раздел",
+      closeSection: "Закрыть раздел",
 
       addRow: "Добавить строку",
       deleteRow: "Удалить строку",
@@ -497,6 +499,12 @@
 
       expand:
         "Ашу",
+
+      openSection:
+        "Бөлімді ашу",
+
+      closeSection:
+        "Бөлімді жабу",
 
       addRow:
         "Жол қосу",
@@ -3245,36 +3253,25 @@
   function optionalSectionToolbar(
     sectionId
   ) {
-    // Every section is permanently visible. Only optional rows are added on demand.
-    return "";
-    /* legacy removable-section toolbar
     return `
       <div
         class="work-permit-optional-toolbar no-print">
 
-        <span
+        <strong
           class="work-permit-optional-label">
-          ${escapeHtml(text("optionalSection"))}
-        </span>
+          ${escapeHtml(optionalSectionTitle(sectionId))}
+        </strong>
 
         <div class="work-permit-optional-actions">
           <button
             type="button"
             data-collapse-section="${escapeHtml(sectionId)}">
 
-            ${escapeHtml(text("collapse"))}
-          </button>
-
-          <button
-            type="button"
-            data-remove-section="${escapeHtml(sectionId)}">
-
-            ${escapeHtml(text("remove"))}
+            ${escapeHtml(text("closeSection"))}
           </button>
         </div>
       </div>
     `;
-    */
   }
 
   function sectionSelectorHtml() {
@@ -3478,10 +3475,10 @@
         if (!section) return;
 
         const active = true;
-        const collapsed = false;
+        const collapsed =
+          collapsedOptionalSections.has(sectionId);
 
         activeOptionalSections.add(sectionId);
-        collapsedOptionalSections.delete(sectionId);
         section.hidden = false;
 
         section.classList.toggle(
@@ -3497,8 +3494,8 @@
         if (collapseButton) {
           collapseButton.textContent =
             collapsed
-              ? text("expand")
-              : text("collapse");
+              ? text("openSection")
+              : text("closeSection");
         }
 
         const checkbox =
@@ -5340,7 +5337,13 @@
     draft
   ) {
     activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
-    collapsedOptionalSections = new Set();
+    collapsedOptionalSections = new Set(
+      Array.isArray(draft?.collapsedOptionalSections)
+        ? draft.collapsedOptionalSections.filter(sectionId =>
+            OPTIONAL_SECTION_IDS.includes(sectionId)
+          )
+        : []
+    );
   }
 
   function restoreSafetyMeasures(
@@ -5883,8 +5886,10 @@
         if (!section) return;
 
         section.hidden =
-          !activeOptionalSections.has(
-            sectionId
+          !activeOptionalSections.has(sectionId) ||
+          (
+            collapsedOptionalSections.has(sectionId) &&
+            !sectionHasValues(sectionId)
           );
 
         section.classList.remove(
@@ -6562,7 +6567,33 @@
         margin-bottom: 10px;
         padding: 8px 10px;
         border-radius: 7px;
-        background: #f1f5f9;
+        border: 1px solid #cfe0e6;
+        background: #f4f9fb;
+      }
+
+      .work-permit-optional-label {
+        color: #0b6684;
+        font-size: 16px;
+      }
+
+      .work-permit-optional-actions button {
+        min-height: 38px;
+        padding: 7px 13px;
+        border: 1px solid #9fc8d5;
+        border-radius: 9px;
+        background: #fff;
+        color: #0b6684;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .work-permit-optional-section > h2 {
+        display: none;
+      }
+
+      .work-permit-paper.is-print-layout
+      .work-permit-optional-section > h2 {
+        display: block;
       }
 
       .work-permit-optional-section[hidden] {
@@ -6570,7 +6601,7 @@
       }
 
       .work-permit-optional-section.is-collapsed
-      > :not(.work-permit-optional-toolbar):not(h2) {
+      > :not(.work-permit-optional-toolbar) {
         display: none;
       }
 
@@ -7011,6 +7042,10 @@
       }
 
       @media print {
+        .work-permit-optional-section > h2 {
+          display: block !important;
+        }
+
         .work-permit-generated-safety-value {
           display: block !important;
         }
