@@ -367,10 +367,10 @@
         "Автоматически подставляется текущий инженер",
 
       producerAutoHint:
-        "После выбора сотрудника должность и организация подставятся автоматически",
+        "Введите один раз — ФИО автоматически повторится в связанных разделах",
 
       admitterAutoHint:
-        "Выбранный допускающий будет автоматически подставлен в связанные разделы",
+        "Введите один раз — допускающий автоматически повторится в связанных разделах",
 
       blankOption: "Выберите"
     },
@@ -1389,22 +1389,12 @@
         data-employee-group="${escapeHtml(prefix)}">
 
         ${field(
-          `${prefix}_employee_id`,
-          "employeeEntryMode",
-          {
-            employee: true,
-            selectedEmployeeId,
-            hintKey,
-            className: "work-permit-employee-choice"
-          }
-        )}
-
-        ${field(
           `${prefix}_name`,
           "fullName",
           {
             readonly: false,
-            className: "work-permit-employee-manual"
+            value: permitState[prefix]?.name || "",
+            hintKey
           }
         )}
 
@@ -1412,16 +1402,10 @@
           `${prefix}_position`,
           "position",
           {
-            readonly: false
+            readonly: false,
+            value: permitState[prefix]?.position || ""
           }
         )}
-
-        <button
-          type="button"
-          class="work-permit-employee-back no-print"
-          data-employee-use-list>
-          ← Выбрать из списка
-        </button>
 
         ${
           includeOrganization
@@ -1429,7 +1413,8 @@
                 `${prefix}_organization`,
                 "organization",
                 {
-                  readonly: false
+                  readonly: false,
+                  value: permitState[prefix]?.organization || ""
                 }
               )
             : ""
@@ -1584,23 +1569,8 @@
   function workLocationBlock() {
     return `
       <div class="work-permit-grid work-permit-grid-two">
-        <div class="work-permit-location-entry" data-location-entry="workshop">
-          <label class="work-permit-field work-permit-location-choice">
-            ${i18n("workshop")}
-            ${workshopSelect("workshop_id", permitState.selectedWorkshop?.name || "")}
-          </label>
-          ${field("workshop_manual", "workshop", { placeholder: text("manualInput"), className: "work-permit-location-manual" })}
-          <button type="button" class="work-permit-location-back no-print" data-location-use-list>← Выбрать из списка</button>
-        </div>
-
-        <div class="work-permit-location-entry" data-location-entry="equipment">
-          <label class="work-permit-field work-permit-location-choice">
-            ${i18n("equipment")}
-            ${equipmentSelect("equipment_id", permitState.selectedEquipment?.id || "", permitState.selectedWorkshop?.name || "")}
-          </label>
-          ${field("equipment_manual", "equipment", { placeholder: text("manualInput"), className: "work-permit-location-manual" })}
-          <button type="button" class="work-permit-location-back no-print" data-location-use-list>← Выбрать из списка</button>
-        </div>
+        ${field("workshop_manual", "workshop", { placeholder: text("manualInput") })}
+        ${field("equipment_manual", "equipment", { placeholder: text("manualInput") })}
 
         ${field(
           "work_place",
@@ -1696,19 +1666,11 @@
   }
 
   function dynamicEmployeeEntry(prefix, row, labelKey, valueKey = "name") {
-    return `
-      <div class="work-permit-employee-group" data-employee-group="${escapeHtml(prefix)}">
-        <div class="work-permit-employee-choice">
-          ${employeeSelect(`${prefix}_employee_id`, labelKey, row.employeeId || "")}
-        </div>
-        <div class="work-permit-employee-manual">
-          ${inputControl(`${prefix}_${valueKey}`, labelKey, { value: row[valueKey] || "" })}
-        </div>
-        <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
-          ← Выбрать из списка
-        </button>
-      </div>
-    `;
+    return inputControl(
+      `${prefix}_${valueKey}`,
+      labelKey,
+      { value: row[valueKey] || "" }
+    );
   }
 
   function leaderRowHtml(
@@ -2802,12 +2764,6 @@
     if (!match) return;
 
     const prefix = match[1];
-    const select = screen.querySelector(
-      `[name="${CSS.escape(`${prefix}_employee_id`)}"]`
-    );
-
-    if (select?.value !== "manual") return;
-
     const employee = manualEmployeeFromGroup(prefix);
     permitState[prefix] = employee;
 
@@ -3816,21 +3772,7 @@
             )}
 
             <div
-              class="work-permit-grid work-permit-grid-four work-permit-employee-group"
-              data-employee-group="issuer">
-
-              ${field(
-                "issuer_employee_id",
-                "employeeEntryMode",
-                {
-                  employee: true,
-                  className: "work-permit-employee-choice",
-                  selectedEmployeeId:
-                    permitState.issuer?.id || "",
-                  hintKey:
-                    "issuerAutoHint"
-                }
-              )}
+              class="work-permit-grid work-permit-grid-four">
 
               ${field(
                 "issuer_name",
@@ -3838,7 +3780,7 @@
                 {
                   value:
                     permitState.issuer?.name || "",
-                  className: "work-permit-employee-manual"
+                  hintKey: "issuerAutoHint"
                 }
               )}
 
@@ -3855,10 +3797,6 @@
                 "issuer_signature",
                 "signature"
               )}
-
-              <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
-                ← Выбрать из списка
-              </button>
 
               ${field(
                 "issuer_date",
@@ -3911,18 +3849,10 @@
                 )}
               </details>
 
-              <div class="work-permit-grid work-permit-grid-four work-permit-employee-group" data-employee-group="completed_by">
-                ${field(
-                  "completed_by_employee_id",
-                  "completedBy",
-                  { employee: true, className: "work-permit-employee-choice" }
-                )}
-                ${field("completed_by_name", "completedBy", { className: "work-permit-employee-manual" })}
+              <div class="work-permit-grid work-permit-grid-four">
+                ${field("completed_by_name", "completedBy")}
                 ${field("completed_by_position", "position")}
                 ${field("completed_by_signature", "signature")}
-                <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
-                  ← Выбрать из списка
-                </button>
               </div>
             </div>
 
