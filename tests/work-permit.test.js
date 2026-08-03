@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=351-work-permit-live-times/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=351-work-permit-live-times/);
-  assert.match(html, /modules\/work-permit\.js\?v=351-work-permit-live-times/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(html, /modules\/work-permit\.js\?v=352-work-permit-mobile-pdf/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -138,7 +138,13 @@ test("phone layout is card based with final actions and PDF sharing", () => {
   assert.match(permit, /manualInput[\s\S]*?\$\{options\}/);
   assert.match(permit, /function dynamicEmployeeEntry/);
   assert.match(permit, /position:\s*sticky;[\s\S]*?work-permit-final-actions/);
-  assert.match(permit, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(permit, /#workPermitFinishButton[\s\S]*?display:\s*none !important/);
+  assert.match(permit, /#workPermitPrintButton[\s\S]*?display:\s*none !important/);
+  assert.match(permit, /html2canvas:[\s\S]*?windowWidth:\s*1200[\s\S]*?windowHeight:\s*1600/);
+  assert.match(permit, /form\.dataset\.eventsBound === "true"/);
+  assert.match(permit, /form\.addEventListener\(\s*"click"/);
+  assert.match(permit, /openSection:\s*"Показать поля"/);
+  assert.match(permit, /closeSection:\s*"Скрыть поля"/);
   assert.match(permit, /work-permit-row-actions\.work-permit-empty-cell/);
 });
 
@@ -161,10 +167,10 @@ test("printing claims the next shared permit number and refreshes its timestamp"
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v351-work-permit-live-times/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=351-work-permit-live-times/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=351-work-permit-live-times/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=351-work-permit-live-times/);
-  assert.match(serviceWorker, /styles\.css\?v=351-work-permit-live-times/);
-  assert.match(serviceWorker, /app\.js\?v=351-work-permit-live-times/);
+  assert.match(serviceWorker, /ppr-v352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /styles\.css\?v=352-work-permit-mobile-pdf/);
+  assert.match(serviceWorker, /app\.js\?v=352-work-permit-mobile-pdf/);
 });

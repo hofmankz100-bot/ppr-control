@@ -210,8 +210,8 @@
       remove: "Убрать",
       collapse: "Свернуть",
       expand: "Развернуть",
-      openSection: "Открыть раздел",
-      closeSection: "Закрыть раздел",
+      openSection: "Показать поля",
+      closeSection: "Скрыть поля",
 
       addRow: "Добавить строку",
       deleteRow: "Удалить строку",
@@ -536,10 +536,10 @@
         "Ашу",
 
       openSection:
-        "Бөлімді ашу",
+        "Өрістерді көрсету",
 
       closeSection:
-        "Бөлімді жабу",
+        "Өрістерді жасыру",
 
       addRow:
         "Жол қосу",
@@ -6060,7 +6060,15 @@
           margin: [10, 10, 8, 22],
           filename: fileName,
           image: { type: "jpeg", quality: 0.96 },
-          html2canvas: { scale: 1.55, useCORS: true, backgroundColor: "#ffffff" },
+          html2canvas: {
+            scale: 1.55,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            windowWidth: 1200,
+            windowHeight: 1600,
+            scrollX: 0,
+            scrollY: 0
+          },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
           pagebreak: { mode: ["css", "legacy"], avoid: [".work-permit-section"] }
         })
@@ -6290,6 +6298,9 @@
         "#workPermitForm"
       );
 
+    if (!form || form.dataset.eventsBound === "true") return;
+    form.dataset.eventsBound = "true";
+
     form?.addEventListener(
       "input",
       event => {
@@ -6414,7 +6425,7 @@
       }
     );
 
-    screen.addEventListener(
+    form.addEventListener(
       "click",
       event => {
         const saveInstructionButton = event.target.closest("[data-save-instruction]");
@@ -7434,7 +7445,7 @@
           position: sticky;
           z-index: 12;
           bottom: calc(68px + env(safe-area-inset-bottom));
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: 1fr;
           gap: 8px;
           padding: 9px;
           border: 1px solid rgba(15, 112, 142, .2);
@@ -7445,7 +7456,11 @@
         }
 
         .work-permit-final-actions #workPermitFinishButton {
-          grid-column: 1 / -1;
+          display: none !important;
+        }
+
+        .work-permit-final-actions #workPermitPrintButton {
+          display: none !important;
         }
 
         .work-permit-final-actions button {
