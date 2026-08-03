@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=345-work-permit-private-drafts/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=345-work-permit-private-drafts/);
-  assert.match(html, /modules\/work-permit\.js\?v=345-work-permit-private-drafts/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=346-work-permit-manual-events/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=346-work-permit-manual-events/);
+  assert.match(html, /modules\/work-permit\.js\?v=346-work-permit-manual-events/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -89,6 +89,10 @@ test("permit draft and print-safe values are preserved", () => {
   assert.match(permit, /function draftOwnerKey\(\)/);
   assert.match(permit, /activeDraftOwnerKey !== nextDraftOwnerKey/);
   assert.match(permit, /function resetRuntimeForDraftOwner\(\)/);
+  assert.match(permit, /version: 4/);
+  assert.match(permit, /start: ""/);
+  assert.match(permit, /date: ""/);
+  assert.doesNotMatch(permit, /function brigadeChangeTypeOptions\(/);
   assert.match(permit, /function applyCurrentDateTimeDefaults\(\)/);
   assert.match(permit, /issuer_date: localDateValue\(now\)/);
   assert.match(permit, /start_date: localDateValue\(now\)/);
@@ -114,10 +118,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v345-work-permit-private-drafts/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=345-work-permit-private-drafts/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=345-work-permit-private-drafts/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=345-work-permit-private-drafts/);
-  assert.match(serviceWorker, /styles\.css\?v=345-work-permit-private-drafts/);
-  assert.match(serviceWorker, /app\.js\?v=345-work-permit-private-drafts/);
+  assert.match(serviceWorker, /ppr-v346-work-permit-manual-events/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=346-work-permit-manual-events/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=346-work-permit-manual-events/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=346-work-permit-manual-events/);
+  assert.match(serviceWorker, /styles\.css\?v=346-work-permit-manual-events/);
+  assert.match(serviceWorker, /app\.js\?v=346-work-permit-manual-events/);
 });

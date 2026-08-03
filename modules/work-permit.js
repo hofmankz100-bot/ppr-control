@@ -2292,32 +2292,6 @@
     `;
   }
 
-  function brigadeChangeTypeOptions(
-    selectedValue = ""
-  ) {
-    return `
-      <option value="">
-        ${escapeHtml(text("blankOption"))}
-      </option>
-
-      <option
-        value="added"
-        ${selectedValue === "added"
-          ? "selected"
-          : ""}>
-        ${escapeHtml(text("addedMembers"))}
-      </option>
-
-      <option
-        value="removed"
-        ${selectedValue === "removed"
-          ? "selected"
-          : ""}>
-        ${escapeHtml(text("removedMembers"))}
-      </option>
-    `;
-  }
-
   function changeRowHtml(
     row,
     index
@@ -2335,19 +2309,11 @@
         </th>
 
         ${tableCell(
-          `
-            <select
-              name="${escapeHtml(`${prefix}_type`)}"
-              data-work-permit-aria="changeType"
-              aria-label="${escapeHtml(text("changeType"))}">
-
-              ${brigadeChangeTypeOptions(
-                row.type || ""
-              )}
-            </select>
-
-            ${printMirror(`${prefix}_type`)}
-          `,
+          inputControl(
+            `${prefix}_type`,
+            "changeType",
+            { value: row.type || "" }
+          ),
           "changeType"
         )}
 
@@ -2483,7 +2449,7 @@
     if (collection === "breaks") {
       return {
         ...base,
-        start: localDateTimeValue(),
+        start: "",
         workplace: "",
         producer:
           permitState.producer?.name || "",
@@ -2505,7 +2471,7 @@
         member: "",
         issuer:
           permitState.issuer?.name || "",
-        date: localDateTimeValue()
+        date: ""
       };
     }
 
@@ -5249,7 +5215,7 @@
     );
 
     const payload = {
-      version: 3,
+      version: 4,
 
       language,
 
@@ -5493,6 +5459,35 @@
         ) || "null"
       );
     } catch {}
+
+    if (draft && Number(draft.version || 0) < 4) {
+      if (Array.isArray(draft.dynamicRows?.breaks)) {
+        draft.dynamicRows.breaks = draft.dynamicRows.breaks.map(row => ({
+          ...row,
+          start: "",
+          resume: ""
+        }));
+      }
+      if (Array.isArray(draft.dynamicRows?.changes)) {
+        draft.dynamicRows.changes = draft.dynamicRows.changes.map(row => ({
+          ...row,
+          type: "",
+          date: ""
+        }));
+      }
+      if (draft.values && typeof draft.values === "object") {
+        Object.keys(draft.values).forEach(name => {
+          if (
+            /^break_.*_(start|resume)$/.test(name) ||
+            /^change_.*_(type|date)$/.test(name) ||
+            name === "finish_date" ||
+            name === "finish_time"
+          ) {
+            draft.values[name] = "";
+          }
+        });
+      }
+    }
 
     if (
       draft?.language === "ru" ||
@@ -5740,43 +5735,6 @@
       );
 
     if (!confirmed) return;
-
-    const now =
-      new Date();
-
-    const finishDate =
-      screen.querySelector(
-        '[name="finish_date"]'
-      );
-
-    const finishTime =
-      screen.querySelector(
-        '[name="finish_time"]'
-      );
-
-    if (
-      finishDate &&
-      !finishDate.value
-    ) {
-      finishDate.value =
-        localDateValue(now);
-
-      syncPrintValue(
-        finishDate
-      );
-    }
-
-    if (
-      finishTime &&
-      !finishTime.value
-    ) {
-      finishTime.value =
-        localTimeValue(now);
-
-      syncPrintValue(
-        finishTime
-      );
-    }
 
     permitState.status =
       "completed";
@@ -7221,6 +7179,7 @@
     growAllTextareas();
     syncAllPrintValues();
     bindEvents();
+    saveDraft(false);
   }
 
   async function initialize() {
