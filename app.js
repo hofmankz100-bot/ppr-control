@@ -271,6 +271,14 @@ const WALK_SHIFT_LABELS = {
   day: "Дневная смена",
   night: "Ночная смена"
 };
+const QR_WALK_GROUPS = Object.freeze({
+  technical: "Инженеры и электромеханики",
+  operational: "Операторы и начальники цехов"
+});
+
+function qrWalkGroup(role = profile?.role) {
+  return ["operator", "shop"].includes(String(role || "")) ? "operational" : "technical";
+}
 const ROLE_ACCESS = {
   mechanic: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
   electrician: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
@@ -536,6 +544,9 @@ let current = {
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
   aggregateRepairEquipmentId: 0,
+  qrWalkJournalDate: todayISO(),
+  qrWalkJournalGroup: "technical",
+  qrWalkJournalShift: currentWalkShift().key,
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
   gpmJournalKind: "gpm",
@@ -745,6 +756,21 @@ function ensureAggregateJournalUi() {
 }
 
 ensureAggregateJournalUi();
+
+function ensureQrWalkJournalUi() {
+  if (!document.querySelector("#qrWalkJournalScreen")) {
+    const section = document.createElement("section");
+    section.id = "qrWalkJournalScreen";
+    section.className = "view";
+    section.innerHTML = `
+      <div class="panel-head compact"><div><h1>Журнал QR-обходов</h1><p>Два независимых журнала по одинаковым QR-точкам оборудования</p></div></div>
+      <div id="qrWalkJournalPanel" class="aggregate-journal-list"></div>`;
+    document.querySelector(".screen")?.append(section);
+  }
+  ui.qrWalkJournalPanel = document.querySelector("#qrWalkJournalPanel");
+}
+
+ensureQrWalkJournalUi();
 
 function isOpenLegacyJournalRequest(req) {
   if (!req || typeof req !== "object") return false;
@@ -3710,6 +3736,7 @@ function canOpenView(view) {
   if (view === "engineerReport") return isProfileReady();
   if (view === "gpm") return isProfileReady();
   if (view === "workPermit") return isProfileReady();
+  if (view === "qrWalkJournal") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
   return true;
@@ -4771,15 +4798,18 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   if (!eq || !eq.nodes?.[nodeIndex]) return null;
   const now = new Date().toISOString();
   const rec = record(equipmentId, nodeIndex, date);
-  rec.to.walkShifts ||= {};
-  rec.to.walkShifts[shiftInfo.key] = {
+  const group = qrWalkGroup();
+  rec.to.walkGroups ||= {};
+  rec.to.walkGroups[group] ||= {};
+  rec.to.walkGroups[group][shiftInfo.key] = {
     done: true,
     at: now,
     byRole: profile?.role || "",
     byName: profile?.name || "",
     shift: shiftInfo.key,
     label: shiftInfo.label,
-    range: shiftInfo.range
+    range: shiftInfo.range,
+    group
   };
   rec.to.tasks[0] = false;
   rec.to.walkDone = false;
@@ -4801,6 +4831,10 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
         nodeIndex,
         date,
         shift: shiftInfo?.key || "",
+        group: qrWalkGroup(),
+        equipment: equipmentById(equipmentId)?.name || "",
+        area: equipmentById(equipmentId)?.area || "",
+        node: equipmentById(equipmentId)?.nodes?.[nodeIndex] || "",
         label: shiftInfo?.label || "",
         range: shiftInfo?.range || ""
       })
@@ -5629,15 +5663,17 @@ function legacyNodeChecked(item) {
   return Boolean(item?.walkDone || item?.tasks?.[0]);
 }
 
-function nodeShiftRecord(item, shiftKey) {
-  return item?.walkShifts?.[shiftKey] || null;
+function nodeShiftRecord(item, shiftKey, group = qrWalkGroup()) {
+  const grouped = item?.walkGroups?.[group]?.[shiftKey];
+  if (grouped) return grouped;
+  return group === "technical" ? item?.walkShifts?.[shiftKey] || null : null;
 }
 
-function isNodeShiftChecked(rec, shiftKey = visibleWalkShiftForDate(current.date).key) {
+function isNodeShiftChecked(rec, shiftKey = visibleWalkShiftForDate(current.date).key, group = qrWalkGroup()) {
   const item = rec?.to || rec || {};
-  const shift = nodeShiftRecord(item, shiftKey);
+  const shift = nodeShiftRecord(item, shiftKey, group);
   if (shift) return Boolean(shift.done);
-  return shiftKey === "day" && legacyNodeChecked(item);
+  return group === "technical" && shiftKey === "day" && legacyNodeChecked(item);
 }
 
 function isNodeChecked(rec) {
@@ -10680,6 +10716,7 @@ function render() {
   if (current.view === "workerRating") renderWorkerRating();
   if (current.view === "downtime") renderDowntime();
   if (current.view === "aggregateJournal") renderAggregateJournal();
+  if (current.view === "qrWalkJournal") renderQrWalkJournal();
   if (current.view === "gpm") renderGpmJournal();
   if (current.view === "workPermit") {
     const workPermitProfile = authenticatedProfile || profile || {};
@@ -11875,11 +11912,13 @@ function renderEquipment() {
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
+      ${profile?.role === "editor" ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
+  monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
     current.month -= 1;
     if (current.month < 0) {
@@ -14950,7 +14989,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
         months[month].qrPlan += eq.nodes.length * dueShiftKeys.length;
         eq.nodes.forEach((_, nodeIndex) => {
           const rec = getRecord(eq.id, nodeIndex, date);
-          months[month].qrDone += dueShiftKeys.filter(shiftKey => Boolean(rec?.to?.walkShifts?.[shiftKey]?.done)).length;
+          months[month].qrDone += dueShiftKeys.filter(shiftKey => Boolean(nodeShiftRecord(rec?.to || {}, shiftKey, "technical")?.done)).length;
         });
       });
     }
@@ -15182,6 +15221,7 @@ const WORK_RATING_POINTS = Object.freeze({
   remarkPress: 15,
   breakdown: 20,
   breakdownPress: 30,
+  selfRemarkBonus: 5,
   returnPenalty: -1
 });
 
@@ -15233,13 +15273,26 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
       // A warning changes the rating only after a supervisor has accepted it.
       if (event.confirmedAt && inPeriod(event.confirmedAt)) {
         const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.remarkPress : WORK_RATING_POINTS.remark;
-        participantList(event).forEach(participant => add(participant.role, participant.name, value, {
-          date: event.confirmedAt,
-          type: "remark",
-          title: "Устранено и подтверждено замечание",
-          equipment: event.equipment,
-          node: event.node
-        }));
+        participantList(event).forEach(participant => {
+          add(participant.role, participant.name, value, {
+            date: event.confirmedAt,
+            type: "remark",
+            title: "Устранено и подтверждено замечание",
+            equipment: event.equipment,
+            node: event.node
+          });
+          if (isElectromechanicRole(participant.role)
+            && sameWorkerRole(participant.role, event.authorRole)
+            && String(participant.name || "").trim().toLowerCase() === String(event.authorName || "").trim().toLowerCase()) {
+            add(participant.role, participant.name, WORK_RATING_POINTS.selfRemarkBonus, {
+              date: event.confirmedAt,
+              type: "self-remark-bonus",
+              title: "Сам обнаружил и устранил замечание · бонус +5",
+              equipment: event.equipment,
+              node: event.node
+            });
+          }
+        });
       }
       const penaltiesByWorker = new Map();
       (event.ratingReturns || []).filter(item => inPeriod(item.at)).forEach(item => {
@@ -15273,8 +15326,10 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
 
   const qrAwards = new Set();
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
-    Object.values(rec?.to?.walkShifts || {}).forEach(shift => {
+    const technicalShifts = { ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) };
+    Object.values(technicalShifts).forEach(shift => {
       if (!shift?.done || !inPeriod(shift.at)) return;
+      if (!isElectromechanicRole(shift.byRole)) return;
       const date = String(recordKey || "").split(":")[2] || String(shift.at || "").slice(0, 10);
       const key = `${workerRatingKey(shift.byRole, shift.byName)}:${date}:${shift.shift === "night" ? "night" : "day"}`;
       if (qrAwards.has(key)) return;
@@ -15474,7 +15529,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   });
 
   Object.values(state.checks || {}).forEach(rec => {
-    const shifts = rec?.to?.walkShifts || {};
+    const shifts = { ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) };
     Object.values(shifts).forEach(shift => {
       if (!shift?.done) return;
       const at = dateYearMonth(shift.at || "");
@@ -15552,7 +15607,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     if (event.type === "remark") worker.remarksResolved += 1;
   });
   Object.values(state.checks || {}).forEach(rec => {
-    Object.values(rec?.to?.walkShifts || {}).forEach(shift => {
+    Object.values({ ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) }).forEach(shift => {
       const at = dateYearMonth(shift?.at || "");
       if (!shift?.done || at?.year !== year || at.month !== monthIndex) return;
       const worker = ensureMonthWorker(shift.byRole, shift.byName);
@@ -17129,6 +17184,68 @@ function renderDowntime() {
       if (item && !item.endedAt) openDowntimeComment(item);
     });
   });
+}
+
+async function renderQrWalkJournal() {
+  if (!ui.qrWalkJournalPanel || profile?.role !== "editor") return;
+  ui.subtitle.textContent = "Журнал QR-обходов";
+  const date = current.qrWalkJournalDate || todayISO();
+  const group = current.qrWalkJournalGroup || "technical";
+  const shift = current.qrWalkJournalShift || currentWalkShift().key;
+  ui.qrWalkJournalPanel.innerHTML = `<div class="empty-state">Загружаем журнал QR-обходов…</div>`;
+  let entries = [];
+  try {
+    const result = await apiJson(`/api/qr-walk/journal?date=${encodeURIComponent(date)}`, { timeout: 12000 });
+    entries = Array.isArray(result?.entries) ? result.entries : [];
+  } catch {
+    ui.qrWalkJournalPanel.innerHTML = `<div class="empty-state">Не удалось загрузить журнал. Проверьте связь и повторите.</div>`;
+    return;
+  }
+  if (current.view !== "qrWalkJournal") return;
+  const selected = entries.filter(item => item.group === group && item.shift === shift);
+  const done = new Map(selected.map(item => [`${item.equipmentId}:${item.nodeIndex}`, item]));
+  const rows = visibleEquipment().flatMap(eq => eq.nodes.map((node, nodeIndex) => {
+    const entry = done.get(`${eq.id}:${nodeIndex}`);
+    return { eq, node, nodeIndex, entry };
+  }));
+  const completed = rows.filter(row => row.entry).length;
+  const groupCounts = {
+    technical: entries.filter(item => item.group === "technical" && item.shift === shift).length,
+    operational: entries.filter(item => item.group === "operational" && item.shift === shift).length
+  };
+  ui.qrWalkJournalPanel.innerHTML = `
+    <div class="qr-walk-journal-controls no-print">
+      <div class="segmented qr-walk-group-tabs">
+        ${Object.entries(QR_WALK_GROUPS).map(([key, label]) => `<button type="button" class="${group === key ? "active" : ""}" data-qr-journal-group="${key}">${escapeHtml(label)} · ${groupCounts[key]}</button>`).join("")}
+      </div>
+      <label>Дата <input type="date" data-qr-journal-date value="${escapeHtml(date)}"></label>
+      <div class="segmented">
+        <button type="button" class="${shift === "day" ? "active" : ""}" data-qr-journal-shift="day">День</button>
+        <button type="button" class="${shift === "night" ? "active" : ""}" data-qr-journal-shift="night">Ночь</button>
+      </div>
+      <button type="button" data-print-qr-journal>Печать / PDF</button>
+    </div>
+    <div class="aggregate-journal-sheet qr-walk-journal-sheet">
+      <div class="aggregate-sheet-head"><strong>Журнал QR-обходов: ${escapeHtml(QR_WALK_GROUPS[group])}</strong><span>${escapeHtml(dateHuman(date))} · ${shift === "night" ? "Ночь" : "День"}</span></div>
+      <div class="qr-walk-journal-summary"><strong>${completed} из ${rows.length}</strong><span>зафиксировано</span><b>${rows.length - completed}</b><span>не зафиксировано</span></div>
+      <div class="aggregate-journal-table-wrap"><table class="aggregate-journal-table qr-walk-journal-table">
+        <thead><tr><th>№</th><th>Цех</th><th>Оборудование</th><th>QR / узел</th><th>Статус</th><th>Кто выполнил</th><th>Должность</th><th>Дата и время</th><th>Смена</th></tr></thead>
+        <tbody>${rows.map((row, index) => `<tr class="${row.entry ? "qr-fixed" : "qr-missing"}"><td>${index + 1}</td><td>${escapeHtml(row.eq.area || "-")}</td><td>${escapeHtml(row.eq.name)}</td><td>${escapeHtml(row.node)}</td><td>${row.entry ? "✓ Зафиксирован" : "Не зафиксирован"}</td><td>${escapeHtml(row.entry?.byName || "-")}</td><td>${escapeHtml(row.entry ? requestRoleLabel(row.entry.byRole) : "-")}</td><td>${row.entry?.at ? escapeHtml(dateTimeHuman(row.entry.at)) : "-"}</td><td>${shift === "night" ? "Ночь" : "День"}</td></tr>`).join("")}</tbody>
+      </table></div>
+    </div>`;
+  ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-group]").forEach(button => button.addEventListener("click", () => { current.qrWalkJournalGroup = button.dataset.qrJournalGroup; renderQrWalkJournal(); }));
+  ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-shift]").forEach(button => button.addEventListener("click", () => { current.qrWalkJournalShift = button.dataset.qrJournalShift; renderQrWalkJournal(); }));
+  ui.qrWalkJournalPanel.querySelector("[data-qr-journal-date]")?.addEventListener("change", event => { current.qrWalkJournalDate = event.target.value || todayISO(); renderQrWalkJournal(); });
+  ui.qrWalkJournalPanel.querySelector("[data-print-qr-journal]")?.addEventListener("click", () => printQrWalkJournal());
+}
+
+function printQrWalkJournal() {
+  const sheet = ui.qrWalkJournalPanel?.querySelector(".qr-walk-journal-sheet");
+  if (!sheet) return;
+  const popup = window.open("", "_blank", "width=1400,height=900");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал QR-обходов</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000}.aggregate-sheet-head{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding:0 0 3mm;margin-bottom:3mm}.qr-walk-journal-summary{display:flex;gap:4mm;margin-bottom:3mm}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7.5pt;overflow-wrap:anywhere}th{background:#eee}.qr-missing td{background:#fff1f1}.qr-fixed td{background:#f2fff4}@media print{button{display:none}}</style></head><body>${sheet.outerHTML}<script>addEventListener('load',()=>setTimeout(()=>print(),400))<\/script></body></html>`);
+  popup.document.close();
 }
 
 function renderAggregateJournal() {

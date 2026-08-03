@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -276,6 +276,7 @@ function normalizeDb(db) {
   db.gpmJournal.events ||= {};
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
+  db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   db.systemBroadcasts ||= [];
@@ -3892,6 +3893,9 @@ async function handleApi(req, res, pathname, url) {
     const nodeIndex = Number(body.nodeIndex);
     const date = String(body.date || "");
     const shift = String(body.shift || "");
+    const role = String(req.authUser?.role || "");
+    const expectedGroup = ["operator", "shop"].includes(role) ? "operational" : "technical";
+    const group = String(body.group || expectedGroup);
     const allowedRoles = new Set([
       "editor", "engineer", "shop", "mechanic", "electrician", "operator",
       "welder", "turner", "forkliftDriver", "safetyEngineer", "energyEngineer",
@@ -3907,6 +3911,7 @@ async function handleApi(req, res, pathname, url) {
       || nodeIndex > 500
       || !/^\d{4}-\d{2}-\d{2}$/.test(date)
       || !["day", "night"].includes(shift)
+      || group !== expectedGroup
     ) {
       sendJson(res, 400, { ok: false, error: "qr_walk_invalid" });
       return true;
@@ -3914,11 +3919,13 @@ async function handleApi(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       db.checks ||= {};
+      db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
       const recordKey = `${equipmentId}:${nodeIndex}:${date}`;
       const now = new Date().toISOString();
       const currentRecord = db.checks[recordKey] || {};
       const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
-      const existing = currentItem.walkShifts?.[shift];
+      const existing = currentItem.walkGroups?.[group]?.[shift]
+        || (group === "technical" ? currentItem.walkShifts?.[shift] : null);
       if (existing?.done) {
         return { changed: false, recordKey, record: currentRecord, actionId: String(body.actionId || ""), origin: String(body.clientId || "api") };
       }
@@ -3936,9 +3943,11 @@ async function handleApi(req, res, pathname, url) {
         resolved: false,
         createdAt: currentItem.createdAt || now,
         ...currentItem,
-        walkShifts: {
-          ...(currentItem.walkShifts || {}),
-          [shift]: {
+        walkGroups: {
+          ...(currentItem.walkGroups || {}),
+          [group]: {
+            ...(currentItem.walkGroups?.[group] || {}),
+            [shift]: {
             done: true,
             at: now,
             byRole: String(req.authUser?.role || ""),
@@ -3946,6 +3955,8 @@ async function handleApi(req, res, pathname, url) {
             shift,
             label: String(body.label || "").slice(0, 100),
             range: String(body.range || "").slice(0, 100)
+            ,group
+            }
           }
         },
         updatedAt: now
@@ -3953,6 +3964,21 @@ async function handleApi(req, res, pathname, url) {
       nextItem.tasks[0] = false;
       const record = { ...currentRecord, createdAt: currentRecord.createdAt || now, updatedAt: now, to: nextItem };
       db.checks[recordKey] = record;
+      db.qrWalkJournal.push({
+        id: `${recordKey}:${group}:${shift}`,
+        equipmentId,
+        nodeIndex,
+        date,
+        shift,
+        group,
+        at: now,
+        byRole: role,
+        byName: String(req.authUser?.name || "").slice(0, 200),
+        area: String(body.area || "").slice(0, 200),
+        equipment: String(body.equipment || "").slice(0, 200),
+        node: String(body.node || "").slice(0, 300)
+      });
+      if (db.qrWalkJournal.length > 50000) db.qrWalkJournal = db.qrWalkJournal.slice(-50000);
       writeDb(db, {
         action: "qr_walk_mark",
         actionId: String(body.actionId || ""),
@@ -3971,6 +3997,36 @@ async function handleApi(req, res, pathname, url) {
       record: result.record,
       stateVersion
     });
+    return true;
+  }
+
+  if (pathname === "/api/qr-walk/journal" && req.method === "GET") {
+    if (String(req.authUser?.role || "") !== "editor") {
+      sendJson(res, 403, { ok: false, error: "editor_required" });
+      return true;
+    }
+    const db = readDb();
+    const date = String(url.searchParams.get("date") || "");
+    const entries = (Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [])
+      .filter(item => !date || item?.date === date)
+      .slice(-10000);
+    const known = new Set(entries.map(item => item.id));
+    Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+      const [equipmentId, nodeIndex, recordDate] = recordKey.split(":");
+      if (date && recordDate !== date) return;
+      const groups = {
+        technical: { ...(record?.to?.walkShifts || {}), ...(record?.to?.walkGroups?.technical || {}) },
+        operational: record?.to?.walkGroups?.operational || {}
+      };
+      Object.entries(groups).forEach(([group, shifts]) => Object.entries(shifts).forEach(([shift, mark]) => {
+        if (!mark?.done) return;
+        const id = `${recordKey}:${group}:${shift}`;
+        if (known.has(id)) return;
+        entries.push({ id, equipmentId: Number(equipmentId), nodeIndex: Number(nodeIndex), date: recordDate, shift, group, at: mark.at || "", byRole: mark.byRole || "", byName: mark.byName || "" });
+        known.add(id);
+      }));
+    });
+    sendJson(res, 200, { ok: true, entries });
     return true;
   }
 

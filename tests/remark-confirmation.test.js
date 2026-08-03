@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=354-work-permit-offline-safe/);
-  assert.match(html, /styles\.css\?v=354-work-permit-offline-safe/);
-  assert.match(serviceWorker, /app\.js\?v=354-work-permit-offline-safe/);
+  assert.match(html, /app\.js\?v=355-qr-walk-journals/);
+  assert.match(html, /styles\.css\?v=355-qr-walk-journals/);
+  assert.match(serviceWorker, /app\.js\?v=355-qr-walk-journals/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -809,6 +809,25 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(server, /pathname === "\/api\/qr-walk\/mark"/);
   assert.match(server, /if \(existing\?\.done\)/);
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
+});
+
+test("QR walks are separated into technical and operational journals", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /const QR_WALK_GROUPS/);
+  assert.match(client, /function qrWalkGroup\(role = profile\?\.role\)/);
+  assert.match(client, /walkGroups\[group\]\[shiftInfo\.key\]/);
+  assert.match(client, /function renderQrWalkJournal\(\)/);
+  assert.match(client, /Инженеры и электромеханики/);
+  assert.match(client, /Операторы и начальники цехов/);
+  assert.match(client, /Не зафиксирован/);
+  assert.match(client, /Печать \/ PDF/);
+  assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
+  assert.match(server, /db\.qrWalkJournal\.push/);
+  assert.match(server, /group !== expectedGroup/);
+  assert.match(client, /selfRemarkBonus: 5/);
+  assert.match(client, /Сам обнаружил и устранил замечание · бонус \+5/);
+  assert.match(client, /if \(!isElectromechanicRole\(shift\.byRole\)\) return/);
 });
 
 test("notification setup stops nagging unsupported and legacy phones", () => {
