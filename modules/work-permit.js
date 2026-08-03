@@ -1670,8 +1670,11 @@
 
   function dynamicRowDeleteButton(
     collection,
-    rowId
+    rowId,
+    index = 0
   ) {
+    if (index === 0) return "";
+
     return `
       <button
         type="button"
@@ -1759,7 +1762,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "leaders",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -1885,7 +1889,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "completedMeasures",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -1969,7 +1974,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "approvals",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -2055,7 +2061,8 @@
             `${prefix}_instructor`,
             "instructor",
             {
-              value: row.instructor || ""
+              value: row.instructor || "",
+              readonly: true
             }
           ),
           "instructor"
@@ -2064,7 +2071,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "brigade",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -2121,7 +2129,8 @@
             `${prefix}_producer`,
             "breakProducer",
             {
-              value: row.producer || ""
+              value: row.producer || "",
+              readonly: true
             }
           ),
           "breakProducer"
@@ -2132,7 +2141,8 @@
             `${prefix}_admitter`,
             "breakAdmitter",
             {
-              value: row.admitter || ""
+              value: row.admitter || "",
+              readonly: true
             }
           ),
           "breakAdmitter"
@@ -2155,7 +2165,8 @@
             `${prefix}_resume_producer`,
             "resumeProducer",
             {
-              value: row.resumeProducer || ""
+              value: row.resumeProducer || "",
+              readonly: true
             }
           ),
           "resumeProducer"
@@ -2166,7 +2177,8 @@
             `${prefix}_resume_admitter`,
             "resumeAdmitter",
             {
-              value: row.resumeAdmitter || ""
+              value: row.resumeAdmitter || "",
+              readonly: true
             }
           ),
           "resumeAdmitter"
@@ -2175,7 +2187,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "breaks",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -2270,7 +2283,8 @@
             `${prefix}_issuer`,
             "changeIssuer",
             {
-              value: row.issuer || ""
+              value: row.issuer || "",
+              readonly: true
             }
           ),
           "changeIssuer"
@@ -2291,7 +2305,8 @@
         ${tableCell(
           dynamicRowDeleteButton(
             "changes",
-            row.id
+            row.id,
+            index
           ),
           "deleteRow",
           {
@@ -2384,7 +2399,8 @@
         name: "",
         profession: "",
         signature: "",
-        instructor: ""
+        instructor:
+          permitState.admitter?.name || ""
       };
     }
 
@@ -2423,6 +2439,7 @@
   function ensureInitialDynamicRows() {
     Object.keys(dynamicRows)
       .forEach(collection => {
+        if (collection === "completedMeasures") return;
         if (!dynamicRows[collection].length) {
           dynamicRows[collection].push(
             createEmptyDynamicRow(collection)
@@ -2452,6 +2469,8 @@
     rowId
   ) {
     if (!dynamicRows[collection]) return;
+
+    if (dynamicRows[collection][0]?.id === rowId) return;
 
     const row = dynamicRows[collection]
       .find(item => item.id === rowId);
@@ -2785,6 +2804,14 @@
         name
       );
     });
+
+    dynamicRows.brigade.forEach(row => {
+      row.instructor = name;
+      setControlValue(
+        `brigade_${row.id}_instructor`,
+        name
+      );
+    });
   }
 
   function updateRelatedIssuerFields() {
@@ -2792,14 +2819,11 @@
       permitState.issuer?.name || "";
 
     dynamicRows.changes.forEach(row => {
-      if (!row.issuer) {
-        row.issuer = name;
-
-        setControlValue(
-          `change_${row.id}_issuer`,
-          name
-        );
-      }
+      row.issuer = name;
+      setControlValue(
+        `change_${row.id}_issuer`,
+        name
+      );
     });
 
     if (!permitState.acceptedBy) {
@@ -3892,7 +3916,7 @@
 
               ${field(
                 "issuer_employee_id",
-                "fullName",
+                "employeeEntryMode",
                 {
                   employee: true,
                   selectedEmployeeId:
@@ -3988,48 +4012,6 @@
               </div>
             </div>
 
-            <div class="work-permit-table-wrap">
-              <table
-                class="work-permit-table work-permit-responsive-table">
-
-                <thead>
-                  <tr>
-                    <th>№</th>
-
-                    <th data-work-permit-i18n="measureNumber">
-                      ${escapeHtml(text("measureNumber"))}
-                    </th>
-
-                    <th data-work-permit-i18n="completedBy">
-                      ${escapeHtml(text("completedBy"))}
-                    </th>
-
-                    <th data-work-permit-i18n="completedBy">
-                      ${escapeHtml(text("completedBy"))}
-                    </th>
-
-                    <th data-work-permit-i18n="position">
-                      ${escapeHtml(text("position"))}
-                    </th>
-
-                    <th data-work-permit-i18n="signature">
-                      ${escapeHtml(text("signature"))}
-                    </th>
-
-                    <th class="no-print"></th>
-                  </tr>
-                </thead>
-
-                <tbody
-                  data-dynamic-rows-container="completedMeasures">
-                </tbody>
-              </table>
-            </div>
-
-            ${addRowButton(
-              "completedMeasures",
-              "addCompletedMeasure"
-            )}
           </section>
 
           <section
@@ -4191,7 +4173,8 @@
                   "producerNameSignature",
                   {
                     value:
-                      permitState.producer?.name || ""
+                      permitState.producer?.name || "",
+                    readonly: true
                   }
                 )}
 
@@ -4200,7 +4183,8 @@
                   "admitterNameSignature",
                   {
                     value:
-                      permitState.admitter?.name || ""
+                      permitState.admitter?.name || "",
+                    readonly: true
                   }
                 )}
               </div>
@@ -4391,16 +4375,8 @@
                 {
                   value:
                     permitState.producer?.name || "",
-                  wide: true
-                }
-              )}
-
-              ${field(
-                "accepted_employee_id",
-                "permitAccepted",
-                {
-                  employee: true,
-                  wide: true
+                  wide: true,
+                  readonly: true
                 }
               )}
 
@@ -4412,7 +4388,8 @@
                     permitState.acceptedBy?.name ||
                     permitState.issuer?.name ||
                     "",
-                  wide: true
+                  wide: true,
+                  readonly: true
                 }
               )}
             </div>
@@ -4424,7 +4401,6 @@
     ensureInitialDynamicRows();
 
     renderDynamicRows("leaders");
-    renderDynamicRows("completedMeasures");
     renderDynamicRows("approvals");
     renderDynamicRows("brigade");
     renderDynamicRows("breaks");
