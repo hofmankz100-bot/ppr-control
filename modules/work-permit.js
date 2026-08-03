@@ -1769,7 +1769,9 @@
           </label>
         `).join("")}
       </div>
-      ${textareaControl(measure.fieldName, "safetyMeasureDetails", { rows: 2, readonly: true })}
+      <div class="work-permit-generated-safety-value">
+        ${textareaControl(measure.fieldName, "safetyMeasureDetails", { rows: 2, readonly: true })}
+      </div>
     `;
   }
 
@@ -6527,13 +6529,14 @@
 
       .work-permit-safety-list {
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
 
       .work-permit-safety-item {
-        padding: 10px;
+        padding: 12px;
         border: 1px solid #dbe3ea;
-        border-radius: 8px;
+        border-radius: 12px;
+        background: #fbfdfe;
       }
 
       .work-permit-safety-item.is-enabled {
@@ -6542,13 +6545,38 @@
       }
 
       .work-permit-safety-check {
-        display: flex;
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
         align-items: center;
         gap: 10px;
+        min-height: 34px;
+        cursor: pointer;
+      }
+
+      .work-permit-safety-check > input {
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        accent-color: #0b7898;
+      }
+
+      .work-permit-safety-check > .work-permit-checkbox-mark {
+        display: none;
+      }
+
+      .work-permit-safety-check strong {
+        line-height: 1.35;
       }
 
       .work-permit-safety-details {
-        margin-top: 10px;
+        margin-top: 9px;
+        padding-top: 9px;
+        border-top: 1px solid #dce9ed;
+      }
+
+      .work-permit-safety-details textarea {
+        min-height: 46px;
+        resize: vertical;
       }
 
       .work-permit-add-row,
@@ -6690,7 +6718,10 @@
       .work-permit-instruction-list {
         display: grid;
         gap: 8px;
-        margin-bottom: 10px;
+      }
+
+      .work-permit-safety-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .work-permit-safety-options label,
@@ -6705,11 +6736,21 @@
         cursor: pointer;
       }
 
+      .work-permit-safety-options label {
+        min-height: 44px;
+        padding: 8px 10px;
+      }
+
       .work-permit-safety-options input,
       .work-permit-instruction-select input {
         width: 21px;
         height: 21px;
         flex: 0 0 auto;
+        accent-color: #0b7898;
+      }
+
+      .work-permit-generated-safety-value {
+        display: none;
       }
 
       .work-permit-instruction-card {
@@ -6870,6 +6911,10 @@
         display: none;
       }
 
+      .work-permit-paper.is-print-layout .work-permit-generated-safety-value {
+        display: block;
+      }
+
       [data-optional-section="completedMeasures"] > .work-permit-table-wrap,
       [data-optional-section="completedMeasures"] > .work-permit-add-row {
         display: none !important;
@@ -6912,6 +6957,10 @@
       }
 
       @media print {
+        .work-permit-generated-safety-value {
+          display: block !important;
+        }
+
         .work-permit-employee-choice,
         .work-permit-employee-back,
         .work-permit-location-back {
@@ -7009,8 +7058,12 @@
         }
 
         .work-permit-safety-check {
-          align-items: flex-start;
-          min-height: 48px;
+          align-items: center;
+          min-height: 40px;
+        }
+
+        .work-permit-safety-options {
+          grid-template-columns: 1fr;
         }
 
         .work-permit-add-row {

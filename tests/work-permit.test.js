@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=341-work-permit-documents/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=341-work-permit-documents/);
-  assert.match(html, /modules\/work-permit\.js\?v=341-work-permit-documents/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=342-work-permit-safety-layout/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=342-work-permit-safety-layout/);
+  assert.match(html, /modules\/work-permit\.js\?v=342-work-permit-safety-layout/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -103,10 +103,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v341-work-permit-documents/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=341-work-permit-documents/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=341-work-permit-documents/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=341-work-permit-documents/);
-  assert.match(serviceWorker, /styles\.css\?v=341-work-permit-documents/);
-  assert.match(serviceWorker, /app\.js\?v=341-work-permit-documents/);
+  assert.match(serviceWorker, /ppr-v342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /styles\.css\?v=342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /app\.js\?v=342-work-permit-safety-layout/);
 });
