@@ -747,6 +747,8 @@
   let language = loadLanguage();
   let saveTimer = 0;
   let sectionSelectorVisible = false;
+  let instructionStoreIsAdmin = false;
+  const instructionRecords = new Map();
 
   let activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
   let collapsedOptionalSections = new Set();
@@ -1692,6 +1694,65 @@
     `;
   }
 
+  async function loadInstructionRecords() {
+    try {
+      const response = await fetch("/api/work-permit-instructions", {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      instructionStoreIsAdmin = payload?.isAdmin === true;
+      instructionRecords.clear();
+      (Array.isArray(payload?.records) ? payload.records : [])
+        .forEach(record => instructionRecords.set(String(record.id), record));
+    } catch {}
+  }
+
+  function instructionEditorKey(employee) {
+    return String(employee?.id || employee?.employeeId || employee?.phone || "").trim();
+  }
+
+  function instructionEditorHtml(instruction) {
+    const record = instructionRecords.get(instruction.id) || {};
+    if (!record.canEdit && !instructionStoreIsAdmin) return "";
+    const content = record.content || instruction.points.join("\n");
+    const editorIds = new Set(Array.isArray(record.editorIds) ? record.editorIds : []);
+    return `
+      <section class="work-permit-instruction-editor no-print" data-instruction-editor="${escapeHtml(instruction.id)}">
+        <h4>Редактирование инструкции</h4>
+        <label>Полный текст инструкции
+          <textarea rows="10" data-instruction-content>${escapeHtml(content)}</textarea>
+        </label>
+        <label class="work-permit-word-upload">Загрузить Word (.docx)
+          <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-instruction-word>
+        </label>
+        <small data-instruction-file-name>${record.fileName ? `Загружен: ${escapeHtml(record.fileName)}` : "Можно написать текст или загрузить Word-документ"}</small>
+        ${instructionStoreIsAdmin ? `
+          <details class="work-permit-instruction-permissions">
+            <summary>Кому разрешено редактировать</summary>
+            <div>
+              ${getEmployees().map(employee => {
+                const key = instructionEditorKey(employee);
+                return key ? `<label><input type="checkbox" data-instruction-editor-id value="${escapeHtml(key)}" ${editorIds.has(key) ? "checked" : ""}> ${escapeHtml(employee.name)}${employee.position ? ` — ${escapeHtml(employee.position)}` : ""}</label>` : "";
+              }).join("")}
+            </div>
+          </details>
+        ` : ""}
+        <button type="button" data-save-instruction="${escapeHtml(instruction.id)}">Сохранить инструкцию</button>
+        <span data-instruction-save-status></span>
+      </section>
+    `;
+  }
+
+  function instructionDisplayContent(instruction) {
+    const record = instructionRecords.get(instruction.id);
+    const content = String(record?.content || "").trim();
+    if (!content) {
+      return `<ul>${instruction.points.map(point => `<li>${escapeHtml(point)}</li>`).join("")}</ul>`;
+    }
+    return `<div class="work-permit-instruction-full-text">${escapeHtml(content).replace(/\n/g, "<br>")}</div>`;
+  }
+
   function safetyPlaceholder(measureId) {
     if (measureId === "5.1") return "Оборудование из раздела 2";
     if (measureId === "5.4") return "Место проведения анализа воздушной среды";
@@ -1724,9 +1785,10 @@
             <details>
               <summary>Открыть инструкцию</summary>
               <p>${escapeHtml(instruction.source)}</p>
-              <ul>${instruction.points.map(point => `<li>${escapeHtml(point)}</li>`).join("")}</ul>
+              ${instructionDisplayContent(instruction)}
               <p><a href="${escapeHtml(instruction.url)}" target="_blank" rel="noopener">Официальный источник Республики Казахстан</a></p>
               <button type="button" data-instruction-ack="${escapeHtml(instruction.id)}">Прочитал и ознакомился</button>
+              ${instructionEditorHtml(instruction)}
             </details>
           </article>
         `).join("")}
@@ -4644,6 +4706,80 @@
     syncCompletedMeasuresSummary();
   }
 
+  async function importInstructionWord(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const editor = input.closest("[data-instruction-editor]");
+    const textarea = editor?.querySelector("[data-instruction-content]");
+    const fileName = editor?.querySelector("[data-instruction-file-name]");
+    if (!textarea || !window.mammoth?.extractRawText) {
+      window.alert("Не удалось открыть Word-файл. Обновите страницу и попробуйте снова.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert("Word-файл должен быть не больше 5 МБ.");
+      input.value = "";
+      return;
+    }
+    try {
+      const result = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+      textarea.value = String(result.value || "").trim();
+      editor.dataset.fileName = file.name;
+      if (fileName) fileName.textContent = `Загружен: ${file.name}`;
+      growTextarea(textarea);
+    } catch (error) {
+      console.error("Word instruction import failed", error);
+      window.alert("Не удалось прочитать этот Word-файл.");
+    }
+  }
+
+  async function saveInstructionEditor(button) {
+    const id = button.dataset.saveInstruction;
+    const instruction = SAFETY_INSTRUCTIONS.find(item => item.id === id);
+    const editor = button.closest("[data-instruction-editor]");
+    if (!instruction || !editor) return;
+    const content = editor.querySelector("[data-instruction-content]")?.value?.trim() || "";
+    if (!content) {
+      window.alert("Введите текст инструкции или загрузите Word-файл.");
+      return;
+    }
+    const editorIds = [...editor.querySelectorAll("[data-instruction-editor-id]:checked")]
+      .map(control => control.value);
+    const status = editor.querySelector("[data-instruction-save-status]");
+    button.disabled = true;
+    if (status) status.textContent = "Сохранение…";
+    try {
+      const response = await fetch(`/api/work-permit-instructions/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          title: instruction.title,
+          content,
+          fileName: editor.dataset.fileName || instructionRecords.get(id)?.fileName || "",
+          editorIds
+        })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      instructionRecords.set(id, { ...payload.record, canEdit: true });
+      if (status) status.textContent = "✓ Сохранено";
+      const card = editor.closest("[data-instruction-card]");
+      const fullText = card?.querySelector(".work-permit-instruction-full-text, ul");
+      if (fullText) {
+        const replacement = document.createElement("div");
+        replacement.className = "work-permit-instruction-full-text";
+        replacement.textContent = content;
+        fullText.replaceWith(replacement);
+      }
+    } catch (error) {
+      console.error("Instruction save failed", error);
+      if (status) status.textContent = "Ошибка сохранения";
+      window.alert("Не удалось сохранить инструкцию.");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function updateSafetyMeasuresUi() {
     SAFETY_MEASURES.forEach(
       measure => {
@@ -6062,6 +6198,10 @@
           syncInstructionAcknowledgements();
         }
 
+        if (control.matches("[data-instruction-word]")) {
+          importInstructionWord(control);
+        }
+
         syncPrintValue(
           control
         );
@@ -6073,6 +6213,12 @@
     screen.addEventListener(
       "click",
       event => {
+        const saveInstructionButton = event.target.closest("[data-save-instruction]");
+        if (saveInstructionButton) {
+          saveInstructionEditor(saveInstructionButton);
+          return;
+        }
+
         const instructionAckButton = event.target.closest("[data-instruction-ack]");
         if (instructionAckButton) {
           const id = instructionAckButton.dataset.instructionAck;
@@ -6598,6 +6744,68 @@
         font-weight: 700;
       }
 
+      .work-permit-instruction-full-text {
+        max-height: 420px;
+        overflow: auto;
+        padding: 12px;
+        border: 1px solid #d4e3e8;
+        border-radius: 10px;
+        background: #fff;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .work-permit-instruction-editor {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+        padding: 14px;
+        border: 2px solid #8fc4d5;
+        border-radius: 12px;
+        background: #eef8fb;
+      }
+
+      .work-permit-instruction-editor h4 {
+        margin: 0;
+        color: #075f81;
+      }
+
+      .work-permit-instruction-editor label {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+
+      .work-permit-instruction-editor textarea {
+        width: 100%;
+        min-height: 180px;
+      }
+
+      .work-permit-word-upload {
+        padding: 10px;
+        border: 1px dashed #6ca9bd;
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .work-permit-instruction-permissions > div {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        max-height: 260px;
+        overflow: auto;
+        padding: 10px 0;
+      }
+
+      .work-permit-instruction-permissions label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px;
+        border-radius: 7px;
+        background: #fff;
+      }
+
       .work-permit-employee-manual,
       .work-permit-employee-back,
       .work-permit-location-manual,
@@ -6745,6 +6953,10 @@
           grid-template-columns: 1fr;
         }
 
+        .work-permit-instruction-permissions > div {
+          grid-template-columns: 1fr;
+        }
+
         .work-permit-paper {
           border-radius: 16px;
           box-shadow: 0 12px 32px rgba(24, 65, 84, .1);
@@ -6847,11 +7059,14 @@
    */
 
   async function activate() {
+    await loadInstructionRecords();
+    await restoreDraft();
     applyLanguage(language);
     updateOptionalSectionsUi();
     updateSafetyMeasuresUi();
     growAllTextareas();
     syncAllPrintValues();
+    bindEvents();
   }
 
   async function initialize() {
@@ -6868,6 +7083,7 @@
 
     ensureInitialDynamicRows();
 
+    await loadInstructionRecords();
     await restoreDraft();
 
     applyLanguage(language);

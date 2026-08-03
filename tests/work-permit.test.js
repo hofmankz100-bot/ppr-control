@@ -9,12 +9,14 @@ const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const permit = fs.readFileSync(path.join(root, "modules", "work-permit.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 const serviceWorker = fs.readFileSync(path.join(root, "sw.js"), "utf8");
+const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=340-work-permit-safety/);
-  assert.match(html, /modules\/work-permit\.js\?v=340-work-permit-safety/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=341-work-permit-documents/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=341-work-permit-documents/);
+  assert.match(html, /modules\/work-permit\.js\?v=341-work-permit-documents/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -70,6 +72,12 @@ test("selected safety measures are combined into one section seven field", () =>
   assert.match(permit, /function syncSafetyInstallOptions/);
   assert.match(permit, /function syncInstructionAcknowledgements/);
   assert.match(permit, /data-instruction-ack/);
+  assert.match(permit, /data-instruction-editor-id/);
+  assert.match(permit, /data-instruction-word/);
+  assert.match(permit, /mammoth\.extractRawText/);
+  assert.match(permit, /function saveInstructionEditor/);
+  assert.match(server, /\/api\/work-permit-instructions/);
+  assert.match(server, /work_permit_instruction_saved/);
 });
 
 test("permit draft and print-safe values are preserved", () => {
@@ -95,9 +103,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v340-work-permit-safety/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=340-work-permit-safety/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=340-work-permit-safety/);
-  assert.match(serviceWorker, /styles\.css\?v=340-work-permit-safety/);
-  assert.match(serviceWorker, /app\.js\?v=340-work-permit-safety/);
+  assert.match(serviceWorker, /ppr-v341-work-permit-documents/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=341-work-permit-documents/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=341-work-permit-documents/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=341-work-permit-documents/);
+  assert.match(serviceWorker, /styles\.css\?v=341-work-permit-documents/);
+  assert.match(serviceWorker, /app\.js\?v=341-work-permit-documents/);
 });

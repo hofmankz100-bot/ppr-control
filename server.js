@@ -120,7 +120,8 @@ function isPublicStaticPath(relativePath = "") {
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   if (normalized === "assets/hofmann-forklift.png") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js"
-    || normalized === "node_modules/html2pdf.js/dist/html2pdf.bundle.min.js";
+    || normalized === "node_modules/html2pdf.js/dist/html2pdf.bundle.min.js"
+    || normalized === "node_modules/mammoth/mammoth.browser.min.js";
 }
 
 function directoryStorageStats(directory) {
@@ -4138,6 +4139,57 @@ async function handleApi(req, res, pathname, url) {
     const file = createManualBackup(body?.label || "manual");
     appendActionLog({ action: "manual_backup", file: path.basename(file), clientId: String(body?.clientId || "") });
     sendJson(res, 200, { ok: true, file: path.basename(file) });
+    return true;
+  }
+
+  if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
+    const db = readDb();
+    const actorKey = attendanceUserKey(req.authUser || {});
+    const isAdmin = req.authUser?.role === "editor";
+    const records = Object.entries(db.workPermitInstructions || {}).map(([id, raw]) => ({
+      id,
+      title: String(raw?.title || ""),
+      content: String(raw?.content || ""),
+      fileName: String(raw?.fileName || ""),
+      editorIds: isAdmin ? (Array.isArray(raw?.editorIds) ? raw.editorIds : []) : undefined,
+      canEdit: isAdmin || (Array.isArray(raw?.editorIds) && raw.editorIds.includes(actorKey)),
+      updatedAt: String(raw?.updatedAt || ""),
+      updatedBy: String(raw?.updatedBy || "")
+    }));
+    sendJson(res, 200, { ok: true, isAdmin, records });
+    return true;
+  }
+
+  const instructionMatch = pathname.match(/^\/api\/work-permit-instructions\/([a-z0-9_-]+)$/i);
+  if (instructionMatch && req.method === "PUT") {
+    const body = await readBody(req);
+    const instructionId = instructionMatch[1].slice(0, 80);
+    const db = readDb();
+    db.workPermitInstructions ||= {};
+    const existing = db.workPermitInstructions[instructionId] || {};
+    const actorKey = attendanceUserKey(req.authUser || {});
+    const isAdmin = req.authUser?.role === "editor";
+    const canEdit = isAdmin || (Array.isArray(existing.editorIds) && existing.editorIds.includes(actorKey));
+    if (!canEdit) {
+      sendJson(res, 403, { ok: false, error: "permission_denied" });
+      return true;
+    }
+    const record = {
+      ...existing,
+      title: String(body?.title || existing.title || "").trim().slice(0, 300),
+      content: String(body?.content || "").trim().slice(0, 200000),
+      fileName: String(body?.fileName || "").trim().slice(0, 300),
+      updatedAt: new Date().toISOString(),
+      updatedBy: String(req.authUser?.name || "")
+    };
+    if (isAdmin && Array.isArray(body?.editorIds)) {
+      record.editorIds = [...new Set(body.editorIds.map(value => String(value || "").trim()).filter(Boolean))].slice(0, 500);
+    } else {
+      record.editorIds = Array.isArray(existing.editorIds) ? existing.editorIds : [];
+    }
+    db.workPermitInstructions[instructionId] = record;
+    writeDb(db, { action: "work_permit_instruction_saved", user: req.authUser, instructionId });
+    sendJson(res, 200, { ok: true, record: { id: instructionId, ...record, canEdit: true } });
     return true;
   }
 
