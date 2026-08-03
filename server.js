@@ -2191,6 +2191,19 @@ function normalizeIdentifier(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizePhoneIdentifier(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("8")) return `7${digits.slice(1)}`;
+  if (digits.length === 10 && digits.startsWith("7")) return `7${digits}`;
+  return digits;
+}
+
+function loginIdentifierKey(value) {
+  const normalized = normalizeIdentifier(value);
+  const phone = normalizePhoneIdentifier(value);
+  return phone.length >= 10 ? phone : normalized;
+}
+
 function userPublic(user = {}) {
   const { passwordHash, ...publicUser } = user;
   return publicUser;
@@ -2212,8 +2225,10 @@ function passwordMatches(password, stored) {
 
 function findUser(db, identifier) {
   const normalized = normalizeIdentifier(identifier);
+  const normalizedPhone = normalizePhoneIdentifier(identifier);
   return (db.users || []).find(user =>
-    [user.employeeId, user.phone].some(value => normalizeIdentifier(value) === normalized)
+    normalizeIdentifier(user.employeeId) === normalized
+    || (normalizedPhone.length >= 10 && normalizePhoneIdentifier(user.phone) === normalizedPhone)
   );
 }
 
@@ -2225,7 +2240,7 @@ function requestIp(req) {
 }
 
 function loginAttemptKey(req, identifier = "") {
-  return `${requestIp(req)}|${normalizeIdentifier(identifier)}`;
+  return `${requestIp(req)}|${loginIdentifierKey(identifier)}`;
 }
 
 function loginRateStatus(req, identifier = "") {
@@ -2252,13 +2267,36 @@ function recordLoginFailure(key) {
 }
 
 function clearLoginFailuresForUser(user = {}) {
-  const identifiers = [user.employeeId, user.phone]
-    .map(normalizeIdentifier)
+  const identifiers = [
+    normalizeIdentifier(user.employeeId),
+    loginIdentifierKey(user.employeeId),
+    normalizeIdentifier(user.phone),
+    loginIdentifierKey(user.phone)
+  ]
     .filter(Boolean);
   if (!identifiers.length) return;
   for (const key of loginAttempts.keys()) {
     if (identifiers.some(identifier => key.endsWith(`|${identifier}`))) loginAttempts.delete(key);
   }
+}
+
+function userLoginDiagnostics(db, user) {
+  const employeeId = normalizeIdentifier(user.employeeId);
+  const phone = normalizePhoneIdentifier(user.phone);
+  const duplicateEmployeeId = Boolean(employeeId && (db.users || []).filter(item =>
+    normalizeIdentifier(item.employeeId) === employeeId
+  ).length > 1);
+  const duplicatePhone = Boolean(phone && (db.users || []).filter(item =>
+    normalizePhoneIdentifier(item.phone) === phone
+  ).length > 1);
+  return {
+    hasPassword: Boolean(user.passwordHash),
+    duplicateEmployeeId,
+    duplicatePhone,
+    passwordUpdatedAt: user.passwordUpdatedAt || "",
+    passwordUpdatedBy: user.passwordUpdatedBy || "",
+    lastLoginAt: user.lastLoginAt || ""
+  };
 }
 
 function parseCookies(req) {
@@ -5567,6 +5605,33 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/users/unlock" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const db = readDb();
+    const target = (db.users || []).find(item =>
+      (body.id && item.id === body.id)
+      || (body.employeeId && normalizeIdentifier(item.employeeId) === normalizeIdentifier(body.employeeId))
+      || (body.phone && normalizePhoneIdentifier(item.phone) === normalizePhoneIdentifier(body.phone))
+    );
+    if (!target) {
+      sendJson(res, 404, { ok: false, error: "user_not_found" });
+      return true;
+    }
+    clearLoginFailuresForUser(target);
+    writeDb(db, {
+      action: "user_login_unlocked",
+      actionId: String(body.actionId || ""),
+      clientId: String(body.clientId || ""),
+      user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "" }
+    });
+    sendJson(res, 200, { ok: true, user: userPublic(target) });
+    return true;
+  }
+
   if (pathname === "/api/users" && req.method === "POST") {
     const user = await readBody(req);
     if (req.authUser?.role !== "editor") {
@@ -5644,7 +5709,11 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 200, [userPublic(req.authUser)]);
       return true;
     }
-    sendJson(res, 200, (readDb().users || []).map(userPublic));
+    const db = readDb();
+    sendJson(res, 200, (db.users || []).map(user => ({
+      ...userPublic(user),
+      ...(req.authUser?.role === "editor" ? { loginDiagnostics: userLoginDiagnostics(db, user) } : {})
+    })));
     return true;
   }
 

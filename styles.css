@@ -7927,6 +7927,10 @@ body.attendance-kiosk-active { overflow: hidden !important; }
   justify-content: space-between;
 }
 
+.user-login-status { padding:5px 8px; border-radius:999px; font-size:10px; font-weight:800; }
+.user-login-status.ok { background:#e9f8ef; color:#177146; }
+.user-login-status.warning { background:#fff1dd; color:#9a5500; }
+
 .director-user-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
