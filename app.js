@@ -16931,6 +16931,32 @@ function renderDirector() {
       }
     });
   });
+  ui.directorPanel.querySelectorAll("[data-unlock-user-login]").forEach(button => {
+    button.addEventListener("click", async event => {
+      const userKey = event.currentTarget.dataset.unlockUserLogin || "";
+      const user = loadUsers().find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
+      if (!user) return;
+      const unlockButton = event.currentTarget;
+      setButtonBusy(unlockButton, true, "Снимаем...");
+      try {
+        await apiJson("/api/users/unlock", {
+          method: "POST",
+          body: JSON.stringify({
+            id: user.id || "",
+            employeeId: user.employeeId || "",
+            phone: user.phone || "",
+            actionId: nextActionId(),
+            clientId: CLIENT_ID
+          })
+        });
+        showAppToast(`Блокировка входа для ${user.name || user.phone} снята.`);
+      } catch (error) {
+        window.alert(error?.message || "Не удалось снять блокировку входа.");
+      } finally {
+        if (unlockButton.isConnected) setButtonBusy(unlockButton, false);
+      }
+    });
+  });
   ui.directorPanel.querySelectorAll("[data-delete-user]").forEach(button => {
     button.addEventListener("click", async event => {
       const userKey = event.currentTarget.dataset.deleteUser || "";
@@ -17483,6 +17509,17 @@ function renderDirectorUsers() {
       ${users.length ? users.map(user => {
         const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
         const draft = userApprovalDrafts.get(userKey) || {};
+        const login = user.loginDiagnostics || null;
+        const loginWarnings = [
+          login && !login.hasPassword ? "Пароль не задан" : "",
+          login?.duplicateEmployeeId ? "Дублируется табельный номер" : "",
+          login?.duplicatePhone ? "Дублируется телефон" : ""
+        ].filter(Boolean);
+        const loginTitle = [
+          login?.lastLoginAt ? `Последний вход: ${dateTimeHuman(login.lastLoginAt)}` : "Входов ещё не было",
+          login?.passwordUpdatedAt ? `Пароль изменён: ${dateTimeHuman(login.passwordUpdatedAt)}` : "Пароль администратором не обновлялся",
+          login?.passwordUpdatedBy ? `Изменил: ${login.passwordUpdatedBy}` : ""
+        ].filter(Boolean).join(" · ");
         return `
         <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}" data-user-key="${escapeHtml(userKey)}">
           <span>${escapeHtml(user.name || "")}</span>
@@ -17493,10 +17530,12 @@ function renderDirectorUsers() {
             <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
           <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждёт подтверждения" : "Подтверждён"}</span>
+          ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
           ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить</button>` : ""}
           ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность</button>` : ""}
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
+          ${isEditorSession() ? `<button type="button" class="mini-action" data-unlock-user-login="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Снять блокировку</button>` : ""}
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
         </div>
       `;

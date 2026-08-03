@@ -51,13 +51,23 @@ test("production API requires a server session and rate-limits failed logins", a
     approved: true,
     pendingApproval: false
   };
+  const worker = {
+    id: "security-worker",
+    name: "Berik Worker",
+    employeeId: "19660116",
+    phone: "7475408321",
+    passwordHash: passwordHash("worker-password"),
+    role: "mechanic",
+    approved: true,
+    pendingApproval: false
+  };
   fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify({
     checks: {},
     requests: {},
     inventory: {},
     catalog: { equipment: {} },
     downtimes: [],
-    users: [editor]
+    users: [editor, worker]
   }));
   const port = await reservePort();
   const qrPort = await reservePort();
@@ -102,6 +112,15 @@ test("production API requires a server session and rate-limits failed logins", a
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.match(cookie, /^ppr_session=/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
+    const users = await usersResponse.json();
+    assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
+    const phoneLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ identifier: "+7 747 540 83 21", password: "worker-password" })
+    });
+    assert.equal(phoneLogin.status, 200);
     const gpmWrite = await fetch(`${baseUrl}/api/state`, {
       method: "PUT",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
@@ -135,6 +154,32 @@ test("production API requires a server session and rate-limits failed logins", a
     });
     assert.equal(blocked.status, 429);
     assert.ok(Number(blocked.headers.get("retry-after")) > 0);
+
+    for (let index = 0; index < 15; index += 1) {
+      await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+        body: JSON.stringify({ identifier: worker.employeeId, password: "wrong-password" })
+      });
+    }
+    const workerBlocked = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ identifier: worker.employeeId, password: "worker-password" })
+    });
+    assert.equal(workerBlocked.status, 429);
+    const unlock = await fetch(`${baseUrl}/api/users/unlock`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ id: worker.id })
+    });
+    assert.equal(unlock.status, 200);
+    const workerAfterUnlock = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ identifier: worker.employeeId, password: "worker-password" })
+    });
+    assert.equal(workerAfterUnlock.status, 200);
   } finally {
     if (serverProcess.exitCode === null) {
       serverProcess.kill("SIGTERM");
