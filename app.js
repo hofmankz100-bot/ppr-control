@@ -279,6 +279,10 @@ const QR_WALK_GROUPS = Object.freeze({
 function qrWalkGroup(role = profile?.role) {
   return ["operator", "shop"].includes(String(role || "")) ? "operational" : "technical";
 }
+
+function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
+  return user.role === "editor" || user.qrWalkJournalAccess === true;
+}
 const ROLE_ACCESS = {
   mechanic: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
   electrician: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
@@ -3736,7 +3740,7 @@ function canOpenView(view) {
   if (view === "engineerReport") return isProfileReady();
   if (view === "gpm") return isProfileReady();
   if (view === "workPermit") return isProfileReady();
-  if (view === "qrWalkJournal") return profile?.role === "editor";
+  if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
   return true;
@@ -11912,7 +11916,7 @@ function renderEquipment() {
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
-      ${profile?.role === "editor" ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
+      ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
@@ -17187,7 +17191,7 @@ function renderDowntime() {
 }
 
 async function renderQrWalkJournal() {
-  if (!ui.qrWalkJournalPanel || profile?.role !== "editor") return;
+  if (!ui.qrWalkJournalPanel || !canViewQrWalkJournal()) return;
   ui.subtitle.textContent = "Журнал QR-обходов";
   const date = current.qrWalkJournalDate || todayISO();
   const group = current.qrWalkJournalGroup || "technical";
@@ -17213,6 +17217,9 @@ async function renderQrWalkJournal() {
     technical: entries.filter(item => item.group === "technical" && item.shift === shift).length,
     operational: entries.filter(item => item.group === "operational" && item.shift === shift).length
   };
+  const accessUsers = profile?.role === "editor"
+    ? loadUsers().filter(user => ["shop", "engineer", "safetyEngineer", "energyEngineer", "designEngineer", "mechanicalEngineer", "instrumentationEngineer"].includes(user.role))
+    : [];
   ui.qrWalkJournalPanel.innerHTML = `
     <div class="qr-walk-journal-controls no-print">
       <div class="segmented qr-walk-group-tabs">
@@ -17225,6 +17232,7 @@ async function renderQrWalkJournal() {
       </div>
       <button type="button" data-print-qr-journal>Печать / PDF</button>
     </div>
+    ${profile?.role === "editor" ? `<details class="qr-journal-access no-print"><summary>Кому разрешён просмотр журнала</summary><div>${accessUsers.length ? accessUsers.map(user => `<label><input type="checkbox" data-qr-journal-access="${escapeHtml(user.id || "")}" ${user.qrWalkJournalAccess === true ? "checked" : ""}> <span>${escapeHtml(user.name || user.employeeId || "Сотрудник")} · ${escapeHtml(requestRoleLabel(user.role))}</span></label>`).join("") : "Нет подходящих сотрудников"}</div></details>` : ""}
     <div class="aggregate-journal-sheet qr-walk-journal-sheet">
       <div class="aggregate-sheet-head"><strong>Журнал QR-обходов: ${escapeHtml(QR_WALK_GROUPS[group])}</strong><span>${escapeHtml(dateHuman(date))} · ${shift === "night" ? "Ночь" : "День"}</span></div>
       <div class="qr-walk-journal-summary"><strong>${completed} из ${rows.length}</strong><span>зафиксировано</span><b>${rows.length - completed}</b><span>не зафиксировано</span></div>
@@ -17237,6 +17245,18 @@ async function renderQrWalkJournal() {
   ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-shift]").forEach(button => button.addEventListener("click", () => { current.qrWalkJournalShift = button.dataset.qrJournalShift; renderQrWalkJournal(); }));
   ui.qrWalkJournalPanel.querySelector("[data-qr-journal-date]")?.addEventListener("change", event => { current.qrWalkJournalDate = event.target.value || todayISO(); renderQrWalkJournal(); });
   ui.qrWalkJournalPanel.querySelector("[data-print-qr-journal]")?.addEventListener("click", () => printQrWalkJournal());
+  ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-access]").forEach(control => control.addEventListener("change", async () => {
+    control.disabled = true;
+    try {
+      await apiJson("/api/qr-walk/journal-access", { method: "POST", body: JSON.stringify({ userId: control.dataset.qrJournalAccess, enabled: control.checked }) });
+      const user = loadUsers().find(item => String(item.id || "") === control.dataset.qrJournalAccess);
+      if (user) user.qrWalkJournalAccess = control.checked;
+      showAppToast(control.checked ? "Доступ к журналу выдан" : "Доступ к журналу закрыт");
+    } catch {
+      control.checked = !control.checked;
+      showAppToast("Не удалось изменить доступ", "error");
+    } finally { control.disabled = false; }
+  }));
 }
 
 function printQrWalkJournal() {

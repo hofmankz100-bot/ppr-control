@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=355-qr-walk-journals/);
-  assert.match(html, /styles\.css\?v=355-qr-walk-journals/);
-  assert.match(serviceWorker, /app\.js\?v=355-qr-walk-journals/);
+  assert.match(html, /app\.js\?v=356-qr-journal-access/);
+  assert.match(html, /styles\.css\?v=356-qr-journal-access/);
+  assert.match(serviceWorker, /app\.js\?v=356-qr-journal-access/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -825,6 +825,10 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
   assert.match(server, /db\.qrWalkJournal\.push/);
   assert.match(server, /group !== expectedGroup/);
+  assert.match(client, /function canViewQrWalkJournal/);
+  assert.match(client, /Кому разрешён просмотр журнала/);
+  assert.match(server, /pathname === "\/api\/qr-walk\/journal-access"/);
+  assert.match(server, /qrWalkJournalAccess/);
   assert.match(client, /selfRemarkBonus: 5/);
   assert.match(client, /Сам обнаружил и устранил замечание · бонус \+5/);
   assert.match(client, /if \(!isElectromechanicRole\(shift\.byRole\)\) return/);

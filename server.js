@@ -4001,8 +4001,8 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/qr-walk/journal" && req.method === "GET") {
-    if (String(req.authUser?.role || "") !== "editor") {
-      sendJson(res, 403, { ok: false, error: "editor_required" });
+    if (String(req.authUser?.role || "") !== "editor" && req.authUser?.qrWalkJournalAccess !== true) {
+      sendJson(res, 403, { ok: false, error: "journal_access_required" });
       return true;
     }
     const db = readDb();
@@ -4027,6 +4027,27 @@ async function handleApi(req, res, pathname, url) {
       }));
     });
     sendJson(res, 200, { ok: true, entries });
+    return true;
+  }
+
+  if (pathname === "/api/qr-walk/journal-access" && req.method === "POST") {
+    if (String(req.authUser?.role || "") !== "editor") {
+      sendJson(res, 403, { ok: false, error: "editor_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const userId = String(body.userId || "").trim();
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const user = (db.users || []).find(item => String(item.id || "") === userId);
+      const allowedRoles = new Set(["shop", "engineer", "safetyEngineer", "energyEngineer", "designEngineer", "mechanicalEngineer", "instrumentationEngineer"]);
+      if (!user || !allowedRoles.has(String(user.role || ""))) return { error: "user_not_eligible" };
+      user.qrWalkJournalAccess = body.enabled === true;
+      writeDb(db, { action: "qr_walk_journal_access", user: req.authUser, targetUserId: userId, enabled: user.qrWalkJournalAccess });
+      return { userId, enabled: user.qrWalkJournalAccess };
+    });
+    if (result.error) sendJson(res, 400, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, ...result });
     return true;
   }
 
