@@ -13,8 +13,8 @@ const serviceWorker = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=334-work-permit-mobile/);
-  assert.match(html, /modules\/work-permit\.js\?v=334-work-permit-mobile/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=335-work-permit-manual/);
+  assert.match(html, /modules\/work-permit\.js\?v=335-work-permit-manual/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -34,6 +34,9 @@ test("people are selected once and reused in related fields", () => {
   assert.match(permit, /function updateRelatedProducerFields\(\)/);
   assert.match(permit, /function updateRelatedAdmitterFields\(\)/);
   assert.match(permit, /function updateRelatedIssuerFields\(\)/);
+  assert.match(permit, /employeeEntryMode: "Выберите сотрудника или ручной ввод"/);
+  assert.match(permit, /function syncManualEmployeeInput\(control\)/);
+  assert.match(permit, /permitState\[prefix\] = employee/);
   assert.match(permit, /start_producer/);
   assert.match(permit, /start_admitter/);
   assert.match(permit, /permit_returned/);
@@ -68,9 +71,9 @@ test("phone layout is card based with a fixed action bar and PDF sharing", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v334-work-permit-mobile/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=334-work-permit-mobile/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=334-work-permit-mobile/);
-  assert.match(serviceWorker, /styles\.css\?v=334-work-permit-mobile/);
-  assert.match(serviceWorker, /app\.js\?v=334-work-permit-mobile/);
+  assert.match(serviceWorker, /ppr-v335-work-permit-manual/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=335-work-permit-manual/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=335-work-permit-manual/);
+  assert.match(serviceWorker, /styles\.css\?v=335-work-permit-manual/);
+  assert.match(serviceWorker, /app\.js\?v=335-work-permit-manual/);
 });

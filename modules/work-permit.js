@@ -140,6 +140,7 @@
       completed: "Наряд-допуск завершён",
 
       selectEmployee: "Выберите сотрудника",
+      employeeEntryMode: "Выберите сотрудника или ручной ввод",
       selectEquipment: "Выберите оборудование",
       selectWorkshop: "Выберите цех",
       selectPosition: "Выберите должность",
@@ -432,6 +433,9 @@
 
       selectEmployee:
         "Қызметкерді таңдаңыз",
+
+      employeeEntryMode:
+        "Қызметкерді таңдаңыз немесе қолмен енгізіңіз",
 
       selectEquipment:
         "Жабдықты таңдаңыз",
@@ -1385,7 +1389,7 @@
 
         ${field(
           `${prefix}_employee_id`,
-          "fullName",
+          "employeeEntryMode",
           {
             employee: true,
             selectedEmployeeId,
@@ -2806,6 +2810,50 @@
     }
   }
 
+  function manualEmployeeFromGroup(prefix) {
+    const name = screen.querySelector(
+      `[name="${CSS.escape(`${prefix}_name`)}"]`
+    )?.value?.trim() || "";
+    const position = screen.querySelector(
+      `[name="${CSS.escape(`${prefix}_position`)}"]`
+    )?.value?.trim() || "";
+    const organization = screen.querySelector(
+      `[name="${CSS.escape(`${prefix}_organization`)}"]`
+    )?.value?.trim() || "";
+
+    return {
+      id: "manual",
+      name,
+      position,
+      organization
+    };
+  }
+
+  function syncManualEmployeeInput(control) {
+    const match = control?.name?.match(
+      /^(producer|admitter|issuer)_(name|position|organization)$/
+    );
+    if (!match) return;
+
+    const prefix = match[1];
+    const select = screen.querySelector(
+      `[name="${CSS.escape(`${prefix}_employee_id`)}"]`
+    );
+
+    if (select?.value !== "manual") return;
+
+    const employee = manualEmployeeFromGroup(prefix);
+    permitState[prefix] = employee;
+
+    if (prefix === "producer") {
+      updateRelatedProducerFields();
+    } else if (prefix === "admitter") {
+      updateRelatedAdmitterFields();
+    } else if (prefix === "issuer") {
+      updateRelatedIssuerFields();
+    }
+  }
+
   function handleEmployeeSelection(
     select
   ) {
@@ -2826,6 +2874,18 @@
       manualInput?.removeAttribute("readonly");
       manualInput?.focus();
       manualInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      const prefix = select.name.match(
+        /^(producer|admitter|issuer)_employee_id$/
+      )?.[1];
+      if (prefix) {
+        permitState[prefix] = manualEmployeeFromGroup(prefix);
+        if (prefix === "producer") updateRelatedProducerFields();
+        if (prefix === "admitter") updateRelatedAdmitterFields();
+        if (prefix === "issuer") updateRelatedIssuerFields();
+      }
+
+      saveDraft(false);
       return;
     }
 
@@ -5831,6 +5891,10 @@
         }
 
         handleDynamicControlInput(
+          control
+        );
+
+        syncManualEmployeeInput(
           control
         );
 
