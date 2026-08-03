@@ -1248,11 +1248,10 @@
 
     return `
       ${blankOption}
-      ${options}
-
       <option value="manual">
         ${escapeHtml(text("manualInput"))}
       </option>
+      ${options}
     `;
   }
 
@@ -1289,7 +1288,8 @@
       placeholder = "",
       employee = false,
       selectedEmployeeId = "",
-      hintKey = ""
+      hintKey = "",
+      className = ""
     } = options;
 
     let control = "";
@@ -1329,6 +1329,7 @@
         class="
           work-permit-field
           ${wide ? "work-permit-field-wide" : ""}
+          ${escapeHtml(className)}
         ">
 
         ${i18n(labelKey)}
@@ -1393,7 +1394,8 @@
           {
             employee: true,
             selectedEmployeeId,
-            hintKey
+            hintKey,
+            className: "work-permit-employee-choice"
           }
         )}
 
@@ -1401,7 +1403,8 @@
           `${prefix}_name`,
           "fullName",
           {
-            readonly: false
+            readonly: false,
+            className: "work-permit-employee-manual"
           }
         )}
 
@@ -1412,6 +1415,13 @@
             readonly: false
           }
         )}
+
+        <button
+          type="button"
+          class="work-permit-employee-back no-print"
+          data-employee-use-list>
+          ← Выбрать из списка
+        </button>
 
         ${
           includeOrganization
@@ -1702,6 +1712,22 @@
     `;
   }
 
+  function dynamicEmployeeEntry(prefix, row, labelKey, valueKey = "name") {
+    return `
+      <div class="work-permit-employee-group" data-employee-group="${escapeHtml(prefix)}">
+        <div class="work-permit-employee-choice">
+          ${employeeSelect(`${prefix}_employee_id`, labelKey, row.employeeId || "")}
+        </div>
+        <div class="work-permit-employee-manual">
+          ${inputControl(`${prefix}_${valueKey}`, labelKey, { value: row[valueKey] || "" })}
+        </div>
+        <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
+          ← Выбрать из списка
+        </button>
+      </div>
+    `;
+  }
+
   function leaderRowHtml(
     row,
     index
@@ -1718,24 +1744,7 @@
           ${index + 1}
         </th>
 
-        ${tableCell(
-          employeeSelect(
-            `${prefix}_employee_id`,
-            row.employeeId || ""
-          ),
-          "fullName"
-        )}
-
-        ${tableCell(
-          inputControl(
-            `${prefix}_name`,
-            "fullName",
-            {
-              value: row.name || ""
-            }
-          ),
-          "fullName"
-        )}
+        ${tableCell(dynamicEmployeeEntry(prefix, row, "fullName"), "fullName")}
 
         ${tableCell(
           inputControl(
@@ -1929,24 +1938,7 @@
           "position"
         )}
 
-        ${tableCell(
-          employeeSelect(
-            `${prefix}_employee_id`,
-            row.employeeId || ""
-          ),
-          "fullName"
-        )}
-
-        ${tableCell(
-          inputControl(
-            `${prefix}_name`,
-            "fullName",
-            {
-              value: row.name || ""
-            }
-          ),
-          "fullName"
-        )}
+        ${tableCell(dynamicEmployeeEntry(prefix, row, "fullName"), "fullName")}
 
         ${tableCell(
           inputControl(
@@ -2015,24 +2007,7 @@
           "briefingDateTime"
         )}
 
-        ${tableCell(
-          employeeSelect(
-            `${prefix}_employee_id`,
-            row.employeeId || ""
-          ),
-          "teamMember"
-        )}
-
-        ${tableCell(
-          inputControl(
-            `${prefix}_name`,
-            "teamMember",
-            {
-              value: row.name || ""
-            }
-          ),
-          "teamMember"
-        )}
+        ${tableCell(dynamicEmployeeEntry(prefix, row, "teamMember"), "teamMember")}
 
         ${tableCell(
           inputControl(
@@ -2259,24 +2234,7 @@
           "changeType"
         )}
 
-        ${tableCell(
-          employeeSelect(
-            `${prefix}_employee_id`,
-            row.employeeId || ""
-          ),
-          "changedMember"
-        )}
-
-        ${tableCell(
-          inputControl(
-            `${prefix}_member`,
-            "changedMember",
-            {
-              value: row.member || ""
-            }
-          ),
-          "changedMember"
-        )}
+        ${tableCell(dynamicEmployeeEntry(prefix, row, "changedMember", "member"), "changedMember")}
 
         ${tableCell(
           inputControl(
@@ -2349,6 +2307,7 @@
         .join("");
 
     syncAllPrintValues();
+    updateEmployeeEntryModes();
     growAllTextareas();
   }
 
@@ -2883,6 +2842,14 @@
   ) {
     const employeeId =
       select.value;
+
+    const employeeGroup = select.closest(
+      "[data-employee-group]"
+    );
+    employeeGroup?.classList.toggle(
+      "is-manual",
+      employeeId === "manual"
+    );
 
     if (!employeeId) return;
 
@@ -3644,32 +3611,6 @@
           </label>
 
           <button
-            id="workPermitFinishButton"
-            type="button">
-
-            ${escapeHtml(
-              text("finishPermit")
-            )}
-          </button>
-
-          <button
-            id="workPermitPrintButton"
-            type="button">
-
-            ${escapeHtml(
-              text("print")
-            )}
-          </button>
-
-          <button
-            id="workPermitSharePdfButton"
-            class="work-permit-share-button"
-            type="button">
-
-            PDF / WhatsApp
-          </button>
-
-          <button
             id="workPermitClearButton"
             type="button">
 
@@ -3863,10 +3804,6 @@
                       ${escapeHtml(text("fullName"))}
                     </th>
 
-                    <th data-work-permit-i18n="fullName">
-                      ${escapeHtml(text("fullName"))}
-                    </th>
-
                     <th data-work-permit-i18n="position">
                       ${escapeHtml(text("position"))}
                     </th>
@@ -3912,13 +3849,15 @@
             )}
 
             <div
-              class="work-permit-grid work-permit-grid-four">
+              class="work-permit-grid work-permit-grid-four work-permit-employee-group"
+              data-employee-group="issuer">
 
               ${field(
                 "issuer_employee_id",
                 "employeeEntryMode",
                 {
                   employee: true,
+                  className: "work-permit-employee-choice",
                   selectedEmployeeId:
                     permitState.issuer?.id || "",
                   hintKey:
@@ -3931,7 +3870,8 @@
                 "fullName",
                 {
                   value:
-                    permitState.issuer?.name || ""
+                    permitState.issuer?.name || "",
+                  className: "work-permit-employee-manual"
                 }
               )}
 
@@ -3948,6 +3888,10 @@
                 "issuer_signature",
                 "signature"
               )}
+
+              <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
+                ← Выбрать из списка
+              </button>
 
               ${field(
                 "issuer_date",
@@ -3978,7 +3922,7 @@
               "h2"
             )}
 
-            <div class="work-permit-completed-summary">
+            <div class="work-permit-completed-summary work-permit-screen-only">
               <label class="work-permit-field work-permit-field-wide">
                 <span data-work-permit-i18n="measureNumber">
                   ${escapeHtml(text("measureNumber"))}
@@ -4000,16 +3944,33 @@
                 )}
               </details>
 
-              <div class="work-permit-grid work-permit-grid-four">
+              <div class="work-permit-grid work-permit-grid-four work-permit-employee-group" data-employee-group="completed_by">
                 ${field(
                   "completed_by_employee_id",
                   "completedBy",
-                  { employee: true }
+                  { employee: true, className: "work-permit-employee-choice" }
                 )}
-                ${field("completed_by_name", "completedBy")}
+                ${field("completed_by_name", "completedBy", { className: "work-permit-employee-manual" })}
                 ${field("completed_by_position", "position")}
                 ${field("completed_by_signature", "signature")}
+                <button type="button" class="work-permit-employee-back no-print" data-employee-use-list>
+                  ← Выбрать из списка
+                </button>
               </div>
+            </div>
+
+            <div class="work-permit-print-only work-permit-table-wrap">
+              <table class="work-permit-table">
+                <thead>
+                  <tr>
+                    <th>№ мероприятия</th>
+                    <th>Выполнил</th>
+                    <th>Должность</th>
+                    <th>Подпись</th>
+                  </tr>
+                </thead>
+                <tbody id="workPermitCompletedMeasuresPrintRows"></tbody>
+              </table>
             </div>
 
           </section>
@@ -4040,10 +4001,6 @@
 
                     <th data-work-permit-i18n="position">
                       ${escapeHtml(text("position"))}
-                    </th>
-
-                    <th data-work-permit-i18n="fullName">
-                      ${escapeHtml(text("fullName"))}
                     </th>
 
                     <th data-work-permit-i18n="fullName">
@@ -4106,10 +4063,6 @@
 
                     <th data-work-permit-i18n="briefingDateTime">
                       ${escapeHtml(text("briefingDateTime"))}
-                    </th>
-
-                    <th data-work-permit-i18n="teamMember">
-                      ${escapeHtml(text("teamMember"))}
                     </th>
 
                     <th data-work-permit-i18n="teamMember">
@@ -4299,10 +4252,6 @@
                       ${escapeHtml(text("changedMember"))}
                     </th>
 
-                    <th data-work-permit-i18n="changedMember">
-                      ${escapeHtml(text("changedMember"))}
-                    </th>
-
                     <th data-work-permit-i18n="changeIssuer">
                       ${escapeHtml(text("changeIssuer"))}
                     </th>
@@ -4394,6 +4343,18 @@
               )}
             </div>
           </section>
+
+          <div class="work-permit-final-actions no-print">
+            <button id="workPermitFinishButton" type="button">
+              ${escapeHtml(text("finishPermit"))}
+            </button>
+            <button id="workPermitPrintButton" type="button">
+              ${escapeHtml(text("print"))}
+            </button>
+            <button id="workPermitSharePdfButton" class="work-permit-share-button" type="button">
+              PDF / WhatsApp
+            </button>
+          </div>
         </article>
       </form>
     `;
@@ -4703,6 +4664,74 @@
 
     syncPrintValue(summary);
     growTextarea(summary);
+
+    syncCompletedMeasuresPrintRows();
+  }
+
+  function updateEmployeeEntryModes() {
+    screen.querySelectorAll(
+      "[data-employee-group]"
+    ).forEach(group => {
+      const select = group.querySelector(
+        "[data-employee-select]"
+      );
+      group.classList.toggle(
+        "is-manual",
+        select?.value === "manual"
+      );
+    });
+  }
+
+  function useEmployeeList(button) {
+    const group = button.closest(
+      "[data-employee-group]"
+    );
+    const select = group?.querySelector(
+      "[data-employee-select]"
+    );
+    if (!group || !select) return;
+
+    select.value = "";
+    group.classList.remove("is-manual");
+    select.focus();
+    syncPrintValue(select);
+    saveDraft(false);
+  }
+
+  function syncCompletedMeasuresPrintRows() {
+    const body = screen.querySelector(
+      "#workPermitCompletedMeasuresPrintRows"
+    );
+    if (!body) return;
+
+    const name = screen.querySelector(
+      '[name="completed_by_name"]'
+    )?.value || "";
+    const position = screen.querySelector(
+      '[name="completed_by_position"]'
+    )?.value || "";
+    const signature = screen.querySelector(
+      '[name="completed_by_signature"]'
+    )?.value || "";
+    const measures = selectedSafetyMeasures();
+    const rows = measures.length ? measures : [{ id: "", details: "" }];
+
+    body.innerHTML = rows.map(item => {
+      const measure = SAFETY_MEASURES.find(entry => entry.id === item.id);
+      const title = measure ? text(measure.key) : "";
+      const description = item.details
+        ? `${item.id} ${title} — ${item.details}`
+        : `${item.id} ${title}`.trim();
+
+      return `
+        <tr>
+          <td>${escapeHtml(description)}</td>
+          <td>${escapeHtml(name)}</td>
+          <td>${escapeHtml(position)}</td>
+          <td>${escapeHtml(signature)}</td>
+        </tr>
+      `;
+    }).join("");
   }
 
   function refreshCompletedMeasureSelects() {
@@ -5210,6 +5239,7 @@
     );
 
     updateOptionalSectionsUi();
+    updateEmployeeEntryModes();
     syncAllPrintValues();
     growAllTextareas();
 
@@ -5568,7 +5598,8 @@
 
         rowElement.classList.toggle(
           "work-permit-print-empty-row",
-          !hasValue
+          !hasValue &&
+            rowElement.parentElement?.firstElementChild !== rowElement
         );
       });
   }
@@ -5578,6 +5609,9 @@
     updateSafetyMeasuresUi();
     growAllTextareas();
     syncAllPrintValues();
+    syncCompletedMeasuresPrintRows();
+    screen.querySelector(".work-permit-paper")
+      ?.classList.add("is-print-layout");
     removeEmptyDynamicRowsFromPrint();
 
     OPTIONAL_SECTION_IDS
@@ -5601,6 +5635,8 @@
   }
 
   function restoreAfterPrint() {
+    screen.querySelector(".work-permit-paper")
+      ?.classList.remove("is-print-layout");
     screen
       .querySelectorAll(
         ".work-permit-print-empty-row"
@@ -5952,6 +5988,16 @@
     screen.addEventListener(
       "click",
       event => {
+        const employeeListButton =
+          event.target.closest(
+            "[data-employee-use-list]"
+          );
+
+        if (employeeListButton) {
+          useEmployeeList(employeeListButton);
+          return;
+        }
+
         const addRowButton =
           event.target.closest(
             "[data-add-dynamic-row]"
@@ -6375,6 +6421,48 @@
         gap: 14px;
       }
 
+      .work-permit-employee-manual,
+      .work-permit-employee-back {
+        display: none;
+      }
+
+      .work-permit-employee-group.is-manual .work-permit-employee-choice {
+        display: none;
+      }
+
+      .work-permit-employee-group.is-manual .work-permit-employee-manual {
+        display: flex;
+      }
+
+      .work-permit-employee-group.is-manual .work-permit-employee-back {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        align-self: end;
+      }
+
+      .work-permit-final-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 2px solid #cce0e7;
+      }
+
+      .work-permit-print-only {
+        display: none;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-print-only {
+        display: block;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-screen-only {
+        display: none;
+      }
+
       [data-optional-section="completedMeasures"] > .work-permit-table-wrap,
       [data-optional-section="completedMeasures"] > .work-permit-add-row {
         display: none !important;
@@ -6417,6 +6505,22 @@
       }
 
       @media print {
+        .work-permit-employee-choice,
+        .work-permit-employee-back {
+          display: none !important;
+        }
+
+        .work-permit-employee-manual {
+          display: flex !important;
+        }
+        .work-permit-print-only {
+          display: block !important;
+        }
+
+        .work-permit-screen-only {
+          display: none !important;
+        }
+
         .work-permit-optional-section.is-collapsed
         > :not(.work-permit-optional-toolbar):not(h2) {
           display: block !important;
@@ -6425,7 +6529,11 @@
 
       @media (max-width: 700px) {
         .work-permit-screen {
-          padding-bottom: 92px;
+          padding-bottom: 24px;
+        }
+
+        .work-permit-final-actions {
+          grid-template-columns: 1fr;
         }
 
         .work-permit-paper {
@@ -6445,13 +6553,9 @@
         }
 
         .work-permit-toolbar-actions {
-          position: fixed;
-          z-index: 1000;
-          right: 8px;
-          bottom: calc(8px + env(safe-area-inset-bottom));
-          left: 8px;
+          position: static;
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: 1fr;
           gap: 6px;
           padding: 8px;
           border: 1px solid rgba(13, 100, 126, .2);
