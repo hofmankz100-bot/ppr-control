@@ -13,8 +13,8 @@ const serviceWorker = fs.readFileSync(path.join(root, "sw.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=339-work-permit-manual-only/);
-  assert.match(html, /modules\/work-permit\.js\?v=339-work-permit-manual-only/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=340-work-permit-safety/);
+  assert.match(html, /modules\/work-permit\.js\?v=340-work-permit-safety/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -63,6 +63,13 @@ test("selected safety measures are combined into one section seven field", () =>
   assert.match(permit, /function syncCompletedMeasuresPrintRows\(\)/);
   assert.match(permit, /work-permit-paper\.is-print-layout \.work-permit-print-only/);
   assert.match(permit, /\.work-permit-screen-only[\s\S]*?display:\s*none !important/);
+  assert.match(permit, /const SAFETY_DEFAULTS/);
+  assert.match(permit, /const SAFETY_INSTALL_OPTIONS/);
+  assert.match(permit, /const SAFETY_INSTRUCTIONS/);
+  assert.match(permit, /function applySafetyAutofill/);
+  assert.match(permit, /function syncSafetyInstallOptions/);
+  assert.match(permit, /function syncInstructionAcknowledgements/);
+  assert.match(permit, /data-instruction-ack/);
 });
 
 test("permit draft and print-safe values are preserved", () => {
@@ -88,9 +95,9 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v339-work-permit-manual-only/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=339-work-permit-manual-only/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=339-work-permit-manual-only/);
-  assert.match(serviceWorker, /styles\.css\?v=339-work-permit-manual-only/);
-  assert.match(serviceWorker, /app\.js\?v=339-work-permit-manual-only/);
+  assert.match(serviceWorker, /ppr-v340-work-permit-safety/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=340-work-permit-safety/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=340-work-permit-safety/);
+  assert.match(serviceWorker, /styles\.css\?v=340-work-permit-safety/);
+  assert.match(serviceWorker, /app\.js\?v=340-work-permit-safety/);
 });

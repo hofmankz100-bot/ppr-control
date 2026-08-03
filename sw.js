@@ -1,17 +1,17 @@
-const CACHE_NAME = "ppr-v339-work-permit-manual-only";
+const CACHE_NAME = "ppr-v340-work-permit-safety";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=339-work-permit-manual-only",
+  "./styles.css?v=340-work-permit-safety",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/requests.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=339-work-permit-manual-only",
-  "./modules/work-permit.js?v=339-work-permit-manual-only",
-  "./app.js?v=339-work-permit-manual-only",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=340-work-permit-safety",
+  "./modules/work-permit.js?v=340-work-permit-safety",
+  "./app.js?v=340-work-permit-safety",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

@@ -82,6 +82,31 @@
     }
   ];
 
+  const SAFETY_DEFAULTS = {
+    "5.2": "Отключить рубильник, задвижку, магистраль и другие источники питания",
+    "5.5": "Оградить место работы, вывесить предупреждающие плакаты",
+    "5.6": "Использовать предохранительные пояса и необходимые средства индивидуальной защиты (СИЗ)",
+    "5.7": "Предупредить начальника цеха, бригадира, оператора и ответственного за цех",
+    "5.8": "Не требуется"
+  };
+
+  const SAFETY_INSTALL_OPTIONS = [
+    "Установить тупики",
+    "Установить заглушки",
+    "Установить табличку «Не включать»",
+    "Установить сигнальные лампы"
+  ];
+
+  const SAFETY_INSTRUCTIONS = [
+    { id: "general", title: "Инструкция по технике безопасности", source: "Трудовой кодекс РК и Правила оформления нарядов-допусков", url: "https://adilet.zan.kz/rus/docs/V2000021151", points: ["Выполнять только порученную работу", "Проверить рабочее место и защитные средства", "Остановить работу при возникновении опасности"] },
+    { id: "fire", title: "Инструкция по огневым работам", source: "Правила пожарной безопасности Республики Казахстан", url: "https://adilet.zan.kz/rus/docs/V2100026867", points: ["Удалить или защитить горючие материалы", "Подготовить исправные средства пожаротушения", "После окончания проверить место проведения работ"] },
+    { id: "electric", title: "Инструкция по электробезопасности", source: "Правила техники безопасности при эксплуатации электроустановок", url: "https://adilet.zan.kz/rus/docs/V1500010907", points: ["Отключить и исключить ошибочную подачу напряжения", "Проверить отсутствие напряжения и установить необходимые заземления", "Использовать испытанные защитные средства"] },
+    { id: "emergency", title: "План локализации и ликвидации аварий", source: "Применяется утверждённый на предприятии ПЛА", url: "https://adilet.zan.kz/rus/docs/V1400010256", points: ["Знать сигналы аварии и пути эвакуации", "При аварии прекратить работу и сообщить ответственному", "Действовать только по утверждённому плану предприятия"] },
+    { id: "por", title: "Проект организации работ (ПОР)", source: "Применяется утверждённый для конкретной работы ПОР", url: "https://adilet.zan.kz/rus/docs/V2000021151", points: ["Соблюдать указанную последовательность работ", "Применять предусмотренные ПОР механизмы и ограждения", "Не изменять технологию без согласования"] },
+    { id: "height", title: "Инструкция по высотным работам", source: "Правила безопасности и охраны труда при работе на высоте", url: "https://adilet.zan.kz/rus/docs/V2200027349", points: ["Проверить допуск, состояние настилов и ограждений", "Использовать страховочную систему и каску", "Не выполнять работу при опасной погоде или недостаточной видимости"] },
+    { id: "welding", title: "Инструкция по сварочным работам", source: "Требования пожарной и промышленной безопасности РК", url: "https://adilet.zan.kz/rus/docs/V1400010256", points: ["Проверить исправность сварочного оборудования", "Использовать щиток, спецодежду и защитные средства", "Не выполнять сварку рядом с незащищёнными горючими материалами"] }
+  ];
+
   const OPTIONAL_SECTION_TITLE_KEYS = {
     leader: "leaderSection",
     completedMeasures: "completedMeasuresSection",
@@ -1613,13 +1638,15 @@
           data-safety-details="${escapeHtml(measure.id)}"
           hidden>
 
-          ${textareaControl(
-            measure.fieldName,
-            "safetyMeasureDetails",
-            {
-              rows: measure.id === "5.9" ? 3 : 2
-            }
-          )}
+          ${measure.id === "5.3"
+            ? safetyInstallOptionsHtml(measure)
+            : measure.id === "5.9"
+              ? safetyInstructionsHtml(measure)
+              : textareaControl(
+                  measure.fieldName,
+                  "safetyMeasureDetails",
+                  { rows: 2, placeholder: safetyPlaceholder(measure.id) }
+                )}
         </div>
       </div>
     `;
@@ -1662,6 +1689,50 @@
 
         ＋ ${escapeHtml(text(labelKey))}
       </button>
+    `;
+  }
+
+  function safetyPlaceholder(measureId) {
+    if (measureId === "5.1") return "Оборудование из раздела 2";
+    if (measureId === "5.4") return "Место проведения анализа воздушной среды";
+    return "Автоматическое мероприятие — при необходимости отредактируйте";
+  }
+
+  function safetyInstallOptionsHtml(measure) {
+    return `
+      <div class="work-permit-safety-options">
+        ${SAFETY_INSTALL_OPTIONS.map((option, index) => `
+          <label>
+            <input type="checkbox" name="safety_install_option_${index}" data-safety-install-option value="${escapeHtml(option)}">
+            <span>${escapeHtml(option)}</span>
+          </label>
+        `).join("")}
+      </div>
+      ${textareaControl(measure.fieldName, "safetyMeasureDetails", { rows: 2, readonly: true })}
+    `;
+  }
+
+  function safetyInstructionsHtml(measure) {
+    return `
+      <div class="work-permit-instruction-list">
+        ${SAFETY_INSTRUCTIONS.map(instruction => `
+          <article class="work-permit-instruction-card" data-instruction-card="${escapeHtml(instruction.id)}">
+            <label class="work-permit-instruction-select">
+              <input type="checkbox" name="instruction_${escapeHtml(instruction.id)}" data-instruction-toggle="${escapeHtml(instruction.id)}">
+              <strong>${escapeHtml(instruction.title)}</strong>
+            </label>
+            <details>
+              <summary>Открыть инструкцию</summary>
+              <p>${escapeHtml(instruction.source)}</p>
+              <ul>${instruction.points.map(point => `<li>${escapeHtml(point)}</li>`).join("")}</ul>
+              <p><a href="${escapeHtml(instruction.url)}" target="_blank" rel="noopener">Официальный источник Республики Казахстан</a></p>
+              <button type="button" data-instruction-ack="${escapeHtml(instruction.id)}">Прочитал и ознакомился</button>
+            </details>
+          </article>
+        `).join("")}
+      </div>
+      ${textareaControl(measure.fieldName, "safetyMeasureDetails", { rows: 4, readonly: true })}
+      <small>В наряд попадут только выбранные и подтверждённые инструкции.</small>
     `;
   }
 
@@ -4495,8 +4566,82 @@
       checkbox.checked &&
       textarea
     ) {
+      applySafetyAutofill(measureId, textarea);
       growTextarea(textarea);
     }
+  }
+
+  function workEquipmentValue() {
+    return screen.querySelector('[name="equipment_manual"]')?.value?.trim() || "";
+  }
+
+  function workPlaceValue() {
+    return screen.querySelector('[name="work_place"]')?.value?.trim() || "";
+  }
+
+  function applySafetyAutofill(measureId, textarea, refresh = false) {
+    if (!textarea) return;
+    let value = SAFETY_DEFAULTS[measureId] || "";
+    if (measureId === "5.1") value = workEquipmentValue();
+    if (measureId === "5.4") {
+      value = [workEquipmentValue(), workPlaceValue()].filter(Boolean).join(" — ");
+    }
+    if (!value) return;
+    if (!refresh && textarea.value.trim()) return;
+    if (refresh && textarea.dataset.autofilled !== "true" && textarea.value.trim()) return;
+    textarea.value = value;
+    textarea.dataset.autofilled = "true";
+    syncPrintValue(textarea);
+    growTextarea(textarea);
+  }
+
+  function refreshLinkedSafetyAutofill() {
+    ["5.1", "5.4"].forEach(id => {
+      if (!safetyToggle(id)?.checked) return;
+      const textarea = safetyDetails(id)?.querySelector("textarea");
+      applySafetyAutofill(id, textarea, true);
+    });
+    syncCompletedMeasuresSummary();
+  }
+
+  function syncSafetyInstallOptions() {
+    const textarea = safetyDetails("5.3")?.querySelector("textarea");
+    if (!textarea) return;
+    textarea.value = [...screen.querySelectorAll("[data-safety-install-option]:checked")]
+      .map(control => control.value)
+      .join("; ");
+    syncPrintValue(textarea);
+    growTextarea(textarea);
+    syncCompletedMeasuresSummary();
+  }
+
+  function acknowledgedInstructionIds() {
+    const textarea = safetyDetails("5.9")?.querySelector("textarea");
+    const storedIds = (textarea?.dataset.acknowledged || "").split(",").filter(Boolean);
+    if (storedIds.length) return new Set(storedIds);
+    const value = textarea?.value || "";
+    return new Set(SAFETY_INSTRUCTIONS.filter(item => value.includes(item.title)).map(item => item.id));
+  }
+
+  function syncInstructionAcknowledgements(ids = acknowledgedInstructionIds()) {
+    const textarea = safetyDetails("5.9")?.querySelector("textarea");
+    if (!textarea) return;
+    const selected = SAFETY_INSTRUCTIONS.filter(item =>
+      ids.has(item.id) && screen.querySelector(`[data-instruction-toggle="${item.id}"]`)?.checked
+    );
+    textarea.dataset.acknowledged = selected.map(item => item.id).join(",");
+    textarea.value = selected.map(item => `Ознакомился с: ${item.title}`).join("\n");
+    SAFETY_INSTRUCTIONS.forEach(item => {
+      const card = screen.querySelector(`[data-instruction-card="${item.id}"]`);
+      card?.classList.toggle("is-acknowledged", selected.some(entry => entry.id === item.id));
+      const button = card?.querySelector("[data-instruction-ack]");
+      if (button) button.textContent = selected.some(entry => entry.id === item.id)
+        ? "✓ Ознакомление подтверждено"
+        : "Прочитал и ознакомился";
+    });
+    syncPrintValue(textarea);
+    growTextarea(textarea);
+    syncCompletedMeasuresSummary();
   }
 
   function updateSafetyMeasuresUi() {
@@ -4509,6 +4654,8 @@
     );
 
     refreshCompletedMeasureSelects();
+    syncSafetyInstallOptions();
+    syncInstructionAcknowledgements();
     syncCompletedMeasuresSummary();
   }
 
@@ -5830,6 +5977,14 @@
           control
         );
 
+        if (control.name === "equipment_manual" || control.name === "work_place") {
+          refreshLinkedSafetyAutofill();
+        }
+
+        if (control.closest?.("[data-safety-details]") && !control.readOnly) {
+          delete control.dataset.autofilled;
+        }
+
         if (
           SAFETY_MEASURES.some(measure => measure.fieldName === control.name)
         ) {
@@ -5897,6 +6052,16 @@
           refreshCompletedMeasureSelects();
         }
 
+        if (control.matches("[data-safety-install-option]")) {
+          syncSafetyInstallOptions();
+        }
+
+        if (control.matches("[data-instruction-toggle]")) {
+          const card = control.closest("[data-instruction-card]");
+          if (control.checked) card?.querySelector("details")?.setAttribute("open", "");
+          syncInstructionAcknowledgements();
+        }
+
         syncPrintValue(
           control
         );
@@ -5908,6 +6073,21 @@
     screen.addEventListener(
       "click",
       event => {
+        const instructionAckButton = event.target.closest("[data-instruction-ack]");
+        if (instructionAckButton) {
+          const id = instructionAckButton.dataset.instructionAck;
+          const toggle = screen.querySelector(`[data-instruction-toggle="${CSS.escape(id)}"]`);
+          if (!toggle?.checked) {
+            window.alert("Сначала выберите эту инструкцию.");
+            return;
+          }
+          const ids = acknowledgedInstructionIds();
+          ids.add(id);
+          syncInstructionAcknowledgements(ids);
+          saveDraft(true);
+          return;
+        }
+
         const locationListButton = event.target.closest(
           "[data-location-use-list]"
         );
@@ -6233,8 +6413,19 @@
       }
 
       .work-permit-row-actions {
-        width: 1%;
+        width: 1% !important;
+        min-width: 0 !important;
         white-space: nowrap;
+        padding: 4px !important;
+      }
+
+      .work-permit-table {
+        table-layout: auto !important;
+      }
+
+      .work-permit-table th.no-print:last-child {
+        width: 1% !important;
+        padding: 0 !important;
       }
 
       .work-permit-completion-checks {
@@ -6347,6 +6538,64 @@
       .work-permit-completed-summary {
         display: grid;
         gap: 14px;
+      }
+
+      .work-permit-safety-options,
+      .work-permit-instruction-list {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .work-permit-safety-options label,
+      .work-permit-instruction-select {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #bdd7df;
+        border-radius: 10px;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .work-permit-safety-options input,
+      .work-permit-instruction-select input {
+        width: 21px;
+        height: 21px;
+        flex: 0 0 auto;
+      }
+
+      .work-permit-instruction-card {
+        overflow: hidden;
+        border: 1px solid #bed5dd;
+        border-radius: 12px;
+        background: #f8fcfd;
+      }
+
+      .work-permit-instruction-card.is-acknowledged {
+        border-color: #45a86d;
+        background: #effaf3;
+      }
+
+      .work-permit-instruction-card details {
+        padding: 0 12px 12px;
+      }
+
+      .work-permit-instruction-card summary {
+        padding: 10px 0;
+        cursor: pointer;
+        color: #0b6684;
+        font-weight: 700;
+      }
+
+      .work-permit-instruction-card li {
+        margin: 5px 0;
+      }
+
+      .work-permit-instruction-card a {
+        color: #075f81;
+        font-weight: 700;
       }
 
       .work-permit-employee-manual,
