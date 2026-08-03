@@ -10682,6 +10682,21 @@ function render() {
   if (current.view === "aggregateJournal") renderAggregateJournal();
   if (current.view === "gpm") renderGpmJournal();
   if (current.view === "workPermit") {
+    const workPermitProfile = authenticatedProfile || profile || {};
+    const workPermitRole =
+      workPermitProfile.editorPreviewRole ||
+      workPermitProfile.jobRole ||
+      workPermitProfile.role ||
+      "engineer";
+    window.currentUser = {
+      ...workPermitProfile,
+      role: workPermitRole,
+      position:
+        workPermitProfile.position ||
+        (isPrimaryAdminEngineer()
+          ? "Инженер"
+          : ROLE_ACCESS[workPermitRole]?.label || workPermitRole)
+    };
     window.PprWorkPermit?.activate();
     ui.subtitle.textContent = window.PprWorkPermit?.subtitle() || t("workPermit");
   }

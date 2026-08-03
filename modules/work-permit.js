@@ -2793,6 +2793,38 @@
   function updateRelatedProducerFields() {
     const name =
       permitState.producer?.name || "";
+    const position =
+      permitState.producer?.position || "";
+
+    setControlValue(
+      "completed_by_name",
+      name
+    );
+
+    setControlValue(
+      "completed_by_position",
+      position
+    );
+
+    const primaryBrigadeMember =
+      dynamicRows.brigade[0];
+
+    if (primaryBrigadeMember) {
+      primaryBrigadeMember.employeeId =
+        permitState.producer?.id || "manual";
+      primaryBrigadeMember.name = name;
+      primaryBrigadeMember.profession = position;
+
+      setControlValue(
+        `brigade_${primaryBrigadeMember.id}_name`,
+        name
+      );
+
+      setControlValue(
+        `brigade_${primaryBrigadeMember.id}_profession`,
+        position
+      );
+    }
 
     setControlValue(
       "start_producer",
@@ -3520,6 +3552,8 @@
         );
       }
     });
+
+    updateRelatedProducerFields();
 
     setSectionSelectorVisible(false);
     updateOptionalSectionsUi();

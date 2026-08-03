@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=342-work-permit-safety-layout/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=342-work-permit-safety-layout/);
-  assert.match(html, /modules\/work-permit\.js\?v=342-work-permit-safety-layout/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=343-work-permit-producer-fill/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=343-work-permit-producer-fill/);
+  assert.match(html, /modules\/work-permit\.js\?v=343-work-permit-producer-fill/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -36,6 +36,9 @@ test("people are selected once and reused in related fields", () => {
   assert.match(permit, /source\.employeeId/);
   assert.match(permit, /employeeId === "manual"[\s\S]*?manualInput\?\.focus\(\)/);
   assert.match(permit, /function updateRelatedProducerFields\(\)/);
+  assert.match(permit, /"completed_by_name",[\s\S]*?"completed_by_position"/);
+  assert.match(permit, /primaryBrigadeMember\.name = name/);
+  assert.match(permit, /primaryBrigadeMember\.profession = position/);
   assert.match(permit, /function updateRelatedAdmitterFields\(\)/);
   assert.match(permit, /function updateRelatedIssuerFields\(\)/);
   assert.match(permit, /employeeEntryMode: "Выберите сотрудника или ручной ввод"/);
@@ -45,6 +48,7 @@ test("people are selected once and reused in related fields", () => {
   assert.match(permit, /start_admitter/);
   assert.match(permit, /permit_returned/);
   assert.match(permit, /permit_accepted/);
+  assert.match(app, /window\.currentUser = \{[\s\S]*?position:[\s\S]*?isPrimaryAdminEngineer\(\)/);
   assert.match(permit, /brigade_\$\{row\.id\}_instructor/);
   assert.match(permit, /row\.instructor = name/);
   assert.doesNotMatch(permit, /data-add-dynamic-row="completedMeasures"/);
@@ -103,10 +107,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v342-work-permit-safety-layout/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=342-work-permit-safety-layout/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=342-work-permit-safety-layout/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=342-work-permit-safety-layout/);
-  assert.match(serviceWorker, /styles\.css\?v=342-work-permit-safety-layout/);
-  assert.match(serviceWorker, /app\.js\?v=342-work-permit-safety-layout/);
+  assert.match(serviceWorker, /ppr-v343-work-permit-producer-fill/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=343-work-permit-producer-fill/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=343-work-permit-producer-fill/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=343-work-permit-producer-fill/);
+  assert.match(serviceWorker, /styles\.css\?v=343-work-permit-producer-fill/);
+  assert.match(serviceWorker, /app\.js\?v=343-work-permit-producer-fill/);
 });
