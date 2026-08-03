@@ -97,6 +97,31 @@
     "Установить сигнальные лампы"
   ];
 
+  const SAFETY_DEFAULTS_KK = {
+    "5.2": "Ажыратқышты, ысырманы, магистральды және басқа қуат көздерін ажырату",
+    "5.5": "Жұмыс орнын қоршау, ескерту плакаттарын ілу",
+    "5.6": "Сақтандыру белдіктерін және қажетті жеке қорғаныс құралдарын пайдалану",
+    "5.7": "Цех бастығын, бригадирді, операторды және цехқа жауапты қызметкерді ескерту",
+    "5.8": "Талап етілмейді"
+  };
+
+  const SAFETY_INSTALL_OPTIONS_KK = [
+    "Тұйықтарды орнату",
+    "Бітеуіштерді орнату",
+    "«Қоспау» тақтайшасын орнату",
+    "Сигнал шамдарын орнату"
+  ];
+
+  const SAFETY_INSTRUCTION_TITLES_KK = {
+    general: "Қауіпсіздік техникасы жөніндегі нұсқаулық",
+    fire: "Отты жұмыстар жөніндегі нұсқаулық",
+    electric: "Электр қауіпсіздігі жөніндегі нұсқаулық",
+    emergency: "Аварияларды оқшаулау және жою жоспары",
+    por: "Жұмыстарды ұйымдастыру жобасы (ЖҰЖ)",
+    height: "Биіктіктегі жұмыстар жөніндегі нұсқаулық",
+    welding: "Дәнекерлеу жұмыстары жөніндегі нұсқаулық"
+  };
+
   const SAFETY_INSTRUCTIONS = [
     { id: "general", title: "Инструкция по технике безопасности", source: "Трудовой кодекс РК и Правила оформления нарядов-допусков", url: "https://adilet.zan.kz/rus/docs/V2000021151", points: ["Выполнять только порученную работу", "Проверить рабочее место и защитные средства", "Остановить работу при возникновении опасности"] },
     { id: "fire", title: "Инструкция по огневым работам", source: "Правила пожарной безопасности Республики Казахстан", url: "https://adilet.zan.kz/rus/docs/V2100026867", points: ["Удалить или защитить горючие материалы", "Подготовить исправные средства пожаротушения", "После окончания проверить место проведения работ"] },
@@ -146,6 +171,7 @@
 
       permitSubtitle:
         "на выполнение работ повышенной опасности",
+      permitCode: "НД",
 
       permitNumber: "№ наряда-допуска",
       permitDate: "Дата выдачи",
@@ -163,6 +189,7 @@
 
       saved: "Черновик сохранён",
       completed: "Наряд-допуск завершён",
+      acknowledgedWith: "Ознакомился с:",
 
       selectEmployee: "Выберите сотрудника",
       employeeEntryMode: "Выберите сотрудника или ручной ввод",
@@ -427,6 +454,7 @@
 
       permitSubtitle:
         "қауіптілігі жоғары жұмыстарды орындауға",
+      permitCode: "ЖР",
 
       permitNumber:
         "Жұмысқа рұқсат №",
@@ -457,6 +485,7 @@
 
       completed:
         "Жұмысқа рұқсат аяқталды",
+      acknowledgedWith: "Таныстым:",
 
       selectEmployee:
         "Қызметкерді таңдаңыз",
@@ -1809,8 +1838,8 @@
       <div class="work-permit-safety-options">
         ${SAFETY_INSTALL_OPTIONS.map((option, index) => `
           <label>
-            <input type="checkbox" name="safety_install_option_${index}" data-safety-install-option value="${escapeHtml(option)}">
-            <span>${escapeHtml(option)}</span>
+            <input type="checkbox" name="safety_install_option_${index}" data-safety-install-option="${index}" value="${escapeHtml(option)}">
+            <span data-safety-install-label="${index}">${escapeHtml(option)}</span>
           </label>
         `).join("")}
       </div>
@@ -1827,7 +1856,7 @@
           <article class="work-permit-instruction-card" data-instruction-card="${escapeHtml(instruction.id)}">
             <label class="work-permit-instruction-select">
               <input type="checkbox" name="instruction_${escapeHtml(instruction.id)}" data-instruction-toggle="${escapeHtml(instruction.id)}">
-              <strong>${escapeHtml(instruction.title)}</strong>
+              <strong data-instruction-title="${escapeHtml(instruction.id)}">${escapeHtml(instruction.title)}</strong>
             </label>
             <details>
               <summary>Открыть инструкцию</summary>
@@ -3754,8 +3783,8 @@
                 )}
               </strong>
 
-              <span>
-                НД / ЖР
+              <span data-work-permit-i18n="permitCode">
+                ${escapeHtml(text("permitCode"))}
               </span>
             </div>
 
@@ -4029,10 +4058,10 @@
               <table class="work-permit-table">
                 <thead>
                   <tr>
-                    <th>№ мероприятия</th>
-                    <th>Выполнил</th>
-                    <th>Должность</th>
-                    <th>Подпись</th>
+                    <th data-work-permit-i18n="measureNumber">${escapeHtml(text("measureNumber"))}</th>
+                    <th data-work-permit-i18n="completedBy">${escapeHtml(text("completedBy"))}</th>
+                    <th data-work-permit-i18n="position">${escapeHtml(text("position"))}</th>
+                    <th data-work-permit-i18n="signature">${escapeHtml(text("signature"))}</th>
                   </tr>
                 </thead>
                 <tbody id="workPermitCompletedMeasuresPrintRows"></tbody>
@@ -4437,6 +4466,7 @@
 
     updateOptionalSectionsUi();
     updateSafetyMeasuresUi();
+    syncSafetyLanguageText();
     syncAllPrintValues();
     growAllTextareas();
   }
@@ -4679,9 +4709,30 @@
     return screen.querySelector('[name="work_place"]')?.value?.trim() || "";
   }
 
+  function safetyDefaultText(measureId) {
+    if (language === "kk") {
+      return SAFETY_DEFAULTS_KK[measureId] || SAFETY_DEFAULTS[measureId] || "";
+    }
+    return SAFETY_DEFAULTS[measureId] || "";
+  }
+
+  function safetyInstallOptionText(index) {
+    if (language === "kk") {
+      return SAFETY_INSTALL_OPTIONS_KK[index] || SAFETY_INSTALL_OPTIONS[index] || "";
+    }
+    return SAFETY_INSTALL_OPTIONS[index] || "";
+  }
+
+  function safetyInstructionTitle(item) {
+    if (language === "kk") {
+      return SAFETY_INSTRUCTION_TITLES_KK[item.id] || item.title;
+    }
+    return item.title;
+  }
+
   function applySafetyAutofill(measureId, textarea, refresh = false) {
     if (!textarea) return;
-    let value = SAFETY_DEFAULTS[measureId] || "";
+    let value = safetyDefaultText(measureId);
     if (measureId === "5.1") value = workEquipmentValue();
     if (measureId === "5.4") {
       value = [workEquipmentValue(), workPlaceValue()].filter(Boolean).join(" — ");
@@ -4708,7 +4759,7 @@
     const textarea = safetyDetails("5.3")?.querySelector("textarea");
     if (!textarea) return;
     textarea.value = [...screen.querySelectorAll("[data-safety-install-option]:checked")]
-      .map(control => control.value)
+      .map(control => safetyInstallOptionText(Number(control.dataset.safetyInstallOption)))
       .join("; ");
     syncPrintValue(textarea);
     growTextarea(textarea);
@@ -4720,7 +4771,10 @@
     const storedIds = (textarea?.dataset.acknowledged || "").split(",").filter(Boolean);
     if (storedIds.length) return new Set(storedIds);
     const value = textarea?.value || "";
-    return new Set(SAFETY_INSTRUCTIONS.filter(item => value.includes(item.title)).map(item => item.id));
+    return new Set(SAFETY_INSTRUCTIONS.filter(item => {
+      const kkTitle = SAFETY_INSTRUCTION_TITLES_KK[item.id] || "";
+      return value.includes(item.title) || (kkTitle && value.includes(kkTitle));
+    }).map(item => item.id));
   }
 
   function syncInstructionAcknowledgements(ids = acknowledgedInstructionIds()) {
@@ -4730,7 +4784,9 @@
       ids.has(item.id) && screen.querySelector(`[data-instruction-toggle="${item.id}"]`)?.checked
     );
     textarea.dataset.acknowledged = selected.map(item => item.id).join(",");
-    textarea.value = selected.map(item => `Ознакомился с: ${item.title}`).join("\n");
+    textarea.value = selected
+      .map(item => `${text("acknowledgedWith")} ${safetyInstructionTitle(item)}`)
+      .join("\n");
     SAFETY_INSTRUCTIONS.forEach(item => {
       const card = screen.querySelector(`[data-instruction-card="${item.id}"]`);
       card?.classList.toggle("is-acknowledged", selected.some(entry => entry.id === item.id));
@@ -4742,6 +4798,28 @@
     syncPrintValue(textarea);
     growTextarea(textarea);
     syncCompletedMeasuresSummary();
+  }
+
+  function syncSafetyLanguageText() {
+    screen.querySelectorAll("[data-safety-install-label]").forEach(label => {
+      label.textContent = safetyInstallOptionText(Number(label.dataset.safetyInstallLabel));
+    });
+
+    screen.querySelectorAll("[data-instruction-title]").forEach(title => {
+      const item = SAFETY_INSTRUCTIONS.find(entry => entry.id === title.dataset.instructionTitle);
+      if (item) title.textContent = safetyInstructionTitle(item);
+    });
+
+    ["5.2", "5.5", "5.6", "5.7", "5.8"].forEach(measureId => {
+      const textarea = safetyDetails(measureId)?.querySelector("textarea");
+      if (!textarea || textarea.dataset.autofilled !== "true") return;
+      textarea.value = safetyDefaultText(measureId);
+      syncPrintValue(textarea);
+      growTextarea(textarea);
+    });
+
+    syncSafetyInstallOptions();
+    syncInstructionAcknowledgements(acknowledgedInstructionIds());
   }
 
   async function importInstructionWord(input) {
@@ -5671,6 +5749,7 @@
 
     updateOptionalSectionsUi();
     updateSafetyMeasuresUi();
+    syncSafetyLanguageText();
     syncAllPrintValues();
 
     try {
@@ -5935,7 +6014,7 @@
       const fileName = `naryad-dopusk-${number}.pdf`;
       const worker = window.html2pdf()
         .set({
-          margin: [8, 8, 8, 8],
+          margin: [10, 10, 8, 22],
           filename: fileName,
           image: { type: "jpeg", quality: 0.96 },
           html2canvas: { scale: 1.55, useCORS: true, backgroundColor: "#ffffff" },
@@ -6021,6 +6100,21 @@
 
         body.printing-work-permit
         .work-permit-section-constructor {
+          display: none !important;
+        }
+
+        body.printing-work-permit
+        .work-permit-instruction-list,
+        body.printing-work-permit
+        .work-permit-safety-options,
+        body.printing-work-permit
+        .work-permit-safety-details > small,
+        body.printing-work-permit
+        .work-permit-reminder,
+        body.printing-work-permit
+        .work-permit-reminder-show,
+        body.printing-work-permit
+        .work-permit-field:has([name="created_at"]) {
           display: none !important;
         }
 
@@ -6998,6 +7092,196 @@
 
       .work-permit-paper.is-print-layout .work-permit-generated-safety-value {
         display: block;
+      }
+
+      /* Official A4 form based on the retained Word template. */
+      .work-permit-paper.is-print-layout {
+        width: 177mm !important;
+        max-width: 177mm !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        color: #000 !important;
+        box-shadow: none !important;
+        font-family: Calibri, Arial, sans-serif !important;
+        font-size: 9pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .no-print,
+      .work-permit-paper.is-print-layout .work-permit-flow,
+      .work-permit-paper.is-print-layout .work-permit-instruction-list,
+      .work-permit-paper.is-print-layout .work-permit-safety-options,
+      .work-permit-paper.is-print-layout .work-permit-safety-details > small,
+      .work-permit-paper.is-print-layout .work-permit-field-hint,
+      .work-permit-paper.is-print-layout .work-permit-reminder,
+      .work-permit-paper.is-print-layout .work-permit-reminder-show,
+      .work-permit-paper.is-print-layout .work-permit-field:has([name="created_at"]) {
+        display: none !important;
+      }
+
+      .work-permit-paper.is-print-layout input,
+      .work-permit-paper.is-print-layout textarea,
+      .work-permit-paper.is-print-layout select {
+        display: none !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-print-value {
+        display: block !important;
+        min-height: 5mm;
+        padding: .8mm .4mm;
+        border: 0 !important;
+        border-bottom: .7pt solid #000 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        color: #000 !important;
+        font-family: Calibri, Arial, sans-serif !important;
+        font-size: 8.5pt !important;
+        font-weight: 400 !important;
+        line-height: 1.2 !important;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-document-head {
+        padding: 0 0 3mm !important;
+        border: 0 !important;
+        border-bottom: 1pt solid #000 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-company {
+        padding-bottom: 1.5mm !important;
+        border-color: #000 !important;
+        color: #000 !important;
+        font-size: 8.5pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row {
+        align-items: end !important;
+        padding-top: 2mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row h1 {
+        color: #000 !important;
+        font-size: 16pt !important;
+        line-height: 1.05 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row p {
+        color: #000 !important;
+        font-size: 9pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-head-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        width: 70mm !important;
+        gap: 2mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-section {
+        padding: 2.4mm 0 !important;
+        border: 0 !important;
+        border-bottom: .5pt solid #555 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-section-long,
+      .work-permit-paper.is-print-layout .work-permit-safety-section {
+        break-inside: auto;
+        page-break-inside: auto;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-section > h2 {
+        display: block !important;
+        margin: 0 0 1.4mm !important;
+        color: #000 !important;
+        font-size: 10pt !important;
+        line-height: 1.2 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-grid {
+        gap: 1.8mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-field {
+        gap: .7mm !important;
+        color: #000 !important;
+        font-size: 7.5pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table-wrap {
+        overflow: visible !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table,
+      .work-permit-paper.is-print-layout .work-permit-team-table,
+      .work-permit-paper.is-print-layout .work-permit-break-table {
+        display: table !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table th,
+      .work-permit-paper.is-print-layout .work-permit-table td {
+        display: table-cell !important;
+        width: auto !important;
+        padding: .8mm !important;
+        border: .7pt solid #000 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 6.8pt !important;
+        line-height: 1.12 !important;
+        vertical-align: middle !important;
+        box-shadow: none !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table .work-permit-print-value {
+        min-height: 4.5mm;
+        padding: .4mm;
+        border: 0 !important;
+        font-size: 6.8pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-list {
+        gap: 0 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-item {
+        padding: 1mm 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        transform: none !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-check {
+        grid-template-columns: 6mm minmax(0, 1fr);
+        min-height: 0 !important;
+        color: #000 !important;
+        font-size: 8pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-details {
+        margin: .6mm 0 0 6mm !important;
+        padding: 0 !important;
+        border: 0 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-completion-checks {
+        color: #000 !important;
       }
 
       [data-optional-section="completedMeasures"] > .work-permit-table-wrap,

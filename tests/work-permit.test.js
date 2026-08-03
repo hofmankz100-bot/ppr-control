@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=347-work-permit-inline-sections/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=347-work-permit-inline-sections/);
-  assert.match(html, /modules\/work-permit\.js\?v=347-work-permit-inline-sections/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=348-work-permit-official-print/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=348-work-permit-official-print/);
+  assert.match(html, /modules\/work-permit\.js\?v=348-work-permit-official-print/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -108,6 +108,22 @@ test("permit draft and print-safe values are preserved", () => {
   assert.match(permit, /@page\s*\{[\s\S]*?size:\s*A4 portrait;[\s\S]*?margin:\s*10mm/);
 });
 
+test("official print uses only the selected language and omits instruction bodies", () => {
+  assert.match(permit, /permitCode:\s*"НД"/);
+  assert.match(permit, /permitCode:\s*"ЖР"/);
+  assert.doesNotMatch(permit, />\s*НД\s*\/\s*ЖР\s*</);
+  assert.match(permit, /data-work-permit-i18n="permitCode"/);
+  assert.match(permit, /const SAFETY_DEFAULTS_KK/);
+  assert.match(permit, /const SAFETY_INSTALL_OPTIONS_KK/);
+  assert.match(permit, /const SAFETY_INSTRUCTION_TITLES_KK/);
+  assert.match(permit, /function syncSafetyLanguageText\(\)/);
+  assert.match(permit, /syncSafetyLanguageText\(\);/);
+  assert.match(permit, /work-permit-paper\.is-print-layout \.work-permit-instruction-list/);
+  assert.match(permit, /work-permit-paper\.is-print-layout \.work-permit-reminder/);
+  assert.match(permit, /margin:\s*\[10, 10, 8, 22\]/);
+  assert.match(permit, /font-family:\s*Calibri, Arial, sans-serif/);
+});
+
 test("phone layout is card based with final actions and PDF sharing", () => {
   assert.match(permit, /work-permit-final-actions[\s\S]*?workPermitPrintButton[\s\S]*?workPermitSharePdfButton/);
   assert.match(permit, /@media \(max-width: 700px\)[\s\S]*?\.work-permit-final-actions[\s\S]*?grid-template-columns:\s*1fr/);
@@ -122,10 +138,10 @@ test("phone layout is card based with final actions and PDF sharing", () => {
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v347-work-permit-inline-sections/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=347-work-permit-inline-sections/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=347-work-permit-inline-sections/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=347-work-permit-inline-sections/);
-  assert.match(serviceWorker, /styles\.css\?v=347-work-permit-inline-sections/);
-  assert.match(serviceWorker, /app\.js\?v=347-work-permit-inline-sections/);
+  assert.match(serviceWorker, /ppr-v348-work-permit-official-print/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=348-work-permit-official-print/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=348-work-permit-official-print/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=348-work-permit-official-print/);
+  assert.match(serviceWorker, /styles\.css\?v=348-work-permit-official-print/);
+  assert.match(serviceWorker, /app\.js\?v=348-work-permit-official-print/);
 });
