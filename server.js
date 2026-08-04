@@ -626,6 +626,33 @@ function normalizedAdminConfig(raw = {}) {
   };
 }
 
+function buildAdminConfigPackage(db = readDb()) {
+  const payload = {
+    format: "ppr-admin-config",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    adminConfig: normalizedAdminConfig(db.adminConfig),
+    workPermitInstructions: Object.fromEntries(Object.entries(db.workPermitInstructions || {}).slice(0, 100).map(([id, item]) => [id, {
+      title: String(item?.title || "").slice(0, 300),
+      content: String(item?.content || "").slice(0, 200000),
+      fileName: String(item?.fileName || "").slice(0, 300)
+    }]))
+  };
+  return { payload, checksum: backupChecksum(payload) };
+}
+
+function validateAdminConfigPackage(input) {
+  const wrapper = input && typeof input === "object" ? input : {};
+  const payload = wrapper.payload && typeof wrapper.payload === "object" ? wrapper.payload : null;
+  if (!payload || payload.format !== "ppr-admin-config" || Number(payload.version) !== 1) return { error: "config_package_invalid" };
+  if (!wrapper.checksum || backupChecksum(payload) !== String(wrapper.checksum)) return { error: "config_package_checksum_invalid" };
+  const rawInstructions = payload.workPermitInstructions && typeof payload.workPermitInstructions === "object" ? payload.workPermitInstructions : {};
+  const entries = Object.entries(rawInstructions);
+  if (entries.length > 100 || entries.some(([id, item]) => !/^[a-z0-9_-]{1,80}$/i.test(id) || !item || typeof item !== "object" || String(item.content || "").length > 200000)) return { error: "config_package_content_invalid" };
+  const instructions = Object.fromEntries(entries.map(([id, item]) => [id, { title: String(item.title || "").trim().slice(0, 300), content: String(item.content || "").trim().slice(0, 200000), fileName: String(item.fileName || "").trim().slice(0, 300) }]));
+  return { payload, config: normalizedAdminConfig(payload.adminConfig), instructions, summary: { companyName: normalizedAdminConfig(payload.adminConfig).companyName, departments: normalizedAdminConfig(payload.adminConfig).departments.length, positions: normalizedAdminConfig(payload.adminConfig).positions.length, instructions: entries.length, exportedAt: String(payload.exportedAt || "") } };
+}
+
 function duplicateValues(items, valueOf) {
   const groups = new Map();
   for (const item of items || []) {
@@ -4762,6 +4789,52 @@ async function handleApi(req, res, pathname, url) {
     }
     const result = await runAutomaticBackupIfDue(true, req.authUser?.name || "Администратор");
     sendJson(res, 200, { ok: true, ...result, status: adminAutomationSnapshot(readDb()) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/config-package" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const configPackage = buildAdminConfigPackage(readDb());
+    sendDownload(res, `ppr_admin_config_${todayStamp()}.json`, configPackage);
+    return true;
+  }
+
+  if (pathname === "/api/admin/config-package/preview" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const validated = validateAdminConfigPackage(body.package);
+    if (validated.error) sendJson(res, 400, { ok: false, error: validated.error });
+    else sendJson(res, 200, { ok: true, summary: validated.summary });
+    return true;
+  }
+
+  if (pathname === "/api/admin/config-package/import" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ИМПОРТИРОВАТЬ НАСТРОЙКИ") { sendJson(res, 400, { ok: false, error: "config_import_confirmation_required" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const validated = validateAdminConfigPackage(body.package);
+    if (validated.error) { sendJson(res, 400, { ok: false, error: validated.error }); return true; }
+    await createAdminBackup("Перед импортом административных настроек", req.authUser?.name || "Администратор");
+    await enqueueStateWrite(async () => {
+      const db = readDb();
+      const now = new Date().toISOString();
+      db.adminConfigHistory ||= [];
+      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: "Автокопия перед импортом пакета", snapshot: normalizedAdminConfig(db.adminConfig) });
+      db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
+      db.adminConfig = validated.config;
+      db.workPermitInstructions ||= {};
+      for (const [id, instruction] of Object.entries(validated.instructions)) {
+        const existing = db.workPermitInstructions[id] || {};
+        db.workPermitInstructions[id] = { ...existing, ...instruction, editorIds: Array.isArray(existing.editorIds) ? existing.editorIds : [], updatedAt: now, updatedBy: String(req.authUser?.name || "Администратор") };
+      }
+      writeDb(db, { action: "admin_config_package_imported", user: req.authUser, reason, details: `${validated.summary.instructions} инструкций` });
+    });
+    sendJson(res, 200, { ok: true, summary: validated.summary });
     return true;
   }
 

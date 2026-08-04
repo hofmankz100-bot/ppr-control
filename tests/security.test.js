@@ -144,6 +144,15 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(systemReport.report?.checks));
     assert.equal(systemReport.report?.users, undefined);
     assert.equal((await fetch(`${baseUrl}/api/admin/system-report?download=1`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    const configPackageResponse = await fetch(`${baseUrl}/api/admin/config-package`, { headers: { cookie, "x-app-version": APP_VERSION } });
+    assert.equal(configPackageResponse.status, 200);
+    const configPackage = await configPackageResponse.json();
+    assert.equal(configPackage.payload?.format, "ppr-admin-config");
+    assert.equal(configPackage.payload?.users, undefined);
+    const configPreview = await fetch(`${baseUrl}/api/admin/config-package/preview`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ package: configPackage }) }).then(response => response.json());
+    assert.equal(typeof configPreview.summary?.instructions, "number");
+    const unsafeConfigImport = await fetch(`${baseUrl}/api/admin/config-package/import`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ package: configPackage, password: "correct-password", confirm: "ДА", reason: "Test rejection" }) });
+    assert.equal(unsafeConfigImport.status, 400);
     assert.ok(maintenance.access.some(user => user.role === "editor"));
     const rejectedAccessChange = await fetch(`${baseUrl}/api/admin/access`, {
       method: "POST",
