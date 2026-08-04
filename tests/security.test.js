@@ -135,6 +135,22 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(typeof maintenance.monitoring?.node?.memoryMb, "number");
     assert.equal(typeof maintenance.monitoring?.api?.requests, "number");
     assert.ok(Array.isArray(maintenance.alerts));
+    assert.equal(typeof maintenance.config?.companyName, "string");
+    const settingsSaved = await fetch(`${baseUrl}/api/admin/settings`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ reason: "Test settings", config: { ...maintenance.config, companyName: "Test Aluminium", departments: ["Литейный цех"], positions: ["Электромеханик"] } })
+    });
+    assert.equal(settingsSaved.status, 200);
+    const maintenanceWithHistory = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(maintenanceWithHistory.config.companyName, "Test Aluminium");
+    assert.ok(maintenanceWithHistory.configHistory.length > 0);
+    const rollback = await fetch(`${baseUrl}/api/admin/settings/rollback`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ versionId: maintenanceWithHistory.configHistory[0].id, reason: "Test rollback" })
+    });
+    assert.equal(rollback.status, 200);
     const restored = await fetch(`${baseUrl}/api/admin/maintenance`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },

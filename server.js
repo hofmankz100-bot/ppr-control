@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminAlerts: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -280,6 +280,8 @@ function normalizeDb(db) {
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
   db.adminAlerts = Array.isArray(db.adminAlerts) ? db.adminAlerts : [];
+  db.adminConfig = db.adminConfig && typeof db.adminConfig === "object" ? db.adminConfig : {};
+  db.adminConfigHistory = Array.isArray(db.adminConfigHistory) ? db.adminConfigHistory : [];
   db.systemMonitor = db.systemMonitor && typeof db.systemMonitor === "object" ? db.systemMonitor : {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
@@ -566,6 +568,34 @@ function appendActionLog(action) {
 
 const runtimeMonitor = { requests: 0, errors5xx: 0, slowRequests: 0, clientErrors: [] };
 
+const DEFAULT_ADMIN_CONFIG = Object.freeze({
+  companyName: "ТОО «Aluminium of Kazakhstan»",
+  departments: [],
+  positions: [],
+  trashRetentionDays: 30,
+  monitoring: { memoryAlertMb: 512, databaseSizeLimitMb: 1024, backupMaxAgeHours: 36, clientErrorThreshold: 5 }
+});
+
+function cleanStringList(values, limit = 200) {
+  return [...new Set((Array.isArray(values) ? values : []).map(value => String(value || "").trim()).filter(Boolean))].slice(0, limit);
+}
+
+function normalizedAdminConfig(raw = {}) {
+  const monitoring = raw.monitoring && typeof raw.monitoring === "object" ? raw.monitoring : {};
+  return {
+    companyName: String(raw.companyName || DEFAULT_ADMIN_CONFIG.companyName).trim().slice(0, 200),
+    departments: cleanStringList(raw.departments),
+    positions: cleanStringList(raw.positions, 500),
+    trashRetentionDays: Math.min(365, Math.max(1, Number(raw.trashRetentionDays || DEFAULT_ADMIN_CONFIG.trashRetentionDays))),
+    monitoring: {
+      memoryAlertMb: Math.min(8192, Math.max(128, Number(monitoring.memoryAlertMb || DEFAULT_ADMIN_CONFIG.monitoring.memoryAlertMb))),
+      databaseSizeLimitMb: Math.min(102400, Math.max(100, Number(monitoring.databaseSizeLimitMb || DEFAULT_ADMIN_CONFIG.monitoring.databaseSizeLimitMb))),
+      backupMaxAgeHours: Math.min(168, Math.max(12, Number(monitoring.backupMaxAgeHours || DEFAULT_ADMIN_CONFIG.monitoring.backupMaxAgeHours))),
+      clientErrorThreshold: Math.min(100, Math.max(1, Number(monitoring.clientErrorThreshold || DEFAULT_ADMIN_CONFIG.monitoring.clientErrorThreshold)))
+    }
+  };
+}
+
 function monitorRequest(req, res) {
   const started = Date.now();
   runtimeMonitor.requests += 1;
@@ -589,8 +619,9 @@ function latestLocalBackupAt() {
 async function systemMonitoringSnapshot() {
   const checkedAt = new Date().toISOString();
   const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-  const memoryLimitMb = Math.max(128, Number(process.env.MEMORY_ALERT_MB || 512));
-  const databaseLimitMb = Math.max(100, Number(process.env.DATABASE_SIZE_LIMIT_MB || 1024));
+  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
+  const memoryLimitMb = Math.max(128, Number(process.env.MEMORY_ALERT_MB || adminConfig.monitoring.memoryAlertMb));
+  const databaseLimitMb = Math.max(100, Number(process.env.DATABASE_SIZE_LIMIT_MB || adminConfig.monitoring.databaseSizeLimitMb));
   const snapshot = {
     checkedAt,
     node: { online: true, uptimeSeconds: Math.round(process.uptime()), memoryMb, memoryLimitMb },
@@ -613,6 +644,7 @@ async function systemMonitoringSnapshot() {
 }
 
 function monitoringAlertSpecs(snapshot) {
+  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
   const specs = [];
   if (!snapshot.postgres.connected && postgresPool) specs.push({ type: "postgres_unavailable", severity: "critical", title: "PostgreSQL недоступен", message: snapshot.postgres.error || "Сервер не смог подключиться к базе данных." });
   const usage = Number(snapshot.postgres.usagePercent || 0);
@@ -621,8 +653,8 @@ function monitoringAlertSpecs(snapshot) {
   else if (usage >= 70) specs.push({ type: "database_capacity", severity: "warning", title: "Заполняется база данных", message: `Использовано ${usage}% установленного лимита.` });
   if (snapshot.node.memoryMb >= snapshot.node.memoryLimitMb) specs.push({ type: "memory_high", severity: "warning", title: "Высокое потребление памяти", message: `${snapshot.node.memoryMb} МБ из контрольного порога ${snapshot.node.memoryLimitMb} МБ.` });
   const backupAge = snapshot.postgres.lastBackupAt ? Date.now() - new Date(snapshot.postgres.lastBackupAt).getTime() : Infinity;
-  if (backupAge > 36 * 3600000) specs.push({ type: "backup_old", severity: "critical", title: "Нет свежей резервной копии", message: "Последняя резервная копия старше 36 часов или не найдена." });
-  if (snapshot.api.clientErrors10m >= 5) specs.push({ type: "client_errors", severity: "warning", title: "Повторяющиеся ошибки у сотрудников", message: `${snapshot.api.clientErrors10m} ошибок браузера за последние 10 минут.` });
+  if (backupAge > adminConfig.monitoring.backupMaxAgeHours * 3600000) specs.push({ type: "backup_old", severity: "critical", title: "Нет свежей резервной копии", message: `Последняя резервная копия старше ${adminConfig.monitoring.backupMaxAgeHours} часов или не найдена.` });
+  if (snapshot.api.clientErrors10m >= adminConfig.monitoring.clientErrorThreshold) specs.push({ type: "client_errors", severity: "warning", title: "Повторяющиеся ошибки у сотрудников", message: `${snapshot.api.clientErrors10m} ошибок браузера за последние 10 минут.` });
   return specs;
 }
 
@@ -1226,6 +1258,11 @@ function publicState(db = readDb()) {
     requests: db.requests,
     inventory: db.inventory,
     catalog: db.catalog,
+    adminConfig: {
+      companyName: normalizedAdminConfig(db.adminConfig).companyName,
+      departments: normalizedAdminConfig(db.adminConfig).departments,
+      positions: normalizedAdminConfig(db.adminConfig).positions
+    },
     directorMessages: db.directorMessages,
     serviceCosts: db.serviceCosts,
     downtimes: db.downtimes,
@@ -4411,7 +4448,52 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/settings" && req.method === "PUT") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const before = normalizedAdminConfig(db.adminConfig);
+      const after = normalizedAdminConfig(body.config || {});
+      const now = new Date().toISOString();
+      db.adminConfigHistory ||= [];
+      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: String(body.reason || "Изменение административных настроек").slice(0, 500), snapshot: before });
+      db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
+      db.adminConfig = after;
+      writeDb(db, { action: "admin_settings_saved", user: req.authUser, reason: String(body.reason || "Настройки изменены") });
+      return after;
+    });
+    sendJson(res, 200, { ok: true, config: result });
+    return true;
+  }
+
+  if (pathname === "/api/admin/settings/rollback" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const versionId = String(body.versionId || "");
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const version = (db.adminConfigHistory || []).find(item => item.id === versionId);
+      if (!version) return { error: "config_version_not_found" };
+      const current = normalizedAdminConfig(db.adminConfig);
+      const now = new Date().toISOString();
+      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: "Автокопия перед откатом", snapshot: current });
+      db.adminConfig = normalizedAdminConfig(version.snapshot);
+      writeDb(db, { action: "admin_settings_rollback", user: req.authUser, targetId: versionId, reason: String(body.reason || "Откат настроек") });
+      return { config: db.adminConfig };
+    });
+    if (result.error) sendJson(res, 404, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, ...result });
     return true;
   }
 
@@ -4503,7 +4585,7 @@ async function handleApi(req, res, pathname, url) {
       updatedAt: String(raw?.updatedAt || ""),
       updatedBy: String(raw?.updatedBy || "")
     }));
-    sendJson(res, 200, { ok: true, isAdmin, records });
+    sendJson(res, 200, { ok: true, isAdmin, records, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName } });
     return true;
   }
 
@@ -6085,7 +6167,7 @@ async function handleApi(req, res, pathname, url) {
           label: String(target.name || target.employeeId || target.phone || "Сотрудник"),
           reason: deleteReason,
           deletedAt,
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
           deletedById: String(req.authUser?.id || ""),
           deletedByName: String(req.authUser?.name || "Администратор"),
           snapshot: { ...target }

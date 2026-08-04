@@ -23,7 +23,7 @@
    * к PostgreSQL через серверный API.
    */
 
-  const DEFAULT_COMPANY_NAME = "ТОО «Aluminium of Kazakhstan»";
+  let DEFAULT_COMPANY_NAME = "ТОО «Aluminium of Kazakhstan»";
 
   const OPTIONAL_SECTION_IDS = [
     "leader",
@@ -1861,6 +1861,15 @@
       });
       if (!response.ok) return;
       const payload = await response.json();
+      if (String(payload?.settings?.companyName || "").trim()) {
+        const previousCompanyName = DEFAULT_COMPANY_NAME;
+        DEFAULT_COMPANY_NAME = String(payload.settings.companyName).trim();
+        ["producer", "admitter", "issuer"].forEach(prefix => {
+          if (permitState[prefix] && (!permitState[prefix].organization || permitState[prefix].organization === previousCompanyName)) {
+            permitState[prefix].organization = DEFAULT_COMPANY_NAME;
+          }
+        });
+      }
       instructionStoreIsAdmin = payload?.isAdmin === true;
       instructionRecords.clear();
       (Array.isArray(payload?.records) ? payload.records : [])
