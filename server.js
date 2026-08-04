@@ -277,6 +277,7 @@ function normalizeDb(db) {
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
+  db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
@@ -3374,7 +3375,7 @@ function restoreQrWalkChecksFromJournal(db = {}) {
   db.checks ||= {};
   const resetAt = Date.parse(db.operationalResetAt || "") || 0;
   for (const entry of Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : []) {
-    if (!entry || entry.invalid === true) continue;
+    if (!entry || entry.invalid === true || entry.archivedNode === true) continue;
     const equipmentId = Number(entry.equipmentId);
     const nodeIndex = Number(entry.nodeIndex);
     const date = String(entry.date || "");
@@ -4578,6 +4579,87 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/admin/qr-routes" && req.method === "GET") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     sendJson(res, 200, { ok: true, routes: (readDb().qrRouteDefinitions || []).slice().reverse() }); return true;
+  }
+
+  if (pathname === "/api/admin/equipment/node-delete" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const equipmentId = Number(body.equipmentId);
+    const nodeIndex = Number(body.nodeIndex);
+    const nodes = Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [];
+    if (!Number.isSafeInteger(equipmentId) || !Number.isSafeInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= nodes.length || nodes.length <= 1) {
+      sendJson(res, 400, { ok: false, error: "node_delete_invalid" }); return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const archivedAt = new Date().toISOString();
+      db.archivedNodeChecks ||= [];
+      const shiftedChecks = {};
+      Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+        const parts = recordKey.split(":");
+        const eqId = Number(parts[0]);
+        const index = Number(parts[1]);
+        if (eqId !== equipmentId || !Number.isSafeInteger(index)) { shiftedChecks[recordKey] = record; return; }
+        if (index === nodeIndex) {
+          db.archivedNodeChecks.push({ recordKey, equipmentId, nodeIndex, equipment: String(body.equipment || ""), node: nodes[nodeIndex], archivedAt, record });
+          return;
+        }
+        const nextKey = index > nodeIndex ? `${equipmentId}:${index - 1}:${parts.slice(2).join(":")}` : recordKey;
+        shiftedChecks[nextKey] = record;
+      });
+      db.checks = shiftedChecks;
+      if (db.archivedNodeChecks.length > 50000) db.archivedNodeChecks = db.archivedNodeChecks.slice(-50000);
+      const shiftLinked = item => {
+        if (Number(item?.equipmentId) !== equipmentId) return;
+        const index = Number(item?.nodeIndex);
+        if (index === nodeIndex) {
+          item.archivedNode = true;
+          item.archivedNodeIndex = nodeIndex;
+          item.archivedNodeName = item.node || nodes[nodeIndex];
+          item.nodeIndex = null;
+        } else if (index > nodeIndex) {
+          item.nodeIndex = index - 1;
+        }
+      };
+      Object.values(db.requests || {}).forEach(shiftLinked);
+      (db.downtimes || []).forEach(shiftLinked);
+      (db.serviceCosts || []).forEach(shiftLinked);
+      (db.qrWalkJournal || []).forEach(entry => {
+        if (Number(entry?.equipmentId) !== equipmentId) return;
+        const index = Number(entry?.nodeIndex);
+        if (index === nodeIndex) {
+          entry.archivedNode = true;
+          entry.archivedNodeIndex = nodeIndex;
+          entry.node ||= nodes[nodeIndex];
+        } else if (index > nodeIndex) {
+          entry.nodeIndex = index - 1;
+        }
+      });
+
+      db.catalog ||= { equipment: {} };
+      db.catalog.equipment ||= {};
+      const catalogItem = db.catalog.equipment[equipmentId] || {};
+      const shiftIndexedMap = source => {
+        const next = {};
+        Object.entries(source || {}).forEach(([key, value]) => {
+          const index = Number(key);
+          if (!Number.isSafeInteger(index) || index === nodeIndex) return;
+          next[index > nodeIndex ? index - 1 : index] = value;
+        });
+        return next;
+      };
+      catalogItem.nodes = nodes.filter((_, index) => index !== nodeIndex);
+      catalogItem.reminders = shiftIndexedMap(catalogItem.reminders);
+      catalogItem.reminderMeta = shiftIndexedMap(catalogItem.reminderMeta);
+      catalogItem.nodeOperationalPauses = shiftIndexedMap(catalogItem.nodeOperationalPauses);
+      catalogItem.updatedAt = new Date().toISOString();
+      db.catalog.equipment[equipmentId] = catalogItem;
+      writeDb(db, { action: "equipment_node_deleted", user: req.authUser, targetId: `${equipmentId}:${nodeIndex}`, targetLabel: nodes[nodeIndex] });
+      return { state: publicState(db) };
+    });
+    if (result.error) sendJson(res, 409, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, state: result.state });
+    return true;
   }
 
   if (pathname === "/api/admin/qr-routes" && req.method === "POST") {

@@ -4037,7 +4037,7 @@ function nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex) {
   const targetNodeIndex = Number(nodeIndex);
   const checkHistory = Object.keys(state.checks || {}).some(recordKey => {
     const [eqId, index] = recordKey.split(":").map(Number);
-    return eqId === targetEquipmentId && index >= targetNodeIndex;
+    return eqId === targetEquipmentId && index === targetNodeIndex;
   });
   const linkedRows = [
     ...Object.values(state.requests || {}),
@@ -4045,16 +4045,24 @@ function nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex) {
     ...(state.serviceCosts || [])
   ];
   return checkHistory || linkedRows.some(item =>
-    Number(item?.equipmentId) === targetEquipmentId && Number(item?.nodeIndex) >= targetNodeIndex
+    Number(item?.equipmentId) === targetEquipmentId && Number(item?.nodeIndex) === targetNodeIndex
   );
 }
 
-function deleteNodeName(equipmentId, nodeIndex) {
+async function deleteNodeName(equipmentId, nodeIndex) {
   if (!canManageCatalogStructure(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   if (eq.nodes.length <= 1) return false;
-  if (nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex)) return false;
+  if (authenticatedProfile?.role === "editor" && navigator.onLine) {
+    const result = await apiJson("/api/admin/equipment/node-delete", {
+      method: "POST",
+      timeout: 60000,
+      body: JSON.stringify({ equipmentId, nodeIndex, equipment: eq.name, nodes: eq.nodes })
+    });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    return result?.ok === true;
+  }
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes.splice(nodeIndex, 1);
@@ -12626,18 +12634,26 @@ function renderNodeWalkthrough(eq) {
         const input = row.querySelector("[data-node-name-list]");
         if (input) input.value = nodeName;
       });
-      row.querySelector("[data-delete-node]")?.addEventListener("click", event => {
+      row.querySelector("[data-delete-node]")?.addEventListener("click", async event => {
         if (!canManageCatalogStructure(eq)) return;
         if (!window.confirm(`Точно удалить узел "${nodeName}"? После удаления QR-коды следующих узлов нужно распечатать заново.`)) return;
-        if (deleteNodeName(eq.id, index)) {
+        setButtonBusy(event.currentTarget, true, "Удаляем...");
+        let deleted = false;
+        try {
+          deleted = await deleteNodeName(eq.id, index);
+        } catch (error) {
+          console.error("Node deletion failed", error);
+        }
+        if (deleted) {
           current.nodeDetailIndex = null;
           current.nodeIndex = 0;
           renderNodeWalkthrough(equipmentById(eq.id));
         } else {
           window.alert(eq.nodes.length <= 1
             ? "Нельзя удалить последний узел."
-            : "Удаление запрещено: у этого или следующих узлов уже есть сохранённые обходы, заявки или простои.");
+            : navigator.onLine ? "Не удалось удалить узел. Обновите страницу и повторите." : "Для безопасного удаления узла требуется связь с сервером.");
         }
+        if (event.currentTarget?.isConnected) setButtonBusy(event.currentTarget, false);
       });
       row.querySelector("[data-toggle-node-pause]")?.addEventListener("click", event => {
         const pause = activeOperationalPause(eq, index);
