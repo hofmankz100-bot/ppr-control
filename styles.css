@@ -13129,3 +13129,9 @@ body.editor-profile #createTmcRequestButton.request-alert,
     box-sizing: border-box;
   }
 }
+/* Admin instruction acknowledgement journal */
+.admin-instruction-log { display: grid; gap: 10px; }
+.admin-instruction-log article { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr); gap: 12px; padding: 14px; border: 1px solid #d6e1e7; border-radius: 14px; background: #fff; }
+.admin-instruction-log article > div { display: grid; gap: 4px; }
+.admin-instruction-log span, .admin-instruction-log small { color: #5b6b75; }
+@media (max-width: 700px) { .admin-instruction-log article { grid-template-columns: 1fr; } }

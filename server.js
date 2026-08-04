@@ -180,7 +180,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -274,6 +274,7 @@ function normalizeDb(db) {
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
+  db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
@@ -4777,7 +4778,7 @@ async function handleApi(req, res, pathname, url) {
       return { id: item.id, title: item.title || "Объявление", text: item.text || "", priority: item.priority || "normal", roles, active: item.active !== false, startsAt: item.startsAt || item.at || "", expiresAt: item.expiresAt || "", createdAt: item.createdAt || item.at || "", author: item.author || "", remindedAt: item.remindedAt || "", recipientCount: recipients.length, readCount: recipients.filter(user => readIds.has(String(user.id || ""))).length, recipients: recipients.map(user => ({ id: user.id, name: user.name || "Без имени", role: user.role || "", employeeId: user.employeeId || "", readAt: (item.readBy || []).find(entry => String(entry.userId || "") === String(user.id || ""))?.at || "" })) };
     });
     const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), operationalSummary: adminUserOperationalSummary(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, instructionAcknowledgements: (db.workPermitInstructionAcknowledgements || []).slice(0, 2000), notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
     return true;
   }
 
@@ -5339,6 +5340,34 @@ async function handleApi(req, res, pathname, url) {
       updatedBy: String(raw?.updatedBy || "")
     }));
     sendJson(res, 200, { ok: true, isAdmin, records, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName, formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies } });
+    return true;
+  }
+
+  if (pathname === "/api/work-permit-instructions/acknowledge" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const instructionId = String(body?.instructionId || "").trim().slice(0, 80);
+    if (!instructionId) { sendJson(res, 400, { ok: false, error: "instruction_required" }); return true; }
+    const db = readDb();
+    const stored = db.workPermitInstructions?.[instructionId] || {};
+    const at = new Date().toISOString();
+    const actorId = String(req.authUser?.id || req.authUser?.employeeId || req.authUser?.phone || "");
+    const record = {
+      id: `instruction-ack-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+      instructionId,
+      instructionTitle: String(body?.instructionTitle || stored.title || instructionId).trim().slice(0, 300),
+      instructionUpdatedAt: String(stored.updatedAt || ""),
+      actorId,
+      actorName: String(req.authUser?.name || "Сотрудник").slice(0, 300),
+      employeeId: String(req.authUser?.employeeId || "").slice(0, 100),
+      role: String(req.authUser?.role || "").slice(0, 80),
+      acknowledgedAt: at
+    };
+    db.workPermitInstructionAcknowledgements ||= [];
+    const duplicate = db.workPermitInstructionAcknowledgements.find(item => item.actorId === actorId && item.instructionId === instructionId && item.instructionUpdatedAt === record.instructionUpdatedAt);
+    if (!duplicate) db.workPermitInstructionAcknowledgements.unshift(record);
+    db.workPermitInstructionAcknowledgements = db.workPermitInstructionAcknowledgements.slice(0, 10000);
+    writeDb(db, { action: "work_permit_instruction_acknowledged", user: req.authUser, instructionId });
+    sendJson(res, 200, { ok: true, record: duplicate || record, duplicate: Boolean(duplicate) });
     return true;
   }
 

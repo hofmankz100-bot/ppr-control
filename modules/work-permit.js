@@ -6462,7 +6462,7 @@
 
     form?.addEventListener(
       "input",
-      event => {
+      async event => {
         const control =
           event.target;
 
@@ -6589,7 +6589,7 @@
 
     form.addEventListener(
       "click",
-      event => {
+      async event => {
         const saveInstructionButton = event.target.closest("[data-save-instruction]");
         if (saveInstructionButton) {
           saveInstructionEditor(saveInstructionButton);
@@ -6604,6 +6604,21 @@
             window.alert("Сначала выберите эту инструкцию.");
             return;
           }
+          instructionAckButton.disabled = true;
+          try {
+            const instruction = SAFETY_INSTRUCTIONS.find(item => item.id === id);
+            const response = await fetch("/api/work-permit-instructions/acknowledge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ instructionId: id, instructionTitle: instruction ? safetyInstructionTitle(instruction) : id })
+            });
+            if (!response.ok) throw new Error("acknowledgement_not_saved");
+          } catch {
+            instructionAckButton.disabled = false;
+            window.alert("Не удалось сохранить ознакомление на сервере. Проверьте интернет и повторите.");
+            return;
+          }
+          instructionAckButton.disabled = false;
           const ids = acknowledgedInstructionIds();
           ids.add(id);
           syncInstructionAcknowledgements(ids);

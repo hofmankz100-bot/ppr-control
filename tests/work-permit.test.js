@@ -46,6 +46,14 @@ test("admin form versions configure defaults only for new permit drafts", () => 
   assert.match(app, /Создать новую версию формы/);
 });
 
+test("instruction acknowledgements are stored on the server and visible to admin", () => {
+  assert.match(server, /workPermitInstructionAcknowledgements/);
+  assert.match(server, /work-permit-instructions\/acknowledge/);
+  assert.match(permit, /acknowledgement_not_saved/);
+  assert.match(app, /data-admin-maintenance-tab="instructionLog"/);
+  assert.match(app, /Журнал ознакомления с инструкциями/);
+});
+
 test("people are selected once and reused in related fields", () => {
   assert.match(permit, /localStorage\.getItem\("ppr-pwa-users-v1"\)/);
   assert.match(permit, /source\.employeeId/);
