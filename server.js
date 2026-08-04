@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -281,6 +281,7 @@ function normalizeDb(db) {
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
   db.adminArchives = Array.isArray(db.adminArchives) ? db.adminArchives : [];
   db.adminActivityReadAt = db.adminActivityReadAt && typeof db.adminActivityReadAt === "object" ? db.adminActivityReadAt : {};
+  db.adminAutomationStatus = db.adminAutomationStatus && typeof db.adminAutomationStatus === "object" ? db.adminAutomationStatus : {};
   db.adminAlerts = Array.isArray(db.adminAlerts) ? db.adminAlerts : [];
   db.adminConfig = db.adminConfig && typeof db.adminConfig === "object" ? db.adminConfig : {};
   db.adminConfigHistory = Array.isArray(db.adminConfigHistory) ? db.adminConfigHistory : [];
@@ -595,7 +596,8 @@ const DEFAULT_ADMIN_CONFIG = Object.freeze({
   departments: [],
   positions: [],
   trashRetentionDays: 30,
-  monitoring: { memoryAlertMb: 512, databaseSizeLimitMb: 1024, backupMaxAgeHours: 36, clientErrorThreshold: 5 }
+  monitoring: { memoryAlertMb: 512, databaseSizeLimitMb: 1024, backupMaxAgeHours: 36, clientErrorThreshold: 5 },
+  automation: { autoBackupEnabled: true, autoBackupIntervalHours: 24, autoBackupKeepCount: 14 }
 });
 
 function cleanStringList(values, limit = 200) {
@@ -604,6 +606,7 @@ function cleanStringList(values, limit = 200) {
 
 function normalizedAdminConfig(raw = {}) {
   const monitoring = raw.monitoring && typeof raw.monitoring === "object" ? raw.monitoring : {};
+  const automation = raw.automation && typeof raw.automation === "object" ? raw.automation : {};
   return {
     companyName: String(raw.companyName || DEFAULT_ADMIN_CONFIG.companyName).trim().slice(0, 200),
     departments: cleanStringList(raw.departments),
@@ -614,6 +617,11 @@ function normalizedAdminConfig(raw = {}) {
       databaseSizeLimitMb: Math.min(102400, Math.max(100, Number(monitoring.databaseSizeLimitMb || DEFAULT_ADMIN_CONFIG.monitoring.databaseSizeLimitMb))),
       backupMaxAgeHours: Math.min(168, Math.max(12, Number(monitoring.backupMaxAgeHours || DEFAULT_ADMIN_CONFIG.monitoring.backupMaxAgeHours))),
       clientErrorThreshold: Math.min(100, Math.max(1, Number(monitoring.clientErrorThreshold || DEFAULT_ADMIN_CONFIG.monitoring.clientErrorThreshold)))
+    },
+    automation: {
+      autoBackupEnabled: automation.autoBackupEnabled !== false,
+      autoBackupIntervalHours: [6, 12, 24, 48, 72, 168].includes(Number(automation.autoBackupIntervalHours)) ? Number(automation.autoBackupIntervalHours) : DEFAULT_ADMIN_CONFIG.automation.autoBackupIntervalHours,
+      autoBackupKeepCount: Math.min(30, Math.max(5, Number(automation.autoBackupKeepCount || DEFAULT_ADMIN_CONFIG.automation.autoBackupKeepCount)))
     }
   };
 }
@@ -1099,9 +1107,10 @@ async function createAdminBackup(label = "manual", actorName = "Админист
        VALUES ($1, $2, $3::jsonb, $4, $5, now())`,
       [id, cleanLabel, JSON.stringify(payload), checksum, String(actorName || "Администратор").slice(0, 200)]
     );
+    const keepCount = normalizedAdminConfig(payload.adminConfig).automation.autoBackupKeepCount;
     await postgresPool.query(`DELETE FROM ppr_admin_backups WHERE backup_id IN (
-      SELECT backup_id FROM ppr_admin_backups ORDER BY created_at DESC OFFSET 30
-    )`);
+      SELECT backup_id FROM ppr_admin_backups ORDER BY created_at DESC OFFSET $1
+    )`, [keepCount]);
   }
   return { id, label: cleanLabel, checksum, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), file: path.basename(localFile), createdBy: actorName, createdAt: new Date().toISOString(), storage: postgresPool ? "postgres" : "json" };
 }
@@ -1133,6 +1142,45 @@ async function readAdminBackupPayload(id) {
   if (!fs.existsSync(file)) return null;
   const payload = JSON.parse(fs.readFileSync(file, "utf8"));
   return { payload, checksum: backupChecksum(payload), valid: true };
+}
+
+let automaticBackupRunning = false;
+
+function adminAutomationSnapshot(db = readDb()) {
+  const config = normalizedAdminConfig(db.adminConfig).automation;
+  const status = db.adminAutomationStatus || {};
+  const lastSuccessAt = String(status.lastSuccessAt || "");
+  const nextRunAt = config.autoBackupEnabled
+    ? new Date((lastSuccessAt ? Date.parse(lastSuccessAt) : Date.now()) + config.autoBackupIntervalHours * 3600000).toISOString()
+    : "";
+  return { ...config, lastSuccessAt, lastAttemptAt: String(status.lastAttemptAt || ""), lastError: String(status.lastError || ""), lastBackupId: String(status.lastBackupId || ""), nextRunAt, running: automaticBackupRunning };
+}
+
+async function runAutomaticBackupIfDue(force = false, actorName = "Система") {
+  if (automaticBackupRunning) return { skipped: true, reason: "already_running", status: adminAutomationSnapshot() };
+  const db = readDb();
+  const snapshot = adminAutomationSnapshot(db);
+  if (!force && !snapshot.autoBackupEnabled) return { skipped: true, reason: "disabled", status: snapshot };
+  if (!force && snapshot.lastSuccessAt && Date.now() < Date.parse(snapshot.lastSuccessAt) + snapshot.autoBackupIntervalHours * 3600000) return { skipped: true, reason: "not_due", status: snapshot };
+  automaticBackupRunning = true;
+  try {
+    const backup = await createAdminBackup(force ? "Копия по команде администратора" : "Автоматическая резервная копия", actorName);
+    await enqueueStateWrite(async () => {
+      const current = readDb();
+      current.adminAutomationStatus = { lastAttemptAt: new Date().toISOString(), lastSuccessAt: backup.createdAt, lastBackupId: backup.id, lastError: "" };
+      writeDb(current, { action: force ? "admin_automatic_backup_run" : "admin_automatic_backup_created", actorName, targetId: backup.id, targetLabel: backup.label });
+    });
+    return { ok: true, backup, status: adminAutomationSnapshot() };
+  } catch (error) {
+    await enqueueStateWrite(async () => {
+      const current = readDb();
+      current.adminAutomationStatus = { ...(current.adminAutomationStatus || {}), lastAttemptAt: new Date().toISOString(), lastError: String(error.message || error).slice(0, 1000) };
+      writeDb(current, { action: "admin_automatic_backup_failed", actorName, details: String(error.message || error) });
+    });
+    throw error;
+  } finally {
+    automaticBackupRunning = false;
+  }
 }
 
 function adminArchiveSelection(db, days = 180) {
@@ -4630,7 +4678,18 @@ async function handleApi(req, res, pathname, url) {
       restoredByName: item.restoredByName || ""
     }));
     const archivePreview = adminArchiveSelection(db, 180);
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/automation/run" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    const result = await runAutomaticBackupIfDue(true, req.authUser?.name || "Администратор");
+    sendJson(res, 200, { ok: true, ...result, status: adminAutomationSnapshot(readDb()) });
     return true;
   }
 
@@ -6862,10 +6921,15 @@ const systemMonitorTimer = setInterval(() => {
   refreshSystemMonitoring().catch(error => console.warn(`System monitoring failed: ${error.message}`));
 }, 5 * 60 * 1000);
 systemMonitorTimer.unref?.();
+const automaticBackupTimer = setInterval(() => {
+  runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Automatic backup failed: ${error.message}`));
+}, 10 * 60 * 1000);
+automaticBackupTimer.unref?.();
 
 async function shutdown() {
   clearInterval(heartbeatTimer);
   clearInterval(systemMonitorTimer);
+  clearInterval(automaticBackupTimer);
   try {
     flushLocalBackup();
     await flushPostgresWrites();
@@ -6883,6 +6947,7 @@ process.on("SIGINT", shutdown);
 initializeStorage()
   .then(storage => {
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
+    if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
     server.listen(port, "0.0.0.0", () => {
       ensureDb();
       console.log(`PPR Control realtime server: http://0.0.0.0:${port} [${storage.mode}]`);

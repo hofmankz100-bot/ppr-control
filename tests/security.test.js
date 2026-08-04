@@ -138,6 +138,14 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(maintenance.backups));
     assert.ok(Array.isArray(maintenance.activity?.items));
     assert.ok(Array.isArray(maintenance.archives));
+    assert.equal(typeof maintenance.automation?.autoBackupEnabled, "boolean");
+    assert.equal(typeof maintenance.automation?.autoBackupIntervalHours, "number");
+    const rejectedAutomaticBackup = await fetch(`${baseUrl}/api/admin/automation/run`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ password: "wrong-password" })
+    });
+    assert.equal(rejectedAutomaticBackup.status, 401);
     assert.equal(typeof maintenance.archivePreview?.counts?.audit, "number");
     const archivePreview = await fetch(`${baseUrl}/api/admin/archives/preview?days=90`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(archivePreview.preview?.days, 90);
