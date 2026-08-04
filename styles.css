@@ -13258,10 +13258,7 @@ body.editor-profile #createTmcRequestButton.request-alert,
   }
 
   .equipment-month-bar > .segmented strong {
-    grid-column: 1 / -1;
-    min-width: 0;
-    padding: 6px;
-    text-align: center;
+    display: none;
   }
 
   .equipment-schedule-table .equipment-head,
