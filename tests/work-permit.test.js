@@ -54,6 +54,14 @@ test("instruction acknowledgements are stored on the server and visible to admin
   assert.match(app, /Журнал ознакомления с инструкциями/);
 });
 
+test("admin correction and storage centers preserve history without direct SQL", () => {
+  assert.match(app, /data-admin-maintenance-tab="corrections"/);
+  assert.match(app, /Безопасное исправление данных/);
+  assert.match(app, /data-admin-maintenance-tab="storage"/);
+  assert.match(app, /Хранилище и безопасная очистка/);
+  assert.doesNotMatch(app, /textarea[^>]+(?:sql|query)/i);
+});
+
 test("people are selected once and reused in related fields", () => {
   assert.match(permit, /localStorage\.getItem\("ppr-pwa-users-v1"\)/);
   assert.match(permit, /source\.employeeId/);
