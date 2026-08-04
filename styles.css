@@ -12434,17 +12434,6 @@ body.editor-profile #createTmcRequestButton.request-alert,
 }
 
 /* Bilingual high-risk work permit. */
-.quick-nav button.work-permit-home-button {
-  border-color: #e1a229;
-  background: linear-gradient(135deg, #fff8df, #fffdf5);
-  color: #6d4700;
-}
-
-.quick-nav button.work-permit-home-button strong {
-  background: #f2b83f;
-  color: #392600;
-}
-
 .work-permit-screen {
   color: #132f3f;
 }
@@ -12806,11 +12795,6 @@ body.editor-profile #createTmcRequestButton.request-alert,
 }
 
 @media screen and (max-width: 680px) {
-  .quick-nav button.work-permit-home-button {
-    grid-column: 1 / -1;
-    min-height: 52px;
-  }
-
   .work-permit-screen {
     margin: 0 -2px;
   }
