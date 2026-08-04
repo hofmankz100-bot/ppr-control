@@ -1724,14 +1724,17 @@ async function apiJson(url, options = {}) {
   const timeout = Number(options.timeout || 15000);
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
+    const method = String(options.method || "GET").toUpperCase();
+    const idempotencyKey = options.idempotencyKey || (method !== "GET" && method !== "HEAD" ? nextActionId() : "");
     const response = await fetch(url, {
-      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(options.headers || {}) },
+      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}), ...(options.headers || {}) },
       ...options,
       signal: options.signal || controller.signal
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(data.error || `HTTP ${response.status}`);
+      const genericBadRequest = response.status === 400 && (data.detail === "Bad Request" || data.error === "Bad Request");
+      const error = new Error(genericBadRequest ? "Сервер не принял данные. Проверьте заполнение и повторите один раз." : (data.error || `HTTP ${response.status}`));
       error.data = data;
       error.status = response.status;
       if (response.status === 426 || data.code === "client_update_required") showRequiredClientUpdate(data.requiredVersion);
