@@ -607,7 +607,8 @@ const DEFAULT_ADMIN_CONFIG = Object.freeze({
     { key: "mechanic:шонов.уткел", label: "Шонов.Уткел", reason: "Дублирующая роль" },
     { key: "mechanic:рамазан", label: "Рамазан", reason: "Тестовая запись" },
     { key: "mechanic:адлет", label: "Адлет", reason: "Дублирующая роль" }
-  ]
+  ],
+  formPolicies: { workPermit: { optionalSections: ["leader", "completedMeasures", "approval", "brigade", "breaks", "changes"] } }
 });
 
 function cleanStringList(values, limit = 200) {
@@ -638,6 +639,12 @@ function normalizedAdminConfig(raw = {}) {
       autoBackupEnabled: automation.autoBackupEnabled !== false,
       autoBackupIntervalHours: [6, 12, 24, 48, 72, 168].includes(Number(automation.autoBackupIntervalHours)) ? Number(automation.autoBackupIntervalHours) : DEFAULT_ADMIN_CONFIG.automation.autoBackupIntervalHours,
       autoBackupKeepCount: Math.min(30, Math.max(5, Number(automation.autoBackupKeepCount || DEFAULT_ADMIN_CONFIG.automation.autoBackupKeepCount)))
+    },
+    formPolicies: {
+      workPermit: {
+        optionalSections: cleanStringList(raw.formPolicies?.workPermit?.optionalSections?.length ? raw.formPolicies.workPermit.optionalSections : DEFAULT_ADMIN_CONFIG.formPolicies.workPermit.optionalSections, 20)
+          .filter(value => ["leader", "completedMeasures", "approval", "brigade", "breaks", "changes"].includes(value))
+      }
     },
     excludedRatingWorkers: (Array.isArray(raw.excludedRatingWorkers) ? raw.excludedRatingWorkers : DEFAULT_ADMIN_CONFIG.excludedRatingWorkers)
       .map(item => ({
@@ -1572,6 +1579,7 @@ function publicState(db = readDb()) {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
       departments: normalizedAdminConfig(db.adminConfig).departments,
       positions: normalizedAdminConfig(db.adminConfig).positions,
+      formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies,
       excludedRatingWorkers: normalizedAdminConfig(db.adminConfig).excludedRatingWorkers
     },
     directorMessages: db.directorMessages,
@@ -5330,7 +5338,7 @@ async function handleApi(req, res, pathname, url) {
       updatedAt: String(raw?.updatedAt || ""),
       updatedBy: String(raw?.updatedBy || "")
     }));
-    sendJson(res, 200, { ok: true, isAdmin, records, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName } });
+    sendJson(res, 200, { ok: true, isAdmin, records, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName, formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies } });
     return true;
   }
 

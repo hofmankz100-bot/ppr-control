@@ -22,7 +22,7 @@ test("work permit is available and loads its mobile PDF dependency", () => {
 });
 
 test("all permit sections stay visible while optional rows remain dynamic", () => {
-  assert.match(permit, /let activeOptionalSections = new Set\(OPTIONAL_SECTION_IDS\)/);
+  assert.match(permit, /let activeOptionalSections = new Set\(defaultOptionalSectionIds\(\)\)/);
   assert.match(permit, /function sectionSelectorHtml\(\)[\s\S]*?return ""/);
   assert.match(permit, /section\.hidden = false/);
   assert.match(permit, /data-collapse-section=/);
@@ -35,6 +35,15 @@ test("all permit sections stay visible while optional rows remain dynamic", () =
   assert.match(permit, /dynamicRows\[collection\]\[0\]\?\.id === rowId/);
   assert.match(permit, /section\.hidden\s*=\s*!activeOptionalSections\.has\(sectionId\)\s*\|\|\s*collapsedOptionalSections\.has\(sectionId\)/);
   assert.match(permit, /work-permit-table td\.no-print[\s\S]*?display:\s*none !important/);
+});
+
+test("admin form versions configure defaults only for new permit drafts", () => {
+  assert.match(server, /formPolicies: \{ workPermit:/);
+  assert.match(server, /settings: \{ companyName:.*formPolicies:/);
+  assert.match(permit, /configuredOptionalSectionIds/);
+  assert.match(permit, /new Set\(defaultOptionalSectionIds\(\)\)/);
+  assert.match(app, /data-admin-form-builder/);
+  assert.match(app, /Создать новую версию формы/);
 });
 
 test("people are selected once and reused in related fields", () => {

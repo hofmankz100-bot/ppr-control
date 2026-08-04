@@ -81,6 +81,8 @@
       fieldName: "safety_additional"
     }
   ];
+  let configuredOptionalSectionIds = [...OPTIONAL_SECTION_IDS];
+  const defaultOptionalSectionIds = () => configuredOptionalSectionIds.filter(id => OPTIONAL_SECTION_IDS.includes(id));
 
   const SAFETY_DEFAULTS = {
     "5.2": "Отключить рубильник, задвижку, магистраль и другие источники питания",
@@ -818,7 +820,7 @@
   let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
 
-  let activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+  let activeOptionalSections = new Set(defaultOptionalSectionIds());
   let collapsedOptionalSections = new Set();
 
   const dynamicRows = {
@@ -1006,7 +1008,7 @@
   }
 
   function resetRuntimeForDraftOwner() {
-    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+    activeOptionalSections = new Set(defaultOptionalSectionIds());
     collapsedOptionalSections.clear();
     Object.keys(dynamicRows).forEach(collection => {
       dynamicRows[collection] = [];
@@ -1869,6 +1871,11 @@
             permitState[prefix].organization = DEFAULT_COMPANY_NAME;
           }
         });
+      }
+      const configuredSections = payload?.settings?.formPolicies?.workPermit?.optionalSections;
+      if (Array.isArray(configuredSections)) {
+        configuredOptionalSectionIds = configuredSections.filter(id => OPTIONAL_SECTION_IDS.includes(id));
+        if (!activeDraftOwnerKey) activeOptionalSections = new Set(defaultOptionalSectionIds());
       }
       instructionStoreIsAdmin = payload?.isAdmin === true;
       instructionRecords.clear();
@@ -5534,7 +5541,7 @@
   function restoreOptionalSections(
     draft
   ) {
-    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+    activeOptionalSections = new Set(defaultOptionalSectionIds());
     collapsedOptionalSections = new Set(
       Array.isArray(draft?.collapsedOptionalSections)
         ? draft.collapsedOptionalSections.filter(sectionId =>
@@ -5967,7 +5974,7 @@
       );
     } catch {}
 
-    activeOptionalSections = new Set(OPTIONAL_SECTION_IDS);
+    activeOptionalSections = new Set(defaultOptionalSectionIds());
     collapsedOptionalSections.clear();
 
     Object.keys(
