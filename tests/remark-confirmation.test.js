@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=382-qr-journal-restore/);
-  assert.match(html, /styles\.css\?v=382-qr-journal-restore/);
-  assert.match(serviceWorker, /app\.js\?v=382-qr-journal-restore/);
+  assert.match(html, /app\.js\?v=383-qr-server-status/);
+  assert.match(html, /styles\.css\?v=383-qr-server-status/);
+  assert.match(serviceWorker, /app\.js\?v=383-qr-server-status/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -825,6 +825,9 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(client, /Не зафиксирован/);
   assert.match(client, /Печать \/ PDF/);
   assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
+  assert.match(server, /pathname === "\/api\/qr-walk\/status"/);
+  assert.match(client, /await refreshQrWalkStatusFromServer\(parsed\.equipmentId, shift\)/);
+  assert.match(client, /\/api\/qr-walk\/status\?\$\{query\.toString\(\)\}/);
   assert.match(server, /db\.qrWalkJournal\.push/);
   assert.match(server, /group !== expectedGroup/);
   assert.match(server, /function restoreQrWalkChecksFromJournal/);

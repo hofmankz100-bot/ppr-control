@@ -4890,6 +4890,24 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
   }
 }
 
+async function refreshQrWalkStatusFromServer(equipmentId, shiftInfo = currentWalkShift()) {
+  if (!navigator.onLine) return false;
+  try {
+    const query = new URLSearchParams({
+      equipmentId: String(equipmentId),
+      date: String(shiftInfo.date || ""),
+      shift: String(shiftInfo.key || ""),
+      group: qrWalkGroup()
+    });
+    const result = await apiJson(`/api/qr-walk/status?${query.toString()}`, { timeout: 12000 });
+    if (result?.checks) mergeRealtimePatch({ checks: result.checks });
+    return true;
+  } catch (error) {
+    console.warn("QR status refresh failed; using local state", error);
+    return false;
+  }
+}
+
 function confirmQrScanFeedback() {
   try {
     navigator.vibrate?.([80, 40, 80]);
@@ -4942,6 +4960,7 @@ async function handleIncomingNodeQrFromUrl() {
     clearIncomingNodeQrFromUrl();
     return false;
   }
+  await refreshQrWalkStatusFromServer(parsed.equipmentId, shift);
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   clearIncomingNodeQrFromUrl();
   if (alreadyDone) {
@@ -19287,6 +19306,7 @@ ui.qrWalkButton?.addEventListener("click", async () => {
       const parsed = await scanNodeQrCode(null, null, null);
       if (!parsed) break;
       const shift = currentWalkShift();
+      await refreshQrWalkStatusFromServer(parsed.equipmentId, shift);
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
         await openRepeatedNodeQrDestination(parsed, shift);
         break;

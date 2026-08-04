@@ -4406,6 +4406,32 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/qr-walk/status" && req.method === "GET") {
+    const equipmentId = Number(url.searchParams.get("equipmentId"));
+    const date = String(url.searchParams.get("date") || "");
+    const shift = String(url.searchParams.get("shift") || "");
+    const role = String(req.authUser?.role || "");
+    const expectedGroup = ["operator", "shop"].includes(role) ? "operational" : "technical";
+    const group = String(url.searchParams.get("group") || expectedGroup);
+    if (!Number.isSafeInteger(equipmentId) || equipmentId < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || group !== expectedGroup) {
+      sendJson(res, 400, { ok: false, error: "qr_walk_status_invalid" });
+      return true;
+    }
+    await stateWriteQueue.catch(() => {});
+    const db = readDb();
+    const checks = {};
+    const prefix = `${equipmentId}:`;
+    const suffix = `:${date}`;
+    Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+      if (!recordKey.startsWith(prefix) || !recordKey.endsWith(suffix)) return;
+      const mark = record?.to?.walkGroups?.[group]?.[shift]
+        || (group === "technical" ? record?.to?.walkShifts?.[shift] : null);
+      if (mark?.done) checks[recordKey] = record;
+    });
+    sendJson(res, 200, { ok: true, equipmentId, date, shift, group, checks });
+    return true;
+  }
+
   if (pathname === "/api/qr-walk/mark" && req.method === "POST") {
     const body = await readBody(req).catch(() => ({}));
     const equipmentId = Number(body.equipmentId);
