@@ -8172,6 +8172,7 @@ function chooseDowntimeType() {
         <strong>Оформить остановку</strong>
         <p>Коротко укажите, что именно остановило узел.</p>
         <textarea rows="3" data-downtime-reason placeholder="Причина остановки..."></textarea>
+        ${(state.adminConfig?.downtimeReasons || []).length ? `<div class="downtime-reason-suggestions">${state.adminConfig.downtimeReasons.map(reason => `<button type="button" data-downtime-reason-value="${escapeHtml(reason)}">${escapeHtml(reason)}</button>`).join("")}</div>` : ""}
         <div class="downtime-type-error" data-downtime-error></div>
         <button type="button" data-downtime-type="breakdown">Аварийная остановка</button>
         <button type="button" data-downtime-type="production">Производственная остановка</button>
@@ -8182,6 +8183,7 @@ function chooseDowntimeType() {
       overlay.remove();
       resolve(type);
     };
+    overlay.querySelectorAll("[data-downtime-reason-value]").forEach(button => button.addEventListener("click", () => { overlay.querySelector("[data-downtime-reason]").value = button.dataset.downtimeReasonValue || ""; }));
     overlay.querySelectorAll("[data-downtime-type]").forEach(button => button.addEventListener("click", () => {
       const type = button.dataset.downtimeType || "";
       if (!type) {
@@ -17315,6 +17317,11 @@ async function renderAdminMaintenance() {
       <form class="admin-automation-form no-print" data-admin-automation-form><label class="admin-automation-toggle"><input name="autoBackupEnabled" type="checkbox" ${automation.autoBackupEnabled ? "checked" : ""}><span><strong>Автоматические полные копии</strong><small>Система создаёт копию PostgreSQL по расписанию.</small></span></label><label><span>Период</span><select name="autoBackupIntervalHours">${[[6,"6 часов"],[12,"12 часов"],[24,"24 часа"],[48,"2 дня"],[72,"3 дня"],[168,"7 дней"]].map(([value,label]) => `<option value="${value}" ${Number(automation.autoBackupIntervalHours) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label><span>Хранить последних копий</span><input name="autoBackupKeepCount" type="number" min="5" max="30" value="${Number(automation.autoBackupKeepCount || 14)}"></label><div><button type="submit">Сохранить расписание</button><button type="button" class="secondary" data-run-auto-backup>Создать копию сейчас</button></div></form>
       <div class="empty-state">Автоматизация создаёт только резервные копии. Она не удаляет и не архивирует рабочие записи.</div>`;
   }
+  if (tab === "settings") {
+    const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
+    const catalogs = [["shifts","Смены"],["remarkTypes","Типы замечаний"],["downtimeReasons","Причины простоев"],["ppe","Средства индивидуальной защиты (СИЗ)"],["workTypes","Виды работ"],["safetyMeasures","Мероприятия безопасности"]];
+    sheet?.insertAdjacentHTML("beforeend", `<section class="admin-catalog-builder"><div class="aggregate-sheet-head"><strong>Конструктор справочников</strong><span>Изменения сохраняются в истории настроек</span></div><form data-admin-catalog-form><p>Одна запись в строке. Чтобы архивировать запись, удалите её из списка: предыдущая версия останется доступной для восстановления.</p><div>${catalogs.map(([key,label]) => `<label><span>${label}</span><textarea name="${key}" rows="6">${escapeHtml((config[key] || []).join("\n"))}</textarea><small>Записей: ${(config[key] || []).length}</small></label>`).join("")}</div><button type="submit">Сохранить справочники</button></form></section>`);
+  }
   if (tab === "access") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     const qrRoles = new Set(["shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer"]);
@@ -17450,6 +17457,7 @@ async function renderAdminMaintenance() {
       renderAdminMaintenance();
     }, "Сохраняем…");
   });
+  ui.adminMaintenancePanel.querySelector("[data-admin-catalog-form]")?.addEventListener("submit", async event => { event.preventDefault(); const form = event.currentTarget; const lines = value => String(value || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean); const reason = window.prompt("Укажите причину изменения справочников:")?.trim(); if (!reason) return; const password = window.prompt("Введите пароль администратора:"); if (!password) return; await runButtonOperation(form.querySelector('button[type="submit"]'), async () => { await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason, password, config: { ...config, shifts: lines(form.elements.shifts.value), remarkTypes: lines(form.elements.remarkTypes.value), downtimeReasons: lines(form.elements.downtimeReasons.value), ppe: lines(form.elements.ppe.value), workTypes: lines(form.elements.workTypes.value), safetyMeasures: lines(form.elements.safetyMeasures.value) } }) }); renderAdminMaintenance(); }, "Сохраняем…"); });
   ui.adminMaintenancePanel.querySelectorAll("[data-admin-config-rollback]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Вернуть выбранную версию настроек? Текущая версия будет сохранена в истории.")) return;
     await runButtonOperation(button, async () => { await apiJson("/api/admin/settings/rollback", { method: "POST", body: JSON.stringify({ versionId: button.dataset.adminConfigRollback, reason: "Откат администратором" }) }); renderAdminMaintenance(); }, "Восстанавливаем…");
