@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminActivityReadAt: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -279,6 +279,7 @@ function normalizeDb(db) {
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
+  db.adminArchives = Array.isArray(db.adminArchives) ? db.adminArchives : [];
   db.adminActivityReadAt = db.adminActivityReadAt && typeof db.adminActivityReadAt === "object" ? db.adminActivityReadAt : {};
   db.adminAlerts = Array.isArray(db.adminAlerts) ? db.adminAlerts : [];
   db.adminConfig = db.adminConfig && typeof db.adminConfig === "object" ? db.adminConfig : {};
@@ -493,6 +494,16 @@ async function initializeStorage() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_admin_backups (
         backup_id text PRIMARY KEY,
+        label text NOT NULL,
+        payload jsonb NOT NULL,
+        checksum text NOT NULL,
+        created_by text NOT NULL DEFAULT '',
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_admin_archives (
+        archive_id text PRIMARY KEY,
         label text NOT NULL,
         payload jsonb NOT NULL,
         checksum text NOT NULL,
@@ -1122,6 +1133,47 @@ async function readAdminBackupPayload(id) {
   if (!fs.existsSync(file)) return null;
   const payload = JSON.parse(fs.readFileSync(file, "utf8"));
   return { payload, checksum: backupChecksum(payload), valid: true };
+}
+
+function adminArchiveSelection(db, days = 180) {
+  const safeDays = [30, 90, 180, 365, 730].includes(Number(days)) ? Number(days) : 180;
+  const cutoffAt = new Date(Date.now() - safeDays * 86400000).toISOString();
+  const older = value => Boolean(value) && String(value) < cutoffAt;
+  const records = {
+    audit: (db.adminAuditLog || []).filter(item => older(item.at)),
+    resolved_alerts: (db.adminAlerts || []).filter(item => item.status === "resolved" && older(item.resolvedAt || item.lastSeenAt)),
+    restored_trash: (db.adminTrash || []).filter(item => item.restoredAt && older(item.restoredAt)),
+    config_history: (db.adminConfigHistory || []).filter(item => older(item.at))
+  };
+  return { days: safeDays, cutoffAt, records, counts: Object.fromEntries(Object.entries(records).map(([key, items]) => [key, items.length])) };
+}
+
+async function listAdminArchives(db = readDb()) {
+  if (postgresPool) {
+    const result = await postgresPool.query(`SELECT archive_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_archives ORDER BY created_at DESC LIMIT 50`);
+    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres" }));
+  }
+  return (db.adminArchives || []).slice(0, 50).map(item => ({ id: item.id, label: item.label, checksum: item.checksum, createdBy: item.createdBy, createdAt: item.createdAt, sizeBytes: Number(item.sizeBytes || 0), storage: "json" }));
+}
+
+async function createAdminArchive(payload, label, actorName) {
+  const id = `archive-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const checksum = backupChecksum(payload);
+  const createdAt = new Date().toISOString();
+  const archive = { id, label: String(label || "Архив данных").slice(0, 200), payload, checksum, createdBy: String(actorName || "Администратор").slice(0, 200), createdAt, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), storage: postgresPool ? "postgres" : "json" };
+  if (postgresPool) {
+    await postgresPool.query(`INSERT INTO ppr_admin_archives(archive_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)`, [id, archive.label, JSON.stringify(payload), checksum, archive.createdBy, createdAt]);
+  }
+  return archive;
+}
+
+async function readAdminArchive(id, db = readDb()) {
+  if (postgresPool) {
+    const result = await postgresPool.query("SELECT payload, checksum FROM ppr_admin_archives WHERE archive_id=$1 LIMIT 1", [id]);
+    if (!result.rows[0]) return null;
+    return { payload: result.rows[0].payload, checksum: result.rows[0].checksum };
+  }
+  return (db.adminArchives || []).find(item => item.id === id) || null;
 }
 
 function flushLocalBackup() {
@@ -4577,7 +4629,96 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    const archivePreview = adminArchiveSelection(db, 180);
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/archives/preview" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const preview = adminArchiveSelection(readDb(), url.searchParams.get("days"));
+    sendJson(res, 200, { ok: true, preview: { days: preview.days, cutoffAt: preview.cutoffAt, counts: preview.counts } });
+    return true;
+  }
+
+  if (pathname === "/api/admin/archives" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ПЕРЕНЕСТИ В АРХИВ") {
+      sendJson(res, 400, { ok: false, error: "archive_confirmation_required" }); return true;
+    }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const allowed = new Set(["audit", "resolved_alerts", "restored_trash", "config_history"]);
+    const categories = [...new Set((Array.isArray(body.categories) ? body.categories : []).map(String).filter(value => allowed.has(value)))];
+    if (!categories.length) { sendJson(res, 400, { ok: false, error: "archive_categories_required" }); return true; }
+    const source = adminArchiveSelection(readDb(), body.days);
+    const records = Object.fromEntries(categories.map(key => [key, source.records[key] || []]));
+    const total = Object.values(records).reduce((sum, items) => sum + items.length, 0);
+    if (!total) { sendJson(res, 400, { ok: false, error: "archive_empty" }); return true; }
+    await createAdminBackup("Перед переносом в архив", req.authUser?.name || "Администратор");
+    const payload = { version: 1, cutoffAt: source.cutoffAt, days: source.days, categories, reason, records };
+    const archive = await createAdminArchive(payload, `Архив до ${source.cutoffAt.slice(0, 10)}`, req.authUser?.name);
+    await enqueueStateWrite(async () => {
+      const db = readDb();
+      const ids = key => new Set((records[key] || []).map(item => item.id));
+      if (categories.includes("audit")) db.adminAuditLog = (db.adminAuditLog || []).filter(item => !ids("audit").has(item.id));
+      if (categories.includes("resolved_alerts")) db.adminAlerts = (db.adminAlerts || []).filter(item => !ids("resolved_alerts").has(item.id));
+      if (categories.includes("restored_trash")) db.adminTrash = (db.adminTrash || []).filter(item => !ids("restored_trash").has(item.id));
+      if (categories.includes("config_history")) db.adminConfigHistory = (db.adminConfigHistory || []).filter(item => !ids("config_history").has(item.id));
+      if (!postgresPool) db.adminArchives.unshift(archive);
+      writeDb(db, { action: "admin_archive_created", user: req.authUser, targetId: archive.id, targetLabel: archive.label, reason, details: `${total} записей` });
+    });
+    sendJson(res, 200, { ok: true, archive: { ...archive, payload: undefined }, archivedCount: total });
+    return true;
+  }
+
+  if (pathname === "/api/admin/archives/restore" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ВОССТАНОВИТЬ АРХИВ") {
+      sendJson(res, 400, { ok: false, error: "archive_restore_confirmation_required" }); return true;
+    }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const archiveId = String(body.archiveId || "");
+    const archive = await readAdminArchive(archiveId);
+    if (!archive) { sendJson(res, 404, { ok: false, error: "archive_not_found" }); return true; }
+    if (backupChecksum(archive.payload) !== archive.checksum) { sendJson(res, 409, { ok: false, error: "archive_checksum_invalid" }); return true; }
+    await createAdminBackup("Перед восстановлением архива", req.authUser?.name || "Администратор");
+    const restoredCount = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const records = archive.payload?.records || {};
+      const merge = (current, incoming) => {
+        const ids = new Set((current || []).map(item => item.id));
+        const additions = (incoming || []).filter(item => item?.id && !ids.has(item.id));
+        return { items: [...additions, ...(current || [])], added: additions.length };
+      };
+      let total = 0;
+      let merged = merge(db.adminAuditLog, records.audit); db.adminAuditLog = merged.items; total += merged.added;
+      merged = merge(db.adminAlerts, records.resolved_alerts); db.adminAlerts = merged.items; total += merged.added;
+      merged = merge(db.adminTrash, records.restored_trash); db.adminTrash = merged.items; total += merged.added;
+      merged = merge(db.adminConfigHistory, records.config_history); db.adminConfigHistory = merged.items; total += merged.added;
+      writeDb(db, { action: "admin_archive_restored", user: req.authUser, targetId: archiveId, reason, details: `${total} записей` });
+      return total;
+    });
+    sendJson(res, 200, { ok: true, restoredCount, archiveId });
+    return true;
+  }
+
+  const adminArchiveMatch = pathname.match(/^\/api\/admin\/archives\/([A-Za-z0-9._-]+)$/);
+  if (adminArchiveMatch && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const archive = await readAdminArchive(adminArchiveMatch[1]);
+    if (!archive) { sendJson(res, 404, { ok: false, error: "archive_not_found" }); return true; }
+    if (backupChecksum(archive.payload) !== archive.checksum) { sendJson(res, 409, { ok: false, error: "archive_checksum_invalid" }); return true; }
+    sendDownload(res, `ppr_archive_${adminArchiveMatch[1]}.json`, { exportedAt: new Date().toISOString(), archiveId: adminArchiveMatch[1], checksum: archive.checksum, payload: archive.payload });
     return true;
   }
 

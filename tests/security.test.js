@@ -137,6 +137,22 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(maintenance.alerts));
     assert.ok(Array.isArray(maintenance.backups));
     assert.ok(Array.isArray(maintenance.activity?.items));
+    assert.ok(Array.isArray(maintenance.archives));
+    assert.equal(typeof maintenance.archivePreview?.counts?.audit, "number");
+    const archivePreview = await fetch(`${baseUrl}/api/admin/archives/preview?days=90`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(archivePreview.preview?.days, 90);
+    const unsafeArchive = await fetch(`${baseUrl}/api/admin/archives`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ categories: ["audit"], days: 90, password: "correct-password", confirm: "ДА", reason: "Test rejection" })
+    });
+    assert.equal(unsafeArchive.status, 400);
+    const unsafeArchiveRestore = await fetch(`${baseUrl}/api/admin/archives/restore`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ archiveId: "missing", password: "correct-password", confirm: "ДА", reason: "Test rejection" })
+    });
+    assert.equal(unsafeArchiveRestore.status, 400);
     assert.equal(typeof maintenance.activity?.unreadCount, "number");
     const activityRead = await fetch(`${baseUrl}/api/admin/activity/read`, {
       method: "POST",
