@@ -11920,7 +11920,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 
 function renderEquipment() {
   const activeWalkGroup = qrWalkGroup();
-  ui.subtitle.textContent = `Оборудование · ${QR_WALK_GROUPS[activeWalkGroup]}`;
+  ui.subtitle.textContent = "Оборудование";
   const editorSchedule = false;
   const today = new Date();
   current.month = today.getMonth();
@@ -11943,7 +11943,6 @@ function renderEquipment() {
     <div>
       <strong>График оборудования</strong>
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
-      <span class="equipment-walk-group">Счётчик QR: ${escapeHtml(QR_WALK_GROUPS[activeWalkGroup])}</span>
     </div>
     <div class="segmented">
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
@@ -16583,8 +16582,7 @@ function directorDowntimeDetail(stats) {
 
 function directorControlTotals() {
   const equipment = allEquipment();
-  const walks = equipment.map(eq => directorTodayWalk(eq, "technical"));
-  const operationalWalks = equipment.map(eq => directorTodayWalk(eq, "operational"));
+  const walks = equipment.map(eq => directorTodayWalk(eq, qrWalkGroup()));
   const done = walks.reduce((sum, walk) => sum + walk.done, 0);
   const total = walks.reduce((sum, walk) => sum + walk.total, 0);
   const allRemarks = directorOpenRemarks();
@@ -16598,8 +16596,6 @@ function directorControlTotals() {
     done,
     total,
     percent: total ? Math.round(done / total * 100) : 0,
-    technicalWalk: { done, total, percent: total ? Math.round(done / total * 100) : 0 },
-    operationalWalk: { done: operationalWalks.reduce((sum, walk) => sum + walk.done, 0), total: operationalWalks.reduce((sum, walk) => sum + walk.total, 0), percent: operationalWalks.reduce((sum, walk) => sum + walk.total, 0) ? Math.round(operationalWalks.reduce((sum, walk) => sum + walk.done, 0) / operationalWalks.reduce((sum, walk) => sum + walk.total, 0) * 100) : 0 },
     remarks,
     allRemarks,
     archivedRemarks,
@@ -16745,11 +16741,10 @@ function renderDirectorControl() {
       </div>
     </div>
     <button type="button" class="director-progress-card director-progress-toggle ${current.directorProgressOpen ? "open" : ""}" data-toggle-director-progress aria-expanded="${current.directorProgressOpen}">
-      <div><strong>${totals.technicalWalk.percent}%</strong><span>Электромеханики и инженеры</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
-      <div class="director-progress"><i style="width:${totals.technicalWalk.percent}%"></i></div>
-      <small>${totals.technicalWalk.done} из ${totals.technicalWalk.total} узлов · технический обход</small>
+      <div><strong>${totals.percent}%</strong><span>Обходы по узлам</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
+      <div class="director-progress"><i style="width:${totals.percent}%"></i></div>
+      <small>${totals.done} из ${totals.total} узлов</small>
     </button>
-    <div class="director-progress-card qr-group-progress ${totals.operationalWalk.done === totals.operationalWalk.total && totals.operationalWalk.total ? "complete" : ""}"><div><strong>${totals.operationalWalk.percent}%</strong><span>Операторы и начальники цехов</span></div><div class="director-progress"><i style="width:${totals.operationalWalk.percent}%"></i></div><small>${totals.operationalWalk.done} из ${totals.operationalWalk.total} узлов · оперативный обход</small></div>
     <section class="director-progress-details ${current.directorProgressOpen ? "open" : ""}" ${current.directorProgressOpen ? "" : "hidden"}>
       <div class="director-section-head"><div><span>🏭</span><h2>Обходы по узлам — сегодня</h2></div><small>Журнал и проверенные узлы</small></div>
       <div class="director-status-list director-progress-status-list">${controlRows}</div>

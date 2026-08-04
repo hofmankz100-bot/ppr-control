@@ -4368,74 +4368,6 @@ body.editor-profile .warehouse-folders button.request-alert {
   background: #fff;
 }
 
-.equipment-walk-group {
-  display: inline-flex !important;
-  width: fit-content;
-  margin-top: 6px;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: #e6f7f4;
-  color: #08766c !important;
-  font-weight: 800;
-}
-
-@media (max-width: 680px) {
-  .equipment-schedule-wrap {
-    overflow: visible;
-  }
-
-  .equipment-schedule-table,
-  .equipment-schedule-table thead,
-  .equipment-schedule-table tbody {
-    display: block;
-    width: 100%;
-  }
-
-  .equipment-schedule-table tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 78px;
-    width: 100%;
-  }
-
-  .equipment-schedule-table .equipment-head,
-  .equipment-schedule-table .equipment-name,
-  .equipment-schedule-table th:first-child,
-  .equipment-schedule-table td:first-child {
-    position: static;
-    min-width: 0;
-    max-width: none;
-    width: auto;
-    box-shadow: none;
-  }
-
-  .equipment-schedule-table thead th:not(:first-child),
-  .equipment-schedule-table td.to,
-  .equipment-schedule-table td.to2,
-  .equipment-schedule-table td.to3,
-  .equipment-schedule-table td.completed-day,
-  .equipment-schedule-table td.comment-cell,
-  .equipment-schedule-table td.downtime-cell,
-  .equipment-schedule-table td.operational-paused-day {
-    display: grid;
-    place-items: center;
-    min-width: 0;
-    width: auto;
-    height: auto;
-    padding: 10px 5px;
-    font-size: 15px;
-  }
-
-  .equipment-schedule-table .equipment-journal-cell {
-    padding: 5px;
-  }
-
-  .equipment-schedule-table .equipment-journal-button {
-    min-width: 0;
-    padding: 12px;
-    text-align: left;
-  }
-}
-
 .equipment-row-tools {
   display: block;
 }
@@ -13294,19 +13226,3 @@ body.editor-profile #createTmcRequestButton.request-alert,
 .admin-user-permissions{display:grid;gap:10px;margin-top:12px;padding:12px;border:1px solid #bdd8dd;border-radius:10px;background:#fff}.admin-user-permissions>div{display:flex;flex-wrap:wrap;gap:10px}.admin-user-permissions label{display:grid;gap:5px}.admin-user-permissions>div>label{display:flex;align-items:center;padding:7px 9px;border-radius:8px;background:#eef6f7}.admin-user-permissions select{min-width:210px}@media(max-width:760px){.admin-user-permissions>div{display:grid}.admin-user-permissions select{min-width:0;width:100%}}
 .admin-catalog-builder{margin-top:20px}.admin-catalog-builder form>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.admin-catalog-builder label{display:grid;gap:6px}.admin-catalog-builder textarea{min-height:140px}.admin-catalog-builder p,.admin-catalog-builder small{color:#60757d}.downtime-reason-suggestions{display:flex;flex-wrap:wrap;gap:7px}.downtime-reason-suggestions button{min-height:36px;padding:7px 10px;background:#eef6f7;color:#176b78}@media(max-width:760px){.admin-catalog-builder form>div{grid-template-columns:1fr}.admin-catalog-builder textarea{min-height:120px}}
 .admin-qr-route-builder{display:grid;gap:14px;margin-top:22px}.admin-qr-route-builder form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid #c4dce0;border-radius:14px}.admin-qr-route-builder label{display:grid;gap:5px}.admin-qr-route-builder form button{grid-column:1/-1}.admin-qr-route-list{display:grid;gap:8px}.admin-qr-route-list article{display:flex;justify-content:space-between;gap:12px;padding:12px;border:1px solid #cfdee1;border-radius:12px}.admin-qr-route-list article>div{display:grid;gap:4px}.admin-qr-route-list .archived{opacity:.6}@media(max-width:760px){.admin-qr-route-builder form{grid-template-columns:1fr}.admin-qr-route-list article{display:grid}.admin-qr-route-list button{width:100%}}
-
-/* Keep today's QR result visible beside every equipment card on narrow phones. */
-@media (max-width: 680px) {
-  .equipment-schedule-wrap { overflow: visible !important; }
-  .equipment-schedule-table,
-  .equipment-schedule-table thead,
-  .equipment-schedule-table tbody { display: block; width: 100%; }
-  .equipment-schedule-table tr { display: grid; grid-template-columns: minmax(0, 1fr) 72px; width: 100%; }
-  .equipment-schedule-table .equipment-head,
-  .equipment-schedule-table .equipment-name,
-  .equipment-schedule-table th:first-child,
-  .equipment-schedule-table td:first-child { position: static; min-width: 0 !important; max-width: none; width: auto !important; box-shadow: none; }
-  .equipment-schedule-table thead th:not(:first-child),
-  .equipment-schedule-table td:not(:first-child) { min-width: 0 !important; width: auto !important; height: auto; padding: 10px 4px; font-size: 15px; }
-  .equipment-schedule-table .equipment-journal-cell { min-width: 0 !important; padding: 5px; }
-}
