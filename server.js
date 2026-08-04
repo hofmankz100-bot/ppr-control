@@ -2747,6 +2747,13 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "instructionEdit", "journalPrint"]);
+function activeUserPermission(user = {}, key = "") {
+  const entry = user.permissionOverrides?.[key];
+  if (!entry || entry.enabled !== true) return false;
+  return !entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now());
+}
+
 function adminUserOperationalSummary(db, user = {}) {
   const keys = [...new Set([user.id, user.employeeId, user.phone, user.name].map(value => String(value || "").trim()).filter(Boolean))];
   const values = source => Array.isArray(source) ? source : Object.values(source || {});
@@ -4448,7 +4455,7 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/qr-walk/journal" && req.method === "GET") {
-    if (String(req.authUser?.role || "") !== "editor" && req.authUser?.qrWalkJournalAccess !== true) {
+    if (String(req.authUser?.role || "") !== "editor" && req.authUser?.qrWalkJournalAccess !== true && !activeUserPermission(req.authUser, "qrJournalView")) {
       sendJson(res, 403, { ok: false, error: "journal_access_required" });
       return true;
     }
@@ -4860,6 +4867,15 @@ async function handleApi(req, res, pathname, url) {
     const reason = String(body.reason || "").trim().slice(0, 500); if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
     const result = await enqueueStateWrite(async () => { const db = readDb(); const target = (db.users || []).find(user => String(user.id || "") === String(body.userId || "")); if (!target) return { error: "user_not_found" }; if (String(target.id || "") === String(req.authUser?.id || "")) return { error: "current_admin_session_protected" }; const before = (db.authSessions || []).length; db.authSessions = (db.authSessions || []).filter(session => String(session.userId || "") !== String(target.id || "")); const ended = before - db.authSessions.length; writeDb(db, { action: "user_sessions_ended", user: req.authUser, targetId: target.id, targetLabel: target.name, reason, details: `Завершено сеансов: ${ended}` }); return { ended }; });
     if (result.error) sendJson(res, result.error === "user_not_found" ? 404 : 409, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ended: result.ended }); return true;
+  }
+
+  if (pathname === "/api/admin/user-permissions" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500); if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const result = await enqueueStateWrite(async () => { const db = readDb(); const target = (db.users || []).find(user => String(user.id || "") === String(body.userId || "")); if (!target) return { error: "user_not_found" }; const action = String(body.action || "save"); if (action === "reset") target.permissionOverrides = {}; else if (action === "copy") { const source = (db.users || []).find(user => String(user.id || "") === String(body.sourceUserId || "")); if (!source) return { error: "source_user_not_found" }; target.permissionOverrides = JSON.parse(JSON.stringify(source.permissionOverrides || {})); } else { const expiresAt = String(body.expiresAt || ""); if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) return { error: "permission_expiry_invalid" }; const enabled = new Set((Array.isArray(body.permissions) ? body.permissions : []).map(String).filter(key => ADMIN_PERMISSION_KEYS.has(key))); target.permissionOverrides = Object.fromEntries([...ADMIN_PERMISSION_KEYS].filter(key => enabled.has(key)).map(key => [key, { enabled: true, expiresAt, grantedAt: new Date().toISOString(), grantedBy: String(req.authUser?.name || "Администратор") }])); } db.authSessions = (db.authSessions || []).filter(session => String(session.userId || "") !== String(target.id || "")); writeDb(db, { action: action === "reset" ? "user_permissions_reset" : action === "copy" ? "user_permissions_copied" : "user_permissions_saved", user: req.authUser, targetId: target.id, targetLabel: target.name, reason }); return { user: userPublic(target) }; });
+    if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, user: result.user }); return true;
   }
 
   if (pathname === "/api/admin/automation/run" && req.method === "POST") {
@@ -5303,7 +5319,7 @@ async function handleApi(req, res, pathname, url) {
       content: String(raw?.content || ""),
       fileName: String(raw?.fileName || ""),
       editorIds: isAdmin ? (Array.isArray(raw?.editorIds) ? raw.editorIds : []) : undefined,
-      canEdit: isAdmin || (Array.isArray(raw?.editorIds) && raw.editorIds.includes(actorKey)),
+      canEdit: isAdmin || activeUserPermission(req.authUser, "instructionEdit") || (Array.isArray(raw?.editorIds) && raw.editorIds.includes(actorKey)),
       updatedAt: String(raw?.updatedAt || ""),
       updatedBy: String(raw?.updatedBy || "")
     }));
@@ -5320,7 +5336,7 @@ async function handleApi(req, res, pathname, url) {
     const existing = db.workPermitInstructions[instructionId] || {};
     const actorKey = attendanceUserKey(req.authUser || {});
     const isAdmin = req.authUser?.role === "editor";
-    const canEdit = isAdmin || (Array.isArray(existing.editorIds) && existing.editorIds.includes(actorKey));
+    const canEdit = isAdmin || activeUserPermission(req.authUser, "instructionEdit") || (Array.isArray(existing.editorIds) && existing.editorIds.includes(actorKey));
     if (!canEdit) {
       sendJson(res, 403, { ok: false, error: "permission_denied" });
       return true;
