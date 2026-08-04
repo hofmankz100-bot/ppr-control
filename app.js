@@ -17262,7 +17262,7 @@ async function renderAdminMaintenance() {
   ui.adminMaintenancePanel.querySelector("[data-create-admin-backup]")?.addEventListener("click", async event => {
     const label = window.prompt("Название резервной копии:", `Ручная копия ${dateHuman(todayISO())}`)?.trim();
     if (!label) return;
-    await runButtonOperation(event.currentTarget, async () => { await apiJson("/api/admin/backups", { method: "POST", body: JSON.stringify({ label, reason: "Создано администратором" }) }); renderAdminMaintenance(); }, "Создаём копию…");
+    await runButtonOperation(event.currentTarget, async () => { await apiJson("/api/admin/backups", { method: "POST", timeout: 120000, body: JSON.stringify({ label, reason: "Создано администратором" }) }); renderAdminMaintenance(); }, "Создаём копию…");
   });
   ui.adminMaintenancePanel.querySelectorAll("[data-restore-admin-backup]").forEach(button => button.addEventListener("click", async () => {
     const confirm = window.prompt("Восстановление заменит рабочие данные. Для продолжения напишите: ВОССТАНОВИТЬ БАЗУ");
@@ -17272,7 +17272,7 @@ async function renderAdminMaintenance() {
     const password = window.prompt("Введите пароль администратора:");
     if (!password) return;
     await runButtonOperation(button, async () => {
-      await apiJson("/api/admin/backups/restore", { method: "POST", body: JSON.stringify({ backupId: button.dataset.restoreAdminBackup, confirm, reason, password }) });
+      await apiJson("/api/admin/backups/restore", { method: "POST", timeout: 180000, body: JSON.stringify({ backupId: button.dataset.restoreAdminBackup, confirm, reason, password }) });
       window.alert("Данные восстановлены. Страница будет обновлена.");
       window.location.reload();
     }, "Восстанавливаем…");
