@@ -2676,7 +2676,21 @@ function mergeCheckRecordLocal(current = {}, incoming = {}) {
   const baseTo = incomingWins ? incomingTo : currentTo;
   next.to = {
     ...baseTo,
-    commentLog: mergeCommentLogsLocal(currentTo.commentLog, incomingTo.commentLog)
+    commentLog: mergeCommentLogsLocal(currentTo.commentLog, incomingTo.commentLog),
+    walkShifts: {
+      ...(currentTo.walkShifts || {}),
+      ...(incomingTo.walkShifts || {})
+    },
+    walkGroups: {
+      technical: {
+        ...(currentTo.walkGroups?.technical || {}),
+        ...(incomingTo.walkGroups?.technical || {})
+      },
+      operational: {
+        ...(currentTo.walkGroups?.operational || {}),
+        ...(incomingTo.walkGroups?.operational || {})
+      }
+    }
   };
   const hasLocalComposer = Boolean(String(currentTo.nodeDraftText || "").trim() || currentTo.commentPhoto);
   if (hasLocalComposer) {
