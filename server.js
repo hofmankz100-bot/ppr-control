@@ -489,6 +489,16 @@ async function initializeStorage() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ppr_admin_backups (
+        backup_id text PRIMARY KEY,
+        label text NOT NULL,
+        payload jsonb NOT NULL,
+        checksum text NOT NULL,
+        created_by text NOT NULL DEFAULT '',
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
     const result = await pool.query(
       "SELECT payload FROM ppr_settings WHERE setting_key = 'full_state' LIMIT 1"
     );
@@ -993,6 +1003,60 @@ function createManualBackup(label = "manual") {
   fs.copyFileSync(dbFile, backupFile);
   pruneOldBackups(30);
   return backupFile;
+}
+
+function backupChecksum(payload) {
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+async function createAdminBackup(label = "manual", actorName = "Администратор", sourceDb = null) {
+  await stateWriteQueue.catch(() => {});
+  const payload = normalizeDb(structuredClone(sourceDb || readDb()));
+  let id = `backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const cleanLabel = String(label || "Ручная копия").trim().slice(0, 200) || "Ручная копия";
+  const checksum = backupChecksum(payload);
+  const localFile = createManualBackup(cleanLabel);
+  if (!postgresPool) id = path.basename(localFile);
+  if (postgresPool) {
+    await postgresPool.query(
+      `INSERT INTO ppr_admin_backups(backup_id, label, payload, checksum, created_by, created_at)
+       VALUES ($1, $2, $3::jsonb, $4, $5, now())`,
+      [id, cleanLabel, JSON.stringify(payload), checksum, String(actorName || "Администратор").slice(0, 200)]
+    );
+    await postgresPool.query(`DELETE FROM ppr_admin_backups WHERE backup_id IN (
+      SELECT backup_id FROM ppr_admin_backups ORDER BY created_at DESC OFFSET 30
+    )`);
+  }
+  return { id, label: cleanLabel, checksum, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), file: path.basename(localFile), createdBy: actorName, createdAt: new Date().toISOString(), storage: postgresPool ? "postgres" : "json" };
+}
+
+async function listAdminBackups() {
+  if (postgresPool) {
+    const result = await postgresPool.query(`SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 30`);
+    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres" }));
+  }
+  try {
+    return fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json")).map(name => {
+      const file = path.join(backupDir, name);
+      const stat = fs.statSync(file);
+      return { id: name, label: name, checksum: "", createdBy: "Система", createdAt: stat.mtime.toISOString(), sizeBytes: stat.size, storage: "json" };
+    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+  } catch { return []; }
+}
+
+async function readAdminBackupPayload(id) {
+  if (postgresPool) {
+    const result = await postgresPool.query("SELECT payload, checksum FROM ppr_admin_backups WHERE backup_id=$1 LIMIT 1", [id]);
+    if (!result.rows[0]) return null;
+    const payload = result.rows[0].payload;
+    return { payload, checksum: result.rows[0].checksum, valid: backupChecksum(payload) === result.rows[0].checksum };
+  }
+  const safeName = path.basename(String(id || ""));
+  if (safeName !== id || !safeName.startsWith("db_backup_") || !safeName.endsWith(".json")) return null;
+  const file = path.join(backupDir, safeName);
+  if (!fs.existsSync(file)) return null;
+  const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+  return { payload, checksum: backupChecksum(payload), valid: true };
 }
 
 function flushLocalBackup() {
@@ -4448,7 +4512,84 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/backups" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, backups: await listAdminBackups() });
+    return true;
+  }
+
+  if (pathname === "/api/admin/backups" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const backup = await createAdminBackup(body.label || "Ручная копия", req.authUser?.name || "Администратор");
+    const db = readDb();
+    writeDb(db, { action: "admin_backup_created", user: req.authUser, targetId: backup.id, targetLabel: backup.label, reason: String(body.reason || "Ручная резервная копия") });
+    sendJson(res, 200, { ok: true, backup });
+    return true;
+  }
+
+  const adminBackupMatch = pathname.match(/^\/api\/admin\/backups\/([A-Za-z0-9._-]+)$/);
+  if (adminBackupMatch && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const backup = await readAdminBackupPayload(adminBackupMatch[1]);
+    if (!backup) {
+      sendJson(res, 404, { ok: false, error: "backup_not_found" });
+      return true;
+    }
+    if (!backup.valid) {
+      sendJson(res, 409, { ok: false, error: "backup_checksum_invalid" });
+      return true;
+    }
+    sendDownload(res, `ppr_backup_${adminBackupMatch[1]}.json`, { exportedAt: new Date().toISOString(), backupId: adminBackupMatch[1], checksum: backup.checksum, payload: backup.payload });
+    return true;
+  }
+
+  if (pathname === "/api/admin/backups/restore" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
+      && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" });
+      return true;
+    }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ВОССТАНОВИТЬ БАЗУ") {
+      sendJson(res, 400, { ok: false, error: "restore_confirmation_required" });
+      return true;
+    }
+    const id = String(body.backupId || "");
+    const backup = await readAdminBackupPayload(id);
+    if (!backup) {
+      sendJson(res, 404, { ok: false, error: "backup_not_found" });
+      return true;
+    }
+    if (!backup.valid || !backup.payload || typeof backup.payload !== "object") {
+      sendJson(res, 409, { ok: false, error: "backup_checksum_invalid" });
+      return true;
+    }
+    await createAdminBackup("Перед восстановлением", req.authUser?.name || "Администратор");
+    await enqueueStateWrite(async () => {
+      const current = readDb();
+      const restored = normalizeDb(structuredClone(backup.payload));
+      restored.authSessions = current.authSessions || [];
+      writeDb(restored, { action: "admin_backup_restored", user: req.authUser, targetId: id, reason: String(body.reason || "Восстановление резервной копии") });
+    });
+    sendJson(res, 200, { ok: true, restored: true, backupId: id });
     return true;
   }
 

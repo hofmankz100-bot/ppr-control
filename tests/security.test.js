@@ -135,6 +135,22 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(typeof maintenance.monitoring?.node?.memoryMb, "number");
     assert.equal(typeof maintenance.monitoring?.api?.requests, "number");
     assert.ok(Array.isArray(maintenance.alerts));
+    assert.ok(Array.isArray(maintenance.backups));
+    const createdBackup = await fetch(`${baseUrl}/api/admin/backups`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ label: "Security test backup" })
+    }).then(response => response.json());
+    assert.ok(createdBackup.backup?.id);
+    const backupList = await fetch(`${baseUrl}/api/admin/backups`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(backupList.backups.some(item => item.id === createdBackup.backup.id));
+    assert.equal((await fetch(`${baseUrl}/api/admin/backups/${encodeURIComponent(createdBackup.backup.id)}`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    const unsafeRestore = await fetch(`${baseUrl}/api/admin/backups/restore`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ backupId: createdBackup.backup.id, password: "correct-password", confirm: "ДА" })
+    });
+    assert.equal(unsafeRestore.status, 400);
     assert.equal(typeof maintenance.config?.companyName, "string");
     const settingsSaved = await fetch(`${baseUrl}/api/admin/settings`, {
       method: "PUT",
