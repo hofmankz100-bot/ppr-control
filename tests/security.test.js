@@ -136,6 +136,15 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(typeof maintenance.monitoring?.api?.requests, "number");
     assert.ok(Array.isArray(maintenance.alerts));
     assert.ok(Array.isArray(maintenance.backups));
+    assert.ok(Array.isArray(maintenance.integrity?.issues));
+    const integrityReport = await fetch(`${baseUrl}/api/admin/integrity`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(Array.isArray(integrityReport.integrity?.issues));
+    const unsafeIntegrityFix = await fetch(`${baseUrl}/api/admin/integrity/fix`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ fixes: ["expired_sessions"], password: "correct-password", confirm: "ДА", reason: "Test rejection" })
+    });
+    assert.equal(unsafeIntegrityFix.status, 400);
     const createdBackup = await fetch(`${baseUrl}/api/admin/backups`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },

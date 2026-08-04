@@ -606,6 +606,48 @@ function normalizedAdminConfig(raw = {}) {
   };
 }
 
+function duplicateValues(items, valueOf) {
+  const groups = new Map();
+  for (const item of items || []) {
+    const value = String(valueOf(item) || "").trim();
+    if (!value) continue;
+    const group = groups.get(value) || [];
+    group.push(item);
+    groups.set(value, group);
+  }
+  return [...groups.entries()].filter(([, group]) => group.length > 1);
+}
+
+function dataIntegrityReport(db = readDb()) {
+  const now = Date.now();
+  const users = db.users || [];
+  const userIds = new Set(users.map(user => String(user.id || "")).filter(Boolean));
+  const userKeys = new Set(users.flatMap(user => [user.id, user.employeeId, user.phone].map(value => String(value || "").trim()).filter(Boolean)));
+  const expiredSessions = (db.authSessions || []).filter(item => !Number.isFinite(Date.parse(item.expiresAt || "")) || Date.parse(item.expiresAt || "") <= now);
+  const danglingSessions = (db.authSessions || []).filter(item => !expiredSessions.includes(item) && item.userId && !userIds.has(String(item.userId)));
+  const staleResolvedAlerts = (db.adminAlerts || []).filter(item => item.status === "resolved" && Date.parse(item.resolvedAt || item.lastSeenAt || 0) < now - 90 * 86400000);
+  const invalidInstructionEditors = [];
+  for (const [instructionId, instruction] of Object.entries(db.workPermitInstructions || {})) {
+    const invalid = (instruction.editorIds || []).filter(key => !userKeys.has(String(key || "")));
+    if (invalid.length) invalidInstructionEditors.push({ instructionId, count: invalid.length });
+  }
+  const duplicateEmployeeIds = duplicateValues(users, user => String(user.employeeId || "").trim().toLowerCase());
+  const duplicatePhones = duplicateValues(users, user => normalizePhoneIdentifier(user.phone));
+  const incompleteUsers = users.filter(user => !String(user.name || "").trim() || !String(user.role || "").trim() || (!String(user.employeeId || "").trim() && !normalizePhoneIdentifier(user.phone)));
+  const expiredTrash = (db.adminTrash || []).filter(item => item.canRestore !== false && !item.restoredAt && Date.parse(item.expiresAt || 0) < now);
+  const issues = [
+    { id: "expired_sessions", title: "Просроченные сеансы", description: "Старые авторизации, срок которых закончился.", count: expiredSessions.length, fixable: true },
+    { id: "dangling_sessions", title: "Сеансы удалённых сотрудников", description: "Авторизации, у которых больше нет учётной записи.", count: danglingSessions.length, fixable: true },
+    { id: "invalid_instruction_editors", title: "Устаревшие права на инструкции", description: "Ссылки на сотрудников, которых больше нет.", count: invalidInstructionEditors.reduce((sum, item) => sum + item.count, 0), fixable: true },
+    { id: "stale_alerts", title: "Старые закрытые уведомления", description: "Закрытые системные сообщения старше 90 дней.", count: staleResolvedAlerts.length, fixable: true },
+    { id: "duplicate_employee_ids", title: "Повторяющиеся табельные номера", description: "Нужно проверить сотрудников вручную — система не объединяет людей автоматически.", count: duplicateEmployeeIds.length, fixable: false, samples: duplicateEmployeeIds.slice(0, 10).map(([value, group]) => `${value}: ${group.map(user => user.name || "Без имени").join(", ")}`) },
+    { id: "duplicate_phones", title: "Повторяющиеся телефоны", description: "Нужно проверить сотрудников вручную.", count: duplicatePhones.length, fixable: false, samples: duplicatePhones.slice(0, 10).map(([value, group]) => `${value}: ${group.map(user => user.name || "Без имени").join(", ")}`) },
+    { id: "incomplete_users", title: "Неполные учётные записи", description: "Нет имени, роли, табельного номера или телефона.", count: incompleteUsers.length, fixable: false, samples: incompleteUsers.slice(0, 10).map(user => user.name || user.employeeId || user.phone || "Без имени") },
+    { id: "expired_trash", title: "Истёкший срок корзины", description: "Данные не удаляются автоматически: администратор решает это в разделе «Корзина».", count: expiredTrash.length, fixable: false }
+  ];
+  return { checkedAt: new Date().toISOString(), healthy: issues.every(issue => issue.count === 0), issues, fixableCount: issues.filter(issue => issue.fixable).reduce((sum, issue) => sum + issue.count, 0) };
+}
+
 function monitorRequest(req, res) {
   const started = Date.now();
   runtimeMonitor.requests += 1;
@@ -4512,7 +4554,80 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/integrity" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, integrity: dataIntegrityReport(readDb()) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/integrity/fix" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
+      && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" });
+      return true;
+    }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ИСПРАВИТЬ ДАННЫЕ") {
+      sendJson(res, 400, { ok: false, error: "integrity_confirmation_required" });
+      return true;
+    }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) {
+      sendJson(res, 400, { ok: false, error: "reason_required" });
+      return true;
+    }
+    const allowed = new Set(["expired_sessions", "dangling_sessions", "invalid_instruction_editors", "stale_alerts"]);
+    const fixes = [...new Set((Array.isArray(body.fixes) ? body.fixes : []).map(String).filter(id => allowed.has(id)))];
+    if (!fixes.length) {
+      sendJson(res, 400, { ok: false, error: "integrity_fixes_required" });
+      return true;
+    }
+    const backup = await createAdminBackup("Перед исправлением данных", req.authUser?.name || "Администратор");
+    const fixed = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const counts = {};
+      const now = Date.now();
+      if (fixes.includes("expired_sessions")) {
+        const before = (db.authSessions || []).length;
+        db.authSessions = (db.authSessions || []).filter(item => Number.isFinite(Date.parse(item.expiresAt || "")) && Date.parse(item.expiresAt) > now);
+        counts.expired_sessions = before - db.authSessions.length;
+      }
+      if (fixes.includes("dangling_sessions")) {
+        const userIds = new Set((db.users || []).map(user => String(user.id || "")).filter(Boolean));
+        const before = (db.authSessions || []).length;
+        db.authSessions = (db.authSessions || []).filter(item => !item.userId || userIds.has(String(item.userId)));
+        counts.dangling_sessions = before - db.authSessions.length;
+      }
+      if (fixes.includes("invalid_instruction_editors")) {
+        const userKeys = new Set((db.users || []).flatMap(user => [user.id, user.employeeId, user.phone].map(value => String(value || "").trim()).filter(Boolean)));
+        let removed = 0;
+        for (const instruction of Object.values(db.workPermitInstructions || {})) {
+          const before = (instruction.editorIds || []).length;
+          instruction.editorIds = (instruction.editorIds || []).filter(key => userKeys.has(String(key || "")));
+          removed += before - instruction.editorIds.length;
+        }
+        counts.invalid_instruction_editors = removed;
+      }
+      if (fixes.includes("stale_alerts")) {
+        const before = (db.adminAlerts || []).length;
+        db.adminAlerts = (db.adminAlerts || []).filter(item => !(item.status === "resolved" && Date.parse(item.resolvedAt || item.lastSeenAt || 0) < now - 90 * 86400000));
+        counts.stale_alerts = before - db.adminAlerts.length;
+      }
+      writeDb(db, { action: "admin_integrity_fixed", user: req.authUser, targetId: backup.id, targetLabel: fixes.join(", "), reason });
+      return counts;
+    });
+    sendJson(res, 200, { ok: true, fixed, backup, integrity: dataIntegrityReport(readDb()) });
     return true;
   }
 
