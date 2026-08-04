@@ -77,6 +77,12 @@ test("dangerous admin requests use idempotency receipts and friendly bad request
   assert.match(app, /Сервер не принял данные/);
 });
 
+test("admin receives a final stages 18 to 25 completion notice", () => {
+  assert.match(server, /admin-stages-18-25-complete-v1/);
+  assert.match(server, /Административные этапы 18–25 завершены/);
+  assert.match(server, /roles: \["editor"\]/);
+});
+
 test("people are selected once and reused in related fields", () => {
   assert.match(permit, /localStorage\.getItem\("ppr-pwa-users-v1"\)/);
   assert.match(permit, /source\.employeeId/);

@@ -290,6 +290,21 @@ function normalizeDb(db) {
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   db.systemBroadcasts ||= [];
+  if (!db.systemBroadcasts.some(item => item.id === "admin-stages-18-25-complete-v1")) {
+    db.systemBroadcasts.unshift({
+      id: "admin-stages-18-25-complete-v1",
+      title: "Административные этапы 18–25 завершены",
+      text: "Финальная версия проверена: формы, инструкции, исправления, хранилище, резервные копии, защита повторных запросов, телефонная и компьютерная версии.",
+      priority: "important",
+      roles: ["editor"],
+      active: true,
+      createdAt: new Date().toISOString(),
+      startsAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
+      author: "Система",
+      readBy: []
+    });
+  }
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
