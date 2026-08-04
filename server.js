@@ -277,6 +277,7 @@ function normalizeDb(db) {
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
+  restoreQrWalkChecksFromJournal(db);
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
   db.adminArchives = Array.isArray(db.adminArchives) ? db.adminArchives : [];
@@ -2387,6 +2388,9 @@ function hasMeaningfulCheckKindServer(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
   if (item.walkShifts && Object.values(item.walkShifts).some(shift => shift?.done)) return true;
+  if (item.walkGroups && Object.values(item.walkGroups).some(group =>
+    group && Object.values(group).some(shift => shift?.done)
+  )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
   if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
   if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
@@ -3347,6 +3351,9 @@ function hasMeaningfulCheckKind(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
   if (item.walkShifts && Object.values(item.walkShifts).some(shift => shift?.done)) return true;
+  if (item.walkGroups && Object.values(item.walkGroups).some(group =>
+    group && Object.values(group).some(shift => shift?.done)
+  )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
   if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
   if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
@@ -3361,6 +3368,52 @@ function compactCheckRecords(checks = {}) {
     if (hasMeaningfulCheckKind(rec?.to)) next[id] = rec;
   }
   return next;
+}
+
+function restoreQrWalkChecksFromJournal(db = {}) {
+  db.checks ||= {};
+  const resetAt = Date.parse(db.operationalResetAt || "") || 0;
+  for (const entry of Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : []) {
+    if (!entry || entry.invalid === true) continue;
+    const equipmentId = Number(entry.equipmentId);
+    const nodeIndex = Number(entry.nodeIndex);
+    const date = String(entry.date || "");
+    const shift = String(entry.shift || "");
+    const group = entry.group === "operational" ? "operational" : "technical";
+    const markedAt = String(entry.at || "");
+    if (!Number.isSafeInteger(equipmentId) || !Number.isSafeInteger(nodeIndex)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift)) continue;
+    if (resetAt && (Date.parse(markedAt) || 0) <= resetAt) continue;
+    const recordKey = `${equipmentId}:${nodeIndex}:${date}`;
+    const currentRecord = db.checks[recordKey] && typeof db.checks[recordKey] === "object" ? db.checks[recordKey] : {};
+    const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
+    if (currentItem.walkGroups?.[group]?.[shift]?.done) continue;
+    const mark = {
+      done: true,
+      at: markedAt,
+      byRole: String(entry.byRole || ""),
+      byName: String(entry.byName || ""),
+      shift,
+      group
+    };
+    db.checks[recordKey] = {
+      ...currentRecord,
+      createdAt: currentRecord.createdAt || markedAt || new Date().toISOString(),
+      updatedAt: [currentRecord.updatedAt, markedAt].filter(Boolean).sort().at(-1) || new Date().toISOString(),
+      to: {
+        tasks: Array.isArray(currentItem.tasks) ? currentItem.tasks : Array(15).fill(false),
+        ...currentItem,
+        walkGroups: {
+          ...(currentItem.walkGroups || {}),
+          [group]: {
+            ...(currentItem.walkGroups?.[group] || {}),
+            [shift]: mark
+          }
+        }
+      }
+    };
+  }
+  return db;
 }
 
 function mergeArrayById(current = [], incoming = []) {

@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=381-qr-walk-persist/);
-  assert.match(html, /styles\.css\?v=381-qr-walk-persist/);
-  assert.match(serviceWorker, /app\.js\?v=381-qr-walk-persist/);
+  assert.match(html, /app\.js\?v=382-qr-journal-restore/);
+  assert.match(html, /styles\.css\?v=382-qr-journal-restore/);
+  assert.match(serviceWorker, /app\.js\?v=382-qr-journal-restore/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -827,6 +827,9 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
   assert.match(server, /db\.qrWalkJournal\.push/);
   assert.match(server, /group !== expectedGroup/);
+  assert.match(server, /function restoreQrWalkChecksFromJournal/);
+  assert.match(server, /restoreQrWalkChecksFromJournal\(db\)/);
+  assert.match(server, /currentItem\.walkGroups\?\.\[group\]\?\.\[shift\]\?\.done/);
   assert.match(client, /function canViewQrWalkJournal/);
   assert.match(client, /Кому разрешён просмотр журнала/);
   assert.match(server, /pathname === "\/api\/qr-walk\/journal-access"/);
