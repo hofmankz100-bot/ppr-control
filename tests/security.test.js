@@ -138,6 +138,12 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(maintenance.backups));
     assert.ok(Array.isArray(maintenance.activity?.items));
     assert.ok(Array.isArray(maintenance.access));
+    assert.ok(Array.isArray(maintenance.systemReport?.checks));
+    assert.equal(typeof maintenance.systemReport?.summary?.critical, "number");
+    const systemReport = await fetch(`${baseUrl}/api/admin/system-report`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(Array.isArray(systemReport.report?.checks));
+    assert.equal(systemReport.report?.users, undefined);
+    assert.equal((await fetch(`${baseUrl}/api/admin/system-report?download=1`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
     assert.ok(maintenance.access.some(user => user.role === "editor"));
     const rejectedAccessChange = await fetch(`${baseUrl}/api/admin/access`, {
       method: "POST",

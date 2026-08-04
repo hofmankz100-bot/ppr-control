@@ -752,6 +752,34 @@ function monitoringAlertSpecs(snapshot) {
   return specs;
 }
 
+function systemReadinessReport(db, monitoring, backups = []) {
+  const config = normalizedAdminConfig(db.adminConfig);
+  const integrity = dataIntegrityReport(db);
+  const activeAlerts = (db.adminAlerts || []).filter(item => item.status === "active");
+  const latestBackup = backups[0] || null;
+  const backupAgeHours = latestBackup?.createdAt ? Math.round((Date.now() - Date.parse(latestBackup.createdAt)) / 360000) / 10 : null;
+  const automation = adminAutomationSnapshot(db);
+  const checks = [
+    { id: "postgres", title: "PostgreSQL", status: monitoring.postgres?.connected ? "ok" : "critical", detail: monitoring.postgres?.connected ? `Подключён · ${Math.round(Number(monitoring.postgres.sizeBytes || 0) / 1024 / 1024)} МБ` : monitoring.postgres?.error || "Нет подключения" },
+    { id: "backup", title: "Резервная копия", status: backupAgeHours !== null && backupAgeHours <= config.monitoring.backupMaxAgeHours ? "ok" : "critical", detail: latestBackup ? `${latestBackup.label} · ${backupAgeHours} ч назад` : "Полная копия не найдена" },
+    { id: "automation", title: "Автоматизация", status: automation.autoBackupEnabled && !automation.lastError ? "ok" : automation.lastError ? "critical" : "warning", detail: automation.lastError || (automation.autoBackupEnabled ? `Каждые ${automation.autoBackupIntervalHours} ч` : "Автоматические копии отключены") },
+    { id: "integrity", title: "Целостность данных", status: integrity.healthy ? "ok" : integrity.fixableCount ? "warning" : "warning", detail: integrity.healthy ? "Нарушений не найдено" : `Замечаний: ${integrity.issues.reduce((sum, item) => sum + item.count, 0)}` },
+    { id: "alerts", title: "Системные предупреждения", status: activeAlerts.some(item => item.severity === "critical") ? "critical" : activeAlerts.length ? "warning" : "ok", detail: activeAlerts.length ? `Активных: ${activeAlerts.length}` : "Активных предупреждений нет" },
+    { id: "admins", title: "Администраторы", status: (db.users || []).filter(user => user.role === "editor" && user.accessDisabled !== true).length ? "ok" : "critical", detail: `Активных: ${(db.users || []).filter(user => user.role === "editor" && user.accessDisabled !== true).length}` }
+  ];
+  const critical = checks.filter(item => item.status === "critical").length;
+  const warnings = checks.filter(item => item.status === "warning").length;
+  return {
+    generatedAt: new Date().toISOString(),
+    status: critical ? "critical" : warnings ? "warning" : "ok",
+    summary: { critical, warnings, ok: checks.filter(item => item.status === "ok").length },
+    checks,
+    metrics: { users: (db.users || []).length, activeAlerts: activeAlerts.length, integrityIssues: integrity.issues.reduce((sum, item) => sum + item.count, 0), backups: backups.length, databaseSizeBytes: Number(monitoring.postgres?.sizeBytes || 0), memoryMb: Number(monitoring.node?.memoryMb || 0), uptimeSeconds: Number(monitoring.node?.uptimeSeconds || 0) },
+    environment: { serverVersion: SERVER_VERSION, clientProtocol: CLIENT_PROTOCOL_VERSION, storageMode: monitoring.postgres?.mode || storageStatus.mode || "json", realtime: true },
+    policy: { backupMaxAgeHours: config.monitoring.backupMaxAgeHours, autoBackupIntervalHours: automation.autoBackupIntervalHours, autoBackupKeepCount: automation.autoBackupKeepCount }
+  };
+}
+
 async function refreshSystemMonitoring() {
   const snapshot = await systemMonitoringSnapshot();
   const specs = monitoringAlertSpecs(snapshot);
@@ -4682,8 +4710,20 @@ async function handleApi(req, res, pathname, url) {
       restoredByName: item.restoredByName || ""
     }));
     const archivePreview = adminArchiveSelection(db, 180);
+    const backups = await listAdminBackups();
+    const systemReport = systemReadinessReport(db, monitoringResult.snapshot, backups);
     const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/system-report" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const monitoringResult = await refreshSystemMonitoring();
+    const db = readDb();
+    const report = systemReadinessReport(db, monitoringResult.snapshot, await listAdminBackups());
+    if (url.searchParams.get("download") === "1") sendDownload(res, `ppr_system_report_${todayStamp()}.json`, report);
+    else sendJson(res, 200, { ok: true, report });
     return true;
   }
 
