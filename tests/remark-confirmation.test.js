@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=373-admin-catalogs/);
-  assert.match(html, /styles\.css\?v=373-admin-catalogs/);
-  assert.match(serviceWorker, /app\.js\?v=373-admin-catalogs/);
+  assert.match(html, /app\.js\?v=374-qr-routes/);
+  assert.match(html, /styles\.css\?v=374-qr-routes/);
+  assert.match(serviceWorker, /app\.js\?v=374-qr-routes/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -856,6 +856,9 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(client, /data-user-permissions-form/);
   assert.match(client, /data-admin-catalog-form/);
   assert.match(server, /downtimeReasons/);
+  assert.match(server, /pathname === "\/api\/admin\/qr-routes"/);
+  assert.match(server, /pathname === "\/api\/admin\/qr-journal\/correct"/);
+  assert.match(client, /data-admin-qr-route-form/);
 });
 
 test("notification setup stops nagging unsupported and legacy phones", () => {

@@ -4496,6 +4496,25 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/qr-routes" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    sendJson(res, 200, { ok: true, routes: (readDb().qrRouteDefinitions || []).slice().reverse() }); return true;
+  }
+
+  if (pathname === "/api/admin/qr-routes" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({})); if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; } const reason = String(body.reason || "").trim().slice(0,500); if (!reason) { sendJson(res,400,{ok:false,error:"reason_required"}); return true; }
+    const result = await enqueueStateWrite(async () => { const db=readDb(); db.qrRouteDefinitions ||= []; const action=String(body.action||"save"); if(action==="archive"){ const item=db.qrRouteDefinitions.find(x=>x.id===String(body.id||"")); if(!item)return{error:"route_not_found"}; item.active=false; item.archivedAt=new Date().toISOString(); writeDb(db,{action:"qr_route_archived",user:req.authUser,targetId:item.id,targetLabel:item.name,reason}); return{item}; } const name=String(body.name||"").trim().slice(0,200); if(!name)return{error:"route_name_required"}; const old=db.qrRouteDefinitions.find(x=>x.id===String(body.id||"")); const points=[...new Set((Array.isArray(body.points)?body.points:[]).map(String).map(x=>x.trim()).filter(x=>/^\d+:\d+$/.test(x)))].slice(0,1000); const item={...(old||{}),id:old?.id||`qr-route-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,name,group:body.group==="operational"?"operational":"technical",role:String(body.role||""),area:String(body.area||"").trim().slice(0,200),userIds:[...new Set((Array.isArray(body.userIds)?body.userIds:[]).map(String).filter(Boolean))].slice(0,500),points,active:true,updatedAt:new Date().toISOString(),updatedBy:String(req.authUser?.name||"Администратор")}; if(old)Object.assign(old,item);else db.qrRouteDefinitions.push(item); writeDb(db,{action:"qr_route_saved",user:req.authUser,targetId:item.id,targetLabel:item.name,reason}); return{item}; }); if(result.error)sendJson(res,400,{ok:false,error:result.error});else sendJson(res,200,{ok:true,item:result.item}); return true;
+  }
+
+  if (pathname === "/api/admin/qr-journal/correct" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res,403,{ok:false,error:"admin_required"}); return true; } const body=await readBody(req).catch(() => ({})); if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password||""),String(req.authUser?.passwordHash||""))){sendJson(res,401,{ok:false,error:"admin_password_invalid"});return true;} const reason=String(body.reason||"").trim().slice(0,500); if(!reason){sendJson(res,400,{ok:false,error:"reason_required"});return true;} const result=await enqueueStateWrite(async()=>{const db=readDb();const item=(db.qrWalkJournal||[]).find(x=>x.id===String(body.id||""));if(!item)return{error:"journal_entry_not_found"};item.correctedAt=new Date().toISOString();item.correctedBy=String(req.authUser?.name||"Администратор");item.correctionReason=reason;item.invalid=body.invalid!==false;writeDb(db,{action:"qr_journal_corrected",user:req.authUser,targetId:item.id,reason});return{item};}); if(result.error)sendJson(res,404,{ok:false,error:result.error});else sendJson(res,200,{ok:true,item:result.item});return true;
+  }
+
+  if (pathname === "/api/admin/qr-journal.csv" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res,403,{ok:false,error:"admin_required"}); return true; } const rows=[["Дата","Смена","Группа","Оборудование","Узел","Сотрудник","Роль","Время","Статус","Причина исправления"],...(readDb().qrWalkJournal||[]).map(x=>[x.date||"",x.shift||"",x.group||"",x.equipmentId??"",x.nodeIndex??"",x.byName||"",x.byRole||"",x.at||"",x.invalid?"Ошибочная фиксация":"Зафиксировано",x.correctionReason||""])]; const csv="\uFEFF"+rows.map(row=>row.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(";")).join("\r\n"); res.writeHead(200,{"Content-Type":"text/csv; charset=utf-8","Content-Disposition":`attachment; filename="qr_journal_${todayStamp()}.csv"`});res.end(csv);return true;
+  }
+
   if (pathname === "/api/qr-walk/journal-access" && req.method === "POST") {
     if (String(req.authUser?.role || "") !== "editor") {
       sendJson(res, 403, { ok: false, error: "editor_required" });
