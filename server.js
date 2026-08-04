@@ -639,15 +639,20 @@ async function refreshSystemMonitoring() {
         alert.resolvedAt = now;
         alert.resolvedByName = "Система";
       }
+      if (!activeTypes.has(alert.type)) alert.clearedAt = now;
     }
     for (const spec of specs) {
       const existing = (db.adminAlerts || []).find(item => item.type === spec.type && item.status === "active");
       if (existing) Object.assign(existing, spec, { lastSeenAt: now });
-      else db.adminAlerts.unshift({ id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...spec, status: "active", createdAt: now, lastSeenAt: now, resolvedAt: "", resolvedByName: "" });
+      else {
+        const acknowledged = (db.adminAlerts || []).find(item => item.type === spec.type && item.status === "resolved" && !item.clearedAt);
+        if (acknowledged) acknowledged.lastSeenAt = now;
+        else db.adminAlerts.unshift({ id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...spec, status: "active", createdAt: now, lastSeenAt: now, resolvedAt: "", resolvedByName: "", clearedAt: "" });
+      }
     }
     db.adminAlerts = (db.adminAlerts || []).slice(0, 500);
     db.systemMonitor = snapshot;
-    writeDb(db, { action: "system_monitor_update", user: { id: "system", name: "Система", role: "system" } });
+    writeDb(db, { action: "state_sync", user: { id: "system", name: "Система", role: "system" } });
   });
   return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
 }
