@@ -23,6 +23,20 @@
   font-family: Calibri, Arial, sans-serif;
 }
 
+.worker-rating-hidden {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #d7e0e8;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.worker-rating-hidden summary { cursor: pointer; font-weight: 800; }
+.worker-rating-hidden > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid #e2e8f0; }
+.worker-rating-hidden > div:first-of-type { margin-top: 10px; }
+.worker-rating-hidden span { display: grid; gap: 3px; }
+.worker-rating-hidden small { color: #64748b; }
+
 @media screen {
   /* Native-style PPR month calendar: one status per day, details below. */
   .global-ppr-month-card {

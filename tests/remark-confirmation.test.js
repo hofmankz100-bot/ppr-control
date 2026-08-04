@@ -764,9 +764,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=390-adlet-rating-cleanup/);
-  assert.match(html, /styles\.css\?v=390-adlet-rating-cleanup/);
-  assert.match(serviceWorker, /app\.js\?v=390-adlet-rating-cleanup/);
+  assert.match(html, /app\.js\?v=391-admin-rating-hide/);
+  assert.match(html, /styles\.css\?v=391-admin-rating-hide/);
+  assert.match(serviceWorker, /app\.js\?v=391-admin-rating-hide/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -812,10 +812,14 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
 
 test("test and duplicate worker identities are excluded without hiding the valid rating", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(client, /"mechanic:шонов\.уткел"/);
-  assert.match(client, /"mechanic:рамазан"/);
-  assert.match(client, /"mechanic:адлет"/);
-  assert.doesNotMatch(client, /"welder:шонов\.уткел"/);
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(server, /"mechanic:шонов\.уткел"/);
+  assert.match(server, /"mechanic:рамазан"/);
+  assert.match(server, /"mechanic:адлет"/);
+  assert.match(server, /pathname === "\/api\/admin\/rating-exclusions"/);
+  assert.match(client, /data-hide-worker-rating=/);
+  assert.match(client, /data-restore-worker-rating=/);
+  assert.match(client, /Без комментария действие не выполнено/);
   assert.match(client, /if \(!cleanName \|\| workerRatingExcluded\(role, cleanName\)\) return/);
 });
 

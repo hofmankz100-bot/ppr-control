@@ -602,7 +602,12 @@ const DEFAULT_ADMIN_CONFIG = Object.freeze({
   safetyMeasures: ["Отключить оборудование", "Оградить место работ", "Вывесить предупреждающие плакаты", "Проверить необходимые СИЗ"],
   trashRetentionDays: 30,
   monitoring: { memoryAlertMb: 512, databaseSizeLimitMb: 1024, backupMaxAgeHours: 36, clientErrorThreshold: 5 },
-  automation: { autoBackupEnabled: true, autoBackupIntervalHours: 24, autoBackupKeepCount: 14 }
+  automation: { autoBackupEnabled: true, autoBackupIntervalHours: 24, autoBackupKeepCount: 14 },
+  excludedRatingWorkers: [
+    { key: "mechanic:шонов.уткел", label: "Шонов.Уткел", reason: "Дублирующая роль" },
+    { key: "mechanic:рамазан", label: "Рамазан", reason: "Тестовая запись" },
+    { key: "mechanic:адлет", label: "Адлет", reason: "Дублирующая роль" }
+  ]
 });
 
 function cleanStringList(values, limit = 200) {
@@ -633,7 +638,17 @@ function normalizedAdminConfig(raw = {}) {
       autoBackupEnabled: automation.autoBackupEnabled !== false,
       autoBackupIntervalHours: [6, 12, 24, 48, 72, 168].includes(Number(automation.autoBackupIntervalHours)) ? Number(automation.autoBackupIntervalHours) : DEFAULT_ADMIN_CONFIG.automation.autoBackupIntervalHours,
       autoBackupKeepCount: Math.min(30, Math.max(5, Number(automation.autoBackupKeepCount || DEFAULT_ADMIN_CONFIG.automation.autoBackupKeepCount)))
-    }
+    },
+    excludedRatingWorkers: (Array.isArray(raw.excludedRatingWorkers) ? raw.excludedRatingWorkers : DEFAULT_ADMIN_CONFIG.excludedRatingWorkers)
+      .map(item => ({
+        key: String(item?.key || "").trim().toLocaleLowerCase("ru-RU").slice(0, 300),
+        label: String(item?.label || "").trim().slice(0, 300),
+        reason: String(item?.reason || "").trim().slice(0, 1000),
+        hiddenAt: String(item?.hiddenAt || ""),
+        hiddenBy: String(item?.hiddenBy || "").trim().slice(0, 300)
+      }))
+      .filter(item => /^(mechanic|welder|turner|forkliftDriver):.+$/i.test(item.key))
+      .slice(0, 1000)
   };
 }
 
@@ -1556,7 +1571,8 @@ function publicState(db = readDb()) {
     adminConfig: {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
       departments: normalizedAdminConfig(db.adminConfig).departments,
-      positions: normalizedAdminConfig(db.adminConfig).positions
+      positions: normalizedAdminConfig(db.adminConfig).positions,
+      excludedRatingWorkers: normalizedAdminConfig(db.adminConfig).excludedRatingWorkers
     },
     directorMessages: db.directorMessages,
     serviceCosts: db.serviceCosts,
@@ -4427,6 +4443,37 @@ async function handleApi(req, res, pathname, url) {
     });
     if (result.error) sendJson(res, 409, { ok: false, error: result.error });
     else sendJson(res, 200, { ok: true, state: result.state });
+    return true;
+  }
+
+  if (pathname === "/api/admin/rating-exclusions" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const action = body.action === "restore" ? "restore" : "hide";
+    const key = String(body.key || "").trim().toLocaleLowerCase("ru-RU").slice(0, 300);
+    const label = String(body.label || "").trim().slice(0, 300);
+    const reason = String(body.reason || "").trim().slice(0, 1000);
+    if (!/^(mechanic|welder|turner|forkliftDriver):.+$/i.test(key)) {
+      sendJson(res, 400, { ok: false, error: "invalid_rating_worker" });
+      return true;
+    }
+    if (!reason) {
+      sendJson(res, 400, { ok: false, error: "reason_required" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const config = normalizedAdminConfig(db.adminConfig);
+      const entries = config.excludedRatingWorkers.filter(item => item.key !== key);
+      if (action === "hide") entries.push({ key, label, reason, hiddenAt: new Date().toISOString(), hiddenBy: String(req.authUser.name || "Администратор") });
+      db.adminConfig = { ...config, excludedRatingWorkers: entries };
+      writeDb(db, { action: action === "hide" ? "rating_worker_hidden" : "rating_worker_restored", user: req.authUser, targetId: key, targetLabel: label || key, reason });
+      return publicState(db).adminConfig.excludedRatingWorkers;
+    });
+    sendJson(res, 200, { ok: true, excludedRatingWorkers: result });
     return true;
   }
 

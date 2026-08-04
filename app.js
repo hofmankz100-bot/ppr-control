@@ -15002,14 +15002,31 @@ function workerRatingKey(role, name) {
   return `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
 }
 
-const WORKER_RATING_EXCLUDED_KEYS = new Set([
-  "mechanic:шонов.уткел",
-  "mechanic:рамазан",
-  "mechanic:адлет"
-]);
-
 function workerRatingExcluded(role, name) {
-  return WORKER_RATING_EXCLUDED_KEYS.has(workerRatingKey(role, name));
+  const key = workerRatingKey(role, name);
+  return (state.adminConfig?.excludedRatingWorkers || []).some(item => String(item?.key || "") === key);
+}
+
+function hiddenWorkerRatings() {
+  return Array.isArray(state.adminConfig?.excludedRatingWorkers) ? state.adminConfig.excludedRatingWorkers : [];
+}
+
+async function changeWorkerRatingVisibility({ action, key, label }) {
+  const restoring = action === "restore";
+  if (!restoring && !window.confirm(`Убрать «${label}» из рейтинга? Журналы и история работ сохранятся.`)) return;
+  const reason = window.prompt(restoring ? "Комментарий для восстановления:" : "Обязательно укажите причину удаления из рейтинга:")?.trim();
+  if (!reason) {
+    window.alert("Без комментария действие не выполнено.");
+    return;
+  }
+  const result = await apiJson("/api/admin/rating-exclusions", {
+    method: "POST",
+    body: JSON.stringify({ action, key, label, reason })
+  });
+  state.adminConfig ||= {};
+  state.adminConfig.excludedRatingWorkers = result.excludedRatingWorkers || [];
+  saveState();
+  renderWorkerRating();
 }
 
 function emptyWorkerRating(role, name) {
@@ -15530,6 +15547,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>Ремонт: ${worker.avgRepairMs ? durationText(worker.avgRepairMs) : "-"}</span>
         <span>Смены: день ${worker.shifts.day}, ночь ${worker.shifts.night}</span>
         ${canAuditWorkerRating() ? `<button type="button" class="worker-rating-details-button" data-worker-rating-details="${escapeHtml(worker.key)}">Расшифровка баллов</button>` : ""}
+        ${profile?.role === "editor" ? `<button type="button" class="worker-rating-details-button danger" data-hide-worker-rating="${escapeHtml(worker.key)}" data-worker-label="${escapeHtml(worker.name)}">Убрать из рейтинга</button>` : ""}
       </div>
     </article>
   `).join("");
@@ -15597,6 +15615,11 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <section class="worker-rating-list">
         ${rows || `<div class="empty-state">Пока нет электромехаников в списке сотрудников</div>`}
       </section>
+      ${profile?.role === "editor" && hiddenWorkerRatings().length ? `
+        <details class="worker-rating-hidden no-print">
+          <summary>Скрытые записи рейтинга (${hiddenWorkerRatings().length})</summary>
+          ${hiddenWorkerRatings().map(item => `<div><span><strong>${escapeHtml(item.label || item.key)}</strong><small>${escapeHtml(item.reason || "Без комментария")}</small></span><button type="button" data-restore-worker-rating="${escapeHtml(item.key)}" data-worker-label="${escapeHtml(item.label || item.key)}">Вернуть</button></div>`).join("")}
+        </details>` : ""}
     ` : ""}
   `;
 }
@@ -15608,6 +15631,12 @@ function renderWorkerRating() {
   ui.workerRatingPanel.innerHTML = workerRatingHtml(stats);
   ui.workerRatingPanel.querySelectorAll("[data-worker-rating-details]").forEach(button => {
     button.addEventListener("click", () => openWorkerRatingLedger(button.dataset.workerRatingDetails));
+  });
+  ui.workerRatingPanel.querySelectorAll("[data-hide-worker-rating]").forEach(button => {
+    button.addEventListener("click", () => changeWorkerRatingVisibility({ action: "hide", key: button.dataset.hideWorkerRating, label: button.dataset.workerLabel }));
+  });
+  ui.workerRatingPanel.querySelectorAll("[data-restore-worker-rating]").forEach(button => {
+    button.addEventListener("click", () => changeWorkerRatingVisibility({ action: "restore", key: button.dataset.restoreWorkerRating, label: button.dataset.workerLabel }));
   });
 }
 
