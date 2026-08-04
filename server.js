@@ -1,4 +1,4 @@
-﻿const http = require("http");
+const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -46,7 +46,6 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const CODEX_AGENT_TOKEN = String(process.env.CODEX_AGENT_TOKEN || "");
 const SERVER_VERSION = "v327-ppr-autofill-refresh";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -57,9 +56,6 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v302-shgrp-mobile-day-swipe",
   "v303-director-personal-messages",
   "v304-role-sync-director-clean",
-  "v305-admin-codex-task-window",
-  "v306-codex-task-attachments",
-  "v307-private-codex-task-push",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -184,7 +180,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -265,7 +261,8 @@ function normalizeDb(db) {
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
   db.directorMessages ||= [];
-  db.codexTasks = Array.isArray(db.codexTasks) ? db.codexTasks : [];
+  delete db.codexTasks;
+  delete db.codexAgent;
   db.serviceCosts ||= [];
   db.downtimes ||= [];
   db.compressorJournal ||= {};
@@ -710,7 +707,7 @@ function dataIntegrityReport(db = readDb()) {
 }
 
 function adminActivityFeed(db, adminUser) {
-  const ignored = new Set(["user_login", "user_logout", "state_write", "state_sync", "push_config_created", "push_subscription_saved", "push_subscription_removed", "push_subscription_expired", "push_subscriptions_cleaned", "externalize_photos_get", "translate_cache", "codex_agent_heartbeat", "codex_agent_poll"]);
+  const ignored = new Set(["user_login", "user_logout", "state_write", "state_sync", "push_config_created", "push_subscription_saved", "push_subscription_removed", "push_subscription_expired", "push_subscriptions_cleaned", "externalize_photos_get", "translate_cache"]);
   const adminActions = new Set(["admin_backup_created", "admin_backup_restored", "admin_settings_saved", "admin_settings_rollback", "admin_integrity_fixed", "admin_activity_read", "system_alert_resolved", "trash_restore", "trash_purge", "manual_backup"]);
   const key = String(adminUser?.id || adminUser?.employeeId || "primary-admin");
   const readAt = String(db.adminActivityReadAt?.[key] || "");
@@ -2211,54 +2208,6 @@ function syncPushProfilesForUser(db, user = {}) {
   });
 }
 
-function validCodexAgentToken(req) {
-  const supplied = String(req.headers["x-codex-agent-token"] || "");
-  if (!CODEX_AGENT_TOKEN || !supplied || supplied.length !== CODEX_AGENT_TOKEN.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(CODEX_AGENT_TOKEN));
-}
-
-async function sendCodexTaskPushNotification(db, task = {}) {
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications?.subscriptions || [];
-  const targets = subscriptions
-    .map(entry => currentPushEntry(db, entry))
-    .filter(entry => isPrimaryAdminEngineerServer(entry.profile || {}));
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const status = String(task.status || "accepted");
-  const estimate = Number(task.estimatedMinutes || 0);
-  const title = status === "completed"
-    ? "Codex завершил задание"
-    : status === "approval"
-      ? "Codex ждёт подтверждения"
-      : "Новое сообщение от Codex";
-  const body = String(task.result || "").trim().slice(0, 220)
-    || (estimate ? `Задание принято. Ориентировочное время: ${estimate} мин.` : `Статус задания: ${status}`);
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, JSON.stringify({
-        type: "codex-task",
-        title,
-        body,
-        url: "/?view=codex",
-        entityId: String(task.id || "general"),
-        tag: `codex-task:${task.id || "general"}`
-      }), { TTL: 86400, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Codex task push failed: ${error?.message || error}`);
-    }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
-  }
-}
 
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
   const targetParticipants = Array.isArray(participants) ? participants : [];
@@ -3534,7 +3483,6 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/qr"
     || pathname === "/api/attendance/kiosk"
     || pathname === "/api/attendance/kiosk/exit"
-    || pathname.startsWith("/api/agent/codex-tasks")
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -3558,9 +3506,7 @@ async function handleApi(req, res, pathname, url) {
     || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST")
     || (pathname === "/api/attendance/lookup" && req.method === "POST")
     || (pathname === "/api/attendance/contractor" && req.method === "POST")
-    || (pathname === "/api/agent/codex-tasks/claim" && req.method === "POST")
-    || (pathname === "/api/agent/codex-tasks/heartbeat" && req.method === "POST")
-    || (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH");
+    ;
   if (!publicRequest) {
     const allowPending = pathname === "/api/users" && req.method === "GET";
     const authUser = authenticatedUser(req, readDb(), allowPending);
@@ -4018,184 +3964,6 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/admin/codex-tasks" && req.method === "GET") {
-    if (!isPrimaryAdminEngineerServer(req.authUser)) {
-      sendJson(res, 403, { ok: false, error: "primary_admin_required" });
-      return true;
-    }
-    const db = readDb();
-    const tasks = (db.codexTasks || [])
-      .slice()
-      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
-      .slice(0, 100);
-    const agentLastSeen = Date.parse(db.codexAgent?.lastSeenAt || "");
-    const agentConnected = Number.isFinite(agentLastSeen) && Date.now() - agentLastSeen < 90_000;
-    sendJson(res, 200, {
-      ok: true,
-      agentConnected,
-      tasks
-    });
-    return true;
-  }
-
-  if (pathname === "/api/admin/codex-tasks" && req.method === "POST") {
-    if (!isPrimaryAdminEngineerServer(req.authUser)) {
-      sendJson(res, 403, { ok: false, error: "primary_admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    const text = String(body.text || "").trim().slice(0, 5000);
-    const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
-      .slice(0, 3)
-      .map(item => ({
-        name: String(item?.name || "Файл").trim().slice(0, 160),
-        type: String(item?.type || "").trim().slice(0, 100),
-        size: Math.max(0, Number(item?.size) || 0),
-        url: String(item?.url || "").trim()
-      }))
-      .filter(item => /^\/api\/photos\/[a-f0-9]{40}\.(jpg|jpeg|png|webp|pdf)$/i.test(item.url));
-    if (text.length < 5) {
-      sendJson(res, 400, { ok: false, error: "Опишите задание подробнее." });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const now = new Date().toISOString();
-      const task = {
-        id: `codex-task:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`,
-        text,
-        attachments,
-        status: "new",
-        createdAt: now,
-        updatedAt: now,
-        createdBy: {
-          id: String(req.authUser.id || ""),
-          employeeId: String(req.authUser.employeeId || ""),
-          name: String(req.authUser.name || "Администратор")
-        },
-        agentConnected: false,
-        result: ""
-      };
-      db.codexTasks = [...(db.codexTasks || []), task].slice(-500);
-      writeDb(db, {
-        action: "codex_task_created",
-        user: req.authUser,
-        task: { id: task.id, text: task.text.slice(0, 200) }
-      });
-      return task;
-    });
-    sendJson(res, 201, { ok: true, task: result });
-    return true;
-  }
-
-  if (pathname === "/api/agent/codex-tasks/heartbeat" && req.method === "POST") {
-    if (!validCodexAgentToken(req)) {
-      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    const agentId = String(body.agentId || "ppr-codex-agent").trim().slice(0, 120);
-    const now = new Date().toISOString();
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      db.codexAgent = { connected: true, agentId, lastSeenAt: now };
-      writeDb(db, { action: "codex_agent_heartbeat", agentId });
-      return db.codexAgent;
-    });
-    sendJson(res, 200, { ok: true, agent: result });
-    return true;
-  }
-
-  if (pathname === "/api/agent/codex-tasks/claim" && req.method === "POST") {
-    if (!validCodexAgentToken(req)) {
-      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    const agentId = String(body.agentId || "ppr-codex-agent").trim().slice(0, 120);
-    const nowMs = Date.now();
-    const leaseDurationMs = 3 * 60 * 1000;
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const task = (db.codexTasks || [])
-        .filter(item => {
-          if (item.status === "new") return true;
-          if (!["accepted", "analyzing", "working"].includes(item.status)) return false;
-          const leaseUntil = Date.parse(item.leaseUntil || "");
-          return !Number.isFinite(leaseUntil) || leaseUntil <= nowMs;
-        })
-        .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")))[0];
-      const lastSeenAt = new Date(nowMs).toISOString();
-      db.codexAgent = { connected: true, agentId, lastSeenAt };
-      if (!task) {
-        writeDb(db, { action: "codex_agent_poll", agentId });
-        return { task: null };
-      }
-      task.status = "accepted";
-      task.agentConnected = true;
-      task.agentId = agentId;
-      task.leaseId = crypto.randomBytes(16).toString("hex");
-      task.leaseUntil = new Date(nowMs + leaseDurationMs).toISOString();
-      task.updatedAt = lastSeenAt;
-      writeDb(db, {
-        action: "codex_task_claimed",
-        task: { id: task.id, agentId, leaseUntil: task.leaseUntil }
-      });
-      return { task };
-    });
-    sendJson(res, 200, { ok: true, task: result.task });
-    return true;
-  }
-
-  if (pathname.startsWith("/api/agent/codex-tasks/") && req.method === "PATCH") {
-    if (!validCodexAgentToken(req)) {
-      sendJson(res, 401, { ok: false, error: "codex_agent_unauthorized" });
-      return true;
-    }
-    const taskId = decodeURIComponent(pathname.slice("/api/agent/codex-tasks/".length));
-    const body = await readBody(req).catch(() => ({}));
-    const allowedStatuses = new Set(["accepted", "analyzing", "approval", "working", "completed", "failed", "cancelled"]);
-    const status = String(body.status || "").trim();
-    const estimatedMinutes = Math.max(0, Math.min(10080, Math.round(Number(body.estimatedMinutes) || 0)));
-    const resultText = String(body.result || "").trim().slice(0, 10000);
-    const leaseId = String(body.leaseId || "").trim();
-    if (!taskId || (status && !allowedStatuses.has(status))) {
-      sendJson(res, 400, { ok: false, error: "invalid_codex_task_update" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const task = (db.codexTasks || []).find(item => String(item.id || "") === taskId);
-      if (!task) return { error: "codex_task_not_found" };
-      if (task.leaseId && leaseId !== task.leaseId) return { error: "codex_task_lease_mismatch" };
-      if (status) task.status = status;
-      if (estimatedMinutes) task.estimatedMinutes = estimatedMinutes;
-      if (resultText) task.result = resultText;
-      task.agentConnected = true;
-      task.updatedAt = new Date().toISOString();
-      if (["accepted", "analyzing", "working", "approval"].includes(task.status)) {
-        task.leaseUntil = new Date(Date.now() + 3 * 60 * 1000).toISOString();
-      } else {
-        delete task.leaseUntil;
-        delete task.leaseId;
-      }
-      db.codexAgent = { connected: true, lastSeenAt: task.updatedAt };
-      writeDb(db, {
-        action: "codex_task_updated",
-        task: { id: task.id, status: task.status, estimatedMinutes: task.estimatedMinutes || 0 }
-      });
-      return { task };
-    });
-    if (result.error) {
-      sendJson(res, 404, { ok: false, error: result.error });
-      return true;
-    }
-    sendJson(res, 200, { ok: true, task: result.task });
-    sendCodexTaskPushNotification(readDb(), result.task).catch(error => {
-      console.error(`Codex task notification failed: ${error?.message || error}`);
-    });
-    return true;
-  }
 
   if (pathname === "/api/push/subscribe" && req.method === "POST") {
     const body = await readBody(req);

@@ -1,4 +1,4 @@
-﻿const TASKS = {
+const TASKS = {
   to: [
     "Внешний осмотр оборудования и рабочей зоны.",
     "Проверить отсутствие постороннего шума, вибрации и перегрева.",
@@ -1231,266 +1231,6 @@ async function openPushDiagnostics() {
   }
 }
 
-function codexTaskStatusLabel(status = "") {
-  return ({
-    new: "Новое",
-    accepted: "Принято",
-    analyzing: "Проверяется",
-    approval: "Ждёт подтверждения",
-    working: "Выполняется",
-    completed: "Готово",
-    failed: "Ошибка",
-    cancelled: "Остановлено"
-  })[status] || "Новое";
-}
-
-function codexTaskEstimate(task = {}) {
-  if (task.estimatedMinutes) {
-    const minutes = Number(task.estimatedMinutes) || 0;
-    if (minutes < 60) return `Оценка времени: около ${minutes} мин.`;
-    const hours = Math.round(minutes / 60 * 10) / 10;
-    return `Оценка времени: около ${hours} ч.`;
-  }
-  return task.agentConnected
-    ? "Оценка времени формируется"
-    : "Оценка времени появится после подключения агента";
-}
-
-let primaryAdminCodexTasks = [];
-let primaryAdminCodexSnapshot = new Map();
-let primaryAdminCodexSnapshotReady = false;
-let primaryAdminCodexPollInFlight = false;
-let primaryAdminCodexLiveTimer = 0;
-
-function primaryAdminCodexButtonLabel() {
-  const latest = primaryAdminCodexTasks[0];
-  if (!latest) return "Задания Codex";
-  if (["new", "accepted", "analyzing", "working"].includes(String(latest.status || ""))) {
-    return `Codex: ${codexTaskStatusLabel(latest.status)}`;
-  }
-  const updatedAt = Date.parse(latest.updatedAt || latest.createdAt || "");
-  return Number.isFinite(updatedAt) && Date.now() - updatedAt < 10 * 60 * 1000
-    ? `Codex: ${codexTaskStatusLabel(latest.status)}`
-    : "Задания Codex";
-}
-
-function updatePrimaryAdminCodexButton() {
-  const button = document.querySelector("#codexTasksButton");
-  if (button) button.textContent = primaryAdminCodexButtonLabel();
-}
-
-function applyPrimaryAdminCodexResult(modal, result = {}) {
-  const tasks = Array.isArray(result.tasks) ? result.tasks : [];
-  let notificationTask = null;
-  const nextSnapshot = new Map();
-  tasks.forEach(task => {
-    const taskId = String(task.id || "");
-    const signature = [task.status, task.updatedAt, task.result].map(value => String(value || "")).join("\u0001");
-    nextSnapshot.set(taskId, signature);
-    const previous = primaryAdminCodexSnapshot.get(taskId);
-    if (
-      primaryAdminCodexSnapshotReady
-      && previous
-      && previous !== signature
-      && ["completed", "failed", "approval"].includes(String(task.status || ""))
-      && (!notificationTask || String(task.updatedAt || "") > String(notificationTask.updatedAt || ""))
-    ) {
-      notificationTask = task;
-    }
-  });
-  primaryAdminCodexTasks = tasks;
-  primaryAdminCodexSnapshot = nextSnapshot;
-  primaryAdminCodexSnapshotReady = true;
-  updatePrimaryAdminCodexButton();
-
-  const list = modal?.querySelector("[data-codex-task-list]");
-  const connection = modal?.querySelector("[data-codex-agent-status]");
-  if (list) list.innerHTML = renderCodexTaskItems(tasks);
-  if (connection) {
-    connection.textContent = result.agentConnected
-      ? "Компьютерный агент подключён"
-      : "Агент пока не подключён — задания сохраняются в очереди";
-    connection.classList.toggle("connected", Boolean(result.agentConnected));
-  }
-
-  if (notificationTask) {
-    const status = codexTaskStatusLabel(notificationTask.status);
-    const answer = String(notificationTask.result || "").trim().replace(/\s+/g, " ").slice(0, 180);
-    showAppToast(`Codex: ${status}${answer ? ` — ${answer}` : ""}`, notificationTask.status === "failed" ? "error" : "ok");
-    playNotificationDingDong();
-  }
-}
-
-function renderCodexTaskItems(tasks = []) {
-  if (!tasks.length) return `<p class="empty-state">Заданий пока нет.</p>`;
-  return tasks.map(task => `
-    <article class="codex-task-item ${escapeHtml(task.status || "new")}">
-      <div class="codex-task-meta">
-        <strong>${escapeHtml(codexTaskStatusLabel(task.status))}</strong>
-        <time>${escapeHtml(dateTimeHuman(task.createdAt))}</time>
-      </div>
-      <p>${escapeHtml(task.text || "")}</p>
-      <small>${escapeHtml(codexTaskEstimate(task))}</small>
-      ${Array.isArray(task.attachments) && task.attachments.length ? `<div class="codex-task-attachments">
-        ${task.attachments.map(file => `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener" download="${escapeHtml(file.name || "file")}">📎 ${escapeHtml(file.name || "Файл")}</a>`).join("")}
-      </div>` : ""}
-      ${task.result ? `<div class="codex-task-result">${escapeHtml(task.result)}</div>` : ""}
-    </article>
-  `).join("");
-}
-
-function readCodexTaskFile(file) {
-  return new Promise((resolve, reject) => {
-    const allowed = /^(image\/(?:jpeg|jpg|png|webp)|application\/pdf)$/i;
-    if (!file || !allowed.test(String(file.type || ""))) {
-      reject(new Error("Можно прикрепить фото JPEG, PNG, WebP или PDF."));
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      reject(new Error(`Файл «${file.name}» больше 5 МБ.`));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error(`Не удалось прочитать файл «${file.name}».`));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function uploadCodexTaskFile(file) {
-  const data = await readCodexTaskFile(file);
-  const result = await apiJson("/api/photos", {
-    method: "POST",
-    timeout: 30000,
-    body: JSON.stringify({ data })
-  });
-  return {
-    name: String(file.name || "Файл").slice(0, 160),
-    type: String(file.type || "").slice(0, 100),
-    size: Number(file.size || 0),
-    url: result?.url || ""
-  };
-}
-
-async function loadCodexTasksInto(modal) {
-  const list = modal?.querySelector("[data-codex-task-list]");
-  if (!list) return;
-  try {
-    const result = await apiJson("/api/admin/codex-tasks", { timeout: 10000 });
-    applyPrimaryAdminCodexResult(modal, result);
-  } catch (error) {
-    list.innerHTML = `<p class="empty-state">${escapeHtml(error?.message || "Не удалось загрузить задания.")}</p>`;
-  }
-}
-
-async function pollPrimaryAdminCodexTasks() {
-  if (!isPrimaryAdminEngineer() || !isProfileReady() || document.visibilityState === "hidden" || primaryAdminCodexPollInFlight) return;
-  primaryAdminCodexPollInFlight = true;
-  try {
-    const result = await apiJson("/api/admin/codex-tasks", { timeout: 10000 });
-    applyPrimaryAdminCodexResult(document.querySelector("#codexTasksModal"), result);
-  } catch {
-    // A temporary network failure is retried by the next admin-only live poll.
-  } finally {
-    primaryAdminCodexPollInFlight = false;
-  }
-}
-
-function startPrimaryAdminCodexLiveUpdates() {
-  window.clearInterval(primaryAdminCodexLiveTimer);
-  primaryAdminCodexLiveTimer = 0;
-  if (!isPrimaryAdminEngineer()) return;
-  pollPrimaryAdminCodexTasks();
-  primaryAdminCodexLiveTimer = window.setInterval(pollPrimaryAdminCodexTasks, 3000);
-}
-
-async function openCodexTasks() {
-  document.querySelector("#codexTasksModal")?.remove();
-  const modal = document.createElement("div");
-  modal.id = "codexTasksModal";
-  modal.className = "codex-tasks-modal";
-  modal.innerHTML = `
-    <section>
-      <header>
-        <div><strong>Задания Codex</strong><span data-codex-agent-status>Проверяем подключение...</span></div>
-        <button type="button" data-close-codex-tasks>×</button>
-      </header>
-      <form data-codex-task-form>
-        <label><span>Новое задание</span><textarea rows="5" maxlength="5000" required placeholder="Опишите, что нужно проверить или изменить. Укажите экран, сотрудника или оборудование."></textarea></label>
-        <label class="codex-task-file-field"><span>Прикрепить фото или PDF</span><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple></label>
-        <small>До 3 файлов, каждый не больше 5 МБ.</small>
-        <div class="codex-selected-files" data-codex-selected-files></div>
-        <p>После получения задания здесь появятся статус и ориентировочное время выполнения.</p>
-        <button type="submit">Отправить задание</button>
-      </form>
-      <div class="codex-task-list" data-codex-task-list><p class="empty-state">Загрузка...</p></div>
-    </section>`;
-  document.body.appendChild(modal);
-  const close = () => modal.remove();
-  modal.querySelector("[data-close-codex-tasks]")?.addEventListener("click", close);
-  modal.addEventListener("click", event => {
-    if (event.target === modal) close();
-  });
-  const fileInput = modal.querySelector("[data-codex-task-form] input[type='file']");
-  const selectedFilesBox = modal.querySelector("[data-codex-selected-files]");
-  let selectedFiles = [];
-  const renderSelectedFiles = () => {
-    if (!selectedFilesBox) return;
-    selectedFilesBox.innerHTML = selectedFiles.map((file, index) => `
-      <div>
-        <span>📎 ${escapeHtml(file.name)} · ${escapeHtml(formatStorageSize(file.size))}</span>
-        <button type="button" data-remove-codex-file="${index}">Убрать</button>
-      </div>
-    `).join("");
-    selectedFilesBox.querySelectorAll("[data-remove-codex-file]").forEach(button => {
-      button.addEventListener("click", () => {
-        selectedFiles.splice(Number(button.dataset.removeCodexFile), 1);
-        renderSelectedFiles();
-      });
-    });
-  };
-  fileInput?.addEventListener("change", event => {
-    const incoming = Array.from(event.currentTarget.files || []);
-    let skipped = 0;
-    incoming.forEach(file => {
-      const duplicate = selectedFiles.some(saved =>
-        saved.name === file.name && saved.size === file.size && saved.lastModified === file.lastModified
-      );
-      if (duplicate) return;
-      if (selectedFiles.length < 3) selectedFiles.push(file);
-      else skipped += 1;
-    });
-    if (skipped) showAppToast("Можно прикрепить не больше 3 файлов.", "error");
-    event.currentTarget.value = "";
-    renderSelectedFiles();
-  });
-  modal.querySelector("[data-codex-task-form]")?.addEventListener("submit", event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const textarea = form.querySelector("textarea");
-    const button = form.querySelector("button[type='submit']");
-    const text = textarea?.value.trim() || "";
-    if (text.length < 5) return;
-    runButtonOperation(button, async () => {
-      const files = selectedFiles.slice();
-      if (files.length > 3) throw new Error("Можно прикрепить не больше 3 файлов.");
-      const attachments = [];
-      for (const file of files) attachments.push(await uploadCodexTaskFile(file));
-      await apiJson("/api/admin/codex-tasks", {
-        method: "POST",
-        body: JSON.stringify({ text, attachments }),
-        timeout: 45000
-      });
-      form.reset();
-      selectedFiles = [];
-      renderSelectedFiles();
-      showAppToast("Задание отправлено. Статус обновляется автоматически.", "ok");
-      await loadCodexTasksInto(modal);
-    }, "Отправляем...");
-  });
-  await loadCodexTasksInto(modal);
-  startPrimaryAdminCodexLiveUpdates();
-}
 
 async function openStorageDiagnostics() {
   document.querySelector("#storageDiagnosticsModal")?.remove();
@@ -4543,17 +4283,12 @@ function renderProfile() {
       ? `<span class="attendance-badge active">На работе · до ${escapeHtml(attendanceTime(attendanceStatus?.session?.expiresAt))}</span>`
       : `<span class="attendance-badge locked">Только просмотр · отсканируйте QR</span>`)
     : "";
-  const attendanceMonitorButton = (profile.role === "editor" || hasEngineerInboxAccess())
-    ? `<button type="button" id="openAttendanceButton">Кто на работе</button>`
-    : "";
   ui.profileBar.innerHTML = `
     <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}${attendanceBadge}</div>
     ${editorRoleSwitcher}
     ${editorAreaSwitcher}
     ${languageSwitcher}
     ${appNotificationPermissionButton()}
-    ${attendanceMonitorButton}
-    ${isPrimaryAdminEngineer() ? `<button type="button" id="codexTasksButton">${escapeHtml(primaryAdminCodexButtonLabel())}</button>` : ""}
     ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
     ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
@@ -4573,9 +4308,7 @@ function renderProfile() {
     requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
-  ui.profileBar.querySelector("#codexTasksButton")?.addEventListener("click", openCodexTasks);
   ui.profileBar.querySelector("#storageDiagnosticsButton")?.addEventListener("click", openStorageDiagnostics);
-  ui.profileBar.querySelector("#openAttendanceButton")?.addEventListener("click", openAttendancePanel);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
     if (!window.confirm("Очистить рабочие записи: комментарии, обычные заявки, простои, журналы и отчёты? Складские остатки и складские операции сохранятся.")) return;
@@ -8165,9 +7898,6 @@ function handleIncomingNotificationLink() {
   } else if (requestedView === "requestCreate" && hasEngineerInboxAccess()) {
     show("requestCreate");
     window.setTimeout(() => ui.engineerIncomingTmcPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-    handled = true;
-  } else if (requestedView === "codex" && isPrimaryAdminEngineer()) {
-    openCodexTasks();
     handled = true;
   }
 
@@ -19906,7 +19636,6 @@ window.addEventListener("visibilitychange", () => {
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
-    pollPrimaryAdminCodexTasks();
   }
 });
 
@@ -19962,6 +19691,5 @@ resumeAttendanceKiosk();
   loadRemoteUsers();
   connectRealtime();
   startRealtimePoll();
-  startPrimaryAdminCodexLiveUpdates();
 })();
 

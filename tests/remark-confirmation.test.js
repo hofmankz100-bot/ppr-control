@@ -217,7 +217,6 @@ test.before(async () => {
       DATA_DIR: dataDir,
       DATABASE_URL: "",
       REQUIRE_POSTGRES: "false",
-      CODEX_AGENT_TOKEN: "test-codex-agent-token",
       NODE_ENV: "test"
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -765,9 +764,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=387-safe-node-delete/);
-  assert.match(html, /styles\.css\?v=387-safe-node-delete/);
-  assert.match(serviceWorker, /app\.js\?v=387-safe-node-delete/);
+  assert.match(html, /app\.js\?v=388-profile-cleanup/);
+  assert.match(html, /styles\.css\?v=388-profile-cleanup/);
+  assert.match(serviceWorker, /app\.js\?v=388-profile-cleanup/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1196,112 +1195,6 @@ test("every field worker role sends requests to engineers", () => {
   assert.match(source, /\["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"\]\.includes\(role\)/);
 });
 
-test("only the primary admin can create and read Codex tasks", async () => {
-  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(clientSource, /data-codex-selected-files/);
-  assert.match(clientSource, /data-remove-codex-file/);
-  assert.match(clientSource, /selectedFiles\.splice/);
-  assert.match(clientSource, /primaryAdminCodexLiveTimer = window\.setInterval\(pollPrimaryAdminCodexTasks, 3000\)/);
-  assert.match(clientSource, /if \(!isPrimaryAdminEngineer\(\)\) return/);
-  assert.match(clientSource, /showAppToast\(`Codex:/);
-  assert.match(clientSource, /requestedView === "codex" && isPrimaryAdminEngineer\(\)/);
-  assert.match(clientSource, /Статус обновляется автоматически/);
-  const bridgeSource = fs.readFileSync(path.join(root, "agent", "codex-bridge.mjs"), "utf8");
-  assert.match(bridgeSource, /совет, инструкцию или ответ на вопрос/);
-  assert.match(bridgeSource, /CODEX_AGENT_POLL_MS\) \|\| 5000/);
-  const forbidden = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
-    headers: { "x-test-user-id": "engineer-1" }
-  });
-  assert.equal(forbidden.status, 403);
-  const promote = await fetch(`${baseUrl}/api/users`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
-    body: JSON.stringify({
-      id: "editor-1",
-      employeeId: "87064091893",
-      name: "Администратор",
-      role: "editor",
-      approved: true,
-      pendingApproval: false
-    })
-  });
-  assert.equal(promote.status, 200, await promote.text());
-  const fileData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-  const upload = await fetch(`${baseUrl}/api/photos`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
-    body: JSON.stringify({ data: fileData })
-  });
-  const uploadBody = await upload.json();
-  assert.equal(upload.status, 200, JSON.stringify(uploadBody));
-  const created = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
-    body: JSON.stringify({
-      text: "Проверить отображение должности сотрудника во всех разделах.",
-      attachments: [{ name: "screen.png", type: "image/png", size: 68, url: uploadBody.url }]
-    })
-  });
-  const createdBody = await created.json();
-  assert.equal(created.status, 201, JSON.stringify(createdBody));
-  assert.equal(createdBody.task.status, "new");
-  const list = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
-    headers: { "x-test-user-id": "editor-1" }
-  });
-  const listBody = await list.json();
-  assert.equal(list.status, 200, JSON.stringify(listBody));
-  assert.equal(listBody.agentConnected, false);
-  assert.equal(listBody.tasks[0].id, createdBody.task.id);
-  assert.equal(listBody.tasks[0].attachments[0].name, "screen.png");
-  assert.equal(listBody.tasks[0].attachments[0].url, uploadBody.url);
-  const unauthorizedUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(createdBody.task.id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "accepted", estimatedMinutes: 45 })
-  });
-  assert.equal(unauthorizedUpdate.status, 401);
-  const agentUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(createdBody.task.id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
-    body: JSON.stringify({ status: "accepted", estimatedMinutes: 45, result: "Задание принято." })
-  });
-  const agentUpdateBody = await agentUpdate.json();
-  assert.equal(agentUpdate.status, 200, JSON.stringify(agentUpdateBody));
-  assert.equal(agentUpdateBody.task.estimatedMinutes, 45);
-  const claimSeedResponse = await fetch(`${baseUrl}/api/admin/codex-tasks`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
-    body: JSON.stringify({ text: "Run a safe Codex bridge test task." })
-  });
-  const claimSeedBody = await claimSeedResponse.json();
-  assert.equal(claimSeedResponse.status, 201, JSON.stringify(claimSeedBody));
-  const unauthorizedClaim = await fetch(`${baseUrl}/api/agent/codex-tasks/claim`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "test-agent" })
-  });
-  assert.equal(unauthorizedClaim.status, 401);
-  const claim = await fetch(`${baseUrl}/api/agent/codex-tasks/claim`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
-    body: JSON.stringify({ agentId: "test-agent" })
-  });
-  const claimBody = await claim.json();
-  assert.equal(claim.status, 200, JSON.stringify(claimBody));
-  assert.equal(claimBody.task.id, claimSeedBody.task.id);
-  assert.equal(claimBody.task.status, "accepted");
-  assert.ok(claimBody.task.leaseId);
-  const leaseUpdate = await fetch(`${baseUrl}/api/agent/codex-tasks/${encodeURIComponent(claimSeedBody.task.id)}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", "x-codex-agent-token": "test-codex-agent-token" },
-    body: JSON.stringify({ status: "completed", result: "done", leaseId: claimBody.task.leaseId })
-  });
-  assert.equal(leaseUpdate.status, 200, await leaseUpdate.text());
-  assert.equal(agentUpdateBody.task.result, "Задание принято.");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(serverSource, /\.filter\(entry => isPrimaryAdminEngineerServer\(entry\.profile \|\| \{\}\)\)/);
-  assert.match(serverSource, /url: "\/\?view=codex"/);
-});
 
 test("admin changes an employee role without losing the employee password", async () => {
   const password = await fetch(`${baseUrl}/api/users/password`, {
