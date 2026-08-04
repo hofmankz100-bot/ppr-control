@@ -131,6 +131,10 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(maintenance.trash.length, 1);
     assert.equal(maintenance.trash[0].type, "user");
     assert.ok(maintenance.audit.some(item => item.action === "user_moved_to_trash"));
+    assert.ok(maintenance.monitoring?.node?.online);
+    assert.equal(typeof maintenance.monitoring?.node?.memoryMb, "number");
+    assert.equal(typeof maintenance.monitoring?.api?.requests, "number");
+    assert.ok(Array.isArray(maintenance.alerts));
     const restored = await fetch(`${baseUrl}/api/admin/maintenance`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },

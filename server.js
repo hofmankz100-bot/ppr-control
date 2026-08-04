@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminAlerts: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -279,6 +279,8 @@ function normalizeDb(db) {
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
+  db.adminAlerts = Array.isArray(db.adminAlerts) ? db.adminAlerts : [];
+  db.systemMonitor = db.systemMonitor && typeof db.systemMonitor === "object" ? db.systemMonitor : {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   db.systemBroadcasts ||= [];
@@ -560,6 +562,94 @@ function appendActionLog(action) {
   ensureDb();
   const line = JSON.stringify({ at: new Date().toISOString(), ...action }) + "\n";
   fs.appendFileSync(actionLogFile, line);
+}
+
+const runtimeMonitor = { requests: 0, errors5xx: 0, slowRequests: 0, clientErrors: [] };
+
+function monitorRequest(req, res) {
+  const started = Date.now();
+  runtimeMonitor.requests += 1;
+  res.once("finish", () => {
+    const elapsed = Date.now() - started;
+    if (res.statusCode >= 500) runtimeMonitor.errors5xx += 1;
+    if (elapsed >= 2000) runtimeMonitor.slowRequests += 1;
+  });
+}
+
+function latestLocalBackupAt() {
+  try {
+    const files = fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json"));
+    return files.reduce((latest, name) => {
+      const value = fs.statSync(path.join(backupDir, name)).mtime.toISOString();
+      return value > latest ? value : latest;
+    }, "");
+  } catch { return ""; }
+}
+
+async function systemMonitoringSnapshot() {
+  const checkedAt = new Date().toISOString();
+  const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  const memoryLimitMb = Math.max(128, Number(process.env.MEMORY_ALERT_MB || 512));
+  const databaseLimitMb = Math.max(100, Number(process.env.DATABASE_SIZE_LIMIT_MB || 1024));
+  const snapshot = {
+    checkedAt,
+    node: { online: true, uptimeSeconds: Math.round(process.uptime()), memoryMb, memoryLimitMb },
+    api: { requests: runtimeMonitor.requests, errors5xx: runtimeMonitor.errors5xx, slowRequests: runtimeMonitor.slowRequests, clientErrors10m: runtimeMonitor.clientErrors.filter(at => Date.now() - new Date(at).getTime() < 600000).length },
+    postgres: { connected: false, mode: storageStatus.mode || "json", sizeBytes: 0, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: 0, activeConnections: 0, lastBackupAt: latestLocalBackupAt(), lastWriteAt: storageStatus.lastWriteAt || "", error: storageStatus.error || "" }
+  };
+  runtimeMonitor.clientErrors = runtimeMonitor.clientErrors.filter(at => Date.now() - new Date(at).getTime() < 86400000);
+  if (!postgresPool) return snapshot;
+  try {
+    const result = await postgresPool.query(`SELECT now() AS now, pg_database_size(current_database()) AS size,
+      (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database()) AS connections,
+      (SELECT max(backup_date) FROM ppr_state_backups) AS last_backup`);
+    const row = result.rows[0] || {};
+    const sizeBytes = Number(row.size || 0);
+    snapshot.postgres = { connected: true, mode: "postgres", checkedAt: row.now, sizeBytes, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: Math.round(sizeBytes / (databaseLimitMb * 1024 * 1024) * 1000) / 10, activeConnections: Number(row.connections || 0), lastBackupAt: row.last_backup || "", lastWriteAt: storageStatus.lastWriteAt || "", error: "" };
+  } catch (error) {
+    snapshot.postgres = { ...snapshot.postgres, mode: "postgres-degraded", error: String(error.message || error) };
+  }
+  return snapshot;
+}
+
+function monitoringAlertSpecs(snapshot) {
+  const specs = [];
+  if (!snapshot.postgres.connected && postgresPool) specs.push({ type: "postgres_unavailable", severity: "critical", title: "PostgreSQL недоступен", message: snapshot.postgres.error || "Сервер не смог подключиться к базе данных." });
+  const usage = Number(snapshot.postgres.usagePercent || 0);
+  if (usage >= 95) specs.push({ type: "database_capacity", severity: "critical", title: "База данных почти заполнена", message: `Использовано ${usage}% установленного лимита.` });
+  else if (usage >= 85) specs.push({ type: "database_capacity", severity: "critical", title: "Мало места в базе данных", message: `Использовано ${usage}% установленного лимита.` });
+  else if (usage >= 70) specs.push({ type: "database_capacity", severity: "warning", title: "Заполняется база данных", message: `Использовано ${usage}% установленного лимита.` });
+  if (snapshot.node.memoryMb >= snapshot.node.memoryLimitMb) specs.push({ type: "memory_high", severity: "warning", title: "Высокое потребление памяти", message: `${snapshot.node.memoryMb} МБ из контрольного порога ${snapshot.node.memoryLimitMb} МБ.` });
+  const backupAge = snapshot.postgres.lastBackupAt ? Date.now() - new Date(snapshot.postgres.lastBackupAt).getTime() : Infinity;
+  if (backupAge > 36 * 3600000) specs.push({ type: "backup_old", severity: "critical", title: "Нет свежей резервной копии", message: "Последняя резервная копия старше 36 часов или не найдена." });
+  if (snapshot.api.clientErrors10m >= 5) specs.push({ type: "client_errors", severity: "warning", title: "Повторяющиеся ошибки у сотрудников", message: `${snapshot.api.clientErrors10m} ошибок браузера за последние 10 минут.` });
+  return specs;
+}
+
+async function refreshSystemMonitoring() {
+  const snapshot = await systemMonitoringSnapshot();
+  const specs = monitoringAlertSpecs(snapshot);
+  await enqueueStateWrite(async () => {
+    const db = readDb();
+    const now = snapshot.checkedAt;
+    const activeTypes = new Set(specs.map(item => item.type));
+    for (const alert of db.adminAlerts || []) {
+      if (alert.status === "active" && !activeTypes.has(alert.type)) {
+        alert.status = "resolved";
+        alert.resolvedAt = now;
+        alert.resolvedByName = "Система";
+      }
+    }
+    for (const spec of specs) {
+      const existing = (db.adminAlerts || []).find(item => item.type === spec.type && item.status === "active");
+      if (existing) Object.assign(existing, spec, { lastSeenAt: now });
+      else db.adminAlerts.unshift({ id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...spec, status: "active", createdAt: now, lastSeenAt: now, resolvedAt: "", resolvedByName: "" });
+    }
+    db.adminAlerts = (db.adminAlerts || []).slice(0, 500);
+    db.systemMonitor = snapshot;
+    writeDb(db, { action: "system_monitor_update", user: { id: "system", name: "Система", role: "system" } });
+  });
+  return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
 }
 
 
@@ -3852,6 +3942,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/client-error" && req.method === "POST") {
     const body = await readBody(req).catch(() => ({}));
+    runtimeMonitor.clientErrors.push(new Date().toISOString());
     appendActionLog({
       action: "client_error",
       user: { id: req.authUser?.id || "", name: req.authUser?.name || "", role: req.authUser?.role || "" },
@@ -4291,6 +4382,7 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
+    const monitoringResult = await refreshSystemMonitoring();
     const db = readDb();
     let postgres = { connected: false, mode: storageStatus.mode || "json" };
     if (postgresPool) {
@@ -4314,7 +4406,33 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), postgres });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, postgres });
+    return true;
+  }
+
+  if (pathname === "/api/admin/monitoring" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    if (String(body.action || "") !== "resolve") {
+      sendJson(res, 400, { ok: false, error: "monitoring_action_invalid" });
+      return true;
+    }
+    const alertId = String(body.alertId || "");
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const alert = (db.adminAlerts || []).find(item => item.id === alertId);
+      if (!alert) return { error: "alert_not_found" };
+      alert.status = "resolved";
+      alert.resolvedAt = new Date().toISOString();
+      alert.resolvedByName = String(req.authUser?.name || "Администратор");
+      writeDb(db, { action: "system_alert_resolved", user: req.authUser, targetId: alert.id, targetLabel: alert.title, reason: String(body.reason || "Проверено администратором") });
+      return { resolved: true };
+    });
+    if (result.error) sendJson(res, 404, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, ...result });
     return true;
   }
 
@@ -6080,6 +6198,7 @@ function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
+  monitorRequest(req, res);
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
@@ -6090,6 +6209,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const qrServer = http.createServer(async (req, res) => {
+  monitorRequest(req, res);
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
@@ -6118,6 +6238,7 @@ function createHttpsServer() {
     }
     if (!options) return null;
     return https.createServer(options, async (req, res) => {
+      monitorRequest(req, res);
       try {
         const url = new URL(req.url || "/", `https://${req.headers.host || "localhost"}`);
         if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
@@ -6213,9 +6334,14 @@ const heartbeatTimer = setInterval(() => {
     sendSse(client, { type: "ping", time: new Date().toISOString() });
   }
 }, 15000);
+const systemMonitorTimer = setInterval(() => {
+  refreshSystemMonitoring().catch(error => console.warn(`System monitoring failed: ${error.message}`));
+}, 5 * 60 * 1000);
+systemMonitorTimer.unref?.();
 
 async function shutdown() {
   clearInterval(heartbeatTimer);
+  clearInterval(systemMonitorTimer);
   try {
     flushLocalBackup();
     await flushPostgresWrites();
@@ -6232,6 +6358,7 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(storage => {
+    refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     server.listen(port, "0.0.0.0", () => {
       ensureDb();
       console.log(`PPR Control realtime server: http://0.0.0.0:${port} [${storage.mode}]`);
