@@ -4739,8 +4739,53 @@ async function handleApi(req, res, pathname, url) {
     const archivePreview = adminArchiveSelection(db, 180);
     const backups = await listAdminBackups();
     const systemReport = systemReadinessReport(db, monitoringResult.snapshot, backups);
+    const broadcasts = (db.systemBroadcasts || []).slice().reverse().slice(0, 200).map(item => {
+      const roles = Array.isArray(item.roles) ? item.roles : [];
+      const recipients = (db.users || []).filter(user => user.approved !== false && user.pendingApproval !== true && user.accessDisabled !== true && (!roles.length || roles.includes(user.role)));
+      const readIds = new Set((item.readBy || []).map(entry => String(entry.userId || "")));
+      return { id: item.id, title: item.title || "Объявление", text: item.text || "", priority: item.priority || "normal", roles, active: item.active !== false, startsAt: item.startsAt || item.at || "", expiresAt: item.expiresAt || "", createdAt: item.createdAt || item.at || "", author: item.author || "", recipientCount: recipients.length, readCount: recipients.filter(user => readIds.has(String(user.id || ""))).length };
+    });
     const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/broadcasts" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const allowedRoles = new Set(["mechanic","electrician","welder","turner","forkliftDriver","operator","shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer","productionDirector","director","technicalDirector","editor"]);
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb(); db.systemBroadcasts ||= [];
+      if (body.action === "close") {
+        const item = db.systemBroadcasts.find(entry => entry.id === String(body.id || "")); if (!item) return { error: "broadcast_not_found" };
+        item.active = false; item.closedAt = new Date().toISOString(); item.closedBy = String(req.authUser?.name || "Администратор");
+        writeDb(db, { action: "admin_broadcast_closed", user: req.authUser, targetId: item.id, targetLabel: item.title, reason }); return { item };
+      }
+      const title = String(body.title || "").trim().slice(0, 200); const text = String(body.text || "").trim().slice(0, 3000);
+      if (!title || !text) return { error: "broadcast_content_required" };
+      const roles = [...new Set((Array.isArray(body.roles) ? body.roles : []).map(String).filter(role => allowedRoles.has(role)))];
+      const now = new Date().toISOString(); const expiresAt = String(body.expiresAt || "");
+      if (!expiresAt || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) return { error: "broadcast_expiry_invalid" };
+      const item = { id: `broadcast-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`, title, text, priority: ["normal","important","critical"].includes(body.priority) ? body.priority : "normal", roles, active: true, startsAt: now, expiresAt, createdAt: now, author: String(req.authUser?.name || "Администратор"), readBy: [] };
+      db.systemBroadcasts.push(item); db.systemBroadcasts = db.systemBroadcasts.slice(-500);
+      writeDb(db, { action: "admin_broadcast_created", user: req.authUser, targetId: item.id, targetLabel: title, reason }); return { item };
+    });
+    if (result.error) sendJson(res, result.error === "broadcast_not_found" ? 404 : 400, { ok: false, error: result.error }); else { broadcastState("admin-broadcast", "", { systemBroadcasts: readDb().systemBroadcasts }, true); sendJson(res, 200, { ok: true }); }
+    return true;
+  }
+
+  if (pathname === "/api/broadcasts/read" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb(); const item = (db.systemBroadcasts || []).find(entry => entry.id === String(body.id || "")); if (!item) return { error: "broadcast_not_found" };
+      item.readBy ||= []; const userId = String(req.authUser?.id || "");
+      if (userId && !item.readBy.some(entry => String(entry.userId || "") === userId)) item.readBy.push({ userId, at: new Date().toISOString() });
+      writeDb(db, { action: "broadcast_read", user: req.authUser, targetId: item.id, targetLabel: item.title }); return { read: true };
+    });
+    if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true });
     return true;
   }
 

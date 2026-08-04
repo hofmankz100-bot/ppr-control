@@ -138,6 +138,15 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(maintenance.backups));
     assert.ok(Array.isArray(maintenance.activity?.items));
     assert.ok(Array.isArray(maintenance.access));
+    assert.ok(Array.isArray(maintenance.broadcasts));
+    const rejectedBroadcast = await fetch(`${baseUrl}/api/admin/broadcasts`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ title: "Test", text: "Test", expiresAt: new Date(Date.now() + 3600000).toISOString(), password: "wrong-password", reason: "Test" }) });
+    assert.equal(rejectedBroadcast.status, 401);
+    const createdBroadcast = await fetch(`${baseUrl}/api/admin/broadcasts`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ title: "Security notice", text: "Read this notice", priority: "important", roles: ["editor"], expiresAt: new Date(Date.now() + 3600000).toISOString(), password: "correct-password", reason: "Security test" }) });
+    assert.equal(createdBroadcast.status, 200);
+    const maintenanceWithBroadcast = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const notice = maintenanceWithBroadcast.broadcasts.find(item => item.title === "Security notice");
+    assert.ok(notice?.id);
+    assert.equal((await fetch(`${baseUrl}/api/broadcasts/read`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ id: notice.id }) })).status, 200);
     assert.ok(Array.isArray(maintenance.systemReport?.checks));
     assert.equal(typeof maintenance.systemReport?.summary?.critical, "number");
     const systemReport = await fetch(`${baseUrl}/api/admin/system-report`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
