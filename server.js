@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], adminActivityReadAt: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -279,6 +279,7 @@ function normalizeDb(db) {
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
+  db.adminActivityReadAt = db.adminActivityReadAt && typeof db.adminActivityReadAt === "object" ? db.adminActivityReadAt : {};
   db.adminAlerts = Array.isArray(db.adminAlerts) ? db.adminAlerts : [];
   db.adminConfig = db.adminConfig && typeof db.adminConfig === "object" ? db.adminConfig : {};
   db.adminConfigHistory = Array.isArray(db.adminConfigHistory) ? db.adminConfigHistory : [];
@@ -646,6 +647,28 @@ function dataIntegrityReport(db = readDb()) {
     { id: "expired_trash", title: "Истёкший срок корзины", description: "Данные не удаляются автоматически: администратор решает это в разделе «Корзина».", count: expiredTrash.length, fixable: false }
   ];
   return { checkedAt: new Date().toISOString(), healthy: issues.every(issue => issue.count === 0), issues, fixableCount: issues.filter(issue => issue.fixable).reduce((sum, issue) => sum + issue.count, 0) };
+}
+
+function adminActivityFeed(db, adminUser) {
+  const ignored = new Set(["user_login", "user_logout", "state_write", "state_sync", "push_config_created", "push_subscription_saved", "push_subscription_removed", "push_subscription_expired", "push_subscriptions_cleaned", "externalize_photos_get", "translate_cache", "codex_agent_heartbeat", "codex_agent_poll"]);
+  const adminActions = new Set(["admin_backup_created", "admin_backup_restored", "admin_settings_saved", "admin_settings_rollback", "admin_integrity_fixed", "admin_activity_read", "system_alert_resolved", "trash_restore", "trash_purge", "manual_backup"]);
+  const key = String(adminUser?.id || adminUser?.employeeId || "primary-admin");
+  const readAt = String(db.adminActivityReadAt?.[key] || "");
+  const items = (db.adminAuditLog || []).filter(item => {
+    const action = String(item.action || "");
+    return action && !ignored.has(action) && !adminActions.has(action);
+  }).slice(0, 500).map(item => {
+    const action = String(item.action || "");
+    const category = action.includes("work_permit") ? "work_permit"
+      : action.includes("qr_walk") ? "qr_walk"
+      : action.includes("attendance") ? "attendance"
+      : action.includes("remark") || action.includes("resolution") ? "remarks"
+      : action.includes("request") ? "requests"
+      : action.includes("ppr") || action.includes("check") || action.includes("journal") ? "journals"
+      : action.includes("user") || action.includes("register") ? "users" : "other";
+    return { ...item, category, unread: !readAt || String(item.at || "") > readAt };
+  });
+  return { readAt, unreadCount: items.filter(item => item.unread).length, items };
 }
 
 function monitorRequest(req, res) {
@@ -4554,7 +4577,24 @@ async function handleApi(req, res, pathname, url) {
       restoredAt: item.restoredAt || "",
       restoredByName: item.restoredByName || ""
     }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, integrity: dataIntegrityReport(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/activity/read" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const key = String(req.authUser?.id || req.authUser?.employeeId || "primary-admin");
+      db.adminActivityReadAt ||= {};
+      db.adminActivityReadAt[key] = new Date().toISOString();
+      writeDb(db, { action: "admin_activity_read", user: req.authUser, reason: "События просмотрены администратором" });
+      return adminActivityFeed(db, req.authUser);
+    });
+    sendJson(res, 200, { ok: true, activity: result });
     return true;
   }
 

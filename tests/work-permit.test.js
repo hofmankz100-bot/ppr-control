@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=362-admin-integrity/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=362-admin-integrity/);
-  assert.match(html, /modules\/work-permit\.js\?v=362-admin-integrity/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=363-admin-activity/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=363-admin-activity/);
+  assert.match(html, /modules\/work-permit\.js\?v=363-admin-activity/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -190,10 +190,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v362-admin-integrity/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=362-admin-integrity/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=362-admin-integrity/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=362-admin-integrity/);
-  assert.match(serviceWorker, /styles\.css\?v=362-admin-integrity/);
-  assert.match(serviceWorker, /app\.js\?v=362-admin-integrity/);
+  assert.match(serviceWorker, /ppr-v363-admin-activity/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=363-admin-activity/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=363-admin-activity/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=363-admin-activity/);
+  assert.match(serviceWorker, /styles\.css\?v=363-admin-activity/);
+  assert.match(serviceWorker, /app\.js\?v=363-admin-activity/);
 });
