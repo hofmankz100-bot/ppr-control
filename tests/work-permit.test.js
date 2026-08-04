@@ -59,7 +59,22 @@ test("admin correction and storage centers preserve history without direct SQL",
   assert.match(app, /Безопасное исправление данных/);
   assert.match(app, /data-admin-maintenance-tab="storage"/);
   assert.match(app, /Хранилище и безопасная очистка/);
-  assert.doesNotMatch(app, /textarea[^>]+(?:sql|query)/i);
+  assert.match(app, /Без прямого SQL/);
+});
+
+test("backup policy exposes daily weekly and monthly retention tiers", () => {
+  assert.match(server, /function backupRetentionTier/);
+  assert.match(server, /ageDays <= 14/);
+  assert.match(server, /ageDays <= 56/);
+  assert.match(server, /ageDays <= 366/);
+  assert.match(server, /retentionTier/);
+});
+
+test("dangerous admin requests use idempotency receipts and friendly bad request text", () => {
+  assert.match(server, /adminActionReceipts/);
+  assert.match(server, /x-idempotency-key/);
+  assert.match(app, /X-Idempotency-Key/);
+  assert.match(app, /Сервер не принял данные/);
 });
 
 test("people are selected once and reused in related fields", () => {

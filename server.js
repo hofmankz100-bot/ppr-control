@@ -180,7 +180,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -275,6 +275,7 @@ function normalizeDb(db) {
   db.pprSheets ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
+  db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
@@ -1196,25 +1197,32 @@ async function createAdminBackup(label = "manual", actorName = "Админист
        VALUES ($1, $2, $3::jsonb, $4, $5, now())`,
       [id, cleanLabel, JSON.stringify(payload), checksum, String(actorName || "Администратор").slice(0, 200)]
     );
-    const keepCount = normalizedAdminConfig(payload.adminConfig).automation.autoBackupKeepCount;
-    await postgresPool.query(`DELETE FROM ppr_admin_backups WHERE backup_id IN (
-      SELECT backup_id FROM ppr_admin_backups ORDER BY created_at DESC OFFSET $1
-    )`, [keepCount]);
+    await postgresPool.query(`DELETE FROM ppr_admin_backups
+      WHERE created_at < now() - interval '12 months'
+        AND (label ILIKE '%авто%' OR label ILIKE '%automatic%')`);
   }
   return { id, label: cleanLabel, checksum, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), file: path.basename(localFile), createdBy: actorName, createdAt: new Date().toISOString(), storage: postgresPool ? "postgres" : "json" };
 }
 
+function backupRetentionTier(createdAt) {
+  const ageDays = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 86400000);
+  if (ageDays <= 14) return "daily";
+  if (ageDays <= 56) return "weekly";
+  if (ageDays <= 366) return "monthly";
+  return "archive";
+}
+
 async function listAdminBackups() {
   if (postgresPool) {
-    const result = await postgresPool.query(`SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 30`);
-    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres" }));
+    const result = await postgresPool.query(`SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 200`);
+    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres", retentionTier: backupRetentionTier(row.createdAt) }));
   }
   try {
     return fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json")).map(name => {
       const file = path.join(backupDir, name);
       const stat = fs.statSync(file);
-      return { id: name, label: name, checksum: "", createdBy: "Система", createdAt: stat.mtime.toISOString(), sizeBytes: stat.size, storage: "json" };
-    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+      return { id: name, label: name, checksum: "", createdBy: "Система", createdAt: stat.mtime.toISOString(), sizeBytes: stat.size, storage: "json", retentionTier: backupRetentionTier(stat.mtime.toISOString()) };
+    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 200);
   } catch { return []; }
 }
 
@@ -5144,8 +5152,17 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
+    const actionId = String(req.headers["x-idempotency-key"] || body.actionId || "").trim().slice(0, 160);
+    const beforeDb = readDb();
+    const previous = actionId && (beforeDb.adminActionReceipts || []).find(item => item.actionId === actionId && item.action === "admin_backup_created");
+    if (previous) { sendJson(res, 200, { ok: true, duplicate: true, backup: previous.result }); return true; }
     const backup = await createAdminBackup(body.label || "Ручная копия", req.authUser?.name || "Администратор");
     const db = readDb();
+    if (actionId) {
+      db.adminActionReceipts ||= [];
+      db.adminActionReceipts.unshift({ actionId, action: "admin_backup_created", at: new Date().toISOString(), result: backup });
+      db.adminActionReceipts = db.adminActionReceipts.slice(0, 1000);
+    }
     writeDb(db, { action: "admin_backup_created", user: req.authUser, targetId: backup.id, targetLabel: backup.label, reason: String(body.reason || "Ручная резервная копия") });
     sendJson(res, 200, { ok: true, backup });
     return true;
