@@ -5701,18 +5701,22 @@ function isNodeShiftChecked(rec, shiftKey = visibleWalkShiftForDate(current.date
   return group === "technical" && shiftKey === "day" && legacyNodeChecked(item);
 }
 
-function isNodeChecked(rec) {
+function isNodeCheckedForGroup(rec, group = qrWalkGroup()) {
   const item = rec?.to || rec || {};
   return Boolean(
-    isNodeShiftChecked(rec, "day") ||
-    isNodeShiftChecked(rec, "night") ||
-    legacyNodeChecked(item)
+    isNodeShiftChecked(rec, "day", group) ||
+    isNodeShiftChecked(rec, "night", group) ||
+    (group === "technical" && legacyNodeChecked(item))
   );
 }
 
-function nodeWalkCompletion(rec, date = current.date) {
+function isNodeChecked(rec) {
+  return isNodeCheckedForGroup(rec, qrWalkGroup());
+}
+
+function nodeWalkCompletion(rec, date = current.date, group = qrWalkGroup()) {
   const dueShiftKeys = walkShiftKeysDueForDate(date);
-  const done = dueShiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey)).length;
+  const done = dueShiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey, group)).length;
   return {
     done,
     total: dueShiftKeys.length,
@@ -5722,8 +5726,8 @@ function nodeWalkCompletion(rec, date = current.date) {
   };
 }
 
-function nodeWalkShiftStatusText(rec, date = current.date) {
-  const completion = nodeWalkCompletion(rec, date);
+function nodeWalkShiftStatusText(rec, date = current.date, group = qrWalkGroup()) {
+  const completion = nodeWalkCompletion(rec, date, group);
   if (!completion.total) return "Смена ещё не началась";
   if (completion.complete) return "Обход выполнен";
   if (completion.partial) return `Выполнено ${completion.done}/${completion.total} смен`;
@@ -11915,7 +11919,8 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 }
 
 function renderEquipment() {
-  ui.subtitle.textContent = "Оборудование";
+  const activeWalkGroup = qrWalkGroup();
+  ui.subtitle.textContent = `Оборудование · ${QR_WALK_GROUPS[activeWalkGroup]}`;
   const editorSchedule = false;
   const today = new Date();
   current.month = today.getMonth();
@@ -11938,6 +11943,7 @@ function renderEquipment() {
     <div>
       <strong>График оборудования</strong>
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
+      <span class="equipment-walk-group">Счётчик QR: ${escapeHtml(QR_WALK_GROUPS[activeWalkGroup])}</span>
     </div>
     <div class="segmented">
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
@@ -12066,7 +12072,7 @@ function renderEquipment() {
       });
       for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        const summary = equipmentDaySummary(eq, date);
+        const summary = equipmentDaySummary(eq, date, activeWalkGroup);
         const operationalPause = activeOperationalPause(eq, null, date);
         const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
         const downtimeOpen = equipmentDowntimeOpen;
@@ -12110,15 +12116,15 @@ function renderEquipment() {
   ui.equipmentList.append(wrap);
 }
 
-function equipmentDaySummary(eq, date) {
+function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
   const activeNodeIndexes = eq.nodes.map((_, index) => index)
     .filter(index => !activeOperationalPause(eq, index, date));
   const rows = activeNodeIndexes.map(index => getRecord(eq.id, index, date));
   const shiftKeys = walkShiftKeysDueForDate(date);
   const total = activeNodeIndexes.length * Math.max(1, shiftKeys.length);
   const done = shiftKeys.length
-    ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey)).length, 0)
-    : rows.filter(rec => isNodeChecked(rec)).length;
+    ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey, group)).length, 0)
+    : rows.filter(rec => isNodeCheckedForGroup(rec, group)).length;
   const open = rows.some(rec => hasOpenCommentRecord(rec));
   const requestOpen = rows.some((rec, index) => hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(eq.id, index, date));
   return {
@@ -13105,11 +13111,11 @@ function renderRequests() {
   queueTranslateVisiblePage();
 }
 
-function directorTodayWalk(eq) {
+function directorTodayWalk(eq, group = "technical") {
   const shift = currentWalkShift();
   const rows = eq.nodes.map((_, index) => state.checks?.[key(eq.id, index, shift.date)] || null);
-  const done = rows.filter(rec => isNodeShiftChecked(rec, shift.key)).length;
-  return { done, total: rows.length, shift };
+  const done = rows.filter(rec => isNodeShiftChecked(rec, shift.key, group)).length;
+  return { done, total: rows.length, shift, group, complete: rows.length > 0 && done === rows.length };
 }
 
 function directorTraffic(done, total, overdue = false) {
@@ -16577,7 +16583,8 @@ function directorDowntimeDetail(stats) {
 
 function directorControlTotals() {
   const equipment = allEquipment();
-  const walks = equipment.map(eq => directorTodayWalk(eq));
+  const walks = equipment.map(eq => directorTodayWalk(eq, "technical"));
+  const operationalWalks = equipment.map(eq => directorTodayWalk(eq, "operational"));
   const done = walks.reduce((sum, walk) => sum + walk.done, 0);
   const total = walks.reduce((sum, walk) => sum + walk.total, 0);
   const allRemarks = directorOpenRemarks();
@@ -16591,6 +16598,8 @@ function directorControlTotals() {
     done,
     total,
     percent: total ? Math.round(done / total * 100) : 0,
+    technicalWalk: { done, total, percent: total ? Math.round(done / total * 100) : 0 },
+    operationalWalk: { done: operationalWalks.reduce((sum, walk) => sum + walk.done, 0), total: operationalWalks.reduce((sum, walk) => sum + walk.total, 0), percent: operationalWalks.reduce((sum, walk) => sum + walk.total, 0) ? Math.round(operationalWalks.reduce((sum, walk) => sum + walk.done, 0) / operationalWalks.reduce((sum, walk) => sum + walk.total, 0) * 100) : 0 },
     remarks,
     allRemarks,
     archivedRemarks,
@@ -16736,10 +16745,11 @@ function renderDirectorControl() {
       </div>
     </div>
     <button type="button" class="director-progress-card director-progress-toggle ${current.directorProgressOpen ? "open" : ""}" data-toggle-director-progress aria-expanded="${current.directorProgressOpen}">
-      <div><strong>${totals.percent}%</strong><span>Обходы по узлам</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
-      <div class="director-progress"><i style="width:${totals.percent}%"></i></div>
-      <small>${totals.done} из ${totals.total} узлов</small>
+      <div><strong>${totals.technicalWalk.percent}%</strong><span>Электромеханики и инженеры</span><b>${current.directorProgressOpen ? "Скрыть список ▲" : "Показать список ▼"}</b></div>
+      <div class="director-progress"><i style="width:${totals.technicalWalk.percent}%"></i></div>
+      <small>${totals.technicalWalk.done} из ${totals.technicalWalk.total} узлов · технический обход</small>
     </button>
+    <div class="director-progress-card qr-group-progress ${totals.operationalWalk.done === totals.operationalWalk.total && totals.operationalWalk.total ? "complete" : ""}"><div><strong>${totals.operationalWalk.percent}%</strong><span>Операторы и начальники цехов</span></div><div class="director-progress"><i style="width:${totals.operationalWalk.percent}%"></i></div><small>${totals.operationalWalk.done} из ${totals.operationalWalk.total} узлов · оперативный обход</small></div>
     <section class="director-progress-details ${current.directorProgressOpen ? "open" : ""}" ${current.directorProgressOpen ? "" : "hidden"}>
       <div class="director-section-head"><div><span>🏭</span><h2>Обходы по узлам — сегодня</h2></div><small>Журнал и проверенные узлы</small></div>
       <div class="director-status-list director-progress-status-list">${controlRows}</div>

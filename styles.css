@@ -4368,6 +4368,74 @@ body.editor-profile .warehouse-folders button.request-alert {
   background: #fff;
 }
 
+.equipment-walk-group {
+  display: inline-flex !important;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e6f7f4;
+  color: #08766c !important;
+  font-weight: 800;
+}
+
+@media (max-width: 680px) {
+  .equipment-schedule-wrap {
+    overflow: visible;
+  }
+
+  .equipment-schedule-table,
+  .equipment-schedule-table thead,
+  .equipment-schedule-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .equipment-schedule-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 78px;
+    width: 100%;
+  }
+
+  .equipment-schedule-table .equipment-head,
+  .equipment-schedule-table .equipment-name,
+  .equipment-schedule-table th:first-child,
+  .equipment-schedule-table td:first-child {
+    position: static;
+    min-width: 0;
+    max-width: none;
+    width: auto;
+    box-shadow: none;
+  }
+
+  .equipment-schedule-table thead th:not(:first-child),
+  .equipment-schedule-table td.to,
+  .equipment-schedule-table td.to2,
+  .equipment-schedule-table td.to3,
+  .equipment-schedule-table td.completed-day,
+  .equipment-schedule-table td.comment-cell,
+  .equipment-schedule-table td.downtime-cell,
+  .equipment-schedule-table td.operational-paused-day {
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    width: auto;
+    height: auto;
+    padding: 10px 5px;
+    font-size: 15px;
+  }
+
+  .equipment-schedule-table .equipment-journal-cell {
+    padding: 5px;
+  }
+
+  .equipment-schedule-table .equipment-journal-button {
+    min-width: 0;
+    padding: 12px;
+    text-align: left;
+  }
+}
+
 .equipment-row-tools {
   display: block;
 }
