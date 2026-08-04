@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=383-qr-server-status/);
-  assert.match(html, /styles\.css\?v=383-qr-server-status/);
-  assert.match(serviceWorker, /app\.js\?v=383-qr-server-status/);
+  assert.match(html, /app\.js\?v=384-admin-technical-count/);
+  assert.match(html, /styles\.css\?v=384-admin-technical-count/);
+  assert.match(serviceWorker, /app\.js\?v=384-admin-technical-count/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -816,6 +816,7 @@ test("QR walks are separated into technical and operational journals", () => {
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(client, /const QR_WALK_GROUPS/);
   assert.match(client, /function qrWalkGroup\(role = profile\?\.role\)/);
+  assert.match(client, /authenticatedProfile\?\.role === "editor" \? "editor" : role/);
   assert.match(client, /walkGroups\[group\]\[shiftInfo\.key\]/);
   assert.match(client, /Object\.values\(item\.walkGroups\)\.some\(group =>/);
   assert.match(client, /Object\.values\(group\)\.some\(shift => shift\?\.done\)/);

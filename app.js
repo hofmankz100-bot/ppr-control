@@ -277,7 +277,8 @@ const QR_WALK_GROUPS = Object.freeze({
 });
 
 function qrWalkGroup(role = profile?.role) {
-  return ["operator", "shop"].includes(String(role || "")) ? "operational" : "technical";
+  const effectiveRole = authenticatedProfile?.role === "editor" ? "editor" : role;
+  return ["operator", "shop"].includes(String(effectiveRole || "")) ? "operational" : "technical";
 }
 
 function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
