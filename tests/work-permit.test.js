@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=388-profile-cleanup/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=388-profile-cleanup/);
-  assert.match(html, /modules\/work-permit\.js\?v=388-profile-cleanup/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=389-rating-cleanup/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=389-rating-cleanup/);
+  assert.match(html, /modules\/work-permit\.js\?v=389-rating-cleanup/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -190,10 +190,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v388-profile-cleanup/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=388-profile-cleanup/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=388-profile-cleanup/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=388-profile-cleanup/);
-  assert.match(serviceWorker, /styles\.css\?v=388-profile-cleanup/);
-  assert.match(serviceWorker, /app\.js\?v=388-profile-cleanup/);
+  assert.match(serviceWorker, /ppr-v389-rating-cleanup/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=389-rating-cleanup/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=389-rating-cleanup/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=389-rating-cleanup/);
+  assert.match(serviceWorker, /styles\.css\?v=389-rating-cleanup/);
+  assert.match(serviceWorker, /app\.js\?v=389-rating-cleanup/);
 });

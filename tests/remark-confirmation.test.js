@@ -764,9 +764,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=388-profile-cleanup/);
-  assert.match(html, /styles\.css\?v=388-profile-cleanup/);
-  assert.match(serviceWorker, /app\.js\?v=388-profile-cleanup/);
+  assert.match(html, /app\.js\?v=389-rating-cleanup/);
+  assert.match(html, /styles\.css\?v=389-rating-cleanup/);
+  assert.match(serviceWorker, /app\.js\?v=389-rating-cleanup/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -808,6 +808,14 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(server, /pathname === "\/api\/qr-walk\/mark"/);
   assert.match(server, /if \(existing\?\.done\)/);
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
+});
+
+test("test and duplicate worker identities are excluded without hiding the valid rating", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /"mechanic:шонов\.уткел"/);
+  assert.match(client, /"mechanic:рамазан"/);
+  assert.doesNotMatch(client, /"welder:шонов\.уткел"/);
+  assert.match(client, /if \(!cleanName \|\| workerRatingExcluded\(role, cleanName\)\) return/);
 });
 
 test("QR walks are separated into technical and operational journals", () => {

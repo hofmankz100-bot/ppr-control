@@ -15002,6 +15002,15 @@ function workerRatingKey(role, name) {
   return `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
 }
 
+const WORKER_RATING_EXCLUDED_KEYS = new Set([
+  "mechanic:шонов.уткел",
+  "mechanic:рамазан"
+]);
+
+function workerRatingExcluded(role, name) {
+  return WORKER_RATING_EXCLUDED_KEYS.has(workerRatingKey(role, name));
+}
+
 function emptyWorkerRating(role, name) {
   role = canonicalWorkerRole(role);
   const cleanName = String(name || "").trim() || requestRoleLabel(role);
@@ -15057,7 +15066,7 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
   const add = (role, name, value, details = {}) => {
     if (!isResolutionExecutorRole(role)) return;
     const cleanName = String(name || "").trim();
-    if (!cleanName) return;
+    if (!cleanName || workerRatingExcluded(role, cleanName)) return;
     const key = workerRatingKey(role, cleanName);
     points.set(key, Number(points.get(key) || 0) + Number(value || 0));
     if (Array.isArray(ledger)) {
@@ -15296,6 +15305,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   const ensureWorker = (role, name) => {
     if (!isResolutionExecutorRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
+    if (workerRatingExcluded(role, cleanName)) return null;
     const key = workerRatingKey(role, cleanName);
     if (!workers.has(key)) workers.set(key, emptyWorkerRating(role, cleanName));
     return workers.get(key);
@@ -15399,6 +15409,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   const ensureMonthWorker = (role, name) => {
     if (!isResolutionExecutorRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
+    if (workerRatingExcluded(role, cleanName)) return null;
     const key = workerRatingKey(role, cleanName);
     if (!monthWorkers.has(key)) monthWorkers.set(key, { role, name: cleanName, roleLabel: requestRoleLabel(role), points: 0, closed: 0, qrDone: 0, breakdownClosed: 0, remarksFound: 0, remarksResolved: 0 });
     return monthWorkers.get(key);
