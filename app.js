@@ -5674,13 +5674,16 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 }
 
 function blankKind(now = new Date().toISOString()) {
-  return { tasks: Array(15).fill(false), walkDone: false, walkShifts: {}, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], nodeDraftText: "", request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
+  return { tasks: Array(15).fill(false), walkDone: false, walkShifts: {}, walkGroups: { technical: {}, operational: {} }, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], nodeDraftText: "", request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
 }
 
 function hasMeaningfulCheckKind(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
   if (item.walkShifts && Object.values(item.walkShifts).some(shift => shift?.done)) return true;
+  if (item.walkGroups && Object.values(item.walkGroups).some(group =>
+    group && Object.values(group).some(shift => shift?.done)
+  )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
   if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
   if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
