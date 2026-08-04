@@ -4533,6 +4533,10 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 401, { ok: false, error: "Неверный табельный номер, телефон или пароль." });
       return true;
     }
+    if (user.accessDisabled === true) {
+      sendJson(res, 403, { ok: false, error: "Доступ к учётной записи временно отключён администратором." });
+      return true;
+    }
     if (user.approved === false || user.pendingApproval === true || !user.role) {
       sendJson(res, 403, { ok: false, error: "Регистрация ещё не подтверждена админом.", pending: true });
       return true;
@@ -4678,7 +4682,35 @@ async function handleApi(req, res, pathname, url) {
       restoredByName: item.restoredByName || ""
     }));
     const archivePreview = adminArchiveSelection(db, 180);
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups: await listAdminBackups(), config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    return true;
+  }
+
+  if (pathname === "/api/admin/access" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    const userId = String(body.userId || "");
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const target = (db.users || []).find(user => String(user.id || "") === userId);
+      if (!target) return { error: "user_not_found" };
+      const disabled = body.disabled === true;
+      if (disabled && (target.role === "editor" || String(target.id || "") === String(req.authUser?.id || ""))) return { error: "admin_access_protected" };
+      target.accessDisabled = disabled;
+      target.accessUpdatedAt = new Date().toISOString();
+      target.accessUpdatedBy = String(req.authUser?.name || "Администратор");
+      if (disabled) db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
+      writeDb(db, { action: disabled ? "user_access_disabled" : "user_access_enabled", user: req.authUser, targetId: target.id, targetLabel: target.name, reason });
+      return { user: userPublic(target) };
+    });
+    if (result.error) sendJson(res, result.error === "user_not_found" ? 404 : 409, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, ...result });
     return true;
   }
 

@@ -137,6 +137,14 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.ok(Array.isArray(maintenance.alerts));
     assert.ok(Array.isArray(maintenance.backups));
     assert.ok(Array.isArray(maintenance.activity?.items));
+    assert.ok(Array.isArray(maintenance.access));
+    assert.ok(maintenance.access.some(user => user.role === "editor"));
+    const rejectedAccessChange = await fetch(`${baseUrl}/api/admin/access`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ userId: worker.id, disabled: true, reason: "Test", password: "wrong-password" })
+    });
+    assert.equal(rejectedAccessChange.status, 401);
     assert.ok(Array.isArray(maintenance.archives));
     assert.equal(typeof maintenance.automation?.autoBackupEnabled, "boolean");
     assert.equal(typeof maintenance.automation?.autoBackupIntervalHours, "number");
