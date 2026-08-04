@@ -184,7 +184,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], codexTasks: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], adminTrash: [], adminAuditLog: [], journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -277,6 +277,8 @@ function normalizeDb(db) {
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
+  db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
+  db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   db.systemBroadcasts ||= [];
@@ -950,6 +952,25 @@ async function flushPostgresWrites() {
 
 function writeDb(db, action = {}) {
   const normalized = normalizeDb(db);
+  const actionName = String(action?.action || "").trim();
+  if (actionName && !["state_write", "state_sync"].includes(actionName)) {
+    const actor = action.user && typeof action.user === "object" ? action.user : {};
+    normalized.adminAuditLog.unshift({
+      id: `admin-audit:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`,
+      at: new Date().toISOString(),
+      action: actionName,
+      actorId: String(actor.id || ""),
+      actorName: String(actor.name || action.actorName || "Система").slice(0, 200),
+      actorRole: String(actor.role || "system").slice(0, 80),
+      targetType: String(action.targetType || "").slice(0, 80),
+      targetId: String(action.targetId || action.targetUserId || "").slice(0, 300),
+      targetLabel: String(action.targetLabel || "").slice(0, 500),
+      reason: String(action.reason || "").slice(0, 2000),
+      details: String(action.details || "").slice(0, 4000),
+      clientId: String(action.clientId || "").slice(0, 200)
+    });
+    normalized.adminAuditLog = normalized.adminAuditLog.slice(0, 5000);
+  }
   purgeRemovedEquipmentData(normalized);
   externalizePhotosInValue(normalized);
   if (postgresPool) {
@@ -4265,6 +4286,86 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/maintenance" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const db = readDb();
+    let postgres = { connected: false, mode: storageStatus.mode || "json" };
+    if (postgresPool) {
+      try {
+        const result = await postgresPool.query("SELECT now() AS now, pg_database_size(current_database()) AS size");
+        postgres = { connected: true, mode: "postgres", checkedAt: result.rows[0]?.now, sizeBytes: Number(result.rows[0]?.size || 0) };
+      } catch (error) {
+        postgres = { connected: false, mode: "postgres-degraded", error: String(error.message || error) };
+      }
+    }
+    const trash = (db.adminTrash || []).map(item => ({
+      id: item.id,
+      type: item.type,
+      targetId: item.targetId,
+      label: item.label,
+      reason: item.reason,
+      deletedAt: item.deletedAt,
+      expiresAt: item.expiresAt,
+      deletedByName: item.deletedByName,
+      canRestore: item.restoredAt ? false : true,
+      restoredAt: item.restoredAt || "",
+      restoredByName: item.restoredByName || ""
+    }));
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), postgres });
+    return true;
+  }
+
+  if (pathname === "/api/admin/maintenance" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") {
+      sendJson(res, 403, { ok: false, error: "admin_required" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
+      && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" });
+      return true;
+    }
+    const action = String(body.action || "");
+    const trashId = String(body.trashId || "");
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const item = (db.adminTrash || []).find(entry => entry.id === trashId);
+      if (!item) return { error: "trash_item_not_found" };
+      if (action === "restore") {
+        if (item.restoredAt) return { error: "trash_item_already_restored" };
+        if (item.type === "user") {
+          const snapshot = item.snapshot || {};
+          const conflict = (db.users || []).some(user =>
+            (snapshot.id && user.id === snapshot.id)
+            || (snapshot.employeeId && user.employeeId === snapshot.employeeId)
+            || (snapshot.phone && user.phone === snapshot.phone)
+          );
+          if (conflict) return { error: "restore_conflict" };
+          db.users.push(snapshot);
+        } else return { error: "restore_type_not_supported" };
+        item.restoredAt = new Date().toISOString();
+        item.restoredByName = String(req.authUser?.name || "Администратор");
+        writeDb(db, { action: "trash_restore", user: req.authUser, targetType: item.type, targetId: item.targetId, targetLabel: item.label, reason: String(body.reason || "Восстановление из корзины") });
+        return { restored: true };
+      }
+      if (action === "purge") {
+        if (String(body.confirm || "").trim().toUpperCase() !== "УДАЛИТЬ НАВСЕГДА") return { error: "purge_confirmation_required" };
+        createManualBackup("before-trash-purge");
+        db.adminTrash = (db.adminTrash || []).filter(entry => entry.id !== trashId);
+        writeDb(db, { action: "trash_purge", user: req.authUser, targetType: item.type, targetId: item.targetId, targetLabel: item.label, reason: String(body.reason || "Окончательное удаление") });
+        return { purged: true };
+      }
+      return { error: "maintenance_action_invalid" };
+    });
+    if (result.error) sendJson(res, 400, { ok: false, error: result.error });
+    else sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
   if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
     const db = readDb();
     const actorKey = attendanceUserKey(req.authUser || {});
@@ -5834,6 +5935,12 @@ async function handleApi(req, res, pathname, url) {
         (phone && item.phone === phone);
       const existing = (db.users || []).find(sameUserForUpdate);
       if (user.action === "delete") {
+        if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
+          && !passwordMatches(String(user.adminPassword || ""), String(req.authUser?.passwordHash || ""))) {
+          return { actionId, origin: user.clientId || "user", error: "admin_password_invalid" };
+        }
+        const deleteReason = String(user.reason || "").trim().slice(0, 2000);
+        if (!deleteReason) return { actionId, origin: user.clientId || "user", error: "delete_reason_required" };
         const users = db.users || [];
         let target = user.id ? users.find(item => item.id === user.id) : null;
         if (!target && employeeId) target = users.find(item => String(item.employeeId || "").trim() === employeeId);
@@ -5846,8 +5953,23 @@ async function handleApi(req, res, pathname, url) {
         if (target.role === "editor" && users.filter(item => item.role === "editor").length <= 1) {
           return { actionId, origin: user.clientId || "user", error: "last_editor_forbidden" };
         }
+        const deletedAt = new Date().toISOString();
+        db.adminTrash ||= [];
+        db.adminTrash.unshift({
+          id: `trash:user:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`,
+          type: "user",
+          targetId: String(target.id || target.employeeId || target.phone || ""),
+          label: String(target.name || target.employeeId || target.phone || "Сотрудник"),
+          reason: deleteReason,
+          deletedAt,
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          deletedById: String(req.authUser?.id || ""),
+          deletedByName: String(req.authUser?.name || "Администратор"),
+          snapshot: { ...target }
+        });
         db.users = users.filter(item => item !== target);
-        writeDb(db, { action: "user_delete", actionId, clientId: String(user.clientId || ""), user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || name, phone: target.phone || phone } });
+        db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
+        writeDb(db, { action: "user_moved_to_trash", actionId, clientId: String(user.clientId || ""), user: req.authUser, targetType: "user", targetId: target.id || target.employeeId || target.phone || "", targetLabel: target.name || name, reason: deleteReason });
         return { actionId, origin: user.clientId || "user", deletedUser: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "" } };
       }
       db.users = (db.users || []).filter(item => !sameUserForUpdate(item));

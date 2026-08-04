@@ -765,9 +765,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=356-qr-journal-access/);
-  assert.match(html, /styles\.css\?v=356-qr-journal-access/);
-  assert.match(serviceWorker, /app\.js\?v=356-qr-journal-access/);
+  assert.match(html, /app\.js\?v=357-admin-audit-trash/);
+  assert.match(html, /styles\.css\?v=357-admin-audit-trash/);
+  assert.match(serviceWorker, /app\.js\?v=357-admin-audit-trash/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -832,6 +832,22 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(client, /selfRemarkBonus: 5/);
   assert.match(client, /Сам обнаружил и устранил замечание · бонус \+5/);
   assert.match(client, /if \(!isElectromechanicRole\(shift\.byRole\)\) return/);
+});
+
+test("admin maintenance keeps an immutable audit and a recoverable trash", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /function renderAdminMaintenance\(\)/);
+  assert.match(client, /Журнал действий администратора/);
+  assert.match(client, /Корзина удалённых данных/);
+  assert.match(client, /УДАЛИТЬ НАВСЕГДА/);
+  assert.match(client, /adminPassword/);
+  assert.match(server, /adminTrash/);
+  assert.match(server, /adminAuditLog/);
+  assert.match(server, /pathname === "\/api\/admin\/maintenance"/);
+  assert.match(server, /createManualBackup\("before-trash-purge"\)/);
+  assert.match(server, /30 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(server, /passwordMatches\(String\(body\.password/);
 });
 
 test("notification setup stops nagging unsupported and legacy phones", () => {
@@ -1359,6 +1375,8 @@ test("an admin can delete a legacy employee that has no internal id", async () =
       id: "",
       employeeId: "legacy-77",
       name: "Старый сотрудник",
+      reason: "Проверка безопасного удаления",
+      adminPassword: "test-only",
       actor: { role: "editor", name: "Администратор" },
       actionId: "delete-legacy-user-test",
       clientId: "admin-test"

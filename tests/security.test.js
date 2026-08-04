@@ -115,6 +115,30 @@ test("production API requires a server session and rate-limits failed logins", a
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
+    const rejectedDelete = await fetch(`${baseUrl}/api/users`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ action: "delete", id: worker.id, reason: "Test safe deletion", adminPassword: "wrong-password" })
+    });
+    assert.equal(rejectedDelete.status, 400);
+    const safeDelete = await fetch(`${baseUrl}/api/users`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ action: "delete", id: worker.id, reason: "Test safe deletion", adminPassword: "correct-password" })
+    });
+    assert.equal(safeDelete.status, 200);
+    const maintenance = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(maintenance.trash.length, 1);
+    assert.equal(maintenance.trash[0].type, "user");
+    assert.ok(maintenance.audit.some(item => item.action === "user_moved_to_trash"));
+    const restored = await fetch(`${baseUrl}/api/admin/maintenance`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ action: "restore", trashId: maintenance.trash[0].id, password: "correct-password" })
+    });
+    assert.equal(restored.status, 200);
+    const restoredUsers = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(restoredUsers.some(user => user.id === worker.id));
     const phoneLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-app-version": APP_VERSION },

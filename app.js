@@ -551,6 +551,7 @@ let current = {
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
   qrWalkJournalShift: currentWalkShift().key,
+  adminMaintenanceTab: "audit",
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
   gpmJournalKind: "gpm",
@@ -775,6 +776,19 @@ function ensureQrWalkJournalUi() {
 }
 
 ensureQrWalkJournalUi();
+
+function ensureAdminMaintenanceUi() {
+  if (!document.querySelector("#adminMaintenanceScreen")) {
+    const section = document.createElement("section");
+    section.id = "adminMaintenanceScreen";
+    section.className = "view";
+    section.innerHTML = `<div class="panel-head compact"><div><h1>Администрирование данных</h1><p>Неизменяемый журнал действий, корзина и восстановление</p></div></div><div id="adminMaintenancePanel"></div>`;
+    document.querySelector(".screen")?.append(section);
+  }
+  ui.adminMaintenancePanel = document.querySelector("#adminMaintenancePanel");
+}
+
+ensureAdminMaintenanceUi();
 
 function isOpenLegacyJournalRequest(req) {
   if (!req || typeof req !== "object") return false;
@@ -3741,6 +3755,7 @@ function canOpenView(view) {
   if (view === "gpm") return isProfileReady();
   if (view === "workPermit") return isProfileReady();
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
+  if (view === "adminMaintenance") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
   if (view === "requestCreate") return canEditChecklist();
   return true;
@@ -10721,6 +10736,7 @@ function render() {
   if (current.view === "downtime") renderDowntime();
   if (current.view === "aggregateJournal") renderAggregateJournal();
   if (current.view === "qrWalkJournal") renderQrWalkJournal();
+  if (current.view === "adminMaintenance") renderAdminMaintenance();
   if (current.view === "gpm") renderGpmJournal();
   if (current.view === "workPermit") {
     const workPermitProfile = authenticatedProfile || profile || {};
@@ -11917,12 +11933,14 @@ function renderEquipment() {
     </div>
     <div class="segmented">
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
+      ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Данные и корзина</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
   monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
+  monthBar.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
     current.month -= 1;
     if (current.month < 0) {
@@ -17045,9 +17063,11 @@ function renderDirector() {
       const userKey = event.currentTarget.dataset.deleteUser || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
-      if (!user || !window.confirm(`Удалить сотрудника: ${user.name || user.phone || ""}?`)) return;
-      const reason = window.prompt("Укажите причину удаления сотрудника:")?.trim();
+      if (!user || !window.confirm(`Переместить сотрудника в корзину на 30 дней: ${user.name || user.phone || ""}?`)) return;
+      const reason = window.prompt("Укажите причину перемещения сотрудника в корзину:")?.trim();
       if (!reason) return;
+      const adminPassword = window.prompt("Введите пароль администратора для подтверждения:");
+      if (!adminPassword) return;
       await runButtonOperation(event.currentTarget, async () => {
         await apiJson("/api/users", {
           method: "POST",
@@ -17057,6 +17077,8 @@ function renderDirector() {
             employeeId: user.employeeId || "",
             phone: user.phone || "",
             name: user.name || "",
+            reason,
+            adminPassword,
             actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
             actionId: nextActionId(),
             clientId: CLIENT_ID
@@ -17188,6 +17210,53 @@ function renderDowntime() {
       if (item && !item.endedAt) openDowntimeComment(item);
     });
   });
+}
+
+function adminAuditActionLabel(action = "") {
+  return ({ user_moved_to_trash: "Сотрудник перемещён в корзину", trash_restore: "Запись восстановлена", trash_purge: "Запись удалена окончательно", user_password_reset: "Пароль сотрудника изменён", user_role_update: "Изменены роль или участок", qr_walk_journal_access: "Изменён доступ к QR-журналу", manual_backup: "Создана резервная копия" })[action] || action.replaceAll("_", " ");
+}
+
+async function renderAdminMaintenance() {
+  if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
+  ui.subtitle.textContent = "Данные и корзина";
+  ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
+  let result;
+  try { result = await apiJson("/api/admin/maintenance", { timeout: 15000 }); }
+  catch { ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Не удалось загрузить административные данные. Проверьте соединение.</div>`; return; }
+  if (current.view !== "adminMaintenance") return;
+  const audit = Array.isArray(result.audit) ? result.audit : [];
+  const trash = Array.isArray(result.trash) ? result.trash : [];
+  const tab = current.adminMaintenanceTab || "audit";
+  const pg = result.postgres || {};
+  const size = Number(pg.sizeBytes || 0);
+  const sizeText = size ? `${(size / 1024 / 1024).toFixed(1)} МБ` : "нет данных";
+  ui.adminMaintenancePanel.innerHTML = `
+    <div class="admin-maintenance-status">
+      <div class="${pg.connected ? "ok" : "warning"}"><strong>${pg.connected ? "PostgreSQL работает" : "PostgreSQL недоступен или используется JSON"}</strong><span>Режим: ${escapeHtml(pg.mode || "-")} · размер ${escapeHtml(sizeText)}</span></div>
+      <div><strong>${audit.length}</strong><span>действий загружено</span></div><div><strong>${trash.filter(item => item.canRestore).length}</strong><span>записей в корзине</span></div>
+    </div>
+    <div class="segmented admin-maintenance-tabs no-print"><button type="button" class="${tab === "audit" ? "active" : ""}" data-admin-maintenance-tab="audit">Журнал действий</button><button type="button" class="${tab === "trash" ? "active" : ""}" data-admin-maintenance-tab="trash">Корзина · ${trash.filter(item => item.canRestore).length}</button><button type="button" data-print-admin-maintenance>Печать / PDF</button></div>
+    <section class="admin-maintenance-sheet">
+      <div class="aggregate-sheet-head"><strong>${tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"}</strong><span>${dateTimeHuman(new Date().toISOString())}</span></div>
+      ${tab === "audit" ? `<div class="admin-audit-list">${audit.length ? audit.map(item => `<article><time>${escapeHtml(dateTimeHuman(item.at))}</time><div><strong>${escapeHtml(item.actorName || "Система")}</strong><span>${escapeHtml(adminAuditActionLabel(item.action))}</span><small>${escapeHtml([item.targetLabel || item.targetId, item.reason].filter(Boolean).join(" · "))}</small></div></article>`).join("") : `<div class="empty-state">Действий пока нет</div>`}</div>` : `<div class="admin-trash-list">${trash.length ? trash.map(item => `<article class="${item.canRestore ? "" : "restored"}"><div><strong>${escapeHtml(item.label || item.targetId || "Запись")}</strong><span>${escapeHtml(item.type === "user" ? "Сотрудник" : item.type || "Данные")} · удалено ${escapeHtml(dateTimeHuman(item.deletedAt))}</span><small>Причина: ${escapeHtml(item.reason || "не указана")} · удалил: ${escapeHtml(item.deletedByName || "Администратор")}</small><small>${item.canRestore ? `Хранить до ${escapeHtml(dateTimeHuman(item.expiresAt))}` : `Восстановлено ${escapeHtml(dateTimeHuman(item.restoredAt))}`}</small></div>${item.canRestore ? `<div class="no-print"><button type="button" data-trash-restore="${escapeHtml(item.id)}">Восстановить</button><button type="button" class="danger" data-trash-purge="${escapeHtml(item.id)}">Удалить навсегда</button></div>` : ""}</article>`).join("") : `<div class="empty-state">Корзина пуста</div>`}</div>`}
+    </section>`;
+  ui.adminMaintenancePanel.querySelectorAll("[data-admin-maintenance-tab]").forEach(button => button.addEventListener("click", () => { current.adminMaintenanceTab = button.dataset.adminMaintenanceTab; renderAdminMaintenance(); }));
+  ui.adminMaintenancePanel.querySelector("[data-print-admin-maintenance]")?.addEventListener("click", () => printCurrentDocument(tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"));
+  ui.adminMaintenancePanel.querySelectorAll("[data-trash-restore]").forEach(button => button.addEventListener("click", async () => {
+    if (!window.confirm("Восстановить эту запись из корзины?")) return;
+    const password = window.prompt("Введите пароль администратора для восстановления:");
+    if (!password) return;
+    await runButtonOperation(button, async () => { await apiJson("/api/admin/maintenance", { method: "POST", body: JSON.stringify({ action: "restore", trashId: button.dataset.trashRestore, password, reason: "Восстановление администратором" }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Восстанавливаем…");
+  }));
+  ui.adminMaintenancePanel.querySelectorAll("[data-trash-purge]").forEach(button => button.addEventListener("click", async () => {
+    const confirm = window.prompt("Для окончательного удаления напишите: УДАЛИТЬ НАВСЕГДА");
+    if (String(confirm || "").trim().toUpperCase() !== "УДАЛИТЬ НАВСЕГДА") return;
+    const reason = window.prompt("Укажите причину окончательного удаления:")?.trim();
+    if (!reason) return;
+    const password = window.prompt("Введите пароль администратора:");
+    if (!password) return;
+    await runButtonOperation(button, async () => { await apiJson("/api/admin/maintenance", { method: "POST", body: JSON.stringify({ action: "purge", trashId: button.dataset.trashPurge, password, confirm, reason }) }); renderAdminMaintenance(); }, "Создаём копию и удаляем…");
+  }));
 }
 
 async function renderQrWalkJournal() {

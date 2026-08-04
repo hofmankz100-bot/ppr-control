@@ -3959,6 +3959,26 @@ body.editor-profile .warehouse-folders button.request-alert {
 .qr-journal-access summary { cursor:pointer; font-weight:900; color:#075d69; }
 .qr-journal-access > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:8px; margin-top:10px; }
 .qr-journal-access label { display:flex; align-items:center; gap:8px; padding:9px; border:1px solid #d9e5e9; border-radius:10px; }
+.admin-maintenance-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+.admin-maintenance-status > div { display:grid; gap:4px; padding:14px; border:1px solid #cbdde4; border-radius:14px; background:#f7fbfc; }
+.admin-maintenance-status > div.ok { border-color:#8fd0a4; background:#f1fff5; }
+.admin-maintenance-status > div.warning { border-color:#e2b46f; background:#fff9ef; }
+.admin-maintenance-tabs { margin-bottom:14px; }
+.admin-maintenance-sheet { padding:16px; border:1px solid #cbdde4; border-radius:16px; background:#fff; box-shadow:0 8px 22px rgba(24,63,77,.08); }
+.admin-audit-list,.admin-trash-list { display:grid; gap:8px; }
+.admin-audit-list article,.admin-trash-list article { display:grid; grid-template-columns:170px 1fr; gap:12px; padding:11px 12px; border:1px solid #d9e5e9; border-radius:11px; background:#fbfdfd; }
+.admin-audit-list article div,.admin-trash-list article > div:first-child { display:grid; gap:3px; }
+.admin-audit-list article span,.admin-trash-list article span { color:#234b5a; }
+.admin-audit-list article small,.admin-trash-list article small { color:#627781; }
+.admin-trash-list article { grid-template-columns:1fr auto; }
+.admin-trash-list article > div:last-child { display:flex; align-items:center; gap:8px; }
+.admin-trash-list article.restored { opacity:.7; background:#f2f5f6; }
+@media (max-width:680px) {
+  .admin-maintenance-status { grid-template-columns:1fr; }
+  .admin-maintenance-tabs { display:grid; grid-template-columns:1fr; }
+  .admin-audit-list article,.admin-trash-list article { grid-template-columns:1fr; }
+  .admin-trash-list article > div:last-child { display:grid; grid-template-columns:1fr; }
+}
 .qr-walk-journal-table .qr-missing td { background:#fff3f3; color:#842323; }
 .qr-walk-journal-table .qr-fixed td { background:#f2fff6; }
 .segmented button.active { background:#087987; color:#fff; }
