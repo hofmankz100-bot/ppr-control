@@ -13228,6 +13228,42 @@ body.editor-profile #createTmcRequestButton.request-alert,
 .admin-qr-route-builder{display:grid;gap:14px;margin-top:22px}.admin-qr-route-builder form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid #c4dce0;border-radius:14px}.admin-qr-route-builder label{display:grid;gap:5px}.admin-qr-route-builder form button{grid-column:1/-1}.admin-qr-route-list{display:grid;gap:8px}.admin-qr-route-list article{display:flex;justify-content:space-between;gap:12px;padding:12px;border:1px solid #cfdee1;border-radius:12px}.admin-qr-route-list article>div{display:grid;gap:4px}.admin-qr-route-list .archived{opacity:.6}@media(max-width:760px){.admin-qr-route-builder form{grid-template-columns:1fr}.admin-qr-route-list article{display:grid}.admin-qr-route-list button{width:100%}}
 
 @media (max-width: 680px) {
+  .equipment-month-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .equipment-month-bar > div:first-child {
+    min-width: 0;
+  }
+
+  .equipment-month-bar > .segmented {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .equipment-month-bar > .segmented button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 6px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .equipment-month-bar > .segmented strong {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 6px;
+    text-align: center;
+  }
+
   .equipment-schedule-table .equipment-head,
   .equipment-schedule-table .equipment-name,
   .equipment-schedule-table .equipment-journal-cell {
@@ -13250,5 +13286,28 @@ body.editor-profile #createTmcRequestButton.request-alert,
   .equipment-schedule-table thead th:not(:first-child) {
     min-width: 92px;
     width: 92px;
+  }
+
+  body.editor-profile .equipment-schedule-table .equipment-row-tools,
+  body.editor-profile .equipment-schedule-table .catalog-editor,
+  body.editor-profile .equipment-schedule-table .equipment-journal-button,
+  body.editor-profile .equipment-schedule-table .equipment-qr-print-button {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  body.editor-profile .equipment-schedule-table .equipment-qr-print-button,
+  body.editor-profile .equipment-schedule-table .catalog-editor summary {
+    padding: 8px 6px;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  body.editor-profile .equipment-schedule-table .catalog-editor input {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
