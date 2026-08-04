@@ -764,9 +764,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=389-rating-cleanup/);
-  assert.match(html, /styles\.css\?v=389-rating-cleanup/);
-  assert.match(serviceWorker, /app\.js\?v=389-rating-cleanup/);
+  assert.match(html, /app\.js\?v=390-adlet-rating-cleanup/);
+  assert.match(html, /styles\.css\?v=390-adlet-rating-cleanup/);
+  assert.match(serviceWorker, /app\.js\?v=390-adlet-rating-cleanup/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -814,6 +814,7 @@ test("test and duplicate worker identities are excluded without hiding the valid
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /"mechanic:шонов\.уткел"/);
   assert.match(client, /"mechanic:рамазан"/);
+  assert.match(client, /"mechanic:адлет"/);
   assert.doesNotMatch(client, /"welder:шонов\.уткел"/);
   assert.match(client, /if \(!cleanName \|\| workerRatingExcluded\(role, cleanName\)\) return/);
 });

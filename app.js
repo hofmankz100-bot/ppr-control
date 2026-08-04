@@ -15004,7 +15004,8 @@ function workerRatingKey(role, name) {
 
 const WORKER_RATING_EXCLUDED_KEYS = new Set([
   "mechanic:шонов.уткел",
-  "mechanic:рамазан"
+  "mechanic:рамазан",
+  "mechanic:адлет"
 ]);
 
 function workerRatingExcluded(role, name) {
