@@ -3787,6 +3787,12 @@ body.editor-profile .warehouse-folders button.request-alert {
 .qr-journal-access > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:8px; margin-top:10px; }
 .qr-journal-access label { display:flex; align-items:center; gap:8px; padding:9px; border:1px solid #d9e5e9; border-radius:10px; }
 .admin-maintenance-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+.admin-guide-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.admin-guide-grid article { display:grid; align-content:start; gap:10px; padding:16px; border:1px solid #d7e0e8; border-radius:14px; background:#f8fbfd; }
+.admin-guide-grid p { margin:0; color:#526270; line-height:1.45; }
+.admin-guide-emergency { margin-top:14px; padding:16px; border:1px solid #e2b46f; border-radius:14px; background:#fff9ef; }
+.admin-guide-emergency ol { margin-bottom:0; padding-left:22px; }
+@media(max-width:760px){.admin-guide-grid{grid-template-columns:1fr}}
 .admin-maintenance-status > div { display:grid; gap:4px; padding:14px; border:1px solid #cbdde4; border-radius:14px; background:#f7fbfc; }
 .admin-maintenance-status > div.ok { border-color:#8fd0a4; background:#f1fff5; }
 .admin-maintenance-status > div.warning { border-color:#e2b46f; background:#fff9ef; }
