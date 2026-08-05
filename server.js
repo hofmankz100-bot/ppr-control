@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v327-ppr-autofill-refresh";
+const SERVER_VERSION = "v401-admin-reliability";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1198,13 +1198,62 @@ function backupChecksum(payload) {
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+function isAutomaticBackupLabel(value = "") {
+  return /автомат|automatic/i.test(String(value || ""));
+}
+
+function backupRetentionDeleteIds(rows = [], now = Date.now()) {
+  const automatic = rows
+    .filter(row => isAutomaticBackupLabel(row.label))
+    .map(row => ({ ...row, timestamp: Date.parse(row.createdAt) }))
+    .filter(row => Number.isFinite(row.timestamp))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const keptBuckets = new Set();
+  const deleted = [];
+  for (const row of automatic) {
+    const ageDays = Math.max(0, (now - row.timestamp) / 86400000);
+    if (ageDays <= 14) continue;
+    if (ageDays > 366) { deleted.push(row.id); continue; }
+    const date = new Date(row.timestamp);
+    let bucket;
+    if (ageDays <= 56) {
+      const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      const day = monday.getUTCDay() || 7;
+      monday.setUTCDate(monday.getUTCDate() - day + 1);
+      bucket = `week:${monday.toISOString().slice(0, 10)}`;
+    } else {
+      bucket = `month:${date.toISOString().slice(0, 7)}`;
+    }
+    if (keptBuckets.has(bucket)) deleted.push(row.id);
+    else keptBuckets.add(bucket);
+  }
+  return deleted;
+}
+
+async function applyAdminBackupRetention() {
+  if (postgresPool) {
+    const result = await postgresPool.query(`SELECT backup_id AS id, label, created_at AS "createdAt" FROM ppr_admin_backups ORDER BY created_at DESC`);
+    const deleteIds = backupRetentionDeleteIds(result.rows);
+    if (deleteIds.length) await postgresPool.query("DELETE FROM ppr_admin_backups WHERE backup_id = ANY($1::text[])", [deleteIds]);
+    return deleteIds.length;
+  }
+  if (!fs.existsSync(backupDir)) return 0;
+  const rows = fs.readdirSync(backupDir)
+    .filter(name => name.startsWith("db_backup_automatic_") && name.endsWith(".json"))
+    .map(name => ({ id: name, label: "automatic", createdAt: fs.statSync(path.join(backupDir, name)).mtime.toISOString() }));
+  const deleteIds = backupRetentionDeleteIds(rows);
+  for (const name of deleteIds) fs.unlinkSync(path.join(backupDir, path.basename(name)));
+  return deleteIds.length;
+}
+
 async function createAdminBackup(label = "manual", actorName = "Администратор", sourceDb = null) {
   await stateWriteQueue.catch(() => {});
   const payload = normalizeDb(structuredClone(sourceDb || readDb()));
   let id = `backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const cleanLabel = String(label || "Ручная копия").trim().slice(0, 200) || "Ручная копия";
+  const automatic = isAutomaticBackupLabel(cleanLabel);
   const checksum = backupChecksum(payload);
-  const localFile = createManualBackup(cleanLabel);
+  const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel);
   if (!postgresPool) id = path.basename(localFile);
   if (postgresPool) {
     await postgresPool.query(
@@ -1212,10 +1261,8 @@ async function createAdminBackup(label = "manual", actorName = "Админист
        VALUES ($1, $2, $3::jsonb, $4, $5, now())`,
       [id, cleanLabel, JSON.stringify(payload), checksum, String(actorName || "Администратор").slice(0, 200)]
     );
-    await postgresPool.query(`DELETE FROM ppr_admin_backups
-      WHERE created_at < now() - interval '12 months'
-        AND (label ILIKE '%авто%' OR label ILIKE '%automatic%')`);
   }
+  await applyAdminBackupRetention();
   return { id, label: cleanLabel, checksum, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), file: path.basename(localFile), createdBy: actorName, createdAt: new Date().toISOString(), storage: postgresPool ? "postgres" : "json" };
 }
 
@@ -3459,6 +3506,25 @@ function enqueueStateWrite(task) {
   return next;
 }
 
+const activeAdminMutationKeys = new Map();
+function rejectRepeatedAdminMutation(req, res, pathname) {
+  if (req.authUser?.role !== "editor" || !pathname.startsWith("/api/admin/")) return false;
+  if (["GET", "HEAD", "OPTIONS"].includes(String(req.method || "GET").toUpperCase())) return false;
+  const actionId = String(req.headers["x-idempotency-key"] || "").trim().slice(0, 160);
+  if (!actionId) return false;
+  const key = `${String(req.authUser?.id || req.authUser?.employeeId || "admin")}:${req.method}:${pathname}:${actionId}`;
+  const now = Date.now();
+  for (const [storedKey, expiresAt] of activeAdminMutationKeys) {
+    if (expiresAt <= now) activeAdminMutationKeys.delete(storedKey);
+  }
+  if (activeAdminMutationKeys.has(key)) {
+    sendJson(res, 200, { ok: true, duplicate: true, message: "Повторное действие остановлено сервером." }, { "Cache-Control": "no-store" });
+    return true;
+  }
+  activeAdminMutationKeys.set(key, now + 10 * 60 * 1000);
+  return false;
+}
+
 let wss = null;
 const wsServers = [];
 const sseClients = new Set();
@@ -3564,6 +3630,8 @@ async function handleApi(req, res, pathname, url) {
     }
     req.authUser = authUser;
   }
+
+  if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/storage-status" && req.method === "GET") {
     if (req.authUser?.role !== "editor") {
@@ -4793,6 +4861,12 @@ async function handleApi(req, res, pathname, url) {
     }));
     const archivePreview = adminArchiveSelection(db, 180);
     const backups = await listAdminBackups();
+    const backupRetention = {
+      dailyDays: 14,
+      weeklyUntilDays: 56,
+      monthlyUntilDays: 366,
+      deleteCount: backupRetentionDeleteIds(backups).length
+    };
     const systemReport = systemReadinessReport(db, monitoringResult.snapshot, backups);
     const broadcasts = (db.systemBroadcasts || []).slice().reverse().slice(0, 200).map(item => {
       const roles = Array.isArray(item.roles) ? item.roles : [];
@@ -4801,7 +4875,7 @@ async function handleApi(req, res, pathname, url) {
       return { id: item.id, title: item.title || "Объявление", text: item.text || "", priority: item.priority || "normal", roles, active: item.active !== false, startsAt: item.startsAt || item.at || "", expiresAt: item.expiresAt || "", createdAt: item.createdAt || item.at || "", author: item.author || "", remindedAt: item.remindedAt || "", recipientCount: recipients.length, readCount: recipients.filter(user => readIds.has(String(user.id || ""))).length, recipients: recipients.map(user => ({ id: user.id, name: user.name || "Без имени", role: user.role || "", employeeId: user.employeeId || "", readAt: (item.readBy || []).find(entry => String(entry.userId || "") === String(user.id || ""))?.at || "" })) };
     });
     const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), operationalSummary: adminUserOperationalSummary(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, instructionAcknowledgements: (db.workPermitInstructionAcknowledgements || []).slice(0, 2000), notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, instructionAcknowledgements: (db.workPermitInstructionAcknowledgements || []).slice(0, 2000), notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, backupRetention, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
     return true;
   }
 
@@ -5152,6 +5226,25 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/backups/retention" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
+    if (String(body.confirm || "").trim().toUpperCase() !== "ПРИМЕНИТЬ") { sendJson(res, 400, { ok: false, error: "confirmation_required" }); return true; }
+    const plannedDeleteCount = backupRetentionDeleteIds(await listAdminBackups()).length;
+    const backup = await createAdminBackup("Перед применением политики хранения", req.authUser?.name || "Администратор");
+    const deletedAfterBackup = await applyAdminBackupRetention();
+    const deleted = Math.max(plannedDeleteCount, deletedAfterBackup);
+    await enqueueStateWrite(async () => {
+      const db = readDb();
+      writeDb(db, { action: "admin_backup_retention_applied", user: req.authUser, reason, deleted, targetId: backup.id });
+    });
+    sendJson(res, 200, { ok: true, deleted, safetyBackup: backup });
+    return true;
+  }
+
   if (pathname === "/api/admin/backups" && req.method === "GET") {
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
@@ -5244,16 +5337,19 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const before = normalizedAdminConfig(db.adminConfig);
       const after = normalizedAdminConfig(body.config || {});
       const now = new Date().toISOString();
       db.adminConfigHistory ||= [];
-      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: String(body.reason || "Изменение административных настроек").slice(0, 500), snapshot: before });
+      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason, snapshot: before });
       db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
       db.adminConfig = after;
-      writeDb(db, { action: "admin_settings_saved", user: req.authUser, reason: String(body.reason || "Настройки изменены") });
+      writeDb(db, { action: "admin_settings_saved", user: req.authUser, reason });
       return after;
     });
     sendJson(res, 200, { ok: true, config: result });
@@ -5266,6 +5362,9 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
+    const reason = String(body.reason || "").trim().slice(0, 500);
+    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
     const versionId = String(body.versionId || "");
     const result = await enqueueStateWrite(async () => {
       const db = readDb();

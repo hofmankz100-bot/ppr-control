@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v327-ppr-autofill-refresh";
+const APP_VERSION = "v401-admin-reliability";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -1719,13 +1719,20 @@ function applyWorkCleanFromUrl() {
   persistStateLocally(state);
 }
 
-async function apiJson(url, options = {}) {
+const apiMutationRequests = new Map();
+
+function apiMutationSignature(url, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD" || options.allowDuplicate === true) return "";
+  return `${method}:${url}:${String(options.body || "")}`;
+}
+
+async function apiJsonRequest(url, options = {}, idempotencyKey = "") {
   const controller = new AbortController();
   const timeout = Number(options.timeout || 15000);
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
     const method = String(options.method || "GET").toUpperCase();
-    const idempotencyKey = options.idempotencyKey || (method !== "GET" && method !== "HEAD" ? nextActionId() : "");
     const response = await fetch(url, {
       headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}), ...(options.headers || {}) },
       ...options,
@@ -1744,6 +1751,24 @@ async function apiJson(url, options = {}) {
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function apiJson(url, options = {}) {
+  const signature = apiMutationSignature(url, options);
+  if (!signature) return apiJsonRequest(url, options, "");
+  const existing = apiMutationRequests.get(signature);
+  if (existing && existing.expiresAt > Date.now()) return existing.promise;
+  const idempotencyKey = String(options.idempotencyKey || nextActionId());
+  const promise = apiJsonRequest(url, options, idempotencyKey);
+  const entry = { promise, expiresAt: Date.now() + 10000 };
+  apiMutationRequests.set(signature, entry);
+  promise.catch(() => {
+    if (apiMutationRequests.get(signature) === entry) apiMutationRequests.delete(signature);
+  });
+  window.setTimeout(() => {
+    if (apiMutationRequests.get(signature) === entry) apiMutationRequests.delete(signature);
+  }, 10000);
+  return promise;
 }
 
 function showRequiredClientUpdate(requiredVersion = "") {
@@ -17083,6 +17108,7 @@ async function renderAdminMaintenance() {
   const config = result.config || {};
   const configHistory = Array.isArray(result.configHistory) ? result.configHistory : [];
   const backups = Array.isArray(result.backups) ? result.backups : [];
+  const backupRetention = result.backupRetention || { dailyDays: 14, weeklyUntilDays: 56, monthlyUntilDays: 366, deleteCount: 0 };
   const archives = Array.isArray(result.archives) ? result.archives : [];
   const archivePreview = result.archivePreview || { days: 180, counts: {} };
   const automation = result.automation || config.automation || {};
@@ -17124,7 +17150,7 @@ async function renderAdminMaintenance() {
   }
   if (tab === "storage") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
-    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Хранилище и безопасная очистка</strong><span>${escapeHtml(sizeText)}</span></div><div class="system-monitor-grid"><article><strong>PostgreSQL</strong><b>${pg.connected ? "Подключён" : "Недоступен"}</b><span>Размер ${escapeHtml(sizeText)}</span></article><article><strong>Использование лимита</strong><b>${Number(monitor.postgres?.usagePercent || 0)}%</b><span>Предупреждение от 70%</span></article><article><strong>Архивировать старше</strong><b>${Number(archivePreview.days || 180)} дней</b><span>${Object.values(archivePreview.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0)} записей доступно</span></article><article><strong>Корзина</strong><b>${trash.filter(item => item.canRestore).length}</b><span>Можно восстановить до окончательной очистки</span></article></div><div class="admin-guide-grid"><article><strong>Предпросмотр очистки</strong><p>Сначала откройте диагностику и убедитесь, какие записи будут затронуты.</p><button type="button" data-guide-open-tab="integrity">Проверить данные</button></article><article><strong>Архивация</strong><p>Переносит старые данные в защищённый архив, не уничтожая рабочие журналы.</p><button type="button" data-guide-open-tab="archives">Открыть архивы</button></article><article><strong>Резервная копия</strong><p>Перед массовой очисткой и окончательным удалением создаётся страховочная копия.</p><button type="button" data-guide-open-tab="backups">Открыть копии</button></article><article><strong>Корзина</strong><p>Удалённые записи можно восстановить до истечения срока хранения.</p><button type="button" data-guide-open-tab="trash">Открыть корзину</button></article></div>`;
+    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Хранилище и безопасная очистка</strong><span>${escapeHtml(sizeText)}</span></div><div class="system-monitor-grid"><article><strong>PostgreSQL</strong><b>${pg.connected ? "Подключён" : "Недоступен"}</b><span>Размер ${escapeHtml(sizeText)}</span></article><article><strong>Использование лимита</strong><b>${Number(monitor.postgres?.usagePercent || 0)}%</b><span>Предупреждение от 70%</span></article><article><strong>Архивировать старше</strong><b>${Number(archivePreview.days || 180)} дней</b><span>${Object.values(archivePreview.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0)} записей доступно</span></article><article><strong>Корзина</strong><b>${trash.filter(item => item.canRestore).length}</b><span>Можно восстановить до окончательной очистки</span></article></div><div class="admin-guide-grid"><article><strong>Предпросмотр очистки</strong><p>Сначала откройте диагностику и убедитесь, какие записи будут затронуты.</p><button type="button" data-guide-open-tab="integrity">Проверить данные</button></article><article><strong>Архивация</strong><p>Переносит старые данные в защищённый архив, не уничтожая рабочие журналы.</p><button type="button" data-guide-open-tab="archives">Открыть архивы</button></article><article><strong>Политика резервных копий</strong><p>14 дней — все автоматические копии, затем одна в неделю до 8 недель и одна в месяц до 12 месяцев. Ручные копии не удаляются.</p><b>К удалению сейчас: ${Number(backupRetention.deleteCount || 0)}</b><button type="button" data-apply-backup-retention ${Number(backupRetention.deleteCount || 0) ? "" : "disabled"}>Применить политику</button></article><article><strong>Корзина</strong><p>Удалённые записи можно восстановить до истечения срока хранения.</p><button type="button" data-guide-open-tab="trash">Открыть корзину</button></article></div>`;
   }
   if (tab === "forms") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
@@ -17218,6 +17244,19 @@ async function renderAdminMaintenance() {
   }
   ui.adminMaintenancePanel.querySelectorAll("[data-admin-maintenance-tab]").forEach(button => button.addEventListener("click", () => { current.adminMaintenanceTab = button.dataset.adminMaintenanceTab; renderAdminMaintenance(); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-guide-open-tab]").forEach(button => button.addEventListener("click", () => { current.adminMaintenanceTab = button.dataset.guideOpenTab; renderAdminMaintenance(); }));
+  ui.adminMaintenancePanel.querySelector("[data-apply-backup-retention]")?.addEventListener("click", async event => {
+    const reason = window.prompt("Укажите причину применения политики хранения копий:")?.trim();
+    if (!reason) return;
+    const password = window.prompt("Введите пароль администратора:");
+    if (!password) return;
+    const confirm = window.prompt("Для подтверждения введите ПРИМЕНИТЬ:")?.trim();
+    if (String(confirm || "").toUpperCase() !== "ПРИМЕНИТЬ") return window.alert("Операция отменена: контрольное слово введено неверно.");
+    await runButtonOperation(event.currentTarget, async () => {
+      const response = await apiJson("/api/admin/backups/retention", { method: "POST", timeout: 180000, body: JSON.stringify({ reason, password, confirm }) });
+      window.alert(`Политика применена. Удалено лишних автоматических копий: ${Number(response.deleted || 0)}. Ручные копии сохранены.`);
+      renderAdminMaintenance();
+    }, "Создаём страховочную копию…");
+  });
   ui.adminMaintenancePanel.querySelector("[data-print-admin-maintenance]")?.addEventListener("click", () => printCurrentDocument(tab === "report" ? "Контрольный отчёт системы" : tab === "broadcasts" ? "Объявления сотрудникам" : tab === "settings" ? "Административные настройки" : tab === "transfer" ? "Перенос административных настроек" : tab === "access" ? "Права и учётные записи" : tab === "automation" ? "Автоматическое обслуживание" : tab === "activity" ? "События сотрудников" : tab === "backups" ? "Резервные копии" : tab === "archives" ? "Архив данных" : tab === "integrity" ? "Диагностика целостности данных" : tab === "monitoring" ? "Состояние системы" : tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"));
   ui.adminMaintenancePanel.querySelector("[data-refresh-system-report]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, renderAdminMaintenance, "Проверяем…"));
   ui.adminMaintenancePanel.querySelector("[data-config-package-file]")?.addEventListener("change", async event => {
@@ -17259,7 +17298,8 @@ async function renderAdminMaintenance() {
   }));
   ui.adminMaintenancePanel.querySelector("[data-admin-automation-form]")?.addEventListener("submit", async event => {
     event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('button[type="submit"]');
-    await runButtonOperation(submit, async () => { await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason: "Изменение расписания резервных копий", config: { ...config, automation: { autoBackupEnabled: form.elements.autoBackupEnabled.checked, autoBackupIntervalHours: Number(form.elements.autoBackupIntervalHours.value), autoBackupKeepCount: Number(form.elements.autoBackupKeepCount.value) } } }) }); renderAdminMaintenance(); }, "Сохраняем…");
+    const password = window.prompt("Введите пароль администратора:"); if (!password) return;
+    await runButtonOperation(submit, async () => { await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason: "Изменение расписания резервных копий", password, config: { ...config, automation: { autoBackupEnabled: form.elements.autoBackupEnabled.checked, autoBackupIntervalHours: Number(form.elements.autoBackupIntervalHours.value), autoBackupKeepCount: Number(form.elements.autoBackupKeepCount.value) } } }) }); renderAdminMaintenance(); }, "Сохраняем…");
   });
   ui.adminMaintenancePanel.querySelector("[data-run-auto-backup]")?.addEventListener("click", async event => {
     if (!window.confirm("Создать полную резервную копию сейчас?")) return;
@@ -17337,9 +17377,11 @@ async function renderAdminMaintenance() {
     const lines = value => String(value || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean);
     const reason = window.prompt("Кратко укажите причину изменения настроек:", "Обновление административных справочников")?.trim();
     if (!reason) return;
+    const password = window.prompt("Введите пароль администратора:");
+    if (!password) return;
     const submit = form.querySelector('button[type="submit"]');
     await runButtonOperation(submit, async () => {
-      await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason, config: { companyName: form.elements.companyName.value, departments: lines(form.elements.departments.value), positions: lines(form.elements.positions.value), trashRetentionDays: Number(form.elements.trashRetentionDays.value), monitoring: { memoryAlertMb: Number(form.elements.memoryAlertMb.value), databaseSizeLimitMb: Number(form.elements.databaseSizeLimitMb.value), backupMaxAgeHours: Number(form.elements.backupMaxAgeHours.value), clientErrorThreshold: Number(form.elements.clientErrorThreshold.value) }, automation: config.automation || automation } }) });
+      await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason, password, config: { ...config, companyName: form.elements.companyName.value, departments: lines(form.elements.departments.value), positions: lines(form.elements.positions.value), trashRetentionDays: Number(form.elements.trashRetentionDays.value), monitoring: { memoryAlertMb: Number(form.elements.memoryAlertMb.value), databaseSizeLimitMb: Number(form.elements.databaseSizeLimitMb.value), backupMaxAgeHours: Number(form.elements.backupMaxAgeHours.value), clientErrorThreshold: Number(form.elements.clientErrorThreshold.value) }, automation: config.automation || automation } }) });
       renderAdminMaintenance();
     }, "Сохраняем…");
   });
@@ -17347,7 +17389,8 @@ async function renderAdminMaintenance() {
   ui.adminMaintenancePanel.querySelector("[data-admin-qr-route-form]")?.addEventListener("submit", async event => { event.preventDefault(); const form=event.currentTarget; const reason=window.prompt("Укажите причину изменения QR-маршрута:")?.trim();if(!reason)return;const password=window.prompt("Введите пароль администратора:");if(!password)return;const points=String(form.elements.points.value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);const userIds=String(form.elements.userIds.value||"").split(",").map(x=>x.trim()).filter(Boolean);await runButtonOperation(form.querySelector('button[type="submit"]'),async()=>{await apiJson("/api/admin/qr-routes",{method:"POST",body:JSON.stringify({name:form.elements.name.value,group:form.elements.group.value,role:form.elements.role.value,area:form.elements.area.value,userIds,points,reason,password})});renderAdminMaintenance();},"Сохраняем…"); });
   ui.adminMaintenancePanel.querySelectorAll("[data-admin-config-rollback]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Вернуть выбранную версию настроек? Текущая версия будет сохранена в истории.")) return;
-    await runButtonOperation(button, async () => { await apiJson("/api/admin/settings/rollback", { method: "POST", body: JSON.stringify({ versionId: button.dataset.adminConfigRollback, reason: "Откат администратором" }) }); renderAdminMaintenance(); }, "Восстанавливаем…");
+    const password = window.prompt("Введите пароль администратора:"); if (!password) return;
+    await runButtonOperation(button, async () => { await apiJson("/api/admin/settings/rollback", { method: "POST", body: JSON.stringify({ versionId: button.dataset.adminConfigRollback, reason: "Откат администратором", password }) }); renderAdminMaintenance(); }, "Восстанавливаем…");
   }));
   ui.adminMaintenancePanel.querySelectorAll("[data-resolve-system-alert]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Отметить предупреждение как проверенное?")) return;
