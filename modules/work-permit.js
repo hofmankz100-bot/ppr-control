@@ -14,6 +14,15 @@
   const DRAFT_KEY_PREFIX = "ppr-work-permit-draft-v4";
   const LANGUAGE_KEY = "ppr-work-permit-language-v1";
   const LOCAL_NUMBER_KEY = "ppr-work-permit-local-number-v1";
+  const WORK_PERMIT_CLIENT_PROTOCOL = "1";
+
+  function workPermitApiHeaders(extra = {}) {
+    return {
+      Accept: "application/json",
+      "X-Client-Protocol": WORK_PERMIT_CLIENT_PROTOCOL,
+      ...extra
+    };
+  }
 
   /*
    * Пока серверный API автоматической нумерации не подключён,
@@ -1251,10 +1260,9 @@
         "/api/work-permits/claim-number",
         {
           method: "POST",
-          headers: {
-            Accept: "application/json",
+          headers: workPermitApiHeaders({
             "Content-Type": "application/json"
-          },
+          }),
           body: JSON.stringify({
             requestId: permitState.pendingOutputRequestId
           }),
@@ -1859,7 +1867,7 @@
   async function loadInstructionRecords() {
     try {
       const response = await fetch("/api/work-permit-instructions", {
-        headers: { Accept: "application/json" }
+        headers: workPermitApiHeaders()
       });
       if (!response.ok) return;
       const payload = await response.json();
@@ -4989,7 +4997,7 @@
     try {
       const response = await fetch(`/api/work-permit-instructions/${encodeURIComponent(id)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: workPermitApiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           title: instruction.title,
           content,
@@ -6599,7 +6607,8 @@
         const instructionAckButton = event.target.closest("[data-instruction-ack]");
         if (instructionAckButton) {
           const id = instructionAckButton.dataset.instructionAck;
-          const toggle = screen.querySelector(`[data-instruction-toggle="${CSS.escape(id)}"]`);
+          const toggle = [...screen.querySelectorAll("[data-instruction-toggle]")]
+            .find(control => control.dataset.instructionToggle === id);
           if (!toggle?.checked) {
             window.alert("Сначала выберите эту инструкцию.");
             return;
@@ -6609,10 +6618,11 @@
             const instruction = SAFETY_INSTRUCTIONS.find(item => item.id === id);
             const response = await fetch("/api/work-permit-instructions/acknowledge", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: workPermitApiHeaders({ "Content-Type": "application/json" }),
               body: JSON.stringify({ instructionId: id, instructionTitle: instruction ? safetyInstructionTitle(instruction) : id })
             });
-            if (!response.ok) throw new Error("acknowledgement_not_saved");
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.ok !== true) throw new Error("acknowledgement_not_saved");
           } catch {
             instructionAckButton.disabled = false;
             window.alert("Не удалось сохранить ознакомление на сервере. Проверьте интернет и повторите.");

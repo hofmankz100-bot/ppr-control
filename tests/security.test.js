@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v410-shgrp-separated-columns";
+const APP_VERSION = "v411-permit-instruction-ack";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -112,6 +112,15 @@ test("production API requires a server session and rate-limits failed logins", a
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.match(cookie, /^ppr_session=/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
+    const instructionAckResponse = await fetch(`${baseUrl}/api/work-permit-instructions/acknowledge`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({ instructionId: "general", instructionTitle: "Инструкция по технике безопасности" })
+    });
+    assert.equal(instructionAckResponse.status, 200);
+    assert.equal((await instructionAckResponse.json()).ok, true);
+    const maintenanceAfterInstructionAck = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(maintenanceAfterInstructionAck.instructionAcknowledgements.some(item => item.instructionId === "general" && item.actorName === editor.name), true);
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
