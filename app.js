@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v409-shgrp-condensed-journal";
+const APP_VERSION = "v410-shgrp-separated-columns";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11423,6 +11423,32 @@ function gasSectionBCondensedValue(value, kind) {
   return String(value || "");
 }
 
+function gasSectionBAllGrpRoutes() {
+  return Array.from({ length: 11 }, (_, index) => `ГРП - Печь №${index + 1}`).join("\n");
+}
+
+function gasSectionBCategorizedValue(row, kind) {
+  const sourceLines = [row?.wells, row?.gasSmell]
+    .flatMap(value => gasSectionBDisplayLines(value))
+    .map(line => line.trim())
+    .filter(Boolean);
+  const matcher = kind === "controls"
+    ? /Контрольн(?:ая|ый|ые|ой)?\s+труб|колод/i
+    : /(?:^|\s)(?:ГРП|Газорегуляторн)/i;
+  const unique = [...new Set(sourceLines.filter(line => {
+    if (!matcher.test(line)) return false;
+    if (kind !== "controls") return true;
+    const controlNo = Number(line.match(/№\s*(\d+)/)?.[1] || 0);
+    return controlNo >= 1 && controlNo <= 5;
+  }))];
+  unique.sort((left, right) => {
+    const leftNo = Number(left.match(/№\s*(\d+)/)?.[1] || 999);
+    const rightNo = Number(right.match(/№\s*(\d+)/)?.[1] || 999);
+    return leftNo - rightNo || left.localeCompare(right, "ru");
+  });
+  return unique.join("\n");
+}
+
 function gasSectionBPrintHtml(value, stripShift = false) {
   const lines = gasSectionBDisplayLines(value, stripShift);
   return `<div class="gas-print-lines">${lines.map(line => `<div class="gas-print-line">${escapeHtml(line)}</div>`).join("")}</div>`;
@@ -11465,7 +11491,7 @@ function printGasJournalSheet(section) {
     : ["Дата", "Время", "Участок", "Контрольный трубопровод и колодцы", "Запах газа", "Охранная зона", "Замечания", "Принятые меры", "Подпись"];
   const body = rows.map(row => sectionA
     ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml(row.time || "")}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
-    : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(row.route || GAS_ROUTE_LIST.join("\n"), true)}</td><td>${gasSectionBPrintHtml(row.wells, true)}</td><td>${gasSectionBPrintHtml(row.gasSmell, true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
+    : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(gasSectionBAllGrpRoutes(), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "controls"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "grp"), true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
   ).join("");
   const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
   printFilledJournalDocument(title, `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
@@ -11583,13 +11609,15 @@ function renderGasJournal() {
           <tbody>
             ${datesB.map(date => {
               const row = gasJournalRecord("B", date);
-              const route = row.route || GAS_ROUTE_LIST.join("\n");
+              const route = gasSectionBAllGrpRoutes();
+              const controlChecks = gasSectionBCategorizedValue(row, "controls");
+              const grpChecks = gasSectionBCategorizedValue(row, "grp");
               return `<tr class="gas-day-row gas-route-day-row ${gasJournalDateHasFilledRow("B", date) ? "" : "print-empty-day"}">
                 <td data-mobile-label="Дата">${dateHuman(date)}</td>
                 <td class="gas-time-cell" data-mobile-label="Время">${gasSectionBScreenHtml(gasSectionBTimeLabel(row), "Время", false)}</td>
                 <td class="gas-route-cell" data-mobile-label="Участок">${gasSectionBScreenHtml(route, "Участок")}</td>
-                <td data-mobile-label="Трубопровод и колодцы">${gasSectionBValueHtml(row.wells, "Трубопровод и колодцы", gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"]))}</td>
-                <td data-mobile-label="Запах газа">${gasSectionBValueHtml(row.gasSmell, "Запах газа", gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Исправно", "Есть запах газа", "Нет", "Есть"]))}</td>
+                <td data-mobile-label="Трубопровод и колодцы">${controlChecks ? gasSectionBScreenHtml(controlChecks, "Трубопровод и колодцы") : gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"])}</td>
+                <td data-mobile-label="Запах газа">${grpChecks ? gasSectionBScreenHtml(grpChecks, "Запах газа") : gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Исправно", "Есть запах газа", "Нет", "Есть"])}</td>
                 <td data-mobile-label="Охранная зона">${gasSectionBValueHtml(row.protectionZone, "Охранная зона", gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"]))}</td>
                 <td data-mobile-label="Замечания">${gasSectionBValueHtml(gasSectionBCondensedValue(row.remarks, "remarks"), "Замечания", gasInputHtml("B", date, "remarks", row.remarks), row.remarks)}</td>
                 <td data-mobile-label="Принятые меры">${gasSectionBValueHtml(gasSectionBCondensedValue(row.actions, "actions"), "Принятые меры", gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"]), row.actions)}</td>

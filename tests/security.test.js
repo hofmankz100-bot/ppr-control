@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v409-shgrp-condensed-journal";
+const APP_VERSION = "v410-shgrp-separated-columns";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
