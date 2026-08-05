@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v411-permit-instruction-ack";
+const APP_VERSION = "v412-permit-ack-restore";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -121,6 +121,8 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal((await instructionAckResponse.json()).ok, true);
     const maintenanceAfterInstructionAck = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(maintenanceAfterInstructionAck.instructionAcknowledgements.some(item => item.instructionId === "general" && item.actorName === editor.name), true);
+    const instructionStateAfterAck = await fetch(`${baseUrl}/api/work-permit-instructions`, { headers: { cookie, "x-client-protocol": CLIENT_PROTOCOL_VERSION } }).then(response => response.json());
+    assert.equal(instructionStateAfterAck.acknowledgedIds.includes("general"), true);
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);

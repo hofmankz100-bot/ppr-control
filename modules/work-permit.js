@@ -828,6 +828,7 @@
   let sectionSelectorVisible = false;
   let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
+  const serverAcknowledgedInstructionIds = new Set();
 
   let activeOptionalSections = new Set(defaultOptionalSectionIds());
   let collapsedOptionalSections = new Set();
@@ -1889,6 +1890,9 @@
       instructionRecords.clear();
       (Array.isArray(payload?.records) ? payload.records : [])
         .forEach(record => instructionRecords.set(String(record.id), record));
+      serverAcknowledgedInstructionIds.clear();
+      (Array.isArray(payload?.acknowledgedIds) ? payload.acknowledgedIds : [])
+        .forEach(id => serverAcknowledgedInstructionIds.add(String(id)));
     } catch {}
   }
 
@@ -4899,12 +4903,13 @@
   function acknowledgedInstructionIds() {
     const textarea = safetyDetails("5.9")?.querySelector("textarea");
     const storedIds = (textarea?.dataset.acknowledged || "").split(",").filter(Boolean);
-    if (storedIds.length) return new Set(storedIds);
+    const ids = new Set([...serverAcknowledgedInstructionIds, ...storedIds]);
     const value = textarea?.value || "";
-    return new Set(SAFETY_INSTRUCTIONS.filter(item => {
+    SAFETY_INSTRUCTIONS.filter(item => {
       const kkTitle = SAFETY_INSTRUCTION_TITLES_KK[item.id] || "";
       return value.includes(item.title) || (kkTitle && value.includes(kkTitle));
-    }).map(item => item.id));
+    }).forEach(item => ids.add(item.id));
+    return ids;
   }
 
   function syncInstructionAcknowledgements(ids = acknowledgedInstructionIds()) {
@@ -6131,6 +6136,7 @@
     if (/^brigade_.*_(briefing|instructor)$/.test(control.name)) return false;
     if (/^approval_.*_date$/.test(control.name)) return false;
     if (/^change_.*_(issuer|date)$/.test(control.name)) return false;
+    if (control.name === "completed_measures_extra") return false;
     return true;
   }
 
@@ -6629,6 +6635,7 @@
             return;
           }
           instructionAckButton.disabled = false;
+          serverAcknowledgedInstructionIds.add(id);
           const ids = acknowledgedInstructionIds();
           ids.add(id);
           syncInstructionAcknowledgements(ids);

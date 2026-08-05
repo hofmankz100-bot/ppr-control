@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=411-permit-instruction-ack/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=411-permit-instruction-ack/);
-  assert.match(html, /modules\/work-permit\.js\?v=411-permit-instruction-ack/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=412-permit-ack-restore/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=412-permit-ack-restore/);
+  assert.match(html, /modules\/work-permit\.js\?v=412-permit-ack-restore/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -52,6 +52,8 @@ test("instruction acknowledgements are stored on the server and visible to admin
   assert.match(permit, /acknowledgement_not_saved/);
   assert.match(permit, /X-Client-Protocol/);
   assert.match(permit, /payload\?\.ok !== true/);
+  assert.match(permit, /serverAcknowledgedInstructionIds/);
+  assert.match(permit, /completed_measures_extra/);
   assert.match(app, /data-admin-maintenance-tab="instructionLog"/);
   assert.match(app, /Журнал ознакомления с инструкциями/);
 });
@@ -238,10 +240,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v411-permit-instruction-ack/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=411-permit-instruction-ack/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=411-permit-instruction-ack/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=411-permit-instruction-ack/);
-  assert.match(serviceWorker, /styles\.css\?v=411-permit-instruction-ack/);
-  assert.match(serviceWorker, /app\.js\?v=411-permit-instruction-ack/);
+  assert.match(serviceWorker, /ppr-v412-permit-ack-restore/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=412-permit-ack-restore/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=412-permit-ack-restore/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=412-permit-ack-restore/);
+  assert.match(serviceWorker, /styles\.css\?v=412-permit-ack-restore/);
+  assert.match(serviceWorker, /app\.js\?v=412-permit-ack-restore/);
 });

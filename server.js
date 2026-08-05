@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v411-permit-instruction-ack";
+const SERVER_VERSION = "v412-permit-ack-restore";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5666,6 +5666,7 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
     const db = readDb();
     const actorKey = attendanceUserKey(req.authUser || {});
+    const actorId = String(req.authUser?.id || req.authUser?.employeeId || req.authUser?.phone || "");
     const isAdmin = req.authUser?.role === "editor";
     const records = Object.entries(db.workPermitInstructions || {}).map(([id, raw]) => ({
       id,
@@ -5677,7 +5678,12 @@ async function handleApi(req, res, pathname, url) {
       updatedAt: String(raw?.updatedAt || ""),
       updatedBy: String(raw?.updatedBy || "")
     }));
-    sendJson(res, 200, { ok: true, isAdmin, records, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName, formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies } });
+    const acknowledgedIds = [...new Set((db.workPermitInstructionAcknowledgements || [])
+      .filter(item => String(item?.actorId || "") === actorId)
+      .filter(item => String(item?.instructionUpdatedAt || "") === String(db.workPermitInstructions?.[item.instructionId]?.updatedAt || ""))
+      .map(item => String(item?.instructionId || ""))
+      .filter(Boolean))];
+    sendJson(res, 200, { ok: true, isAdmin, records, acknowledgedIds, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName, formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies } });
     return true;
   }
 

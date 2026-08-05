@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v411-permit-instruction-ack";
+const APP_VERSION = "v412-permit-ack-restore";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
