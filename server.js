@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v401-admin-reliability";
+const SERVER_VERSION = "v402-shgrp-grp-qr";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4314,6 +4314,78 @@ async function handleApi(req, res, pathname, url) {
       if (mark?.done) checks[recordKey] = record;
     });
     sendJson(res, 200, { ok: true, equipmentId, date, shift, group, checks });
+    return true;
+  }
+
+  if (pathname === "/api/qr-walk/grp-result" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const date = String(body.date || "");
+    const shift = String(body.shift || "");
+    const sourceName = [body.route, body.equipment, body.node].map(value => String(value || "")).join(" ");
+    const grpMatch = sourceName.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i);
+    const grpNumber = Number(grpMatch?.[1] || 0);
+    const hasRemark = body.hasRemark === true;
+    const comment = String(body.comment || "").trim().slice(0, 2000);
+    if (!grpNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || (hasRemark && !comment)) {
+      sendJson(res, 400, { ok: false, error: "grp_qr_result_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.gasJournal ||= {};
+      const id = `B::${date}`;
+      const now = new Date().toISOString();
+      const current = db.gasJournal[id] && typeof db.gasJournal[id] === "object" ? db.gasJournal[id] : {};
+      const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? { ...current.grpQrChecks } : {};
+      const checkKey = `${shift}:${grpNumber}`;
+      if (!checks[checkKey]) {
+        checks[checkKey] = {
+          grpNumber,
+          route: `ГРП - Печь №${grpNumber}`,
+          shift,
+          shiftLabel: shift === "night" ? "Ночь" : "День",
+          at: now,
+          status: hasRemark ? "remark" : "ok",
+          comment: hasRemark ? comment : "Замечаний нет",
+          byId: String(req.authUser?.id || ""),
+          byName: String(req.authUser?.name || "").slice(0, 200),
+          byRole: String(req.authUser?.role || "").slice(0, 100)
+        };
+      }
+      const entries = Object.values(checks).sort((a, b) => {
+        const shiftOrder = (a.shift === "day" ? 0 : 1) - (b.shift === "day" ? 0 : 1);
+        return shiftOrder || Number(a.grpNumber || 0) - Number(b.grpNumber || 0);
+      });
+      const line = (entry, value) => `${entry.shiftLabel} · ${entry.route} — ${value}`;
+      const names = [...new Set(entries.map(entry => entry.byName).filter(Boolean))];
+      const row = {
+        ...current,
+        id,
+        section: "B",
+        date,
+        time: new Date(entries[entries.length - 1]?.at || now).toLocaleTimeString("ru-RU", { timeZone: "Asia/Qyzylorda", hour: "2-digit", minute: "2-digit", hour12: false }),
+        route: entries.map(entry => `${entry.shiftLabel} · ${entry.route}`).join("; "),
+        wells: entries.map(entry => line(entry, "Исправно")).join("; "),
+        gasSmell: entries.map(entry => line(entry, entry.status === "remark" ? "Есть запах газа" : "Исправно")).join("; "),
+        protectionZone: entries.map(entry => line(entry, "Без нарушений")).join("; "),
+        remarks: entries.map(entry => line(entry, entry.comment || "Замечаний нет")).join("; "),
+        actions: entries.map(entry => line(entry, entry.status === "remark" ? "Требуется" : "Не требуется")).join("; "),
+        checkedBy: names.join(", ") || String(req.authUser?.name || "Сотрудник"),
+        updatedAt: now,
+        updatedByName: String(req.authUser?.name || ""),
+        updatedByRole: String(req.authUser?.role || ""),
+        entryStatus: "fixed",
+        fixedAt: now,
+        fixedByName: names.join(", ") || String(req.authUser?.name || "Сотрудник"),
+        source: "qr-grp",
+        grpQrChecks: checks
+      };
+      db.gasJournal[id] = row;
+      writeDb(db, { action: "shgrp_section_b_qr_recorded", user: req.authUser, targetId: checkKey, targetLabel: `ГРП - Печь №${grpNumber}`, date, shift, hasRemark });
+      return { id, row, alreadyDone: Boolean(current.grpQrChecks?.[checkKey]) };
+    });
+    const stateVersion = broadcastState(String(body.clientId || "api"), String(body.actionId || ""), { gasJournal: { [result.id]: result.row } }, true);
+    sendJson(res, 200, { ok: true, linked: true, alreadyDone: result.alreadyDone, id: result.id, row: result.row, stateVersion });
     return true;
   }
 

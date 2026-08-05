@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v401-admin-reliability";
+const APP_VERSION = "v402-shgrp-grp-qr";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -4660,6 +4660,48 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
   }
 }
 
+function grpFurnaceRouteForQr(equipmentId, nodeIndex) {
+  const eq = equipmentById(equipmentId);
+  const source = `${eq?.name || ""} ${eq?.nodes?.[nodeIndex] || ""}`;
+  const match = source.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i);
+  return match ? `ГРП - Печь №${Number(match[1])}` : "";
+}
+
+async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comment = "") {
+  const route = grpFurnaceRouteForQr(parsed.equipmentId, parsed.nodeIndex);
+  if (!route) return false;
+  const eq = equipmentById(parsed.equipmentId);
+  try {
+    const result = await apiJson("/api/qr-walk/grp-result", {
+      method: "POST",
+      timeout: 15000,
+      body: JSON.stringify({
+        actionId: nextActionId(),
+        clientId: CLIENT_ID,
+        equipmentId: parsed.equipmentId,
+        nodeIndex: parsed.nodeIndex,
+        equipment: eq?.name || "",
+        node: eq?.nodes?.[parsed.nodeIndex] || "",
+        route,
+        date: shiftInfo.date,
+        shift: shiftInfo.key,
+        hasRemark,
+        comment: hasRemark ? String(comment || "").trim() : "Замечаний нет"
+      })
+    });
+    if (result?.id && result?.row) {
+      state.gasJournal ||= {};
+      state.gasJournal[result.id] = result.row;
+      persistStateLocally(state);
+    }
+    return true;
+  } catch (error) {
+    console.warn("SHGRP QR link failed", error);
+    showAppToast("QR-обход сохранён, но запись ШГРП ожидает связи с сервером.", "error");
+    return false;
+  }
+}
+
 async function refreshQrWalkStatusFromServer(equipmentId, shiftInfo = currentWalkShift()) {
   if (!navigator.onLine) return false;
   try {
@@ -5395,6 +5437,7 @@ function promptQrWalkDecision(parsed) {
       setButtonBusy(button, true, "Сохраняем...");
       markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
       const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+      await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
       finish("continue");
     });
@@ -5423,13 +5466,15 @@ function promptQrWalkDecision(parsed) {
       try {
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
         item.updatedAt = new Date().toISOString();
         saveState();
-        publishStateNow().catch(scheduleRemoteRetry);
+        await publishStateNow().catch(scheduleRemoteRetry);
+        await publishGrpShgrpResult(parsed, shift, true, comment);
         showQrSavedNotice("Обход сохранён с замечанием");
         finish("comment-saved");
       } catch {
@@ -11390,9 +11435,10 @@ function gasControlAriaLabel(section, field) {
 
 function gasSelectHtml(section, date, field, value, options) {
   const locked = gasJournalEntryIsFixed(section, gasJournalRecord(section, date));
+  const normalizedOptions = String(value || "").trim() && !options.includes(String(value)) ? [String(value), ...options] : options;
   return `<select aria-label="${escapeHtml(gasControlAriaLabel(section, field))}" data-gas-section="${section}" data-gas-date="${date}" data-gas-field="${field}" ${locked ? "disabled" : ""}>
     <option value=""></option>
-    ${options.map(option => `<option value="${escapeHtml(option)}" ${String(value || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+    ${normalizedOptions.map(option => `<option value="${escapeHtml(option)}" ${String(value || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
   </select>`;
 }
 
@@ -11485,7 +11531,7 @@ function renderGasJournal() {
                 <td data-mobile-label="Время">${escapeHtml(row.time || "")}</td>
                 <td class="gas-route-cell" data-mobile-label="Участок">${escapeHtml(route).replace(/\n/g, "<br>")}</td>
                 <td data-mobile-label="Трубопровод и колодцы">${gasSelectHtml("B", date, "wells", row.wells, ["Исправно", "Неисправно"])}</td>
-                <td data-mobile-label="Запах газа">${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Нет", "Есть"])}</td>
+                <td data-mobile-label="Запах газа">${gasSelectHtml("B", date, "gasSmell", row.gasSmell, ["Исправно", "Есть запах газа", "Нет", "Есть"])}</td>
                 <td data-mobile-label="Охранная зона">${gasSelectHtml("B", date, "protectionZone", row.protectionZone, ["Без нарушений", "Нарушение"])}</td>
                 <td data-mobile-label="Замечания">${gasInputHtml("B", date, "remarks", row.remarks)}</td>
                 <td data-mobile-label="Принятые меры">${gasSelectHtml("B", date, "actions", row.actions, ["Не требуется", "Требуется"])}</td>

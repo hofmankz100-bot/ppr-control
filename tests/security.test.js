@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v401-admin-reliability";
+const APP_VERSION = "v402-shgrp-grp-qr";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -115,6 +115,22 @@ test("production API requires a server session and rate-limits failed logins", a
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
+    const grpDate = "2026-08-05";
+    const saveGrpResult = payload => fetch(`${baseUrl}/api/qr-walk/grp-result`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ date: grpDate, shift: "day", equipment: "Газовое хозяйство", ...payload })
+    });
+    assert.equal((await saveGrpResult({ node: "ГРП - Печь №1", hasRemark: false })).status, 200);
+    assert.equal((await saveGrpResult({ node: "ГРП - Печь №2", hasRemark: true, comment: "Проверить соединение" })).status, 200);
+    const repeatedGrp = await saveGrpResult({ node: "ГРП - Печь №1", hasRemark: true, comment: "Не должен заменить первую запись" }).then(response => response.json());
+    assert.equal(repeatedGrp.alreadyDone, true);
+    const stateWithGrp = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const grpRow = stateWithGrp.gasJournal[`B::${grpDate}`];
+    assert.match(grpRow.gasSmell, /ГРП - Печь №1 — Исправно/);
+    assert.match(grpRow.gasSmell, /ГРП - Печь №2 — Есть запах газа/);
+    assert.match(grpRow.remarks, /ГРП - Печь №1 — Замечаний нет/);
+    assert.match(grpRow.remarks, /ГРП - Печь №2 — Проверить соединение/);
     const rejectedDelete = await fetch(`${baseUrl}/api/users`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
