@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v405-shgrp-protection-zone";
+const APP_VERSION = "v406-shgrp-gas-point-recovery";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -4663,7 +4663,8 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
 function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
   const eq = equipmentById(equipmentId);
   const source = `${eq?.name || ""} ${eq?.nodes?.[nodeIndex] || ""}`;
-  const grpMatch = source.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i);
+  const grpMatch = source.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i)
+    || source.match(/Газо\s*регуляторн(?:ый|ого|ому|ым)?\s+пункт\s*№?\s*(1[01]|[1-9])(?!\d)/i);
   if (grpMatch) return `ГРП - Печь №${Number(grpMatch[1])}`;
   const tubeMatch = source.match(/Контрольн(?:ая|ой|ую)?\s+трубк(?:а|и|у)?\s*№?\s*([1-5])(?!\d)/i);
   if (tubeMatch) return `Контрольная трубка №${Number(tubeMatch[1])}`;

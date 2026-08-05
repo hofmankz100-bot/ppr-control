@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v405-shgrp-protection-zone";
+const APP_VERSION = "v406-shgrp-gas-point-recovery";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -132,6 +132,7 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal((await saveGrpResult({ node: "Охранная зона газопровода", hasRemark: true, comment: "Повреждено ограждение" })).status, 200);
     const repeatedProtection = await saveGrpResult({ node: "Охранная зона газопровода", hasRemark: false }).then(response => response.json());
     assert.equal(repeatedProtection.alreadyDone, true);
+    assert.equal((await saveGrpResult({ node: "Газо регуляторный пункт №10", hasRemark: true, comment: "Проверить настройку давления" })).status, 200);
     const stateWithGrp = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     const grpRow = stateWithGrp.gasJournal[`B::${grpDate}`];
     assert.match(grpRow.gasSmell, /ГРП - Печь №1 — Исправно/);
@@ -145,6 +146,8 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.match(grpRow.protectionZone, /Охранная зона газопровода — есть нарушение/);
     assert.match(grpRow.remarks, /Охранная зона газопровода — Повреждено ограждение/);
     assert.match(grpRow.actions, /Охранная зона газопровода — Требуется/);
+    assert.match(grpRow.gasSmell, /ГРП - Печь №10 — Есть запах газа/);
+    assert.match(grpRow.remarks, /ГРП - Печь №10 — Проверить настройку давления/);
     const rejectedDelete = await fetch(`${baseUrl}/api/users`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },

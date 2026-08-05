@@ -98,6 +98,7 @@ test.before(async () => {
       "1:1:2026-07-16": { to: { commentLog: [remark("remark-any-author", "Директор производства", "productionDirector", "Предупреждение другой роли")] } },
       "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } }
       ,
+      "10:0:2026-07-16": { to: { commentLog: [remark("remark-gas-10", "Электрик Один", "electrician", "Проверить регулятор", "2026-07-16T05:30:00.000Z")] } },
       "3:0:2026-07-16": {
         to: {
           commentLog: [{
@@ -206,6 +207,19 @@ test.before(async () => {
         }
       }
     },
+    qrWalkJournal: [{
+      id: "10:0:2026-07-16:technical:day",
+      equipmentId: 10,
+      nodeIndex: 0,
+      date: "2026-07-16",
+      shift: "day",
+      group: "technical",
+      at: "2026-07-16T05:29:00.000Z",
+      byRole: "electrician",
+      byName: "Электрик Один",
+      equipment: "Газовое хозяйство",
+      node: "Газо регуляторный пункт №10"
+    }],
     pprSheets: {},
     journalDueSince: {},
     auditHistory: [],
@@ -267,6 +281,12 @@ test("startup stops an existing painting-shop downtime already awaiting chief co
   assert.equal(stop.closeAwaitingConfirmation, true);
   assert.equal(stop.closedByRemarkId, pending.id);
   assert.deepEqual(pending.resolutionDowntimeIds, [stop.id]);
+  const recoveredGasQr = state.gasJournal["B::2026-07-16"].grpQrChecks["day:10"];
+  assert.equal(recoveredGasQr.route, "ГРП - Печь №10");
+  assert.equal(recoveredGasQr.status, "remark");
+  assert.equal(recoveredGasQr.comment, "Проверить регулятор");
+  assert.equal(recoveredGasQr.remarkId, "remark-gas-10");
+  assert.match(state.gasJournal["B::2026-07-16"].gasSmell, /ГРП - Печь №10 — Есть запах газа/);
 });
 
 test("closes a downtime only after the dedicated server action and protects it from stale reopen", async () => {
@@ -791,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=405-shgrp-protection-zone/);
-  assert.match(html, /styles\.css\?v=405-shgrp-protection-zone/);
-  assert.match(serviceWorker, /app\.js\?v=405-shgrp-protection-zone/);
+  assert.match(html, /app\.js\?v=406-shgrp-gas-point-recovery/);
+  assert.match(html, /styles\.css\?v=406-shgrp-gas-point-recovery/);
+  assert.match(serviceWorker, /app\.js\?v=406-shgrp-gas-point-recovery/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

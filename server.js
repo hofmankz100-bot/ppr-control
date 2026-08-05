@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v405-shgrp-protection-zone";
+const SERVER_VERSION = "v406-shgrp-gas-point-recovery";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -473,6 +473,7 @@ async function initializeStorage() {
     migrateLegacyDirectorApprovals(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
+    reconcileMissingShgrpQrChecksServer(db);
     writeDbFile(db);
     storageStatus = { mode: "json" };
     return storageStatus;
@@ -538,6 +539,7 @@ async function initializeStorage() {
       purgeRemovedEquipmentData(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
       reconcilePendingRemarkDowntimes(postgresState);
+      reconcileMissingShgrpQrChecksServer(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -553,6 +555,7 @@ async function initializeStorage() {
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
       reconcilePendingRemarkDowntimes(postgresState);
+      reconcileMissingShgrpQrChecksServer(postgresState);
       await pool.query(
         `INSERT INTO ppr_settings(setting_key, payload, updated_at)
          VALUES ('full_state', $1::jsonb, now())
@@ -3591,6 +3594,85 @@ function changedStatePatch(before = {}, after = {}) {
   return patch;
 }
 
+function shgrpSectionBDescriptorServer(source = "") {
+  const text = String(source || "");
+  const grpMatch = text.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i)
+    || text.match(/Газо\s*регуляторн(?:ый|ого|ому|ым)?\s+пункт\s*№?\s*(1[01]|[1-9])(?!\d)/i);
+  if (grpMatch) {
+    const number = Number(grpMatch[1]);
+    return { kind: "grp", number, grpNumber: number, tubeNumber: 0, routeLabel: `ГРП - Печь №${number}` };
+  }
+  const tubeMatch = text.match(/Контрольн(?:ая|ой|ую)?\s+трубк(?:а|и|у)?\s*№?\s*([1-5])(?!\d)/i);
+  if (tubeMatch) {
+    const number = Number(tubeMatch[1]);
+    return { kind: "controlTube", number, grpNumber: 0, tubeNumber: number, routeLabel: `Контрольная трубка №${number}` };
+  }
+  if (/Охранн(?:ая|ой|ую)?\s+зон(?:а|ы|у)?\s+газопровод(?:а|у)?/i.test(text)) {
+    return { kind: "protectionZone", number: 1, grpNumber: 0, tubeNumber: 0, routeLabel: "Охранная зона газопровода" };
+  }
+  return null;
+}
+
+function shgrpCheckKeyServer(descriptor, shift) {
+  if (descriptor.kind === "protectionZone") return `protection:${shift}`;
+  if (descriptor.kind === "controlTube") return `tube:${shift}:${descriptor.number}`;
+  return `${shift}:${descriptor.number}`;
+}
+
+function walkShiftAtServer(value) {
+  const date = new Date(value || Date.now());
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23"
+  }).formatToParts(date).filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  const hour = Number(parts.hour || 0);
+  const localDate = `${parts.year}-${parts.month}-${parts.day}`;
+  if (hour >= 8 && hour < 20) return { date: localDate, shift: "day", label: "День" };
+  if (hour >= 20) return { date: localDate, shift: "night", label: "Ночь" };
+  const previous = new Date(`${localDate}T00:00:00+05:00`);
+  previous.setUTCDate(previous.getUTCDate() - 1);
+  return { date: previous.toISOString().slice(0, 10), shift: "night", label: "Ночь" };
+}
+
+function reconcileMissingShgrpQrChecksServer(db) {
+  db.gasJournal ||= {};
+  let changed = false;
+  (Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : []).forEach(mark => {
+    if (mark?.invalid) return;
+    const descriptor = shgrpSectionBDescriptorServer(`${mark.equipment || ""} ${mark.node || ""}`);
+    if (!descriptor || !/^\d{4}-\d{2}-\d{2}$/.test(String(mark.date || "")) || !["day", "night"].includes(mark.shift)) return;
+    const rowId = `B::${mark.date}`;
+    const current = db.gasJournal[rowId] && typeof db.gasJournal[rowId] === "object" ? db.gasJournal[rowId] : {};
+    const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? { ...current.grpQrChecks } : {};
+    const checkKey = shgrpCheckKeyServer(descriptor, mark.shift);
+    if (checks[checkKey]) return;
+    const recordKey = `${Number(mark.equipmentId)}:${Number(mark.nodeIndex)}:${mark.date}`;
+    const remarks = Array.isArray(db.checks?.[recordKey]?.to?.commentLog) ? db.checks[recordKey].to.commentLog : [];
+    const linkedRemark = remarks.slice().reverse().find(entry => {
+      const stamp = walkShiftAtServer(entry?.at);
+      return stamp.date === mark.date && stamp.shift === mark.shift;
+    });
+    checks[checkKey] = {
+      kind: descriptor.kind,
+      grpNumber: descriptor.grpNumber,
+      tubeNumber: descriptor.tubeNumber,
+      route: descriptor.routeLabel,
+      shift: mark.shift,
+      shiftLabel: mark.shift === "night" ? "Ночь" : "День",
+      at: String(mark.at || linkedRemark?.at || new Date().toISOString()),
+      status: linkedRemark ? "remark" : "ok",
+      comment: linkedRemark ? String(linkedRemark.text || "Замечание") : "Замечаний нет",
+      sourceRecordKey: recordKey,
+      remarkId: String(linkedRemark?.id || ""),
+      byId: "",
+      byName: String(mark.byName || linkedRemark?.name || "").slice(0, 200),
+      byRole: String(mark.byRole || linkedRemark?.role || "").slice(0, 100)
+    };
+    db.gasJournal[rowId] = buildGrpSectionBRowServer({ ...current, grpQrChecks: checks }, mark.date, new Date().toISOString(), { name: "Система", role: "system" });
+    changed = true;
+  });
+  return changed;
+}
+
 function buildGrpSectionBRowServer(current = {}, date = "", now = new Date().toISOString(), actor = {}) {
   const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? current.grpQrChecks : {};
   const entries = Object.values(checks).sort((a, b) => {
@@ -4395,17 +4477,10 @@ async function handleApi(req, res, pathname, url) {
     const date = String(body.date || "");
     const shift = String(body.shift || "");
     const sourceName = [body.route, body.equipment, body.node].map(value => String(value || "")).join(" ");
-    const grpMatch = sourceName.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i);
-    const grpNumber = Number(grpMatch?.[1] || 0);
-    const tubeMatch = sourceName.match(/Контрольн(?:ая|ой|ую)?\s+трубк(?:а|и|у)?\s*№?\s*([1-5])(?!\d)/i);
-    const tubeNumber = Number(tubeMatch?.[1] || 0);
-    const protectionZone = /Охранн(?:ая|ой|ую)?\s+зон(?:а|ы|у)?\s+газопровод(?:а|у)?/i.test(sourceName);
-    const kind = protectionZone ? "protectionZone" : tubeNumber ? "controlTube" : "grp";
-    const routeNumber = protectionZone ? 1 : tubeNumber || grpNumber;
-    const routeLabel = protectionZone ? "Охранная зона газопровода" : tubeNumber ? `Контрольная трубка №${tubeNumber}` : `ГРП - Печь №${grpNumber}`;
+    const descriptor = shgrpSectionBDescriptorServer(sourceName);
     const hasRemark = body.hasRemark === true;
     const comment = String(body.comment || "").trim().slice(0, 2000);
-    if (!routeNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || (hasRemark && !comment)) {
+    if (!descriptor || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || (hasRemark && !comment)) {
       sendJson(res, 400, { ok: false, error: "grp_qr_result_invalid" });
       return true;
     }
@@ -4416,17 +4491,17 @@ async function handleApi(req, res, pathname, url) {
       const now = new Date().toISOString();
       const current = db.gasJournal[id] && typeof db.gasJournal[id] === "object" ? db.gasJournal[id] : {};
       const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? { ...current.grpQrChecks } : {};
-      const checkKey = kind === "protectionZone" ? `protection:${shift}` : kind === "controlTube" ? `tube:${shift}:${tubeNumber}` : `${shift}:${grpNumber}`;
+      const checkKey = shgrpCheckKeyServer(descriptor, shift);
       if (!checks[checkKey]) {
         const sourceRecordKey = `${Number(body.equipmentId)}:${Number(body.nodeIndex)}:${date}`;
         const linkedRemark = db.checks?.[sourceRecordKey]?.to?.commentLog?.slice().reverse().find(entry =>
           !entry?.resolved && String(entry?.text || "").trim() === comment
         );
         checks[checkKey] = {
-          kind,
-          grpNumber,
-          tubeNumber,
-          route: routeLabel,
+          kind: descriptor.kind,
+          grpNumber: descriptor.grpNumber,
+          tubeNumber: descriptor.tubeNumber,
+          route: descriptor.routeLabel,
           shift,
           shiftLabel: shift === "night" ? "Ночь" : "День",
           at: now,
@@ -4441,7 +4516,7 @@ async function handleApi(req, res, pathname, url) {
       }
       const row = buildGrpSectionBRowServer({ ...current, grpQrChecks: checks }, date, now, req.authUser);
       db.gasJournal[id] = row;
-      writeDb(db, { action: "shgrp_section_b_qr_recorded", user: req.authUser, targetId: checkKey, targetLabel: routeLabel, date, shift, hasRemark });
+      writeDb(db, { action: "shgrp_section_b_qr_recorded", user: req.authUser, targetId: checkKey, targetLabel: descriptor.routeLabel, date, shift, hasRemark });
       return { id, row, alreadyDone: Boolean(current.grpQrChecks?.[checkKey]) };
     });
     const stateVersion = broadcastState(String(body.clientId || "api"), String(body.actionId || ""), { gasJournal: { [result.id]: result.row } }, true);
