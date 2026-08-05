@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=407-shgrp-grp-parentheses/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=407-shgrp-grp-parentheses/);
-  assert.match(html, /modules\/work-permit\.js\?v=407-shgrp-grp-parentheses/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=408-shgrp-journal-layout/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=408-shgrp-journal-layout/);
+  assert.match(html, /modules\/work-permit\.js\?v=408-shgrp-journal-layout/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -236,10 +236,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v407-shgrp-grp-parentheses/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=407-shgrp-grp-parentheses/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=407-shgrp-grp-parentheses/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=407-shgrp-grp-parentheses/);
-  assert.match(serviceWorker, /styles\.css\?v=407-shgrp-grp-parentheses/);
-  assert.match(serviceWorker, /app\.js\?v=407-shgrp-grp-parentheses/);
+  assert.match(serviceWorker, /ppr-v408-shgrp-journal-layout/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=408-shgrp-journal-layout/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=408-shgrp-journal-layout/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=408-shgrp-journal-layout/);
+  assert.match(serviceWorker, /styles\.css\?v=408-shgrp-journal-layout/);
+  assert.match(serviceWorker, /app\.js\?v=408-shgrp-journal-layout/);
 });
