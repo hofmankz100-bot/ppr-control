@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v404-shgrp-control-tubes";
+const APP_VERSION = "v405-shgrp-protection-zone";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -4666,7 +4666,10 @@ function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
   const grpMatch = source.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i);
   if (grpMatch) return `ГРП - Печь №${Number(grpMatch[1])}`;
   const tubeMatch = source.match(/Контрольн(?:ая|ой|ую)?\s+трубк(?:а|и|у)?\s*№?\s*([1-5])(?!\d)/i);
-  return tubeMatch ? `Контрольная трубка №${Number(tubeMatch[1])}` : "";
+  if (tubeMatch) return `Контрольная трубка №${Number(tubeMatch[1])}`;
+  return /Охранн(?:ая|ой|ую)?\s+зон(?:а|ы|у)?\s+газопровод(?:а|у)?/i.test(source)
+    ? "Охранная зона газопровода"
+    : "";
 }
 
 async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comment = "") {

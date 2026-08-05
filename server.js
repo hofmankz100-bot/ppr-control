@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v404-shgrp-control-tubes";
+const SERVER_VERSION = "v405-shgrp-protection-zone";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3595,11 +3595,14 @@ function buildGrpSectionBRowServer(current = {}, date = "", now = new Date().toI
   const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? current.grpQrChecks : {};
   const entries = Object.values(checks).sort((a, b) => {
     const shiftOrder = (a.shift === "day" ? 0 : 1) - (b.shift === "day" ? 0 : 1);
-    const kindOrder = (a.kind === "controlTube" ? 1 : 0) - (b.kind === "controlTube" ? 1 : 0);
+    const kindRank = entry => entry.kind === "controlTube" ? 1 : entry.kind === "protectionZone" ? 2 : 0;
+    const kindOrder = kindRank(a) - kindRank(b);
     return shiftOrder || kindOrder || Number(a.grpNumber || a.tubeNumber || 0) - Number(b.grpNumber || b.tubeNumber || 0);
   });
   const line = (entry, value) => `${entry.shiftLabel} · ${entry.route} — ${value}`;
-  const grpEntries = entries.filter(entry => entry.kind !== "controlTube");
+  const grpEntries = entries.filter(entry => !entry.kind || entry.kind === "grp");
+  const pipelineEntries = entries.filter(entry => !entry.kind || entry.kind === "grp" || entry.kind === "controlTube");
+  const protectionEntries = entries.filter(entry => entry.kind === "protectionZone");
   const names = [...new Set(entries.map(entry => entry.byName).filter(Boolean))];
   return {
     ...current,
@@ -3608,11 +3611,11 @@ function buildGrpSectionBRowServer(current = {}, date = "", now = new Date().toI
     date,
     time: new Date(entries[entries.length - 1]?.at || now).toLocaleTimeString("ru-RU", { timeZone: "Asia/Qyzylorda", hour: "2-digit", minute: "2-digit", hour12: false }),
     route: grpEntries.map(entry => `${entry.shiftLabel} · ${entry.route}`).join("; "),
-    wells: entries.map(entry => line(entry, entry.kind === "controlTube"
+    wells: pipelineEntries.map(entry => line(entry, entry.kind === "controlTube"
       ? entry.status === "remark" ? "неисправна" : "исправна"
       : "Исправно")).join("; "),
     gasSmell: grpEntries.map(entry => line(entry, entry.status === "remark" ? "Есть запах газа" : "Исправно")).join("; "),
-    protectionZone: grpEntries.map(entry => line(entry, "Без нарушений")).join("; "),
+    protectionZone: protectionEntries.map(entry => line(entry, entry.status === "remark" ? "есть нарушение" : "без нарушений")).join("; "),
     remarks: entries.map(entry => line(entry, entry.comment || "Замечаний нет")).join("; "),
     actions: entries.map(entry => line(entry, entry.status !== "remark"
       ? "Не требуется"
@@ -4396,9 +4399,10 @@ async function handleApi(req, res, pathname, url) {
     const grpNumber = Number(grpMatch?.[1] || 0);
     const tubeMatch = sourceName.match(/Контрольн(?:ая|ой|ую)?\s+трубк(?:а|и|у)?\s*№?\s*([1-5])(?!\d)/i);
     const tubeNumber = Number(tubeMatch?.[1] || 0);
-    const kind = tubeNumber ? "controlTube" : "grp";
-    const routeNumber = tubeNumber || grpNumber;
-    const routeLabel = tubeNumber ? `Контрольная трубка №${tubeNumber}` : `ГРП - Печь №${grpNumber}`;
+    const protectionZone = /Охранн(?:ая|ой|ую)?\s+зон(?:а|ы|у)?\s+газопровод(?:а|у)?/i.test(sourceName);
+    const kind = protectionZone ? "protectionZone" : tubeNumber ? "controlTube" : "grp";
+    const routeNumber = protectionZone ? 1 : tubeNumber || grpNumber;
+    const routeLabel = protectionZone ? "Охранная зона газопровода" : tubeNumber ? `Контрольная трубка №${tubeNumber}` : `ГРП - Печь №${grpNumber}`;
     const hasRemark = body.hasRemark === true;
     const comment = String(body.comment || "").trim().slice(0, 2000);
     if (!routeNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || (hasRemark && !comment)) {
@@ -4412,7 +4416,7 @@ async function handleApi(req, res, pathname, url) {
       const now = new Date().toISOString();
       const current = db.gasJournal[id] && typeof db.gasJournal[id] === "object" ? db.gasJournal[id] : {};
       const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? { ...current.grpQrChecks } : {};
-      const checkKey = kind === "controlTube" ? `tube:${shift}:${tubeNumber}` : `${shift}:${grpNumber}`;
+      const checkKey = kind === "protectionZone" ? `protection:${shift}` : kind === "controlTube" ? `tube:${shift}:${tubeNumber}` : `${shift}:${grpNumber}`;
       if (!checks[checkKey]) {
         const sourceRecordKey = `${Number(body.equipmentId)}:${Number(body.nodeIndex)}:${date}`;
         const linkedRemark = db.checks?.[sourceRecordKey]?.to?.commentLog?.slice().reverse().find(entry =>

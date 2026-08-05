@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v404-shgrp-control-tubes";
+const APP_VERSION = "v405-shgrp-protection-zone";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -129,6 +129,9 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal((await saveGrpResult({ node: "Контрольная трубка №2", hasRemark: true, comment: "Повреждена крышка колодца" })).status, 200);
     const repeatedTube = await saveGrpResult({ node: "Контрольная трубка №2", hasRemark: false }).then(response => response.json());
     assert.equal(repeatedTube.alreadyDone, true);
+    assert.equal((await saveGrpResult({ node: "Охранная зона газопровода", hasRemark: true, comment: "Повреждено ограждение" })).status, 200);
+    const repeatedProtection = await saveGrpResult({ node: "Охранная зона газопровода", hasRemark: false }).then(response => response.json());
+    assert.equal(repeatedProtection.alreadyDone, true);
     const stateWithGrp = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     const grpRow = stateWithGrp.gasJournal[`B::${grpDate}`];
     assert.match(grpRow.gasSmell, /ГРП - Печь №1 — Исправно/);
@@ -139,6 +142,9 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.match(grpRow.wells, /Контрольная трубка №2 — неисправна/);
     assert.match(grpRow.remarks, /Контрольная трубка №2 — Повреждена крышка колодца/);
     assert.match(grpRow.actions, /Контрольная трубка №2 — Требуется/);
+    assert.match(grpRow.protectionZone, /Охранная зона газопровода — есть нарушение/);
+    assert.match(grpRow.remarks, /Охранная зона газопровода — Повреждено ограждение/);
+    assert.match(grpRow.actions, /Охранная зона газопровода — Требуется/);
     const rejectedDelete = await fetch(`${baseUrl}/api/users`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
