@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v402-shgrp-grp-qr";
+const SERVER_VERSION = "v403-shgrp-grp-resolution";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3591,6 +3591,72 @@ function changedStatePatch(before = {}, after = {}) {
   return patch;
 }
 
+function buildGrpSectionBRowServer(current = {}, date = "", now = new Date().toISOString(), actor = {}) {
+  const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? current.grpQrChecks : {};
+  const entries = Object.values(checks).sort((a, b) => {
+    const shiftOrder = (a.shift === "day" ? 0 : 1) - (b.shift === "day" ? 0 : 1);
+    return shiftOrder || Number(a.grpNumber || 0) - Number(b.grpNumber || 0);
+  });
+  const line = (entry, value) => `${entry.shiftLabel} · ${entry.route} — ${value}`;
+  const names = [...new Set(entries.map(entry => entry.byName).filter(Boolean))];
+  return {
+    ...current,
+    id: `B::${date}`,
+    section: "B",
+    date,
+    time: new Date(entries[entries.length - 1]?.at || now).toLocaleTimeString("ru-RU", { timeZone: "Asia/Qyzylorda", hour: "2-digit", minute: "2-digit", hour12: false }),
+    route: entries.map(entry => `${entry.shiftLabel} · ${entry.route}`).join("; "),
+    wells: entries.map(entry => line(entry, "Исправно")).join("; "),
+    gasSmell: entries.map(entry => line(entry, entry.status === "remark" ? "Есть запах газа" : "Исправно")).join("; "),
+    protectionZone: entries.map(entry => line(entry, "Без нарушений")).join("; "),
+    remarks: entries.map(entry => line(entry, entry.comment || "Замечаний нет")).join("; "),
+    actions: entries.map(entry => line(entry, entry.status !== "remark"
+      ? "Не требуется"
+      : entry.resolutionText || "Требуется")).join("; "),
+    checkedBy: names.join(", ") || String(actor.name || "Сотрудник"),
+    updatedAt: now,
+    updatedByName: String(actor.name || ""),
+    updatedByRole: String(actor.role || ""),
+    entryStatus: "fixed",
+    fixedAt: current.fixedAt || now,
+    fixedByName: current.fixedByName || names.join(", ") || String(actor.name || "Сотрудник"),
+    source: "qr-grp",
+    grpQrChecks: checks
+  };
+}
+
+function linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, now) {
+  if (!remark?.resolved || !recordKey) return {};
+  const recordDate = String(recordKey).split(":").pop();
+  const rowId = `B::${recordDate}`;
+  const current = db.gasJournal?.[rowId];
+  if (!current?.grpQrChecks || typeof current.grpQrChecks !== "object") return {};
+  const normalizedRemark = String(remark.text || "").trim().toLocaleLowerCase("ru-RU");
+  const check = Object.values(current.grpQrChecks).find(entry =>
+    entry?.status === "remark"
+    && !entry.resolvedAt
+    && (String(entry.remarkId || "") === String(remark.id || "")
+      || String(entry.sourceRecordKey || "") === recordKey
+      || (!entry.sourceRecordKey && normalizedRemark && String(entry.comment || "").trim().toLocaleLowerCase("ru-RU") === normalizedRemark))
+  );
+  if (!check) return {};
+  const resolution = String(remark.resolvedComment || remark.resolutionSubmittedComment || "Устранено").trim().slice(0, 2000);
+  const performer = String(remark.resolvedByName || remark.resolutionSubmittedByName || "").trim().slice(0, 200);
+  const resolvedAt = String(remark.resolvedAt || now);
+  const resolvedLabel = new Date(resolvedAt).toLocaleString("ru-RU", {
+    timeZone: "Asia/Qyzylorda", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false
+  });
+  check.resolvedAt = resolvedAt;
+  check.resolvedByName = performer;
+  check.resolutionComment = resolution;
+  check.resolutionText = `Устранено: ${resolution}${performer ? `; исполнитель: ${performer}` : ""}; ${resolvedLabel}`;
+  check.remarkId ||= String(remark.id || "");
+  check.sourceRecordKey ||= recordKey;
+  const row = buildGrpSectionBRowServer(current, recordDate, now, actor);
+  db.gasJournal[rowId] = row;
+  return { [rowId]: row };
+}
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -4339,6 +4405,10 @@ async function handleApi(req, res, pathname, url) {
       const checks = current.grpQrChecks && typeof current.grpQrChecks === "object" ? { ...current.grpQrChecks } : {};
       const checkKey = `${shift}:${grpNumber}`;
       if (!checks[checkKey]) {
+        const sourceRecordKey = `${Number(body.equipmentId)}:${Number(body.nodeIndex)}:${date}`;
+        const linkedRemark = db.checks?.[sourceRecordKey]?.to?.commentLog?.slice().reverse().find(entry =>
+          !entry?.resolved && String(entry?.text || "").trim() === comment
+        );
         checks[checkKey] = {
           grpNumber,
           route: `ГРП - Печь №${grpNumber}`,
@@ -4347,39 +4417,14 @@ async function handleApi(req, res, pathname, url) {
           at: now,
           status: hasRemark ? "remark" : "ok",
           comment: hasRemark ? comment : "Замечаний нет",
+          sourceRecordKey: Number.isSafeInteger(Number(body.equipmentId)) && Number.isSafeInteger(Number(body.nodeIndex)) ? sourceRecordKey : "",
+          remarkId: String(linkedRemark?.id || ""),
           byId: String(req.authUser?.id || ""),
           byName: String(req.authUser?.name || "").slice(0, 200),
           byRole: String(req.authUser?.role || "").slice(0, 100)
         };
       }
-      const entries = Object.values(checks).sort((a, b) => {
-        const shiftOrder = (a.shift === "day" ? 0 : 1) - (b.shift === "day" ? 0 : 1);
-        return shiftOrder || Number(a.grpNumber || 0) - Number(b.grpNumber || 0);
-      });
-      const line = (entry, value) => `${entry.shiftLabel} · ${entry.route} — ${value}`;
-      const names = [...new Set(entries.map(entry => entry.byName).filter(Boolean))];
-      const row = {
-        ...current,
-        id,
-        section: "B",
-        date,
-        time: new Date(entries[entries.length - 1]?.at || now).toLocaleTimeString("ru-RU", { timeZone: "Asia/Qyzylorda", hour: "2-digit", minute: "2-digit", hour12: false }),
-        route: entries.map(entry => `${entry.shiftLabel} · ${entry.route}`).join("; "),
-        wells: entries.map(entry => line(entry, "Исправно")).join("; "),
-        gasSmell: entries.map(entry => line(entry, entry.status === "remark" ? "Есть запах газа" : "Исправно")).join("; "),
-        protectionZone: entries.map(entry => line(entry, "Без нарушений")).join("; "),
-        remarks: entries.map(entry => line(entry, entry.comment || "Замечаний нет")).join("; "),
-        actions: entries.map(entry => line(entry, entry.status === "remark" ? "Требуется" : "Не требуется")).join("; "),
-        checkedBy: names.join(", ") || String(req.authUser?.name || "Сотрудник"),
-        updatedAt: now,
-        updatedByName: String(req.authUser?.name || ""),
-        updatedByRole: String(req.authUser?.role || ""),
-        entryStatus: "fixed",
-        fixedAt: now,
-        fixedByName: names.join(", ") || String(req.authUser?.name || "Сотрудник"),
-        source: "qr-grp",
-        grpQrChecks: checks
-      };
+      const row = buildGrpSectionBRowServer({ ...current, grpQrChecks: checks }, date, now, req.authUser);
       db.gasJournal[id] = row;
       writeDb(db, { action: "shgrp_section_b_qr_recorded", user: req.authUser, targetId: checkKey, targetLabel: `ГРП - Печь №${grpNumber}`, date, shift, hasRemark });
       return { id, row, alreadyDone: Boolean(current.grpQrChecks?.[checkKey]) };
@@ -6867,6 +6912,18 @@ async function handleApi(req, res, pathname, url) {
         pushBody = reason.slice(0, 120);
       }
 
+      const grpGasJournalPatch = remark.resolved && ["confirm", "admin-close", "admin-repair-close", "close-with-score"].includes(action)
+        ? linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, now)
+        : {};
+      if (Object.keys(grpGasJournalPatch).length) {
+        writeDb(db, {
+          action: "shgrp_section_b_resolution_linked",
+          user: actor,
+          recordKey,
+          remarkId,
+          gasJournalIds: Object.keys(grpGasJournalPatch)
+        });
+      }
       remark.resolutionParticipants = participants;
       syncItemRemarkSummaryServer(item);
       item.updatedAt = now;
@@ -6876,6 +6933,7 @@ async function handleApi(req, res, pathname, url) {
       if (changed) writeDb(db, { action: `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey });
       const patch = {
         checks: { [recordKey]: record },
+        ...(Object.keys(grpGasJournalPatch).length ? { gasJournal: grpGasJournalPatch } : {}),
         ...(action === "resolve" || action === "confirm" || action === "return"
           ? { downtimes: db.downtimes || [] }
           : {})

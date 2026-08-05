@@ -183,7 +183,29 @@ test.before(async () => {
       }
     ],
     compressorJournal: {},
-    gasJournal: {},
+    gasJournal: {
+      "B::2026-07-16": {
+        id: "B::2026-07-16",
+        section: "B",
+        date: "2026-07-16",
+        entryStatus: "fixed",
+        grpQrChecks: {
+          "day:1": {
+            grpNumber: 1,
+            route: "ГРП - Печь №1",
+            shift: "day",
+            shiftLabel: "День",
+            at: "2026-07-16T08:00:00.000Z",
+            status: "remark",
+            comment: "Предупреждение в цехе А",
+            sourceRecordKey: "1:0:2026-07-16",
+            remarkId: "remark-shop",
+            byName: "Электрик Один",
+            byRole: "electrician"
+          }
+        }
+      }
+    },
     pprSheets: {},
     journalDueSince: {},
     auditHistory: [],
@@ -318,6 +340,11 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   assert.equal(closed.resolvedByName, "Электрик Один");
   assert.equal(closed.confirmedByName, "Начальник А");
   assert.ok(Date.parse(closed.confirmedAt) >= Date.parse(closed.resolvedAt));
+  const linkedGrpRow = confirmed.state.gasJournal["B::2026-07-16"];
+  assert.match(linkedGrpRow.actions, /Устранено:/);
+  assert.match(linkedGrpRow.actions, /Исправлено с первой попытки/);
+  assert.match(linkedGrpRow.actions, /Электрик Один/);
+  assert.equal(linkedGrpRow.grpQrChecks["day:1"].resolvedAt, closed.resolvedAt);
 
   await postRemark(
     "1:0:2026-07-16",
@@ -764,9 +791,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=402-shgrp-grp-qr/);
-  assert.match(html, /styles\.css\?v=402-shgrp-grp-qr/);
-  assert.match(serviceWorker, /app\.js\?v=402-shgrp-grp-qr/);
+  assert.match(html, /app\.js\?v=403-shgrp-grp-resolution/);
+  assert.match(html, /styles\.css\?v=403-shgrp-grp-resolution/);
+  assert.match(serviceWorker, /app\.js\?v=403-shgrp-grp-resolution/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
