@@ -218,7 +218,7 @@ test.before(async () => {
       byRole: "electrician",
       byName: "Электрик Один",
       equipment: "Газовое хозяйство",
-      node: "Газо регуляторный пункт №10"
+      node: "Газорегуляторный пункт (ГРП)№10"
     }],
     pprSheets: {},
     journalDueSince: {},
@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=406-shgrp-gas-point-recovery/);
-  assert.match(html, /styles\.css\?v=406-shgrp-gas-point-recovery/);
-  assert.match(serviceWorker, /app\.js\?v=406-shgrp-gas-point-recovery/);
+  assert.match(html, /app\.js\?v=407-shgrp-grp-parentheses/);
+  assert.match(html, /styles\.css\?v=407-shgrp-grp-parentheses/);
+  assert.match(serviceWorker, /app\.js\?v=407-shgrp-grp-parentheses/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

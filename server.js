@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v406-shgrp-gas-point-recovery";
+const SERVER_VERSION = "v407-shgrp-grp-parentheses";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3597,7 +3597,7 @@ function changedStatePatch(before = {}, after = {}) {
 function shgrpSectionBDescriptorServer(source = "") {
   const text = String(source || "");
   const grpMatch = text.match(/ГРП\s*[-–—]?\s*Печь\s*№?\s*(1[01]|[1-9])(?!\d)/i)
-    || text.match(/Газо\s*регуляторн(?:ый|ого|ому|ым)?\s+пункт\s*№?\s*(1[01]|[1-9])(?!\d)/i);
+    || text.match(/Газо\s*регуляторн(?:ый|ого|ому|ым)?\s+пункт(?:\s*\(\s*ГРП\s*\))?\s*№?\s*(1[01]|[1-9])(?!\d)/i);
   if (grpMatch) {
     const number = Number(grpMatch[1]);
     return { kind: "grp", number, grpNumber: number, tubeNumber: 0, routeLabel: `ГРП - Печь №${number}` };
