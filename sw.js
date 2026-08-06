@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v415-annual-ppr-facts";
+const CACHE_NAME = "ppr-v416-admin-navigation-grid";
 const ASSETS = [
   "./",
   "./index.html",

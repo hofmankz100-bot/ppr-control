@@ -12796,3 +12796,68 @@ body.editor-profile #createTmcRequestButton.request-alert,
   }
   .gas-cell-line:last-child { border-bottom: 0 !important; }
 }
+
+/* Ordered administration navigation: compact on desktop, readable at any width. */
+.admin-maintenance-tabs.segmented {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d3dfe6;
+  border-radius: 14px;
+  background: #eef3f6;
+}
+
+.admin-maintenance-tabs.segmented button {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 50, 74, .08);
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.admin-maintenance-tabs.segmented button:hover {
+  border-color: #8fb7c3;
+  background: #f7fcfd;
+}
+
+.admin-maintenance-tabs.segmented button.active {
+  border-color: #087987;
+  background: #087987;
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(8, 121, 135, .22);
+}
+
+.admin-maintenance-tabs [data-admin-maintenance-tab="guide"] { order: 1; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="forms"] { order: 2; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="access"] { order: 3; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="settings"] { order: 4; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="broadcasts"] { order: 5; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="automation"] { order: 6; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="monitoring"] { order: 7; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="activity"] { order: 8; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="report"] { order: 9; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="integrity"] { order: 10; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="backups"] { order: 11; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="archives"] { order: 12; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="transfer"] { order: 13; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="instructionLog"] { order: 14; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="corrections"] { order: 15; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="storage"] { order: 16; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="audit"] { order: 17; }
+.admin-maintenance-tabs [data-admin-maintenance-tab="trash"] { order: 18; }
+.admin-maintenance-tabs > button:last-child { order: 19; }
+
+@media (max-width: 1180px) {
+  .admin-maintenance-tabs.segmented { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .admin-maintenance-tabs.segmented { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-maintenance-tabs.segmented button { min-height: 52px; }
+}

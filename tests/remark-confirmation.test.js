@@ -1534,6 +1534,14 @@ test("only admin or an explicitly permitted engineer can edit annual PPR", () =>
   assert.match(serverSource, /annual_ppr_permission_denied/);
 });
 
+test("administration tabs form an ordered responsive grid", () => {
+  const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(5/);
+  assert.match(stylesSource, /data-admin-maintenance-tab="access"\]\s*\{ order: 3; \}/);
+  assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(3/);
+  assert.match(stylesSource, /@media \(max-width: 760px\)[\s\S]*repeat\(2/);
+});
+
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
