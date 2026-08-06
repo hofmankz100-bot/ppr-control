@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v419-annual-ppr-pdf-pages";
+const SERVER_VERSION = "v420-annual-ppr-pdf-assets";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -115,6 +115,8 @@ function isPublicStaticPath(relativePath = "") {
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   if (normalized === "assets/hofmann-forklift.png") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js"
+    || normalized === "node_modules/html2canvas/dist/html2canvas.min.js"
+    || normalized === "node_modules/jspdf/dist/jspdf.umd.min.js"
     || normalized === "node_modules/html2pdf.js/dist/html2pdf.bundle.min.js"
     || normalized === "node_modules/mammoth/mammoth.browser.min.js";
 }

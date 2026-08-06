@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v419-annual-ppr-pdf-pages";
+const APP_VERSION = "v420-annual-ppr-pdf-assets";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
