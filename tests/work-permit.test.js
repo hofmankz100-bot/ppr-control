@@ -240,7 +240,7 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v414-annual-ppr-schedule/);
+  assert.match(serviceWorker, /ppr-v415-annual-ppr-facts/);
   assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=413-permanent-attendance-qr/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=413-permanent-attendance-qr/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=413-permanent-attendance-qr/);

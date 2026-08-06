@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v414-annual-ppr-schedule";
+const APP_VERSION = "v415-annual-ppr-facts";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11419,11 +11419,11 @@ function annualPprFacts(year) {
     if (!String(date || "").startsWith(`${year}-`)) return;
     const eq = equipmentById(Number(equipmentId));
     const node = eq?.nodes?.[Number(nodeIndex)];
-    if (!eq || !node || !nodeWalkCompletion(rec, date).complete) return;
+    if (!eq || !node || !isNodeCheckedForGroup(rec, "technical")) return;
     const month = Number(String(date).slice(5, 7));
     const factKey = `${annualPprNodeKey(eq, node)}:${month}`;
     const previous = facts.get(factKey);
-    if (!previous || date > previous.date) facts.set(factKey, { date, label: `✓ ТО ${String(date).slice(8, 10)}.${String(date).slice(5, 7)}` });
+    if (!previous || date > previous.date) facts.set(factKey, { date });
   });
   return facts;
 }
@@ -11445,7 +11445,12 @@ function annualPprRows(year) {
       }
       return {
         eq, node, nodeIndex, nodeKey, months,
-        facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => [index + 1, facts.get(`${nodeKey}:${index + 1}`)?.label || ""])),
+        facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+          const month = index + 1;
+          const fact = facts.get(`${nodeKey}:${month}`);
+          const factType = months[month] || "ТО";
+          return [month, fact ? `✓ ${factType} ${String(fact.date).slice(8, 10)}.${String(fact.date).slice(5, 7)}` : ""];
+        })),
         periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
         lastRepair: saved.lastRepair || "",
         responsible: saved.responsible || ""
@@ -11498,7 +11503,7 @@ function printAnnualPprSchedule(overlay, year) {
   popup.document.close();
 }
 
-function openAnnualPprSchedule(initialYear = new Date().getFullYear() + 1) {
+function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   if (!canEditAnnualPpr()) return;
   if (window.matchMedia("(max-width: 900px)").matches) return;
   document.querySelector(".annual-ppr-overlay")?.remove();

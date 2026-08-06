@@ -1517,8 +1517,9 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /allEquipment\(\)[\s\S]*flatMap\(eq => eq\.nodes\.map/);
   assert.match(appSource, /function annualPprAutomaticPlan\(eq, node, year\)/);
   assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
-  assert.match(appSource, /nodeWalkCompletion\(rec, date\)\.complete/);
-  assert.match(appSource, /label: `✓ ТО/);
+  assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
+  assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
+  assert.match(appSource, /fact \? `✓ \$\{factType\}/);
   assert.match(appSource, /@page\{size:A3 landscape/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
 });
