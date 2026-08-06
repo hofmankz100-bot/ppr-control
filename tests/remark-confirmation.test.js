@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=413-permanent-attendance-qr/);
-  assert.match(html, /styles\.css\?v=413-permanent-attendance-qr/);
-  assert.match(serviceWorker, /app\.js\?v=413-permanent-attendance-qr/);
+  assert.match(html, /app\.js\?v=417-annual-ppr-pdf/);
+  assert.match(html, /styles\.css\?v=417-annual-ppr-pdf/);
+  assert.match(serviceWorker, /app\.js\?v=417-annual-ppr-pdf/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1470,7 +1470,7 @@ test("request output archives before mobile share or desktop print starts", () =
   assert.match(appSource, /Открыто в WhatsApp и сохранено в архив/);
   assert.match(appSource, /Отправлено на печать и сохранено в архив/);
   assert.match(appSource, /function openRequestInWhatsApp\(req\)/);
-  assert.doesNotMatch(appSource, /navigator\.share/);
+  assert.doesNotMatch(archiveFlow, /navigator\.share/);
   assert.match(appSource, /tr \{ break-inside: avoid; page-break-inside: avoid; \}/);
   assert.match(appSource, /if \(result\?\.request\) \{[\s\S]*?archiveTmcRequestAfterOutput/);
   assert.match(appSource, /Зам\. директора __________________/);
@@ -1540,6 +1540,15 @@ test("administration tabs form an ordered responsive grid", () => {
   assert.match(stylesSource, /data-admin-maintenance-tab="access"\]\s*\{ order: 3; \}/);
   assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(3/);
   assert.match(stylesSource, /@media \(max-width: 760px\)[\s\S]*repeat\(2/);
+});
+
+test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /async function shareAnnualPprPdf\(/);
+  assert.match(appSource, /format: "a3", orientation: "landscape"/);
+  assert.match(appSource, /navigator\.canShare\?\.\(\{ files: \[file\] \}\)/);
+  assert.match(appSource, /link\.download = fileName/);
+  assert.match(appSource, /data-share-annual-ppr-pdf/);
 });
 
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {

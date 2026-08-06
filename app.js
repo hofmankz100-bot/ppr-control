@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v416-admin-navigation-grid";
+const APP_VERSION = "v417-annual-ppr-pdf";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11493,14 +11493,64 @@ function saveAnnualPprRow(rowElement, year) {
 }
 
 function printAnnualPprSchedule(overlay, year) {
-  const clone = overlay.querySelector(".annual-ppr-print-area")?.cloneNode(true);
+  const clone = annualPprOutputClone(overlay);
   if (!clone) return;
-  clone.querySelectorAll("select").forEach(select => { const span = document.createElement("span"); span.textContent = select.value || ""; select.replaceWith(span); });
-  clone.querySelectorAll("input").forEach(input => { const span = document.createElement("span"); span.textContent = input.type === "date" && input.value ? dateHuman(input.value) : input.value || ""; input.replaceWith(span); });
   const popup = window.open("", "_blank", "width=1500,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A3 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0}.annual-ppr-print-title{text-align:center;margin:0 0 4mm}.annual-ppr-print-title h1{font-size:14pt;margin:0 0 2mm}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:3mm;font-size:8pt;line-height:1.5}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:7pt;margin-bottom:2mm}.annual-ppr-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:5.7pt}.annual-ppr-table th,.annual-ppr-table td{border:.25mm solid #222;padding:.7mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{background:#dde7ef}.annual-ppr-table th:nth-child(4),.annual-ppr-table td:nth-child(4){text-align:left}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:12mm;margin-top:4mm;font-size:8pt}.annual-ppr-note{font-size:6.5pt;margin-top:2mm}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
   popup.document.close();
+}
+
+function annualPprOutputClone(overlay) {
+  const clone = overlay.querySelector(".annual-ppr-print-area")?.cloneNode(true);
+  if (!clone) return null;
+  clone.querySelectorAll("select").forEach(select => { const span = document.createElement("span"); span.textContent = select.value || ""; select.replaceWith(span); });
+  clone.querySelectorAll("input").forEach(input => { const span = document.createElement("span"); span.textContent = input.type === "date" && input.value ? dateHuman(input.value) : input.value || ""; input.replaceWith(span); });
+  clone.classList.add("annual-ppr-pdf-output");
+  return clone;
+}
+
+async function shareAnnualPprPdf(overlay, year, button) {
+  if (typeof window.html2pdf !== "function") return window.alert("Создание PDF недоступно. Обновите страницу и повторите.");
+  const clone = annualPprOutputClone(overlay);
+  if (!clone) return;
+  const originalText = button?.textContent || "Скачать / отправить PDF";
+  if (button) { button.disabled = true; button.textContent = "Создаём PDF…"; }
+  clone.style.width = "1580px";
+  clone.style.padding = "24px";
+  clone.style.background = "#fff";
+  clone.style.position = "fixed";
+  clone.style.left = "-20000px";
+  clone.style.top = "0";
+  document.body.append(clone);
+  try {
+    const fileName = `godovoy-grafik-ppr-${year}.pdf`;
+    const worker = window.html2pdf().set({
+      margin: [7, 7, 7, 7],
+      filename: fileName,
+      image: { type: "jpeg", quality: 0.97 },
+      html2canvas: { scale: 1.35, useCORS: true, backgroundColor: "#ffffff", windowWidth: 1640, scrollX: 0, scrollY: 0 },
+      jsPDF: { unit: "mm", format: "a3", orientation: "landscape" },
+      pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] }
+    }).from(clone).toPdf();
+    const pdf = await worker.get("pdf");
+    const blob = pdf.output("blob");
+    const file = new File([blob], fileName, { type: "application/pdf" });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ title: `Годовой график ППР на ${year} год`, text: `Годовой график ППР на ${year} год`, files: [file] });
+    } else {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = fileName; document.body.append(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      showAppToast("PDF скачан. Его можно отправить как обычный файл.");
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError") { console.error("Annual PPR PDF failed", error); window.alert("Не удалось создать PDF. Используйте кнопку «Печать A3» и выберите сохранение в PDF."); }
+  } finally {
+    clone.remove();
+    if (button) { button.disabled = false; button.textContent = originalText; }
+  }
 }
 
 function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
@@ -11511,12 +11561,13 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   const record = annualPprYearRecord(year, true);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Автоматически обновляется по каталогу оборудования и узлов</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>Закрыть</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; КР — капитальный ремонт. Периодичность уточняется ответственным инженером по паспортам изготовителей, наработке, техническому состоянию и применимым требованиям промышленной безопасности Республики Казахстан.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Автоматически обновляется по каталогу оборудования и узлов</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>Закрыть</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; КР — капитальный ремонт. Периодичность уточняется ответственным инженером по паспортам изготовителей, наработке, техническому состоянию и применимым требованиям промышленной безопасности Республики Казахстан.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
   overlay.querySelector("[data-annual-ppr-year]")?.addEventListener("change", event => { overlay.remove(); openAnnualPprSchedule(event.currentTarget.value); });
   overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
+  overlay.querySelector("[data-share-annual-ppr-pdf]")?.addEventListener("click", event => shareAnnualPprPdf(overlay, year, event.currentTarget));
   overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
     const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
