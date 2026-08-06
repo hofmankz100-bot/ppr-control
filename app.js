@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v417-annual-ppr-pdf";
+const APP_VERSION = "v418-annual-ppr-pdf-render";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11519,9 +11519,11 @@ async function shareAnnualPprPdf(overlay, year, button) {
   clone.style.width = "1580px";
   clone.style.padding = "24px";
   clone.style.background = "#fff";
-  clone.style.position = "fixed";
-  clone.style.left = "-20000px";
+  clone.style.position = "absolute";
+  clone.style.left = "0";
   clone.style.top = "0";
+  clone.style.zIndex = "1100";
+  clone.style.pointerEvents = "none";
   document.body.append(clone);
   try {
     const fileName = `godovoy-grafik-ppr-${year}.pdf`;
