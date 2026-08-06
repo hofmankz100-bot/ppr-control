@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v413-permanent-attendance-qr";
+const APP_VERSION = "v414-annual-ppr-schedule";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -277,6 +277,11 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
   return user.role === "editor" || user.qrWalkJournalAccess === true || activeUserPermission(user, "qrJournalView");
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
+
+function canEditAnnualPpr() {
+  if (isEditorSession()) return true;
+  return profile?.role === "engineer" && activeUserPermission(authenticatedProfile || profile || {}, "annualPprEdit");
+}
 const ROLE_ACCESS = {
   mechanic: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
   electrician: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
@@ -364,7 +369,7 @@ let remoteSavePending = false;
 let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
   "checks", "requests", "inventory", "catalog", "directorMessages", "serviceCosts",
-  "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "journalDueSince",
+  "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince",
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
 const remoteSectionFingerprints = new Map();
@@ -962,6 +967,7 @@ function loadState() {
     parsed.gpmJournal.managers ||= {};
     parsed.nodeDocumentMemoRoles ||= ["energyEngineer", "designEngineer", "mechanicalEngineer"];
     parsed.pprSheets ||= {};
+    parsed.annualPpr ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
     parsed.operationalResetAt ||= "";
@@ -979,7 +985,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -2380,6 +2386,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.pprSheets = preferRemote
     ? { ...(remote.pprSheets || {}) }
     : mergeObjectByFreshnessLocal(state.pprSheets || {}, remote.pprSheets || {});
+  state.annualPpr = preferRemote
+    ? { ...(remote.annualPpr || {}) }
+    : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
   state.journalDueSince = { ...(state.journalDueSince || {}), ...(remote.journalDueSince || {}) };
   state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
@@ -2421,6 +2430,7 @@ function mergeRealtimePatch(remote = {}) {
     state.gpmJournal.managerMigrationVersion = remote.gpmJournal.managerMigrationVersion || state.gpmJournal.managerMigrationVersion || "";
   }
   if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
+  if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
@@ -10096,6 +10106,7 @@ function renderEquipment() {
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
+      ${canEditAnnualPpr() ? `<button type="button" class="desktop-annual-ppr-button" data-open-annual-ppr>Годовой график ППР</button>` : ""}
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
       ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Данные и корзина</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
@@ -10103,6 +10114,7 @@ function renderEquipment() {
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
+  monthBar.querySelector("[data-open-annual-ppr]")?.addEventListener("click", () => openAnnualPprSchedule());
   monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
   monthBar.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
@@ -11361,6 +11373,149 @@ function recommendedMaintenanceForDate(eq, date) {
     }
   }
   return null;
+}
+
+const ANNUAL_PPR_TYPES = ["", "ТО", "ТР", "КР"];
+
+function annualPprYearRecord(year, create = false) {
+  state.annualPpr ||= {};
+  const key = String(year);
+  if (!state.annualPpr[key] && create) {
+    state.annualPpr[key] = {
+      id: `annual-ppr:${key}`,
+      year: Number(year),
+      revision: "01",
+      approvedBy: "",
+      agreedProductionBy: "",
+      agreedSafetyBy: "",
+      preparedBy: profile?.name || "",
+      overrides: {},
+      updatedAt: new Date().toISOString()
+    };
+  }
+  return state.annualPpr[key] || { year: Number(year), revision: "01", overrides: {} };
+}
+
+function annualPprNodeKey(eq, node) {
+  return `${Number(eq.id)}:${String(node || "").trim().toLocaleLowerCase("ru-RU")}`;
+}
+
+function annualPprAutomaticPlan(eq, node, year) {
+  const months = {};
+  const start = new Date(Number(year), 0, 1, 12);
+  const end = new Date(Number(year) + 1, 0, 1, 12);
+  for (let cursor = new Date(start); cursor < end; cursor.setDate(cursor.getDate() + 1)) {
+    const date = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+    const plan = recommendedMaintenanceForDate(eq, date);
+    if (plan?.node === node) months[cursor.getMonth() + 1] = "ТО";
+  }
+  return months;
+}
+
+function annualPprFacts(year) {
+  const facts = new Map();
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentId, nodeIndex, date] = recordKey.split(":");
+    if (!String(date || "").startsWith(`${year}-`)) return;
+    const eq = equipmentById(Number(equipmentId));
+    const node = eq?.nodes?.[Number(nodeIndex)];
+    if (!eq || !node || !nodeWalkCompletion(rec, date).complete) return;
+    const month = Number(String(date).slice(5, 7));
+    const factKey = `${annualPprNodeKey(eq, node)}:${month}`;
+    const previous = facts.get(factKey);
+    if (!previous || date > previous.date) facts.set(factKey, { date, label: `✓ ТО ${String(date).slice(8, 10)}.${String(date).slice(5, 7)}` });
+  });
+  return facts;
+}
+
+function annualPprRows(year) {
+  const record = annualPprYearRecord(year);
+  const facts = annualPprFacts(year);
+  return allEquipment()
+    .filter(eq => eq.area !== "Резерв")
+    .flatMap(eq => eq.nodes.map((node, nodeIndex) => {
+      const nodeKey = annualPprNodeKey(eq, node);
+      const saved = record.overrides?.[nodeKey] || {};
+      const automatic = annualPprAutomaticPlan(eq, node, year);
+      const months = {};
+      for (let month = 1; month <= 12; month += 1) {
+        months[month] = Object.prototype.hasOwnProperty.call(saved.months || {}, month)
+          ? saved.months[month]
+          : automatic[month] || "";
+      }
+      return {
+        eq, node, nodeIndex, nodeKey, months,
+        facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => [index + 1, facts.get(`${nodeKey}:${index + 1}`)?.label || ""])),
+        periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
+        lastRepair: saved.lastRepair || "",
+        responsible: saved.responsible || ""
+      };
+    }));
+}
+
+function annualPprMonthSelect(row, month) {
+  const value = row.months[month] || "";
+  return `<select data-annual-ppr-month="${month}" aria-label="План ${month}">${ANNUAL_PPR_TYPES.map(type => `<option value="${type}" ${type === value ? "selected" : ""}>${type || "—"}</option>`).join("")}</select>`;
+}
+
+function annualPprTableHtml(year) {
+  const rows = annualPprRows(year);
+  const months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+  let number = 0;
+  return `<table class="annual-ppr-table">
+    <thead><tr><th>№</th><th>Участок</th><th>Оборудование</th><th>Узел / объект ремонта</th><th>Строка</th>${months.map(month => `<th>${month}</th>`).join("")}<th>Периодичность</th><th>Последний ремонт</th><th>Ответственный</th></tr></thead>
+    <tbody>${rows.map(row => {
+      number += 1;
+      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan">${annualPprMonthSelect(row, index + 1)}</td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}"></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}"></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О."></td></tr>
+      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact">${escapeHtml(row.facts[index + 1] || "")}</td>`).join("")}</tr>`;
+    }).join("")}</tbody>
+  </table>`;
+}
+
+function saveAnnualPprRow(rowElement, year) {
+  const record = annualPprYearRecord(year, true);
+  const nodeKey = rowElement.dataset.annualPprRow;
+  const saved = record.overrides[nodeKey] ||= { months: {} };
+  rowElement.querySelectorAll("[data-annual-ppr-month]").forEach(select => {
+    saved.months[Number(select.dataset.annualPprMonth)] = select.value;
+  });
+  rowElement.querySelectorAll("[data-annual-ppr-field]").forEach(input => { saved[input.dataset.annualPprField] = input.value.trim(); });
+  saved.updatedAt = new Date().toISOString();
+  record.updatedAt = saved.updatedAt;
+  persistStateLocally(state);
+  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  publishStateNow().catch(scheduleRemoteRetry);
+}
+
+function printAnnualPprSchedule(overlay, year) {
+  const clone = overlay.querySelector(".annual-ppr-print-area")?.cloneNode(true);
+  if (!clone) return;
+  clone.querySelectorAll("select").forEach(select => { const span = document.createElement("span"); span.textContent = select.value || ""; select.replaceWith(span); });
+  clone.querySelectorAll("input").forEach(input => { const span = document.createElement("span"); span.textContent = input.type === "date" && input.value ? dateHuman(input.value) : input.value || ""; input.replaceWith(span); });
+  const popup = window.open("", "_blank", "width=1500,height=900");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A3 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0}.annual-ppr-print-title{text-align:center;margin:0 0 4mm}.annual-ppr-print-title h1{font-size:14pt;margin:0 0 2mm}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:3mm;font-size:8pt;line-height:1.5}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:7pt;margin-bottom:2mm}.annual-ppr-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:5.7pt}.annual-ppr-table th,.annual-ppr-table td{border:.25mm solid #222;padding:.7mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{background:#dde7ef}.annual-ppr-table th:nth-child(4),.annual-ppr-table td:nth-child(4){text-align:left}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:12mm;margin-top:4mm;font-size:8pt}.annual-ppr-note{font-size:6.5pt;margin-top:2mm}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+  popup.document.close();
+}
+
+function openAnnualPprSchedule(initialYear = new Date().getFullYear() + 1) {
+  if (!canEditAnnualPpr()) return;
+  if (window.matchMedia("(max-width: 900px)").matches) return;
+  document.querySelector(".annual-ppr-overlay")?.remove();
+  const year = Math.max(2020, Math.min(2100, Number(initialYear) || new Date().getFullYear()));
+  const record = annualPprYearRecord(year, true);
+  const overlay = document.createElement("div");
+  overlay.className = "annual-ppr-overlay";
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Автоматически обновляется по каталогу оборудования и узлов</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>Закрыть</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; КР — капитальный ремонт. Периодичность уточняется ответственным инженером по паспортам изготовителей, наработке, техническому состоянию и применимым требованиям промышленной безопасности Республики Казахстан.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  document.body.append(overlay);
+  overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
+  overlay.querySelector("[data-annual-ppr-year]")?.addEventListener("change", event => { overlay.remove(); openAnnualPprSchedule(event.currentTarget.value); });
+  overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
+  overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
+  overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
+    const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
+  }));
 }
 
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
@@ -15390,7 +15545,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }

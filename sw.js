@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v413-permanent-attendance-qr";
+const CACHE_NAME = "ppr-v414-annual-ppr-schedule";
 const ASSETS = [
   "./",
   "./index.html",

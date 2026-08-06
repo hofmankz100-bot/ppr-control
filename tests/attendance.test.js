@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v413-permanent-attendance-qr";
+const APP_VERSION = "v414-annual-ppr-schedule";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

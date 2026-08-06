@@ -23,6 +23,66 @@
   font-family: Calibri, Arial, sans-serif;
 }
 
+.annual-ppr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 18px;
+  background: rgba(10, 28, 42, .72);
+  display: grid;
+  place-items: center;
+}
+
+.annual-ppr-dialog {
+  width: min(98vw, 1900px);
+  height: min(95vh, 1100px);
+  overflow: auto;
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .3);
+}
+
+.annual-ppr-dialog > header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  color: #fff;
+  background: #14324a;
+}
+
+.annual-ppr-dialog > header > div { display: flex; align-items: center; gap: 10px; }
+.annual-ppr-dialog > header > div:first-child { align-items: flex-start; flex-direction: column; gap: 2px; }
+.annual-ppr-dialog > header label { display: flex; align-items: center; gap: 6px; }
+.annual-ppr-dialog > header input { width: 88px; }
+.annual-ppr-print-area { padding: 18px; color: #17212b; background: #fff; }
+.annual-ppr-approval { display: flex; justify-content: flex-end; margin-bottom: 10px; line-height: 1.5; }
+.annual-ppr-print-title { text-align: center; margin-bottom: 12px; }
+.annual-ppr-print-title h1 { margin: 0 0 5px; font-size: 20px; }
+.annual-ppr-meta { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 10px; font-size: 13px; }
+.annual-ppr-meta input { width: 70px; }
+.annual-ppr-scroll { overflow: auto; border: 1px solid #9aabb8; }
+.annual-ppr-table { width: 100%; min-width: 1720px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+.annual-ppr-table th, .annual-ppr-table td { border: 1px solid #8fa0ad; padding: 4px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+.annual-ppr-table thead th { position: sticky; top: 0; z-index: 2; background: #dce7ef; }
+.annual-ppr-table th:nth-child(2), .annual-ppr-table th:nth-child(3), .annual-ppr-table th:nth-child(4) { width: 145px; }
+.annual-ppr-table th:nth-child(n+6):nth-child(-n+17) { width: 48px; }
+.annual-ppr-table input, .annual-ppr-table select { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; }
+.annual-ppr-plan { background: #eef7e9; }
+.annual-ppr-fact { background: #fff8dc; font-weight: 800; }
+.annual-ppr-note { margin: 10px 0; color: #52616d; font-size: 12px; }
+.annual-ppr-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 14px; }
+.annual-ppr-signatures label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
+.annual-ppr-signatures input, .annual-ppr-approval input { min-width: 250px; border: 0; border-bottom: 1px solid #333; border-radius: 0; background: transparent; }
+
+@media (max-width: 900px) {
+  .desktop-annual-ppr-button, .annual-ppr-overlay { display: none !important; }
+}
+
 .worker-rating-hidden {
   margin-top: 16px;
   padding: 14px;

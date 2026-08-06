@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v413-permanent-attendance-qr";
+const SERVER_VERSION = "v414-annual-ppr-schedule";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -179,7 +179,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -272,6 +272,7 @@ function normalizeDb(db) {
   db.gpmJournal.events ||= {};
   db.gpmJournal.managers ||= {};
   db.pprSheets ||= {};
+  db.annualPpr ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
   db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
   db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
@@ -1662,6 +1663,7 @@ function publicState(db = readDb()) {
     gasJournal: db.gasJournal,
     gpmJournal: db.gpmJournal,
     pprSheets: db.pprSheets,
+    annualPpr: db.annualPpr,
     journalDueSince: db.journalDueSince,
     auditHistory: db.auditHistory,
     systemBroadcasts: db.systemBroadcasts,
@@ -2810,7 +2812,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "instructionEdit", "journalPrint"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
@@ -3562,7 +3564,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "inventory", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
@@ -5725,6 +5727,14 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/state" && req.method === "PUT") {
     const body = await readBody(req);
+    if (Object.prototype.hasOwnProperty.call(body, "annualPpr")) {
+      const annualPprAllowed = req.authUser?.role === "editor"
+        || (req.authUser?.role === "engineer" && activeUserPermission(req.authUser, "annualPprEdit"));
+      if (!annualPprAllowed) {
+        sendJson(res, 403, { error: "annual_ppr_permission_denied" });
+        return true;
+      }
+    }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
       const beforeState = JSON.stringify(publicState(db));
@@ -5849,7 +5859,7 @@ async function handleApi(req, res, pathname, url) {
       }
       const operationalFields = [
         "checks", "requests", "directorMessages", "serviceCosts", "downtimes",
-        "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "journalDueSince", "auditHistory", "systemBroadcasts",
+        "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
       const hasOperationalPayload = operationalFields.some(field => Object.prototype.hasOwnProperty.call(body, field));
@@ -5888,6 +5898,7 @@ async function handleApi(req, res, pathname, url) {
           managerMigrationVersion: db.gpmJournal?.managerMigrationVersion || body.gpmJournal?.managerMigrationVersion || ""
         };
         db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
+        db.annualPpr = mergeObjectRecordsByFreshness(db.annualPpr, body.annualPpr);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
         db.systemBroadcasts = mergeArrayById(db.systemBroadcasts, body.systemBroadcasts);

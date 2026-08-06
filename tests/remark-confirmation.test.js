@@ -1510,6 +1510,29 @@ test("a full server refresh replaces stale local check records", () => {
   assert.match(appSource, /state\.checks = preferRemote\s*\? compactCheckRecords\(\{ \.\.\.\(remote\.checks \|\| \{\}\) \}\)\s*:\s*compactCheckRecords\(mergeCheckRecordsLocal\(state\.checks, remote\.checks\)\)/);
 });
 
+test("annual PPR schedule is desktop-only and follows the live equipment catalog", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /function annualPprRows\(year\)/);
+  assert.match(appSource, /allEquipment\(\)[\s\S]*flatMap\(eq => eq\.nodes\.map/);
+  assert.match(appSource, /function annualPprAutomaticPlan\(eq, node, year\)/);
+  assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
+  assert.match(appSource, /nodeWalkCompletion\(rec, date\)\.complete/);
+  assert.match(appSource, /label: `✓ ТО/);
+  assert.match(appSource, /@page\{size:A3 landscape/);
+  assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
+});
+
+test("only admin or an explicitly permitted engineer can edit annual PPR", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(appSource, /function canEditAnnualPpr\(\)/);
+  assert.match(appSource, /profile\?\.role === "engineer" && activeUserPermission\([\s\S]*"annualPprEdit"\)/);
+  assert.match(appSource, /Редактирование годового графика ППР/);
+  assert.match(serverSource, /req\.authUser\?\.role === "editor"[\s\S]*req\.authUser\?\.role === "engineer" && activeUserPermission\(req\.authUser, "annualPprEdit"\)/);
+  assert.match(serverSource, /annual_ppr_permission_denied/);
+});
+
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
