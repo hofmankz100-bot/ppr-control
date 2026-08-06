@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v418-annual-ppr-pdf-render";
+const APP_VERSION = "v419-annual-ppr-pdf-pages";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11511,7 +11511,7 @@ function annualPprOutputClone(overlay) {
 }
 
 async function shareAnnualPprPdf(overlay, year, button) {
-  if (typeof window.html2pdf !== "function") return window.alert("Создание PDF недоступно. Обновите страницу и повторите.");
+  if (typeof window.html2canvas !== "function" || typeof window.jspdf?.jsPDF !== "function") return window.alert("Создание PDF недоступно. Обновите страницу и повторите.");
   const clone = annualPprOutputClone(overlay);
   if (!clone) return;
   const originalText = button?.textContent || "Скачать / отправить PDF";
@@ -11524,18 +11524,39 @@ async function shareAnnualPprPdf(overlay, year, button) {
   clone.style.top = "0";
   clone.style.zIndex = "1100";
   clone.style.pointerEvents = "none";
-  document.body.append(clone);
   try {
     const fileName = `godovoy-grafik-ppr-${year}.pdf`;
-    const worker = window.html2pdf().set({
-      margin: [7, 7, 7, 7],
-      filename: fileName,
-      image: { type: "jpeg", quality: 0.97 },
-      html2canvas: { scale: 1.35, useCORS: true, backgroundColor: "#ffffff", windowWidth: 1640, scrollX: 0, scrollY: 0 },
-      jsPDF: { unit: "mm", format: "a3", orientation: "landscape" },
-      pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] }
-    }).from(clone).toPdf();
-    const pdf = await worker.get("pdf");
+    const sourceRows = [...clone.querySelectorAll(".annual-ppr-table tbody tr")];
+    const rowPairs = Array.from({ length: Math.ceil(sourceRows.length / 2) }, (_, index) => sourceRows.slice(index * 2, index * 2 + 2));
+    const chunks = Array.from({ length: Math.max(1, Math.ceil(rowPairs.length / 12)) }, (_, index) => rowPairs.slice(index * 12, index * 12 + 12));
+    const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a3", orientation: "landscape", compress: true });
+    for (let pageIndex = 0; pageIndex < chunks.length; pageIndex += 1) {
+      const page = clone.cloneNode(true);
+      const pageRows = [...page.querySelectorAll(".annual-ppr-table tbody tr")];
+      const firstRow = pageIndex * 24;
+      const lastRow = firstRow + chunks[pageIndex].length * 2;
+      pageRows.forEach((row, index) => { if (index < firstRow || index >= lastRow) row.remove(); });
+      if (pageIndex > 0) page.querySelector(".annual-ppr-approval")?.remove();
+      if (pageIndex < chunks.length - 1) {
+        page.querySelector(".annual-ppr-note")?.remove();
+        page.querySelector(".annual-ppr-signatures")?.remove();
+      }
+      page.style.position = "absolute";
+      page.style.left = "0";
+      page.style.top = "0";
+      page.style.zIndex = "1100";
+      page.style.pointerEvents = "none";
+      document.body.append(page);
+      const canvas = await window.html2canvas(page, { scale: 1.15, useCORS: true, backgroundColor: "#ffffff", width: 1580, windowWidth: 1640, scrollX: 0, scrollY: 0 });
+      page.remove();
+      if (pageIndex > 0) pdf.addPage("a3", "landscape");
+      const availableWidth = 406;
+      const availableHeight = 283;
+      const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
+      const imageWidth = canvas.width * ratio;
+      const imageHeight = canvas.height * ratio;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 7 + (availableWidth - imageWidth) / 2, 7, imageWidth, imageHeight, undefined, "FAST");
+    }
     const blob = pdf.output("blob");
     const file = new File([blob], fileName, { type: "application/pdf" });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {

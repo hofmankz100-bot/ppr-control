@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=418-annual-ppr-pdf-render/);
-  assert.match(html, /styles\.css\?v=418-annual-ppr-pdf-render/);
-  assert.match(serviceWorker, /app\.js\?v=418-annual-ppr-pdf-render/);
+  assert.match(html, /app\.js\?v=419-annual-ppr-pdf-pages/);
+  assert.match(html, /styles\.css\?v=419-annual-ppr-pdf-pages/);
+  assert.match(serviceWorker, /app\.js\?v=419-annual-ppr-pdf-pages/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1546,6 +1546,9 @@ test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /async function shareAnnualPprPdf\(/);
   assert.match(appSource, /format: "a3", orientation: "landscape"/);
+  assert.match(appSource, /Math\.ceil\(rowPairs\.length \/ 12\)/);
+  assert.match(appSource, /await window\.html2canvas\(page/);
+  assert.match(appSource, /pdf\.addPage\("a3", "landscape"\)/);
   assert.match(appSource, /navigator\.canShare\?\.\(\{ files: \[file\] \}\)/);
   assert.match(appSource, /link\.download = fileName/);
   assert.match(appSource, /data-share-annual-ppr-pdf/);

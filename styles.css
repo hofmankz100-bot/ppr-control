@@ -82,6 +82,7 @@
 .annual-ppr-pdf-output .annual-ppr-table { min-width: 0; font-size: 7px; }
 .annual-ppr-pdf-output .annual-ppr-table th,
 .annual-ppr-pdf-output .annual-ppr-table td { padding: 2px; }
+.annual-ppr-pdf-output .annual-ppr-table thead th { position: static; }
 
 @media (max-width: 900px) {
   .desktop-annual-ppr-button, .annual-ppr-overlay { display: none !important; }
