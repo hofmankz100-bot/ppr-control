@@ -1505,6 +1505,11 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
   assert.notEqual(removedEndpoint.status, 200);
 });
 
+test("a full server refresh replaces stale local check records", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /state\.checks = preferRemote\s*\? compactCheckRecords\(\{ \.\.\.\(remote\.checks \|\| \{\}\) \}\)\s*:\s*compactCheckRecords\(mergeCheckRecordsLocal\(state\.checks, remote\.checks\)\)/);
+});
+
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");

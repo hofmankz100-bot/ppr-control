@@ -2341,7 +2341,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   }
   if (remote.walkShiftCleanupVersion !== WALK_SHIFT_CLEANUP_VERSION) clearLegacyWalkCompletions(remote);
   const preferRemote = options.preferRemote === true && localStorage.getItem(`${STORE_KEY}-pending`) !== "1";
-  state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
+  state.checks = preferRemote
+    ? compactCheckRecords({ ...(remote.checks || {}) })
+    : compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
   state.requests = preferRemote
     ? { ...(remote.requests || {}) }
     : mergeObjectByFreshnessLocal(state.requests, remote.requests);
