@@ -10,7 +10,7 @@
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#14324a",
-  "description": "ALKZ — мобильный контроль ППР, склада, чек-листов и замечаний.",
+  "description": "ALKZ — мобильный контроль ППР, оборудования, чек-листов и замечаний.",
   "icons": [
     {
       "src": "icon-192.png",

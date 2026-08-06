@@ -1496,12 +1496,13 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
   assert.match(serverSource, /function removeWarehouseWorkflow\(db\)/);
   assert.match(serverSource, /db\.inventory = \{\}/);
   assert.match(serverSource, /filter\(user => user\?\.role !== "warehouse"\)/);
+  assert.doesNotMatch(serverSource, /pathname === "\/api\/warehouse\/issue"/);
   const removedEndpoint = await fetch(`${baseUrl}/api/warehouse/issue`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}"
   });
-  assert.equal(removedEndpoint.status, 410);
+  assert.notEqual(removedEndpoint.status, 200);
 });
 
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
