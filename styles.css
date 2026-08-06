@@ -84,6 +84,24 @@
 .annual-ppr-pdf-output .annual-ppr-table td { padding: 2px; }
 .annual-ppr-pdf-output .annual-ppr-table thead th { position: static; }
 
+.annual-ppr-act-overlay { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgba(10, 28, 42, .78); }
+.annual-ppr-act-dialog { width: min(1500px, 96vw); max-height: 94vh; overflow: auto; border-radius: 18px; background: #f7fafc; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+.annual-ppr-act-dialog > header { position: sticky; top: 0; z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px 18px; color: #fff; background: #14324a; }
+.annual-ppr-act-dialog > header div { display: grid; gap: 3px; }
+.annual-ppr-act-dialog form, .annual-ppr-act-history { padding: 18px; }
+.annual-ppr-act-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.annual-ppr-act-dialog label { display: grid; gap: 5px; color: #29495b; font-size: 13px; font-weight: 700; }
+.annual-ppr-act-dialog input, .annual-ppr-act-dialog select, .annual-ppr-act-dialog textarea { width: 100%; border: 1px solid #b8cbd6; border-radius: 8px; background: #fff; padding: 9px; font: inherit; }
+.annual-ppr-act-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.annual-ppr-act-columns fieldset { display: grid; gap: 11px; min-width: 0; border: 1px solid #b8cbd6; border-radius: 12px; background: #fff; padding: 14px; }
+.annual-ppr-act-columns legend { padding: 0 7px; color: #14324a; font-weight: 900; }
+.annual-ppr-act-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.annual-ppr-act-history { border-top: 1px solid #cad8e0; background: #fff; }
+.annual-ppr-act-history article { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid #dce5ea; }
+.annual-ppr-act-history article > div { display: grid; gap: 3px; }
+.annual-ppr-act-history article > div:last-child { display: flex; grid-auto-flow: column; gap: 8px; }
+.annual-ppr-act-history span, .annual-ppr-act-history small { color: #607785; }
+
 @media (max-width: 900px) {
   .desktop-annual-ppr-button, .annual-ppr-overlay { display: none !important; }
 }

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v420-annual-ppr-pdf-assets";
+const APP_VERSION = "v421-annual-ppr-equipment-acts";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11375,7 +11375,7 @@ function recommendedMaintenanceForDate(eq, date) {
   return null;
 }
 
-const ANNUAL_PPR_TYPES = ["", "ТО", "ТР", "КР"];
+const ANNUAL_PPR_TYPES = ["", "ТО", "ТР", "КР", "ЗМ", "МВ"];
 
 function annualPprYearRecord(year, create = false) {
   state.annualPpr ||= {};
@@ -11390,10 +11390,16 @@ function annualPprYearRecord(year, create = false) {
       agreedSafetyBy: "",
       preparedBy: profile?.name || "",
       overrides: {},
+      events: [],
       updatedAt: new Date().toISOString()
     };
   }
-  return state.annualPpr[key] || { year: Number(year), revision: "01", overrides: {} };
+  return state.annualPpr[key] || { year: Number(year), revision: "01", overrides: {}, events: [] };
+}
+
+function annualPprEvents(year) {
+  const record = annualPprYearRecord(year);
+  return (Array.isArray(record.events) ? record.events : []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 }
 
 function annualPprNodeKey(eq, node) {
@@ -11431,6 +11437,7 @@ function annualPprFacts(year) {
 function annualPprRows(year) {
   const record = annualPprYearRecord(year);
   const facts = annualPprFacts(year);
+  const events = annualPprEvents(year);
   return allEquipment()
     .filter(eq => eq.area !== "Резерв")
     .flatMap(eq => eq.nodes.map((node, nodeIndex) => {
@@ -11447,15 +11454,118 @@ function annualPprRows(year) {
         eq, node, nodeIndex, nodeKey, months,
         facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
           const month = index + 1;
+          const event = events.find(item => Number(item.equipmentId) === Number(eq.id) && item.node === node && Number(String(item.date || "").slice(5, 7)) === month);
           const fact = facts.get(`${nodeKey}:${month}`);
           const factType = months[month] || "ТО";
-          return [month, fact ? `✓ ${factType} ${String(fact.date).slice(8, 10)}.${String(fact.date).slice(5, 7)}` : ""];
+          return [month, event
+            ? `✓ ${event.type} ${String(event.date).slice(8, 10)}.${String(event.date).slice(5, 7)}`
+            : fact ? `✓ ${factType} ${String(fact.date).slice(8, 10)}.${String(fact.date).slice(5, 7)}` : ""];
         })),
         periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
         lastRepair: saved.lastRepair || "",
         responsible: saved.responsible || ""
       };
     }));
+}
+
+function annualPprActPrint(event, kind) {
+  const commissioning = kind === "commissioning";
+  const title = commissioning ? "АКТ ВВОДА ОБОРУДОВАНИЯ В ЭКСПЛУАТАЦИЮ" : "ДЕФЕКТНЫЙ АКТ";
+  const number = commissioning ? event.commissionNumber : event.defectNumber;
+  const details = commissioning
+    ? [["Основание для ввода", event.commissionBasis], ["Идентификация актива", `${event.newEquipment || ""}; изготовитель: ${event.manufacturer || ""}; тип/марка: ${event.model || ""}; заводской №: ${event.serialNumber || ""}; инвентарный №: ${event.inventoryNumber || ""}; паспорт: ${event.passportNumber || ""}`], ["Комплектность и переданная документация", event.completeness], ["Результаты осмотра, монтажа и испытаний", event.tests], ["Разрешённые параметры и условия эксплуатации", event.operatingConditions], ["Ответственный за эксплуатацию", event.responsiblePerson], ["Заключение комиссии", event.commissionConclusion]]
+    : [["Место нахождения актива", event.location], ["Идентификация актива", `${event.oldEquipment || event.equipmentName || ""}; изготовитель: ${event.manufacturer || ""}; тип/марка: ${event.model || ""}; заводской №: ${event.serialNumber || ""}; паспорт/маркировка: ${event.passportNumber || ""}; дата изготовления: ${event.manufacturedAt || ""}`], ["Принят в монтаж", `Акт № ${event.installationActNumber || "—"} от ${event.installationActDate ? dateHuman(event.installationActDate) : "—"}`], ["Выявленные дефекты", event.defectDescription], ["Необходимые работы и срок устранения", event.requiredWorks], ["Заключение комиссии", event.defectConclusion]];
+  const members = commissioning ? event.commissionMembers : event.defectMembers;
+  const popup = window.open("", "_blank", "width=1000,height=850");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати акта.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4 portrait;margin:15mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12pt}h1{text-align:center;font-size:16pt;margin:18mm 0 8mm}.meta{display:flex;justify-content:space-between;margin-bottom:8mm}.row{border:1px solid #222;padding:4mm;margin-top:-1px;min-height:18mm}.row b{display:block;margin-bottom:3mm}.sign{margin-top:14mm}.sign div{border-bottom:1px solid #222;padding:4mm 0}.actions{position:fixed;right:12px;top:12px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Печать</button><h1>${title}</h1><div class="meta"><span>№ ${escapeHtml(number || "____")}</span><span>${escapeHtml(dateHuman(event.date))}</span></div><p><b>Организация:</b> ТОО «Aluminium of Kazakhstan»</p><p><b>Участок:</b> ${escapeHtml(event.area || "")}</p><p><b>Оборудование:</b> ${escapeHtml(event.equipmentName || "")}</p><p><b>Узел:</b> ${escapeHtml(event.node || "")}</p>${details.map(([label, value]) => `<div class="row"><b>${label}</b>${escapeHtml(value || "")}</div>`).join("")}<div class="sign"><b>Члены комиссии:</b>${String(members || "").split(/\r?\n/).filter(Boolean).map(member => `<div>${escapeHtml(member)} ____________________</div>`).join("") || "<div>____________________ ____________________</div>"}</div><script>addEventListener('load',()=>setTimeout(()=>print(),250))<\/script></body></html>`);
+  popup.document.close();
+}
+
+function annualPprActSectionHtml(event, kind) {
+  const commissioning = kind === "commissioning";
+  const title = commissioning ? "АКТ ВВОДА ОБОРУДОВАНИЯ В ЭКСПЛУАТАЦИЮ" : "ДЕФЕКТНЫЙ АКТ";
+  const number = commissioning ? event.commissionNumber : event.defectNumber;
+  const details = commissioning
+    ? [["Основание для ввода", event.commissionBasis], ["Результаты осмотра и испытаний", event.tests], ["Заключение комиссии", event.commissionConclusion], ["Новое оборудование", event.newEquipment]]
+    : [["Выявленные дефекты", event.defectDescription], ["Причина / техническое состояние", event.defectCause], ["Заключение комиссии", event.defectConclusion], ["Демонтируемое оборудование", event.oldEquipment]];
+  const members = commissioning ? event.commissionMembers : event.defectMembers;
+  return `<section class="act-sheet"><h1>${title}</h1><div class="meta"><span>№ ${escapeHtml(number || "____")}</span><span>${escapeHtml(dateHuman(event.date))}</span></div><p><b>Организация:</b> ТОО «Aluminium of Kazakhstan»</p><p><b>Участок:</b> ${escapeHtml(event.area || "")}</p><p><b>Оборудование:</b> ${escapeHtml(event.equipmentName || "")}</p><p><b>Узел:</b> ${escapeHtml(event.node || "")}</p>${details.map(([label, value]) => `<div class="row"><b>${label}</b>${escapeHtml(value || "")}</div>`).join("")}<div class="sign"><b>Члены комиссии:</b>${String(members || "").split(/\r?\n/).filter(Boolean).map(member => `<div>${escapeHtml(member)} ____________________</div>`).join("") || "<div>____________________ ____________________</div>"}</div></section>`;
+}
+
+function annualPprActsDocumentHtml(event, autoPrint = false) {
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Комплект актов ${escapeHtml(event.date)}</title><style>@page{size:A4 portrait;margin:15mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12pt}.act-sheet{min-height:260mm;break-after:page;page-break-after:always}.act-sheet:last-child{break-after:auto;page-break-after:auto}h1{text-align:center;font-size:16pt;margin:12mm 0 8mm}.meta{display:flex;justify-content:space-between;margin-bottom:8mm}.row{border:1px solid #222;padding:4mm;margin-top:-1px;min-height:18mm}.row b{display:block;margin-bottom:3mm}.sign{margin-top:14mm}.sign div{border-bottom:1px solid #222;padding:4mm 0}.actions{position:fixed;right:12px;top:12px}@media print{.actions{display:none}}</style></head><body>${autoPrint ? '<button class="actions" onclick="print()">Печать комплекта</button>' : ""}${annualPprActSectionHtml(event, "defect")}${annualPprActSectionHtml(event, "commissioning")}${autoPrint ? "<script>addEventListener('load',()=>setTimeout(()=>print(),250))<\/script>" : ""}</body></html>`;
+}
+
+function printAnnualPprActsTogether(event) {
+  const popup = window.open("", "_blank", "width=1000,height=850");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати актов.");
+  popup.document.write(annualPprActsDocumentHtml(event, true));
+  popup.document.close();
+}
+
+function downloadAnnualPprActsWord(event) {
+  const blob = new Blob(["\uFEFF", annualPprActsDocumentHtml(event, false)], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `akty-zamena-vvod-${event.date || todayISO()}.doc`;
+  document.body.append(link); link.click(); link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+function openAnnualPprActs(year, scheduleOverlay) {
+  document.querySelector(".annual-ppr-act-overlay")?.remove();
+  const equipment = allEquipment().filter(eq => eq.area !== "Резерв");
+  const overlay = document.createElement("div");
+  overlay.className = "annual-ppr-act-overlay";
+  overlay.innerHTML = `<section class="annual-ppr-act-dialog"><header><div><strong>Замена, демонтаж и ввод оборудования</strong><span>Событие и комплект актов прикрепляются к выбранной дате</span></div><button type="button" data-act-close>Закрыть</button></header><form data-annual-ppr-act-form><div class="annual-ppr-act-grid"><label>Дата события<input required type="date" name="date" value="${todayISO()}"></label><label>Событие<select name="type"><option value="ЗМ">ЗМ — замена / демонтаж</option><option value="МВ">МВ — монтаж и ввод</option></select></label><label>Оборудование<select name="equipmentId">${equipment.map(eq => `<option value="${eq.id}">${escapeHtml(eq.area)} · ${escapeHtml(eq.name)}</option>`).join("")}</select></label><label>Узел<select name="node"></select></label><label>№ дефектного акта<input name="defectNumber"></label><label>№ акта ввода<input name="commissionNumber"></label><label>Место нахождения актива<input name="location" placeholder="Цех, участок, линия"></label><label>Изготовитель<input name="manufacturer"></label><label>Тип / марка / модель<input name="model"></label><label>Заводской №<input name="serialNumber"></label><label>Инвентарный №<input name="inventoryNumber"></label><label>№ паспорта / маркировка<input name="passportNumber"></label><label>Дата изготовления<input type="date" name="manufacturedAt"></label><label>№ акта передачи в монтаж<input name="installationActNumber"></label><label>Дата акта передачи в монтаж<input type="date" name="installationActDate"></label><label>Ответственный за эксплуатацию<input name="responsiblePerson" placeholder="Должность, Ф.И.О."></label><label>Демонтируемое оборудование<input name="oldEquipment" placeholder="Полное наименование"></label><label>Новое оборудование<input name="newEquipment" placeholder="Полное наименование"></label></div><div class="annual-ppr-act-columns"><fieldset><legend>Дефектный акт · приказ МФ РК № 562</legend><label>Выявленные дефекты<textarea name="defectDescription" rows="5"></textarea></label><label>Необходимые работы и срок устранения<textarea name="requiredWorks" rows="3"></textarea></label><label>Заключение комиссии<textarea name="defectConclusion" rows="3" placeholder="Ремонт, замена или демонтаж"></textarea></label><label>Члены комиссии — должность и Ф.И.О., каждый с новой строки<textarea name="defectMembers" rows="4"></textarea></label></fieldset><fieldset><legend>Акт ввода в эксплуатацию</legend><label>Основание для ввода<textarea name="commissionBasis" rows="3" placeholder="Приказ, договор, акт монтажа"></textarea></label><label>Комплектность и переданная документация<textarea name="completeness" rows="3" placeholder="Паспорт, руководство, сертификаты, схемы"></textarea></label><label>Результаты осмотра, монтажа и испытаний<textarea name="tests" rows="4"></textarea></label><label>Разрешённые параметры и условия эксплуатации<textarea name="operatingConditions" rows="3"></textarea></label><label>Заключение комиссии<textarea name="commissionConclusion" rows="3" placeholder="Ввести в эксплуатацию с указанной даты"></textarea></label><label>Члены комиссии — должность и Ф.И.О., каждый с новой строки<textarea name="commissionMembers" rows="4"></textarea></label></fieldset></div><div class="annual-ppr-act-actions"><button type="submit">Сохранить и прикрепить к дате</button><button type="button" data-act-print-defect disabled>Печать дефектного акта</button><button type="button" data-act-print-commission disabled>Печать обоих актов</button></div></form><section class="annual-ppr-act-history"><h3>Прикреплённые события и акты за ${year} год</h3><div data-act-history></div></section></section>`;
+  document.body.append(overlay);
+  const form = overlay.querySelector("form");
+  const equipmentSelect = form.elements.equipmentId;
+  const nodeSelect = form.elements.node;
+  let savedEvent = null;
+  const renderNodes = () => {
+    const eq = equipmentById(Number(equipmentSelect.value));
+    nodeSelect.innerHTML = (eq?.nodes || []).map(node => `<option value="${escapeHtml(node)}">${escapeHtml(node)}</option>`).join("");
+  };
+  const renderHistory = () => {
+    const items = annualPprEvents(year);
+    overlay.querySelector("[data-act-history]").innerHTML = items.length ? items.map(item => `<article><div><b>${escapeHtml(item.type)} · ${escapeHtml(dateHuman(item.date))}</b><span>${escapeHtml(item.area)} · ${escapeHtml(item.equipmentName)} · ${escapeHtml(item.node)}</span><small>Дефектный акт № ${escapeHtml(item.defectNumber || "—")} · Акт ввода № ${escapeHtml(item.commissionNumber || "—")}</small></div><div><button type="button" data-history-print="${escapeHtml(item.id)}">Печать комплекта</button><button type="button" data-history-word="${escapeHtml(item.id)}">Скачать Word</button></div></article>`).join("") : `<p>Акты ещё не прикреплены.</p>`;
+    overlay.querySelectorAll("[data-history-print]").forEach(button => button.addEventListener("click", () => printAnnualPprActsTogether(annualPprEvents(year).find(item => item.id === button.dataset.historyPrint))));
+    overlay.querySelectorAll("[data-history-word]").forEach(button => button.addEventListener("click", () => downloadAnnualPprActsWord(annualPprEvents(year).find(item => item.id === button.dataset.historyWord))));
+  };
+  renderNodes(); renderHistory();
+  equipmentSelect.addEventListener("change", renderNodes);
+  overlay.querySelector("[data-act-close]").addEventListener("click", () => overlay.remove());
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(form).entries());
+    const eq = equipmentById(Number(values.equipmentId));
+    if (!eq || !values.date || !values.node) return;
+    const record = annualPprYearRecord(year, true);
+    record.events ||= [];
+    savedEvent = { ...values, id: `annual-ppr-event:${Date.now()}`, equipmentId: Number(values.equipmentId), equipmentName: eq.name, area: eq.area, createdAt: new Date().toISOString(), createdBy: profile?.name || "" };
+    record.events.push(savedEvent);
+    const nodeKey = annualPprNodeKey(eq, values.node);
+    const saved = record.overrides[nodeKey] ||= { months: {} };
+    saved.months[Number(String(values.date).slice(5, 7))] = values.type;
+    record.updatedAt = savedEvent.createdAt;
+    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
+    overlay.querySelector("[data-act-print-defect]").disabled = false;
+    overlay.querySelector("[data-act-print-commission]").disabled = false;
+    renderHistory();
+    showAppToast("Событие и акты прикреплены к выбранной дате.");
+    scheduleOverlay?.remove();
+  });
+  overlay.querySelector("[data-act-print-defect]").addEventListener("click", () => savedEvent && annualPprActPrint(savedEvent, "defect"));
+  overlay.querySelector("[data-act-print-commission]").textContent = "Печать обоих актов";
+  overlay.querySelector("[data-act-print-commission]").addEventListener("click", () => savedEvent && printAnnualPprActsTogether(savedEvent));
+  const wordButton = document.createElement("button");
+  wordButton.type = "button"; wordButton.textContent = "Скачать комплект Word"; wordButton.disabled = true;
+  overlay.querySelector(".annual-ppr-act-actions").append(wordButton);
+  wordButton.addEventListener("click", () => savedEvent && downloadAnnualPprActsWord(savedEvent));
+  form.addEventListener("submit", () => { wordButton.disabled = false; });
 }
 
 function annualPprMonthSelect(row, month) {
@@ -11584,12 +11694,13 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   const record = annualPprYearRecord(year, true);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Автоматически обновляется по каталогу оборудования и узлов</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>Закрыть</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; КР — капитальный ремонт. Периодичность уточняется ответственным инженером по паспортам изготовителей, наработке, техническому состоянию и применимым требованиям промышленной безопасности Республики Казахстан.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Автоматически обновляется по каталогу оборудования и узлов</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-annual-ppr-acts>ЗМ / МВ и акты</button><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>Закрыть</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; КР — капитальный ремонт; ЗМ — замена / демонтаж оборудования; МВ — монтаж и ввод в эксплуатацию. События ЗМ и МВ подтверждаются прикреплёнными актами. Периодичность уточняется ответственным инженером по паспортам изготовителей, наработке и техническому состоянию.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
   overlay.querySelector("[data-annual-ppr-year]")?.addEventListener("change", event => { overlay.remove(); openAnnualPprSchedule(event.currentTarget.value); });
   overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
+  overlay.querySelector("[data-annual-ppr-acts]")?.addEventListener("click", () => openAnnualPprActs(year, overlay));
   overlay.querySelector("[data-share-annual-ppr-pdf]")?.addEventListener("click", event => shareAnnualPprPdf(overlay, year, event.currentTarget));
   overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {

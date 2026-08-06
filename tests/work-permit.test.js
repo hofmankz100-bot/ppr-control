@@ -14,9 +14,9 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(html, /mammoth\.browser\.min\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(html, /modules\/work-permit\.js\?v=420-annual-ppr-pdf-assets/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(html, /modules\/work-permit\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -240,10 +240,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /styles\.css\?v=420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /app\.js\?v=420-annual-ppr-pdf-assets/);
+  assert.match(serviceWorker, /ppr-v421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /styles\.css\?v=421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /app\.js\?v=421-annual-ppr-equipment-acts/);
 });

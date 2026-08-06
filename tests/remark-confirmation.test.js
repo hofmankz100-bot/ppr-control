@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=420-annual-ppr-pdf-assets/);
-  assert.match(html, /styles\.css\?v=420-annual-ppr-pdf-assets/);
-  assert.match(serviceWorker, /app\.js\?v=420-annual-ppr-pdf-assets/);
+  assert.match(html, /app\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(html, /styles\.css\?v=421-annual-ppr-equipment-acts/);
+  assert.match(serviceWorker, /app\.js\?v=421-annual-ppr-equipment-acts/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1557,6 +1557,22 @@ test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
   assert.match(appSource, /data-share-annual-ppr-pdf/);
   assert.match(appSource, /clone\.style\.left = "0"/);
   assert.doesNotMatch(appSource, /clone\.style\.left = "-20000px"/);
+});
+
+test("annual PPR records equipment replacement and commissioning with printable Kazakhstan act fields", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(appSource, /ANNUAL_PPR_TYPES = \["", "ТО", "ТР", "КР", "ЗМ", "МВ"\]/);
+  assert.match(appSource, /function openAnnualPprActs\(/);
+  assert.match(appSource, /приказ МФ РК № 562/i);
+  assert.match(appSource, /name="manufacturer"/);
+  assert.match(appSource, /name="serialNumber"/);
+  assert.match(appSource, /name="passportNumber"/);
+  assert.match(appSource, /name="requiredWorks"/);
+  assert.match(appSource, /function printAnnualPprActsTogether\(/);
+  assert.match(appSource, /application\/msword;charset=utf-8/);
+  assert.match(appSource, /Скачать комплект Word/);
+  assert.match(stylesSource, /\.annual-ppr-act-columns/);
 });
 
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
