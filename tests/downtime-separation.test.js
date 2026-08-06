@@ -27,6 +27,8 @@ test("active downtimes are visible as actionable cards above the monthly chart",
   assert.match(appSource, /function askDowntimeCloseDetails\(liveStop\)/);
   assert.match(appSource, /data-downtime-close-comment/);
   assert.match(appSource, /data-downtime-close-started/);
+  assert.match(appSource, /const closer = resolutionActor\(\)/);
+  assert.doesNotMatch(appSource, /Кто фактически устранил простой/);
   assert.match(appSource, /Сначала отметьтесь через QR в разделе «Кто на работе»/);
   assert.match(appSource, /Сначала отсканируйте QR/);
   assert.match(appSource, /function showDowntimeCloseBlockedDialog\(message\)/);

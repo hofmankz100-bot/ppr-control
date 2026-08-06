@@ -46,7 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v412-permit-ack-restore";
+const SERVER_VERSION = "v413-permanent-attendance-qr";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -60,7 +60,6 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
-const ATTENDANCE_QR_SLOT_MS = 30 * 1000;
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
@@ -2925,37 +2924,21 @@ function attendanceQrSecret(db) {
   return db.attendanceConfig.qrSecret;
 }
 
-function attendanceQrSignature(db, clientId, slot) {
+function attendanceQrSignature(db, clientId) {
   return crypto.createHmac("sha256", attendanceQrSecret(db))
-    .update(`${String(clientId)}:${Number(slot)}`)
+    .update(`${String(clientId)}:permanent`)
     .digest("base64url");
 }
 
-function attendanceQrToken(db, clientId, now = Date.now()) {
-  const slot = Math.floor(now / ATTENDANCE_QR_SLOT_MS);
-  return `${slot}.${attendanceQrSignature(db, clientId, slot)}`;
+function attendanceQrToken(db, clientId) {
+  return `permanent.${attendanceQrSignature(db, clientId)}`;
 }
 
-function attendanceKioskTokenHash(token) {
-  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
-}
-
-function validAttendanceKioskToken(db, token) {
-  const expected = String(db.attendanceConfig?.kioskTokenHash || "");
-  const received = attendanceKioskTokenHash(token);
-  return Boolean(expected)
-    && expected.length === received.length
-    && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
-}
-
-function validAttendanceQrToken(db, clientId, token, now = Date.now()) {
-  const match = String(token || "").match(/^(\d+)\.([A-Za-z0-9_-]+)$/);
+function validAttendanceQrToken(db, clientId, token) {
+  const match = String(token || "").match(/^permanent\.([A-Za-z0-9_-]+)$/);
   if (!match) return false;
-  const tokenSlot = Number(match[1]);
-  const currentSlot = Math.floor(now / ATTENDANCE_QR_SLOT_MS);
-  if (![currentSlot, currentSlot - 1].includes(tokenSlot)) return false;
-  const expected = attendanceQrSignature(db, clientId, tokenSlot);
-  const received = String(match[2]);
+  const expected = attendanceQrSignature(db, clientId);
+  const received = String(match[1]);
   return expected.length === received.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
 }
 
@@ -3750,8 +3733,6 @@ async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
-    || pathname === "/api/attendance/kiosk"
-    || pathname === "/api/attendance/kiosk/exit"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -3771,8 +3752,6 @@ async function handleApi(req, res, pathname, url) {
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
     || pathname === "/api/auth/logout"
-    || (pathname === "/api/attendance/kiosk" && req.method === "GET")
-    || (pathname === "/api/attendance/kiosk/exit" && req.method === "POST")
     || (pathname === "/api/attendance/lookup" && req.method === "POST")
     || (pathname === "/api/attendance/contractor" && req.method === "POST")
     ;
@@ -3830,8 +3809,7 @@ async function handleApi(req, res, pathname, url) {
     }
     const body = await readBody(req).catch(() => ({}));
     const db = readDb();
-    const clientId = String(db.attendanceConfig.workstationClientId || "");
-    if (!clientId || !validAttendanceQrToken(db, clientId, body.token)) {
+    if (!db.attendanceConfig.qrEnabled || !validAttendanceQrToken(db, "attendance", body.token)) {
       sendJson(res, 410, { ok: false, error: "attendance_qr_expired" });
       return true;
     }
@@ -3864,11 +3842,10 @@ async function handleApi(req, res, pathname, url) {
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const clientId = String(db.attendanceConfig.workstationClientId || "");
       const now = Date.now();
       if (
-        !clientId
-        || (!validAttendanceQrToken(db, clientId, body.token, now) && !validContractorAttendanceTicket(db, req, body.contractorTicket, now))
+        !db.attendanceConfig.qrEnabled
+        || (!validAttendanceQrToken(db, "attendance", body.token) && !validContractorAttendanceTicket(db, req, body.contractorTicket, now))
       ) return { error: "attendance_qr_expired" };
       if (findUser(db, phone)) return { error: "attendance_registered_user" };
       const phoneKey = normalizeIdentifier(phone);
@@ -3887,7 +3864,7 @@ async function handleApi(req, res, pathname, url) {
         employeeId: "",
         startedAt: new Date(now).toISOString(),
         expiresAt: new Date(now + ATTENDANCE_WINDOW_MS).toISOString(),
-        workstationClientId: clientId,
+        attendanceQr: true,
         manual: false,
         contractor: true
       };
@@ -3902,44 +3879,6 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     sendJson(res, 200, { ok: true, contractor: true, ...result });
-    return true;
-  }
-
-  if (pathname === "/api/attendance/kiosk" && req.method === "GET") {
-    const token = String(req.headers["x-attendance-kiosk-token"] || "");
-    const clientId = String(req.headers["x-attendance-client-id"] || "");
-    const db = readDb();
-    if (
-      !validAttendanceKioskToken(db, token)
-      || !clientId
-      || clientId !== String(db.attendanceConfig.workstationClientId || "")
-    ) {
-      sendJson(res, 401, { ok: false, error: "attendance_kiosk_invalid" });
-      return true;
-    }
-    const now = Date.now();
-    const qrToken = attendanceQrToken(db, clientId, now);
-    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-    const protocol = forwardedProto === "https" ? "https" : "http";
-    const host = String(req.headers.host || "ppr-control-ramazan.onrender.com");
-    const scanUrl = `${protocol}://${host}/?attendance=${encodeURIComponent(qrToken)}`;
-    const svg = await QRCode.toString(scanUrl, {
-      type: "svg",
-      margin: 2,
-      width: 720,
-      errorCorrectionLevel: "M"
-    });
-    const onDutyCount = (db.attendanceSessions || []).filter(item =>
-      !item.endedAt && Date.parse(item.expiresAt || "") > now
-    ).length;
-    sendJson(res, 200, {
-      ok: true,
-      workstationName: String(db.attendanceConfig.workstationName || "Рабочий QR"),
-      qrDataUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
-      expiresAt: new Date((Math.floor(now / ATTENDANCE_QR_SLOT_MS) + 1) * ATTENDANCE_QR_SLOT_MS).toISOString(),
-      serverTime: new Date(now).toISOString(),
-      onDutyCount
-    });
     return true;
   }
 
@@ -3999,65 +3938,41 @@ async function handleApi(req, res, pathname, url) {
       onDuty,
       people,
       history,
-      workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
-      workstationClientId: req.authUser?.role === "editor" ? String(db.attendanceConfig.workstationClientId || "") : "",
-      workstationName: monitor ? String(db.attendanceConfig.workstationName || "") : "",
-      workstationRegisteredAt: monitor ? String(db.attendanceConfig.workstationRegisteredAt || "") : "",
-      workstationRegisteredBy: monitor ? String(db.attendanceConfig.workstationRegisteredBy || "") : "",
+      attendanceQrEnabled: Boolean(db.attendanceConfig.qrEnabled),
+      attendanceQrCreatedAt: monitor ? String(db.attendanceConfig.qrCreatedAt || "") : "",
+      attendanceQrCreatedBy: monitor ? String(db.attendanceConfig.qrCreatedBy || "") : "",
       serverTime: new Date(now).toISOString()
     });
     return true;
   }
 
-  if (pathname === "/api/attendance/workstation" && req.method === "POST") {
+  if (pathname === "/api/attendance/qr-config" && req.method === "POST") {
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
-    const action = String(body.action || "register");
-    const clientId = String(body.clientId || "").trim().slice(0, 200);
-    const workstationName = String(body.workstationName || "").trim().slice(0, 100);
-    if (action === "register" && !clientId) {
-      sendJson(res, 400, { ok: false, error: "client_id_required" });
+    const action = String(body.action || "create");
+    if (!["create", "replace", "reset"].includes(action)) {
+      sendJson(res, 400, { ok: false, error: "invalid_qr_action" });
       return true;
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      let issuedKioskToken = "";
-      const replacedClientId = action === "register"
-        && db.attendanceConfig.workstationClientId
-        && db.attendanceConfig.workstationClientId !== clientId
-        ? String(db.attendanceConfig.workstationClientId)
-        : "";
       if (action === "reset") {
-        db.attendanceConfig.workstationClientId = "";
-        db.attendanceConfig.workstationRegisteredAt = "";
-        db.attendanceConfig.workstationRegisteredBy = "";
-        db.attendanceConfig.workstationName = "";
-        db.attendanceConfig.workstationUserAgent = "";
-        db.attendanceConfig.kioskTokenHash = "";
+        db.attendanceConfig.qrEnabled = false;
+        db.attendanceConfig.qrSecret = "";
+        db.attendanceConfig.qrCreatedAt = "";
+        db.attendanceConfig.qrCreatedBy = "";
       } else {
-        const kioskToken = crypto.randomBytes(32).toString("base64url");
-        issuedKioskToken = kioskToken;
-        db.attendanceConfig.workstationClientId = clientId;
-        db.attendanceConfig.workstationName = workstationName || "Рабочий компьютер QR";
-        db.attendanceConfig.workstationUserAgent = String(req.headers["user-agent"] || "").slice(0, 300);
-        db.attendanceConfig.workstationRegisteredAt = new Date().toISOString();
-        db.attendanceConfig.workstationRegisteredBy = String(req.authUser.name || "");
-        db.attendanceConfig.kioskTokenHash = attendanceKioskTokenHash(kioskToken);
-        db.attendanceConfig.kioskTokenCreatedAt = new Date().toISOString();
+        db.attendanceConfig.qrEnabled = true;
+        db.attendanceConfig.qrSecret = "";
+        db.attendanceConfig.qrCreatedAt = new Date().toISOString();
+        db.attendanceConfig.qrCreatedBy = String(req.authUser.name || "");
+        attendanceQrSecret(db);
       }
-      attendanceQrSecret(db);
-      writeDb(db, { action: `attendance_workstation_${action}`, user: req.authUser, clientId });
-      const response = {
-        workstationRegistered: Boolean(db.attendanceConfig.workstationClientId),
-        workstationClientId: String(db.attendanceConfig.workstationClientId || ""),
-        workstationName: String(db.attendanceConfig.workstationName || ""),
-        replacedExisting: Boolean(replacedClientId)
-      };
-      if (issuedKioskToken) response.kioskToken = issuedKioskToken;
-      return response;
+      writeDb(db, { action: `attendance_qr_${action}`, user: req.authUser });
+      return { attendanceQrEnabled: Boolean(db.attendanceConfig.qrEnabled) };
     });
     if (result.error) {
       sendJson(res, 409, { ok: false, error: result.error });
@@ -4072,14 +3987,12 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
-    const clientId = String(url.searchParams.get("clientId") || "").trim();
     const db = readDb();
-    if (!clientId || clientId !== String(db.attendanceConfig.workstationClientId || "")) {
-      sendJson(res, 409, { ok: false, error: "attendance_workstation_mismatch" });
+    if (!db.attendanceConfig.qrEnabled) {
+      sendJson(res, 409, { ok: false, error: "attendance_qr_not_created" });
       return true;
     }
-    const now = Date.now();
-    const token = attendanceQrToken(db, clientId, now);
+    const token = attendanceQrToken(db, "attendance");
     const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
     const protocol = forwardedProto === "https" ? "https" : "http";
     const host = String(req.headers.host || "ppr-control-ramazan.onrender.com");
@@ -4088,7 +4001,7 @@ async function handleApi(req, res, pathname, url) {
       ok: true,
       token,
       scanUrl,
-      expiresAt: new Date((Math.floor(now / ATTENDANCE_QR_SLOT_MS) + 1) * ATTENDANCE_QR_SLOT_MS).toISOString()
+      permanent: true
     });
     return true;
   }
@@ -4102,9 +4015,8 @@ async function handleApi(req, res, pathname, url) {
     const token = String(body.token || "");
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const clientId = String(db.attendanceConfig.workstationClientId || "");
       const now = Date.now();
-      if (!clientId || !validAttendanceQrToken(db, clientId, token, now)) return { error: "attendance_qr_expired" };
+      if (!db.attendanceConfig.qrEnabled || !validAttendanceQrToken(db, "attendance", token)) return { error: "attendance_qr_expired" };
       const existing = activeAttendanceSession(db, req.authUser, now);
       if (existing) return { alreadyActive: true, session: attendanceSessionPublic(existing) };
       const startedAt = new Date(now).toISOString();
@@ -4119,7 +4031,7 @@ async function handleApi(req, res, pathname, url) {
         employeeId: String(req.authUser.employeeId || ""),
         startedAt,
         expiresAt: new Date(now + ATTENDANCE_WINDOW_MS).toISOString(),
-        workstationClientId: clientId,
+        attendanceQr: true,
         manual: false
       };
       db.attendanceSessions.push(session);
@@ -4186,27 +4098,6 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     sendJson(res, 200, { ok: true, ...result });
-    return true;
-  }
-
-  if (pathname === "/api/attendance/kiosk/exit" && req.method === "POST") {
-    const token = String(req.headers["x-attendance-kiosk-token"] || "");
-    const clientId = String(req.headers["x-attendance-client-id"] || "");
-    const body = await readBody(req).catch(() => ({}));
-    const db = readDb();
-    if (
-      !validAttendanceKioskToken(db, token)
-      || clientId !== String(db.attendanceConfig.workstationClientId || "")
-    ) {
-      sendJson(res, 401, { ok: false, error: "attendance_kiosk_invalid" });
-      return true;
-    }
-    const admin = findUser(db, body.identifier);
-    if (!admin || admin.role !== "editor" || !passwordMatches(String(body.password || ""), String(admin.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "Неверный пароль администратора." });
-      return true;
-    }
-    sendJson(res, 200, { ok: true });
     return true;
   }
 

@@ -75,12 +75,10 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v412-permit-ack-restore";
+const APP_VERSION = "v413-permanent-attendance-qr";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
-const ATTENDANCE_KIOSK_TOKEN_KEY = "ppr-attendance-kiosk-token";
-const ATTENDANCE_KIOSK_CLIENT_KEY = "ppr-attendance-kiosk-client";
 const PUBLIC_APP_URL = "https://ppr-control-ramazan.onrender.com";
 const APP_BADGE_KEY = "ppr-app-open-remarks-badge-v2";
 const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
@@ -364,8 +362,6 @@ let authenticatedProfile = loadProfile();
 let profile = activeProfileFromSession(authenticatedProfile);
 let attendanceStatus = null;
 let attendanceRefreshTimer = null;
-let attendanceQrTimer = null;
-let attendanceKioskTimer = null;
 applyWorkCleanFromUrl();
 const nav = [];
 let remoteSaveTimer = null;
@@ -1774,7 +1770,6 @@ function apiJson(url, options = {}) {
 function showRequiredClientUpdate(requiredVersion = "") {
   if (document.querySelector(".required-update-overlay")) return;
   closeAttendancePanel();
-  closeAttendanceKiosk();
   const overlay = document.createElement("div");
   overlay.className = "required-update-overlay";
   overlay.innerHTML = `<section class="required-update-card" role="alertdialog" aria-modal="true">
@@ -2027,129 +2022,7 @@ function setupPublicAttendanceEntry({ force = false } = {}) {
 }
 
 function closeAttendancePanel() {
-  clearInterval(attendanceQrTimer);
-  attendanceQrTimer = null;
   document.querySelector(".attendance-modal")?.remove();
-}
-
-function closeAttendanceKiosk() {
-  clearInterval(attendanceKioskTimer);
-  attendanceKioskTimer = null;
-  document.querySelector(".attendance-kiosk")?.remove();
-  document.body.classList.remove("attendance-kiosk-active");
-  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-}
-
-async function refreshAttendanceKiosk() {
-  const kiosk = document.querySelector(".attendance-kiosk");
-  const token = localStorage.getItem(ATTENDANCE_KIOSK_TOKEN_KEY) || "";
-  const clientId = localStorage.getItem(ATTENDANCE_KIOSK_CLIENT_KEY) || "";
-  if (!kiosk || !token || !clientId) return false;
-  try {
-    const result = await apiJson("/api/attendance/kiosk", {
-      timeout: 8000,
-      headers: {
-        "X-Attendance-Kiosk-Token": token,
-        "X-Attendance-Client-Id": clientId
-      }
-    });
-    if (result.updateRequired) {
-      showRequiredClientUpdate(result.requiredVersion || "");
-      return false;
-    }
-    const image = kiosk.querySelector("[data-kiosk-qr]");
-    if (image && image.src !== result.qrDataUrl) image.src = result.qrDataUrl;
-    const name = kiosk.querySelector("[data-kiosk-name]");
-    if (name) name.textContent = result.workstationName || "Рабочий QR";
-    const count = kiosk.querySelector("[data-kiosk-count]");
-    if (count) count.textContent = `На работе: ${Number(result.onDutyCount || 0)}`;
-    const status = kiosk.querySelector("[data-kiosk-status]");
-    if (status) status.textContent = "QR активен · обновляется автоматически";
-    kiosk.dataset.qrExpiresAt = result.expiresAt || "";
-    return true;
-  } catch {
-    const status = kiosk.querySelector("[data-kiosk-status]");
-    if (status) status.textContent = "Нет связи с сервером · повторяем подключение";
-    return false;
-  }
-}
-
-function updateAttendanceKioskClock() {
-  const kiosk = document.querySelector(".attendance-kiosk");
-  if (!kiosk) return;
-  const now = new Date();
-  const clock = kiosk.querySelector("[data-kiosk-clock]");
-  if (clock) clock.textContent = now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const date = kiosk.querySelector("[data-kiosk-date]");
-  if (date) date.textContent = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-  const remaining = Math.max(0, Math.ceil((Date.parse(kiosk.dataset.qrExpiresAt || "") - Date.now()) / 1000));
-  const countdown = kiosk.querySelector("[data-kiosk-refresh]");
-  if (countdown) countdown.textContent = remaining ? `Новый код через ${remaining} сек.` : "Обновляем код…";
-}
-
-async function openAttendanceKiosk({ requestFullscreen = false } = {}) {
-  if (!localStorage.getItem(ATTENDANCE_KIOSK_TOKEN_KEY)) return false;
-  closeAttendancePanel();
-  closeAttendanceKiosk();
-  const kiosk = document.createElement("section");
-  kiosk.className = "attendance-kiosk";
-  kiosk.setAttribute("aria-label", "Рабочий QR-терминал");
-  kiosk.innerHTML = `
-    <div class="attendance-kiosk-top">
-      <div><span>ППР КОНТРОЛЬ</span><strong data-kiosk-name>Рабочий QR</strong></div>
-      <div class="attendance-kiosk-time"><strong data-kiosk-clock>--:--:--</strong><span data-kiosk-date></span></div>
-    </div>
-    <div class="attendance-kiosk-main">
-      <div class="attendance-kiosk-copy">
-        <span class="attendance-kiosk-live">● РАБОЧАЯ ОТМЕТКА</span>
-        <h1>Отсканируйте QR-код</h1>
-        <p>Наведите камеру телефона и войдите в свой профиль. Редактирование откроется на 10 часов.</p>
-        <div class="attendance-kiosk-stats"><strong data-kiosk-count>На работе: 0</strong><span data-kiosk-status>Подключаемся…</span></div>
-      </div>
-      <div class="attendance-kiosk-qr-wrap">
-        <img data-kiosk-qr alt="QR для начала рабочей смены">
-        <strong data-kiosk-refresh>Обновляем код…</strong>
-      </div>
-    </div>
-    <button type="button" class="attendance-kiosk-exit" data-kiosk-exit>Выход администратора</button>`;
-  document.body.appendChild(kiosk);
-  document.body.classList.add("attendance-kiosk-active");
-  kiosk.querySelector("[data-kiosk-exit]")?.addEventListener("click", async () => {
-    const identifier = window.prompt("Введите табельный номер или телефон администратора:");
-    if (!identifier) return;
-    const password = window.prompt("Введите пароль администратора для выхода из QR-терминала:");
-    if (!password) return;
-    try {
-      await apiJson("/api/attendance/kiosk/exit", {
-        method: "POST",
-        headers: {
-          "X-Attendance-Kiosk-Token": localStorage.getItem(ATTENDANCE_KIOSK_TOKEN_KEY) || "",
-          "X-Attendance-Client-Id": localStorage.getItem(ATTENDANCE_KIOSK_CLIENT_KEY) || ""
-        },
-        body: JSON.stringify({ identifier, password })
-      });
-      localStorage.removeItem(ATTENDANCE_KIOSK_TOKEN_KEY);
-      localStorage.removeItem(ATTENDANCE_KIOSK_CLIENT_KEY);
-      closeAttendanceKiosk();
-      renderProfile();
-    } catch (error) {
-      window.alert(error.message || "Неверный пароль администратора.");
-    }
-  });
-  updateAttendanceKioskClock();
-  await refreshAttendanceKiosk();
-  attendanceKioskTimer = window.setInterval(() => {
-    updateAttendanceKioskClock();
-    if (Date.now() % 10000 < 1100) refreshAttendanceKiosk();
-  }, 1000);
-  if (requestFullscreen) document.documentElement.requestFullscreen?.().catch(() => {});
-  return true;
-}
-
-function resumeAttendanceKiosk() {
-  if (!localStorage.getItem(ATTENDANCE_KIOSK_TOKEN_KEY)) return false;
-  openAttendanceKiosk();
-  return true;
 }
 
 function attendanceSessionRows(items = [], admin = false) {
@@ -2220,19 +2093,19 @@ async function refreshAttendanceQr() {
   const qrImage = modal?.querySelector("[data-attendance-qr]");
   const countdown = modal?.querySelector("[data-attendance-countdown]");
   if (!modal || !qrImage || !attendanceStatus?.isAdmin) return;
-  if (attendanceStatus.workstationClientId !== CLIENT_ID) {
+  if (!attendanceStatus.attendanceQrEnabled) {
     qrImage.removeAttribute("src");
     qrImage.hidden = true;
-    if (countdown) countdown.textContent = attendanceStatus.workstationRegistered
-      ? "QR привязан к другому компьютеру."
-      : "Сначала назначьте этот компьютер.";
+    if (countdown) countdown.textContent = "Создайте постоянный QR.";
     return;
   }
   try {
-    const result = await apiJson(`/api/attendance/qr?clientId=${encodeURIComponent(CLIENT_ID)}`, { timeout: 8000 });
+    const result = await apiJson("/api/attendance/qr", { timeout: 8000 });
     qrImage.src = `/api/qr?size=560&data=${encodeURIComponent(result.scanUrl)}&t=${Date.now()}`;
     qrImage.hidden = false;
-    if (countdown) countdown.textContent = "Код автоматически меняется каждые 30 секунд";
+    const printButton = modal.querySelector("[data-attendance-print]");
+    if (printButton) printButton.hidden = false;
+    if (countdown) countdown.textContent = "Постоянный QR — распечатайте и разместите у входа";
   } catch (error) {
     if (countdown) countdown.textContent = error.message || "Не удалось обновить QR.";
   }
@@ -2260,17 +2133,17 @@ async function openAttendancePanel() {
           <h3>QR для отметки</h3>
           <img data-attendance-qr alt="QR для начала смены" hidden>
           <p data-attendance-countdown></p>
-          <label class="attendance-workstation-name"><span>Название компьютера</span><input data-attendance-workstation-name maxlength="100" value="${escapeHtml(status.workstationName || "Проходная")}" placeholder="Например: Проходная"></label>
-          <div class="attendance-binding-status ${status.workstationRegistered ? "is-linked" : "is-unlinked"}">
+          <button type="button" data-attendance-print hidden>Распечатать QR</button>
+          <div class="attendance-binding-status ${status.attendanceQrEnabled ? "is-linked" : "is-unlinked"}">
             <span class="attendance-binding-dot" aria-hidden="true"></span>
             <div>
-              <strong>${status.workstationRegistered ? "Компьютер привязан" : "Компьютер не привязан"}</strong>
-              ${status.workstationRegistered ? `<small>${escapeHtml(status.workstationName || "Рабочий компьютер QR")} · ${escapeHtml(attendanceTime(status.workstationRegisteredAt))}${status.workstationRegisteredBy ? ` · привязал: ${escapeHtml(status.workstationRegisteredBy)}` : ""}</small>` : `<small>Назначьте компьютер, на котором постоянно будет открыт рабочий QR.</small>`}
+              <strong>${status.attendanceQrEnabled ? "Постоянный QR активен" : "QR ещё не создан"}</strong>
+              ${status.attendanceQrEnabled ? `<small>Создан ${escapeHtml(attendanceTime(status.attendanceQrCreatedAt))}${status.attendanceQrCreatedBy ? ` · администратор: ${escapeHtml(status.attendanceQrCreatedBy)}` : ""}</small>` : `<small>Создайте код один раз, распечатайте и разместите у входа.</small>`}
             </div>
           </div>
           <div class="attendance-workstation-actions">
-            <button type="button" data-attendance-register>${status.workstationClientId === CLIENT_ID ? "Открыть QR на этом компьютере" : status.workstationRegistered ? "Заменить этим компьютером" : "Привязать этот компьютер"}</button>
-            ${status.workstationRegistered ? `<button type="button" class="danger" data-attendance-reset>Отвязать компьютер</button>` : ""}
+            <button type="button" data-attendance-config>${status.attendanceQrEnabled ? "Заменить QR" : "Создать постоянный QR"}</button>
+            ${status.attendanceQrEnabled ? `<button type="button" class="danger" data-attendance-reset>Отключить QR</button>` : ""}
           </div>
         </div>
         <div class="attendance-manual-card">
@@ -2286,27 +2159,30 @@ async function openAttendancePanel() {
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-attendance-close]").forEach(item => item.addEventListener("click", closeAttendancePanel));
   modal.querySelector("[data-attendance-refresh]")?.addEventListener("click", refreshAttendancePanel);
-  modal.querySelector("[data-attendance-register]")?.addEventListener("click", async () => {
-    if (!window.confirm(status.workstationRegistered && status.workstationClientId !== CLIENT_ID
-      ? "Сейчас привязан другой компьютер. Заменить его этим компьютером?"
-      : "Назначить этот компьютер для показа рабочего QR?")) return;
-    const workstationName = modal.querySelector("[data-attendance-workstation-name]")?.value?.trim();
-    if (!workstationName) return window.alert("Введите название компьютера.");
-    const registration = await apiJson("/api/attendance/workstation", {
+  modal.querySelector("[data-attendance-print]")?.addEventListener("click", () => {
+    const qrImage = modal.querySelector("[data-attendance-qr]");
+    if (!qrImage?.src) return;
+    const printWindow = window.open("", "_blank", "width=760,height=900");
+    if (!printWindow) return window.alert("Разрешите всплывающие окна, чтобы распечатать QR.");
+    printWindow.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR для отметки</title><style>body{font-family:Arial,sans-serif;text-align:center;margin:40px}h1{font-size:28px}img{width:min(80vw,560px);height:auto}p{font-size:18px;color:#475569}@media print{button{display:none}}</style></head><body><h1>QR для отметки на работе</h1><img src="${escapeHtml(qrImage.src)}" alt="QR для отметки"><p>Отсканируйте камерой телефона</p><button onclick="window.print()">Печать</button></body></html>`);
+    printWindow.document.close();
+  });
+  modal.querySelector("[data-attendance-config]")?.addEventListener("click", async () => {
+    if (!window.confirm(status.attendanceQrEnabled
+      ? "Создать новый QR? Старый распечатанный код сразу перестанет работать."
+      : "Создать постоянный QR для отметки сотрудников?")) return;
+    await apiJson("/api/attendance/qr-config", {
       method: "POST",
-      body: JSON.stringify({ action: "register", clientId: CLIENT_ID, workstationName })
+      body: JSON.stringify({ action: status.attendanceQrEnabled ? "replace" : "create" })
     });
-    if (!registration.kioskToken) throw new Error("Не удалось создать безопасный режим терминала. Сбросьте привязку и назначьте компьютер заново.");
-    localStorage.setItem(ATTENDANCE_KIOSK_TOKEN_KEY, registration.kioskToken);
-    localStorage.setItem(ATTENDANCE_KIOSK_CLIENT_KEY, CLIENT_ID);
-    await refreshAttendanceStatus({ renderProfileBar: false });
-    await openAttendanceKiosk({ requestFullscreen: true });
+    closeAttendancePanel();
+    openAttendancePanel();
   });
   modal.querySelector("[data-attendance-reset]")?.addEventListener("click", async () => {
-    if (!window.confirm("Сбросить привязку рабочего компьютера? QR перестанет работать до нового назначения.")) return;
-    await apiJson("/api/attendance/workstation", {
+    if (!window.confirm("Отключить QR? Распечатанный код перестанет работать.")) return;
+    await apiJson("/api/attendance/qr-config", {
       method: "POST",
-      body: JSON.stringify({ action: "reset", clientId: CLIENT_ID })
+      body: JSON.stringify({ action: "reset" })
     });
     closeAttendancePanel();
     openAttendancePanel();
@@ -2322,7 +2198,6 @@ async function openAttendancePanel() {
   });
   await refreshAttendancePanel();
   await refreshAttendanceQr();
-  if (status.isAdmin) attendanceQrTimer = window.setInterval(refreshAttendanceQr, 15000);
 }
 
 
@@ -8525,47 +8400,6 @@ function openDowntimeFromRemark(equipmentId, nodeIndex, comment, type = "breakdo
   return opened;
 }
 
-function selectDowntimeCloser() {
-  const currentActor = resolutionActor();
-  if (profile?.role !== "editor") return currentActor;
-  const workers = loadUsers()
-    .filter(user => user.approved !== false && user.pendingApproval !== true)
-    .filter(user => ["mechanic", "electrician"].includes(user.role))
-    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
-  if (!workers.length) {
-    window.alert("Нет зарегистрированных электриков или механиков. Пуск не закрыт.");
-    return null;
-  }
-  const answer = window.prompt("Кто фактически устранил простой?\nВведите имя или табельный номер сотрудника.");
-  if (answer === null) return null;
-  const query = String(answer).trim().toLocaleLowerCase("ru-RU");
-  const exact = workers.filter(user =>
-    String(user.name || "").trim().toLocaleLowerCase("ru-RU") === query
-    || String(user.employeeId || "").trim().toLocaleLowerCase("ru-RU") === query
-    || String(user.phone || "").trim().toLocaleLowerCase("ru-RU") === query
-  );
-  const partial = exact.length ? exact : workers.filter(user =>
-    String(user.name || "").trim().toLocaleLowerCase("ru-RU").includes(query)
-  );
-  if (!query || partial.length !== 1) {
-    const hint = partial.length > 1
-      ? `Найдено несколько сотрудников: ${partial.map(user => user.name).join(", ")}. Введите полное имя или табельный номер.`
-      : "Сотрудник не найден. Проверьте имя или табельный номер.";
-    window.alert(`${hint}\nПуск не закрыт.`);
-    return null;
-  }
-  const worker = partial[0];
-  return {
-    key: resolutionUserKey(worker),
-    id: worker.id || "",
-    employeeId: worker.employeeId || "",
-    phone: worker.phone || "",
-    name: worker.name || "",
-    role: worker.role || "",
-    area: worker.area || ""
-  };
-}
-
 function downtimeCloseBlockedMessage() {
   if (!roleAccess().checklist) return "У вашей роли нет права завершать простой.";
   if (!attendanceAllowsEditing()) return "Сначала отметьтесь через QR в разделе «Кто на работе».";
@@ -8687,8 +8521,7 @@ async function closeDowntimeWithConfirmation(liveStop, button) {
   }
   const details = await askDowntimeCloseDetails(liveStop);
   if (!details?.comment) return null;
-  const closer = selectDowntimeCloser();
-  if (!closer) return null;
+  const closer = resolutionActor();
   if (button) setButtonBusy(button, true, "Сохраняем пуск...");
   try {
     const result = await publishDowntimeClose(liveStop.id, details.comment, closer);
@@ -19938,7 +19771,6 @@ setupPublicAttendanceEntry();
 setupLogin();
 setupHofmannForkliftMascot();
 resetAppNotificationsForOpen();
-resumeAttendanceKiosk();
 (async () => {
   if (!loadProfile()) return;
   if (!await restoreServerSession()) return;
