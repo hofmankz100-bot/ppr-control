@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=425-month-remark-links/);
-  assert.match(html, /styles\.css\?v=425-month-remark-links/);
-  assert.match(serviceWorker, /app\.js\?v=425-month-remark-links/);
+  assert.match(html, /app\.js\?v=426-no-score-without-employee/);
+  assert.match(html, /styles\.css\?v=426-no-score-without-employee/);
+  assert.match(serviceWorker, /app\.js\?v=426-no-score-without-employee/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1446,6 +1446,10 @@ test("authorized users can close remarks for several employees with or without p
   assert.match(client, /performerKeys: decision\.performerKeys/);
   assert.match(client, /remarkMultiClose","Закрытие замечаний за нескольких сотрудников/);
   assert.match(server, /ADMIN_PERMISSION_KEYS[\s\S]*?remarkMultiClose/);
+  assert.match(client, /сотрудника выбирать не требуется/);
+  const noScoreServer = server.slice(server.indexOf('if (action === "close-no-score")'), server.indexOf('if (action === "close-with-score")'));
+  assert.doesNotMatch(noScoreServer, /performerKeys|performerUsers/);
+  assert.match(noScoreServer, /remark\.resolutionParticipants = \[\]/);
   assert.match(styles, /\.send-kind-overlay\s*\{[\s\S]*?z-index:\s*5000/);
   assert.match(styles, /\.send-kind-dialog\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 32px\)/);
   assert.match(styles, /@media \(max-width:\s*560px\)[\s\S]*?\.send-kind-dialog/);

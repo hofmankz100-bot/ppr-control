@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v425-month-remark-links";
+const CACHE_NAME = "ppr-v426-no-score-without-employee";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=425-month-remark-links",
+  "./styles.css?v=426-no-score-without-employee",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=421-annual-ppr-equipment-acts",
-  "./app.js?v=425-month-remark-links",
+  "./app.js?v=426-no-score-without-employee",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

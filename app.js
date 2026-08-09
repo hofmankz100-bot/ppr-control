@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v425-month-remark-links";
+const APP_VERSION = "v426-no-score-without-employee";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -8726,8 +8726,8 @@ function askAdminRemarkClose(withScore = false) {
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
         <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
-        <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Выберите сотрудников, за которых закрывается тестовая или ошибочная запись. Баллы не начисляются."}</p>
-        <fieldset class="admin-close-performers"><legend>${withScore ? "Кому начислить баллы" : "За каких сотрудников закрыть"}</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>
+        <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Запись закроется без начисления баллов. Укажите только причину — сотрудника выбирать не требуется."}</p>
+        ${withScore ? `<fieldset class="admin-close-performers"><legend>Кому начислить баллы</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>` : ""}
         <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
         <div class="downtime-type-error" data-admin-close-error></div>
         <div class="send-kind-actions">
@@ -8741,8 +8741,8 @@ function askAdminRemarkClose(withScore = false) {
       const performerKeys = [...overlay.querySelectorAll("[data-admin-close-performer]:checked")].map(input => String(input.value || ""));
       const performers = workers.filter(worker => performerKeys.includes(worker.key));
       const error = overlay.querySelector("[data-admin-close-error]");
-      if (!performers.length) {
-        if (error) error.textContent = withScore ? "Выберите одного или нескольких сотрудников для начисления баллов." : "Выберите одного или нескольких сотрудников.";
+      if (withScore && !performers.length) {
+        if (error) error.textContent = "Выберите одного или нескольких сотрудников для начисления баллов.";
         return;
       }
       if (!reason) {
@@ -8757,7 +8757,7 @@ function askAdminRemarkClose(withScore = false) {
       if (event.target === overlay) close(null);
     });
     document.body.append(overlay);
-    overlay.querySelector("[data-admin-close-performer]")?.focus();
+    overlay.querySelector(withScore ? "[data-admin-close-performer]" : "[data-admin-close-reason]")?.focus();
   });
 }
 

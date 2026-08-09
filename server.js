@@ -6635,11 +6635,7 @@ async function handleApi(req, res, pathname, url) {
       if (action === "close-no-score") {
         if (!canCloseForEmployees) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
-        const performerKeys = [...new Set((Array.isArray(body.performerKeys) ? body.performerKeys : []).map(value => String(value || "").trim()).filter(Boolean))];
-        const performerUsers = performerKeys.map(performerKey => (db.users || []).find(user => resolutionUserKeyServer(user) === performerKey && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRoleServer(user.role)));
         if (!reason) return { error: "remark_resolution_text_required" };
-        if (!performerKeys.length || performerKeys.length > 100 || performerUsers.some(user => !user)) return { error: "remark_participant_invalid" };
-        const performers = performerUsers.map(sanitizeResolutionParticipant);
         remark.resolved = true;
         remark.resolvedAt = now;
         remark.resolvedDurationMs = 0;
@@ -6653,9 +6649,9 @@ async function handleApi(req, res, pathname, url) {
         remark.closedWithoutScoreByKey = actor.key;
         remark.closedWithoutScoreByName = actor.name;
         remark.resolutionPendingConfirmation = false;
-        remark.resolutionParticipants = performers;
+        remark.resolutionParticipants = [];
         remark.resolutionCompletedParticipants = [];
-        remark.closedForParticipants = performers;
+        remark.closedForParticipants = [];
         remark.confirmedAt = now;
         remark.confirmedByKey = actor.key;
         remark.confirmedByName = actor.name;
@@ -6667,8 +6663,6 @@ async function handleApi(req, res, pathname, url) {
           name: actor.name,
           role: actor.role,
           reason,
-          targetKeys: performers.map(performer => performer.key),
-          targetNames: performers.map(performer => performer.name),
           at: now
         });
         clearParticipants = participants;
