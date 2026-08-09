@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(html, /styles\.css\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /app\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(html, /app\.js\?v=422-smart-month-close/);
+  assert.match(html, /styles\.css\?v=422-smart-month-close/);
+  assert.match(serviceWorker, /app\.js\?v=422-smart-month-close/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1456,6 +1456,29 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /if \(item\.type !== "production"\) \{[\s\S]*?reliabilityStops[\s\S]*?reliabilityDowntimeMs/);
   assert.match(client, /month\.reliabilityDowntimeMs \?\? month\.downtimeMs/);
   assert.match(client, /month\.reliabilityStops \?\? month\.stops/);
+});
+
+test("smart month closing stores snapshots, carryovers and individual access", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(client, /function canManageMonthClose[\s\S]*?monthCloseManage/);
+  assert.match(client, /Умное закрытие месяца/);
+  assert.match(client, /data-month-close-conditional/);
+  assert.match(client, /data-month-close-full/);
+  assert.match(client, /data-month-reopen/);
+  assert.match(client, /monthCloseManage","Закрытие и повторное открытие месяца/);
+  assert.match(server, /function monthCloseReadiness/);
+  assert.match(server, /item\.type === "production"/);
+  assert.match(server, /pathname === "\/api\/month-close"/);
+  assert.match(server, /"confirm-area", "close-conditional", "close-full", "reopen"/);
+  assert.match(server, /snapshot: \{ \.\.\.readiness/);
+  assert.match(client, /monthlyClosures\?\.\[month\.monthKey\]\?\.snapshot\?\.factoryReliabilityScore/);
+  assert.match(server, /factoryReliabilityScore:/);
+  assert.match(server, /carryoverTo/);
+  assert.match(server, /action === "close-conditional" && readiness\.criticalCount/);
+  assert.match(server, /activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
+  assert.match(styles, /\.month-close-panel/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {

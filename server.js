@@ -181,7 +181,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -266,6 +266,7 @@ function normalizeDb(db) {
   delete db.codexAgent;
   db.serviceCosts ||= [];
   db.downtimes ||= [];
+  db.monthlyClosures = db.monthlyClosures && typeof db.monthlyClosures === "object" ? db.monthlyClosures : {};
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
   db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
@@ -1645,6 +1646,54 @@ function purgeRemovedEquipmentData(db) {
   return changed;
 }
 
+function validMonthKey(value = "") {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || "")) ? String(value) : "";
+}
+
+function nextMonthKey(month = "") {
+  if (!validMonthKey(month)) return "";
+  const [year, monthNumber] = month.split("-").map(Number);
+  const next = new Date(Date.UTC(year, monthNumber, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthCloseReadiness(db, month) {
+  month = validMonthKey(month);
+  if (!month) return null;
+  const startMs = Date.parse(`${month}-01T00:00:00.000Z`);
+  const [year, monthNumber] = month.split("-").map(Number);
+  const endMs = Date.UTC(year, monthNumber, 1);
+  const openRemarks = [];
+  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+    if (!recordKey.includes(`:${month}-`)) return;
+    ensureRemarkEntriesServer(record?.to || {}).filter(item => !item.resolved).forEach(item => openRemarks.push({ id: item.id || "", recordKey, text: String(item.text || "").slice(0, 300) }));
+  });
+  const activeBreakdowns = (db.downtimes || []).filter(item => {
+    if (!item || item.deleted || item.type === "production") return false;
+    const started = Date.parse(item.startedAt || "");
+    const ended = item.endedAt ? Date.parse(item.endedAt) : Date.now();
+    return Number.isFinite(started) && started < endMs && ended >= startMs && !item.endedAt;
+  }).map(item => ({ id: item.id || "", equipment: item.equipment || "Оборудование", reason: item.reason || item.comment || "Аварийная остановка" }));
+  const openRequests = Object.entries(db.requests || {}).filter(([, item]) => {
+    const date = String(item?.createdAt || item?.date || "").slice(0, 7);
+    return date === month && !item.done && !item.mechanicInstalled && !item.deleted;
+  }).map(([requestKey, item]) => ({ id: item.id || requestKey, requestKey, text: String(item.partName || item.comment || item.title || "Заявка").slice(0, 300) }));
+  const incompletePpr = Object.entries(db.pprSheets || {}).filter(([key, sheet]) => key.includes(month) && sheet && !sheet.engineerApprovedAt && (sheet.rows || []).length).map(([key]) => ({ id: key }));
+  const criticalCount = openRemarks.length + activeBreakdowns.length;
+  const warningCount = openRequests.length + incompletePpr.length;
+  const readinessPercent = Math.max(0, 100 - Math.min(criticalCount * 15, 60) - Math.min(warningCount * 5, 40));
+  return {
+    month,
+    readinessPercent,
+    criticalCount,
+    warningCount,
+    greenCount: Math.max(0, 4 - Number(Boolean(openRemarks.length)) - Number(Boolean(activeBreakdowns.length)) - Number(Boolean(openRequests.length)) - Number(Boolean(incompletePpr.length))),
+    groups: { openRemarks, activeBreakdowns, openRequests, incompletePpr },
+    productionStopsExcluded: (db.downtimes || []).filter(item => item?.type === "production" && String(item.startedAt || "").slice(0, 7) === month).length,
+    calculatedAt: new Date().toISOString()
+  };
+}
+
 function publicState(db = readDb()) {
   return {
     checks: db.checks,
@@ -1661,6 +1710,7 @@ function publicState(db = readDb()) {
     directorMessages: db.directorMessages,
     serviceCosts: db.serviceCosts,
     downtimes: db.downtimes,
+    monthlyClosures: db.monthlyClosures || {},
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
     gpmJournal: db.gpmJournal,
@@ -2814,7 +2864,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "monthCloseManage"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
@@ -4565,6 +4615,78 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/admin/qr-routes" && req.method === "GET") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     sendJson(res, 200, { ok: true, routes: (readDb().qrRouteDefinitions || []).slice().reverse() }); return true;
+  }
+
+  if (pathname === "/api/month-close" && req.method === "GET") {
+    const month = validMonthKey(url.searchParams.get("month") || "");
+    if (!month) { sendJson(res, 400, { ok: false, error: "month_invalid" }); return true; }
+    const db = readDb();
+    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: req.authUser?.role === "editor" || activeUserPermission(req.authUser, "monthCloseManage") });
+    return true;
+  }
+
+  if (pathname === "/api/month-close" && req.method === "POST") {
+    if (req.authUser?.role !== "editor" && !activeUserPermission(req.authUser, "monthCloseManage")) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const month = validMonthKey(body.month);
+    const action = String(body.action || "");
+    const reason = String(body.reason || "").trim().slice(0, 2000);
+    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen"]);
+    if (!month || !allowedActions.has(action) || !reason) { sendJson(res, 400, { ok: false, error: !month ? "month_invalid" : !reason ? "reason_required" : "month_close_action_invalid" }); return true; }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.monthlyClosures ||= {};
+      const readiness = monthCloseReadiness(db, month);
+      const previous = db.monthlyClosures[month] || { month, status: "open", history: [], areaConfirmations: [] };
+      const history = Array.isArray(previous.history) ? previous.history.slice() : [];
+      const now = new Date().toISOString();
+      const actor = { id: String(req.authUser?.id || ""), name: String(req.authUser?.name || "Сотрудник"), role: String(req.authUser?.role || ""), area: String(req.authUser?.area || "") };
+      let closure = { ...previous, month, history, areaConfirmations: Array.isArray(previous.areaConfirmations) ? previous.areaConfirmations.slice() : [] };
+      if (action === "confirm-area") {
+        const area = String(actor.role === "editor" ? (body.area || actor.area || "Общий участок") : (actor.area || "Общий участок")).trim().slice(0, 200);
+        closure.areaConfirmations = closure.areaConfirmations.filter(item => item.area !== area);
+        closure.areaConfirmations.push({ area, confirmedAt: now, confirmedById: actor.id, confirmedByName: actor.name, reason });
+      } else if (action === "reopen") {
+        if (!previous.status || previous.status === "open") return { error: "month_already_open" };
+        closure = { ...closure, status: "open", reopenedAt: now, reopenedById: actor.id, reopenedByName: actor.name, reopenReason: reason };
+      } else {
+        if (previous.status && previous.status !== "open") return { error: "month_already_closed" };
+        if ((action === "close-full" && (readiness.criticalCount || readiness.warningCount)) || (action === "close-conditional" && readiness.criticalCount)) return { error: "month_not_ready", readiness };
+        const carryoverReason = action === "close-conditional" ? String(body.carryoverReason || "Решение руководителя").trim().slice(0, 500) : "";
+        const carryoverTo = action === "close-conditional" ? nextMonthKey(month) : "";
+        if (action === "close-conditional") {
+          (readiness.groups.openRequests || []).forEach(openRequest => {
+            const request = db.requests?.[openRequest.requestKey] || Object.values(db.requests || {}).find(item => String(item?.id || "") === String(openRequest.id || ""));
+            if (request) Object.assign(request, { carryoverFrom: month, carryoverTo, carryoverReason, carriedOverAt: now, carriedOverByName: actor.name });
+          });
+          (readiness.groups.incompletePpr || []).forEach(openSheet => {
+            const sheet = db.pprSheets?.[openSheet.id];
+            if (sheet) Object.assign(sheet, { carryoverFrom: month, carryoverTo, carryoverReason, carriedOverAt: now, carriedOverByName: actor.name });
+          });
+        }
+        closure = {
+          ...closure,
+          status: action === "close-full" ? "closed" : "conditional",
+          closedAt: now,
+          closedById: actor.id,
+          closedByName: actor.name,
+          closedByRole: actor.role,
+          reason,
+          carryoverReason,
+          carryoverTo,
+          snapshot: { ...readiness, factoryReliabilityScore: Number.isFinite(Number(body.factoryReliabilityScore)) ? Math.max(0, Math.min(100, Math.round(Number(body.factoryReliabilityScore)))) : null }
+        };
+      }
+      history.unshift({ id: `month-event-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, action, at: now, actor, reason, status: closure.status, readinessPercent: readiness.readinessPercent });
+      closure.history = history.slice(0, 200);
+      db.monthlyClosures[month] = closure;
+      writeDb(db, { action: `month_${action.replaceAll("-", "_")}`, user: req.authUser, targetId: month, targetLabel: month, reason });
+      return { closure, readiness, state: { monthlyClosures: db.monthlyClosures } };
+    });
+    if (result.error) { sendJson(res, result.error === "month_not_ready" || result.error === "month_already_closed" || result.error === "month_already_open" ? 409 : 400, { ok: false, ...result }); return true; }
+    const stateVersion = broadcastState("month-close", "", result.state, true);
+    sendJson(res, 200, { ok: true, closure: result.closure, readiness: result.readiness, state: result.state, stateVersion });
+    return true;
   }
 
   if (pathname === "/api/admin/equipment/node-delete" && req.method === "POST") {

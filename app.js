@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v421-annual-ppr-equipment-acts";
+const APP_VERSION = "v422-smart-month-close";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -278,6 +278,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
+function canManageMonthClose(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "monthCloseManage"); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -959,6 +960,7 @@ function loadState() {
     parsed.directorMessages ||= [];
     parsed.serviceCosts ||= [];
     parsed.downtimes ||= [];
+    parsed.monthlyClosures ||= {};
     parsed.compressorJournal ||= {};
     parsed.gasJournal ||= {};
     parsed.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
@@ -986,7 +988,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -2363,6 +2365,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   state.serviceCosts = [];
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
+  state.monthlyClosures = { ...(state.monthlyClosures || {}), ...(remote.monthlyClosures || {}) };
   state.compressorJournal = preferRemote
     ? { ...(remote.compressorJournal || {}) }
     : mergeObjectByFreshnessLocal(state.compressorJournal || {}, remote.compressorJournal || {});
@@ -2434,6 +2437,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
+  if (remote.monthlyClosures) state.monthlyClosures = { ...(state.monthlyClosures || {}), ...remote.monthlyClosures };
   if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   if (remote.serviceCosts) state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
   if (remote.auditHistory) state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
@@ -13390,9 +13394,10 @@ function directorMonthName(index) {
   return new Date(directorAnnualYear(), index, 1).toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
 }
 
-function directorAnnualEmptyMonths() {
+function directorAnnualEmptyMonths(year = directorAnnualYear()) {
   return Array.from({ length: 12 }, (_, index) => ({
     index,
+    monthKey: `${year}-${String(index + 1).padStart(2, "0")}`,
     label: directorMonthName(index),
     repairsCreated: 0,
     repairsClosed: 0,
@@ -13506,7 +13511,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
 }
 
 function directorAnnualStats(year = directorAnnualYear()) {
-  const months = directorAnnualEmptyMonths();
+  const months = directorAnnualEmptyMonths(year);
   const repairEvents = annualRepairEvents(year);
   repairEvents.forEach(event => {
     const created = dateYearMonth(event.createdAt);
@@ -13712,6 +13717,8 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
 }
 
 function directorFactoryReliabilityScore(month) {
+  const frozenScore = Number(state.monthlyClosures?.[month.monthKey]?.snapshot?.factoryReliabilityScore);
+  if (Number.isFinite(frozenScore)) return Math.max(0, Math.min(100, Math.round(frozenScore)));
   const downtimeHours = Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000;
   const openWorks = Math.max(month.repairsCreated - month.repairsClosed, 0);
   const qrPercent = month.qrPlan ? month.qrDone / month.qrPlan * 100 : 100;
@@ -14997,6 +15004,65 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   `;
 }
 
+function monthClosePanelHtml(month = current.engineerReportMonth || todayISO().slice(0, 7)) {
+  return `<section class="month-close-panel" data-month-close-panel><div class="month-close-head"><div><strong>Умное закрытие месяца</strong><span>Подготовка, переносы и фиксированный снимок показателей</span></div><input type="month" data-month-close-month value="${escapeHtml(month)}" max="${todayISO().slice(0, 7)}"></div><div class="empty-state" data-month-close-content>Проверяем готовность месяца…</div></section>`;
+}
+
+function monthCloseStatusLabel(status = "open") {
+  return status === "closed" ? "Закрыт полностью" : status === "conditional" ? "Закрыт условно" : "Открыт";
+}
+
+async function loadMonthClosePanel() {
+  const panel = ui.engineerReportPanel?.querySelector("[data-month-close-panel]");
+  if (!panel) return;
+  const monthInput = panel.querySelector("[data-month-close-month]");
+  const month = String(monthInput?.value || current.engineerReportMonth || todayISO().slice(0, 7));
+  const host = panel.querySelector("[data-month-close-content]");
+  try {
+    const result = await apiJson(`/api/month-close?month=${encodeURIComponent(month)}`, { timeout: 15000 });
+    if (!panel.isConnected || String(monthInput?.value || "") !== month) return;
+    const readiness = result.readiness || {};
+    const closure = result.closure || { status: "open", history: [], areaConfirmations: [] };
+    const status = closure.status || "open";
+    const groups = readiness.groups || {};
+    const item = (tone, title, count, text) => `<article class="month-close-check ${tone}"><b>${Number(count || 0)}</b><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div></article>`;
+    host.className = "month-close-content";
+    host.innerHTML = `
+      <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
+      <div class="month-close-checks">
+        ${item(Number(readiness.criticalCount) ? "red" : "green", "Критические пункты", readiness.criticalCount, `${(groups.openRemarks || []).length} замечаний · ${(groups.activeBreakdowns || []).length} аварийных остановок`)}
+        ${item(Number(readiness.warningCount) ? "yellow" : "green", "Можно перенести", readiness.warningCount, `${(groups.openRequests || []).length} заявок · ${(groups.incompletePpr || []).length} листов ППР`)}
+        ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
+      </div>
+      ${closure.snapshot ? `<div class="month-close-snapshot"><strong>Зафиксированный снимок</strong><span>Готовность ${Number(closure.snapshot.readinessPercent || 0)}% · критических ${Number(closure.snapshot.criticalCount || 0)} · перенесено ${Number(closure.snapshot.warningCount || 0)}</span><small>${escapeHtml(closure.carryoverReason || closure.reason || "")}</small></div>` : ""}
+      ${result.canManage ? `<div class="month-close-actions no-print">${status === "open" ? `<button type="button" data-month-confirm-area>Подтвердить свой участок</button><button type="button" class="secondary" data-month-close-conditional>Закрыть условно</button><button type="button" data-month-close-full ${Number(readiness.criticalCount || 0) || Number(readiness.warningCount || 0) ? "disabled" : ""}>Закрыть полностью</button>` : `<button type="button" class="danger" data-month-reopen>Повторно открыть месяц</button>`}<button type="button" class="secondary" data-month-refresh>Обновить проверку</button></div>` : `<div class="empty-state">Закрытие доступно только сотрудникам с индивидуальным правом.</div>`}
+      <details class="month-close-history"><summary>История действий · ${(closure.history || []).length}</summary>${(closure.history || []).length ? (closure.history || []).map(entry => `<p><strong>${escapeHtml(entry.actor?.name || "Сотрудник")}</strong><span>${escapeHtml(entry.action === "close-full" ? "закрыл полностью" : entry.action === "close-conditional" ? "закрыл условно" : entry.action === "reopen" ? "повторно открыл" : "подтвердил участок")} · ${escapeHtml(dateTimeHuman(entry.at))}</span><small>${escapeHtml(entry.reason || "")}</small></p>`).join("") : `<div class="empty-state">Действий пока нет.</div>`}</details>`;
+    const act = async (button, action, extra = {}) => {
+      const reason = window.prompt(action === "reopen" ? "Укажите причину повторного открытия месяца:" : action === "confirm-area" ? "Комментарий к подтверждению участка:" : "Укажите основание закрытия месяца:")?.trim();
+      if (!reason) return;
+      await runButtonOperation(button, async () => {
+        const [scoreYear, scoreMonth] = month.split("-").map(Number);
+        const scoreStats = directorAnnualStats(scoreYear).months[scoreMonth - 1];
+        const factoryReliabilityScore = scoreStats ? directorFactoryReliabilityScore(scoreStats) : null;
+        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action, reason, factoryReliabilityScore, ...extra }) });
+        if (response.state) mergeRealtimePatch(response.state);
+        await loadMonthClosePanel();
+      }, "Сохраняем…");
+    };
+    host.querySelector("[data-month-confirm-area]")?.addEventListener("click", event => act(event.currentTarget, "confirm-area", { area: profile?.area || "Общий участок" }));
+    host.querySelector("[data-month-close-conditional]")?.addEventListener("click", event => {
+      const carryoverReason = window.prompt("Причина переноса незавершённых работ (например: ожидание запчасти, подрядчика, бюджета или согласования):")?.trim();
+      if (!carryoverReason) return;
+      act(event.currentTarget, "close-conditional", { carryoverReason });
+    });
+    host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
+    host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));
+    host.querySelector("[data-month-refresh]")?.addEventListener("click", loadMonthClosePanel);
+  } catch {
+    if (host) { host.className = "empty-state"; host.textContent = "Не удалось проверить готовность месяца. Обновите страницу."; }
+  }
+}
+
 function renderEngineerReport() {
   if (!ui.engineerReportPanel) return;
   const detailed = ["engineer", "editor"].includes(profile?.role);
@@ -15010,11 +15076,15 @@ function renderEngineerReport() {
     : "Общий индекс надёжности предприятия";
   if (controls) controls.hidden = !detailed;
   if (!detailed) {
-    ui.engineerReportPanel.innerHTML = `<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
+    ui.engineerReportPanel.innerHTML = `${monthClosePanelHtml()}<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
+    ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; loadMonthClosePanel(); });
+    loadMonthClosePanel();
     return;
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
-  ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
+  ui.engineerReportPanel.innerHTML = `${monthClosePanelHtml(current.engineerReportMonth)}${engineerMonthlyReportHtml(current.engineerReportMonth)}`;
+  ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; if (ui.engineerReportMonth) ui.engineerReportMonth.value = event.currentTarget.value; loadMonthClosePanel(); });
+  loadMonthClosePanel();
   ui.engineerReportPanel.querySelector("#serviceCostArea")?.addEventListener("change", event => {
     current.serviceCostArea = event.currentTarget.value;
     current.serviceCostEquipmentId = "";
@@ -15749,7 +15819,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }
