@@ -1493,6 +1493,8 @@ test("smart month closing stores snapshots, carryovers and individual access", (
   assert.match(client, /function canManageMonthClose[^\n]+return activeUserPermission\(user, "monthCloseManage"\)/);
   assert.doesNotMatch(server, /req\.authUser\?\.role === "editor" \|\| activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
   assert.doesNotMatch(server, /req\.authUser\?\.role !== "editor" && !activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
+  assert.match(server, /function resetMonthClosePermissionsOnce[\s\S]*?delete user\.permissionOverrides\.monthCloseManage/);
+  assert.match(server, /monthClosePermissionResetVersion === "all-users-v1"/);
   assert.match(styles, /\.month-close-panel/);
 });
 

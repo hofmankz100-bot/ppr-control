@@ -338,6 +338,18 @@ function normalizeDb(db) {
   return db;
 }
 
+function resetMonthClosePermissionsOnce(db) {
+  if (!db || db.monthClosePermissionResetVersion === "all-users-v1") return false;
+  let changed = false;
+  for (const user of db.users || []) {
+    if (!user?.permissionOverrides?.monthCloseManage) continue;
+    delete user.permissionOverrides.monthCloseManage;
+    changed = true;
+  }
+  db.monthClosePermissionResetVersion = "all-users-v1";
+  return changed;
+}
+
 function ensureDb() {
   fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(dbFile)) {
@@ -475,6 +487,7 @@ async function initializeStorage() {
   if (!connectionString) {
     const db = readDbFile();
     migrateLegacyDirectorApprovals(db);
+    resetMonthClosePermissionsOnce(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
     reconcileMissingShgrpQrChecksServer(db);
@@ -542,6 +555,7 @@ async function initializeStorage() {
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
+      resetMonthClosePermissionsOnce(postgresState);
       reconcilePendingRemarkDowntimes(postgresState);
       reconcileMissingShgrpQrChecksServer(postgresState);
       await pool.query(
@@ -555,6 +569,7 @@ async function initializeStorage() {
     } else {
       postgresState = readDbFile();
       migrateLegacyDirectorApprovals(postgresState);
+      resetMonthClosePermissionsOnce(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
