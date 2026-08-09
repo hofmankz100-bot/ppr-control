@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v440-annual-ppr-work-journal";
+const APP_VERSION = "v441-annual-ppr-clickable-month";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11668,16 +11668,18 @@ function annualPprRows(year) {
       const automatic = annualPprAutomaticPlan(eq, node, year);
       const months = {};
       for (let month = 1; month <= 12; month += 1) {
+        const repairWorks = annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month);
+        const repairType = repairWorks.some(item => item.type === "АР") ? "АР" : repairWorks.some(item => item.type === "ТР") ? "ТР" : "";
         months[month] = Object.prototype.hasOwnProperty.call(saved.months || {}, month)
           ? saved.months[month]
-          : automatic[month] || "";
+          : repairType || automatic[month] || "";
       }
       return {
         eq, node, nodeIndex, nodeKey, months,
         facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
           const month = index + 1;
           const event = events.find(item => Number(item.equipmentId) === Number(eq.id) && item.node === node && Number(String(item.date || "").slice(5, 7)) === month);
-          const work = annualPprWorks(year).filter(item => item.nodeKey === nodeKey && Number(String(item.date || "").slice(5, 7)) === month).sort((a,b) => String(b.date).localeCompare(String(a.date)))[0];
+          const work = annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month).sort((a,b) => String(b.date).localeCompare(String(a.date)))[0];
           const fact = facts.get(`${nodeKey}:${month}`);
           const factType = months[month] || "ТО";
           return [month, event
@@ -11805,8 +11807,8 @@ function annualPprTableHtml(year) {
     <thead><tr><th>№</th><th>Участок</th><th>Оборудование</th><th>Узел / объект ремонта</th><th>Строка</th>${months.map(month => `<th>${month}</th>`).join("")}<th>Периодичность</th><th>Последний ремонт</th><th>Ответственный</th></tr></thead>
     <tbody>${rows.map(row => {
       number += 1;
-      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan">${annualPprMonthSelect(row, index + 1)}<button type="button" class="annual-ppr-month-open no-print" data-open-ppr-month="${index + 1}">Журнал</button></td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}"></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}"></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О."></td></tr>
-      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact"><button type="button" class="annual-ppr-fact-open" data-open-ppr-month="${index + 1}">${escapeHtml(row.facts[index + 1] || "Открыть")}</button></td>`).join("")}</tr>`;
+      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${annualPprMonthSelect(row, index + 1)}</td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}"></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}"></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О."></td></tr>
+      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${escapeHtml(row.facts[index + 1] || "")}</td>`).join("")}</tr>`;
     }).join("")}</tbody>
   </table>`;
 }
@@ -11926,12 +11928,13 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
   overlay.querySelector("[data-share-annual-ppr-pdf]")?.addEventListener("click", event => shareAnnualPprPdf(overlay, year, event.currentTarget));
   overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
-  overlay.querySelectorAll("[data-open-ppr-month]").forEach(button => button.addEventListener("click", event => {
+  overlay.querySelectorAll("[data-open-ppr-month]").forEach(cell => cell.addEventListener("click", event => {
+    if (event.target.closest("select,input")) return;
     event.preventDefault();
-    const tr = button.closest("tr");
+    const tr = cell.closest("tr");
     const nodeKey = tr?.dataset.annualPprRow || tr?.dataset.annualPprFactRow;
     const row = annualPprRows(year).find(item => item.nodeKey === nodeKey);
-    if (row) openAnnualPprMonthJournal(year, row, Number(button.dataset.openPprMonth));
+    if (row) openAnnualPprMonthJournal(year, row, Number(cell.dataset.openPprMonth));
   }));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
     const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
