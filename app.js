@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v427-global-remark-confirm";
+const APP_VERSION = "v428-admin-engineer-confirm-inbox";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -12549,9 +12549,11 @@ function bindRolePersonalInbox(messages) {
 function renderRolePersonalInbox() {
   if (!ui.rolePersonalInbox) return;
   const isOwnRole = current.requestRole === profile?.role;
-  const messages = isOwnRole ? personalRemarkMessages() : [];
-  ui.rolePersonalInbox.hidden = !isOwnRole;
-  if (!isOwnRole) {
+  const isAdminEngineerBlock = permissionBaseRole(profile?.role || "") === "editor" && current.requestRole === "engineer";
+  const canShowInbox = isOwnRole || isAdminEngineerBlock;
+  const messages = canShowInbox ? personalRemarkMessages() : [];
+  ui.rolePersonalInbox.hidden = !canShowInbox;
+  if (!canShowInbox) {
     ui.rolePersonalInbox.innerHTML = "";
     return;
   }
@@ -12559,7 +12561,7 @@ function renderRolePersonalInbox() {
   ui.rolePersonalInbox.innerHTML = `
     <section class="role-personal-inbox">
       <div class="role-personal-inbox-head">
-        <div><span>ЛИЧНО ВАМ</span><h2>Личные сообщения</h2></div>
+        <div><span>${isAdminEngineerBlock ? "ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА" : "ЛИЧНО ВАМ"}</span><h2>${canConfirmRemarksAcrossShops() ? "Ожидают подтверждения" : "Личные сообщения"}</h2></div>
         <strong>${messages.length}</strong>
       </div>
       ${canConfirmRemarksAcrossShops() ? `<div class="role-personal-empty"><strong>Подтверждения всех цехов доступны</strong><span>Здесь сразу отображаются все ожидающие подтверждения. Можно открыть карточку, подтвердить устранение или вернуть на доработку.</span></div>` : ""}

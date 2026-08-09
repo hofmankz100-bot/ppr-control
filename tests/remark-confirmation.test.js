@@ -337,7 +337,7 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   assert.equal(pending.resolutionSubmittedByRole, "electrician");
   assert.equal(pending.confirmationArea, "Цех А");
   assert.equal(pending.confirmationRequiredRole, "shop");
-  assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
+  assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:editor-1", "id:shop-a", "id:shop-a-2"]);
 
   await postRemark(
     "1:0:2026-07-16",
@@ -424,7 +424,7 @@ test("routes every warning to the equipment shop chief and stores the accepted r
   );
   const otherPending = patchedRemark(otherRole, "1:1:2026-07-16", "remark-any-author");
   assert.equal(otherPending.confirmationRequiredRole, "shop");
-  assert.deepEqual(otherPending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:shop-a", "id:shop-a-2"]);
+  assert.deepEqual(otherPending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:editor-1", "id:shop-a", "id:shop-a-2"]);
 });
 
 test("an admin deletes only the selected obsolete personal remark", async () => {
@@ -473,7 +473,7 @@ test("falls back to the engineer, returns only to the last performer, and accept
   });
   const firstPending = patchedRemark(firstResolve, "2:0:2026-07-16", "remark-engineer");
   assert.equal(firstPending.confirmationRequiredRole, "engineer");
-  assert.deepEqual(firstPending.resolutionEvents.at(-1).recipientKeys, ["id:engineer-1"]);
+  assert.deepEqual(firstPending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:editor-1", "id:engineer-1"]);
   const stoppedOnSubmission = firstResolve.state.downtimes.find(item => item.id === "downtime-resolution-flow");
   assert.equal(stoppedOnSubmission.endedAt, firstPending.resolutionSubmittedAt);
   assert.equal(stoppedOnSubmission.closeAwaitingConfirmation, true);
@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=427-global-remark-confirm/);
-  assert.match(html, /styles\.css\?v=427-global-remark-confirm/);
-  assert.match(serviceWorker, /app\.js\?v=427-global-remark-confirm/);
+  assert.match(html, /app\.js\?v=428-admin-engineer-confirm-inbox/);
+  assert.match(html, /styles\.css\?v=428-admin-engineer-confirm-inbox/);
+  assert.match(serviceWorker, /app\.js\?v=428-admin-engineer-confirm-inbox/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1677,4 +1677,6 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /remarkGlobalConfirm","Подтверждение замечаний всех цехов/);
   assert.match(clientSource, /Открыть карточку/);
   assert.match(clientSource, /Подтверждения всех цехов доступны/);
+  assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
+  assert.match(clientSource, /ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА/);
 });
