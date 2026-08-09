@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=437-shgrp-aggregate-print/);
-  assert.match(html, /styles\.css\?v=437-shgrp-aggregate-print/);
-  assert.match(serviceWorker, /app\.js\?v=437-shgrp-aggregate-print/);
+  assert.match(html, /app\.js\?v=438-shgrp-print-window-fix/);
+  assert.match(html, /styles\.css\?v=438-shgrp-print-window-fix/);
+  assert.match(serviceWorker, /app\.js\?v=438-shgrp-print-window-fix/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1744,4 +1744,5 @@ test("order journal is separate, permission controlled, and scores every selecte
   assert.match(clientSource, /data-print-order/);
   assert.match(clientSource, /data-print-all-orders/);
   assert.match(clientSource, /@page\{size:A4 landscape/);
+  assert.doesNotMatch(clientSource, /window\.open\("", "_blank", "noopener,noreferrer"\)/);
 });

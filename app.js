@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v437-shgrp-aggregate-print";
+const APP_VERSION = "v438-shgrp-print-window-fix";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -9674,7 +9674,7 @@ function gasJournalPrintableSection(section, includeBlank = false) {
 function printGasJournalSections(sections = ["A", "B"], includeBlank = false) {
   const printable = sections.map(section => gasJournalPrintableSection(section, includeBlank)).filter(Boolean);
   if (!printable.length) return window.alert("В выбранных разделах ШГРП нет заполненных дней для печати.");
-  const popup = window.open("", "_blank", "noopener,noreferrer");
+  const popup = window.open("", "_blank");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Агрегатный журнал ШГРП</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{min-height:194mm;display:flex;flex-direction:column;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}.official-head{border:2px solid #000;border-bottom:0;padding:3mm}.official-head>div{display:flex;justify-content:space-between;font-size:9pt}.official-head h1{text-align:center;margin:2mm 0 0;font-size:14pt}.official-head p{text-align:center;margin:1mm 0 0;font-size:9pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7pt;vertical-align:top;overflow-wrap:anywhere}th{background:#eee;text-align:center}.sheet[data-section="A"] td{height:11mm;vertical-align:middle}.sheet[data-section="B"] td{height:25mm}.gas-print-lines{display:grid;gap:.8mm}.signature{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:3mm;margin-top:auto;font-size:8pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${printable.map((item,index)=>`<section class="sheet" data-section="${item.section}"><header class="official-head"><div><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>Лист ${index+1} из ${printable.length}</span></div><h1>${escapeHtml(item.title)}</h1><p>Агрегатный журнал эксплуатации, технического обслуживания и обходов</p></header>${item.table}<footer class="signature"><span>Ответственный ____________________</span><span>Проверил ____________________</span><span>Дата ____________________</span></footer></section>`).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
   popup.document.close();
@@ -11314,7 +11314,7 @@ function orderPrintSheetHtml(order, sheetNumber = 1, totalSheets = 1) {
 function printOrderJournal(orders = []) {
   const rows = orders.filter(Boolean);
   if (!rows.length) return window.alert("Нет распоряжений для печати.");
-  const popup = window.open("", "_blank", "noopener,noreferrer");
+  const popup = window.open("", "_blank");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал распоряжений</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.order-print-sheet{min-height:190mm;display:flex;flex-direction:column;break-after:page;page-break-after:always}.order-print-sheet:last-child{break-after:auto;page-break-after:auto}.order-print-sheet header{border:2px solid #000;border-bottom:0;padding:4mm}.order-print-sheet header>div{display:flex;justify-content:space-between;font-size:10pt}.order-print-sheet h1{margin:3mm 0 0;text-align:center;font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:2.2mm;vertical-align:top;font-size:9pt;overflow-wrap:anywhere}th{width:17%;background:#eee;text-align:left}.order-print-text{font-size:11pt;font-weight:700;line-height:1.4}.order-print-history{border:1px solid #000;border-top:0;padding:3mm;flex:1}.order-print-history>strong{display:block;margin-bottom:2mm}.order-print-history>div{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:3mm;border-top:1px solid #bbb;padding:1.5mm 0;font-size:8pt}.order-print-history time{text-align:right}.order-print-sheet footer{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:4mm;font-size:9pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${rows.map((order, index) => orderPrintSheetHtml(order, index + 1, rows.length)).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
   popup.document.close();
