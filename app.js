@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v430-inbox-close-no-score";
+const APP_VERSION = "v431-requests-document-only";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -6477,7 +6477,7 @@ function engineerIncomingTmcRequests() {
 }
 
 function canSeeTmcRequestArchive() {
-  return ["engineer", "shop", "editor"].includes(profile?.role || "");
+  return isProfileReady();
 }
 
 function tmcRequestArchiveItems() {
@@ -6487,7 +6487,8 @@ function tmcRequestArchiveItems() {
     if (req.engineerCombinedBatch && !req.formedAt) return false;
     if (profile?.role === "engineer") return req.engineerCombinedBatch || ["mechanic", "electrician", "operator", "shop", "engineer"].includes(req.sourceRole || "");
     if (profile?.role === "shop") return areaAllowed(req.area);
-    return true;
+    if (isEditorSession()) return true;
+    return String(req.sourceKey || "") === profileKey();
   });
 }
 
@@ -8284,7 +8285,7 @@ function requestMatchesFilters(req) {
 function requestRoleCounts() {
   const all = allRequests();
   if (MANUAL_REQUEST_WORKFLOW) {
-    return { all: all.filter(req => requestVisibleForRole(req, "all")).length };
+    return { all: 0, engineer: 0 };
   }
   const roles = ["shop", "engineer", "mechanic", "electrician", "operator", "productionDirector"];
   const counts = { all: all.filter(req => requestVisibleForRole(req, "all")).length };
@@ -11279,6 +11280,14 @@ function renderRequests() {
   document.querySelectorAll(".request-tabs .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.role === current.requestRole));
   const all = allRequests();
   const visible = all.filter(req => requestAllowedByUser(req));
+  if (MANUAL_REQUEST_WORKFLOW) {
+    ui.requestsMeta.textContent = "Заявки — только документы: создать, распечатать или отправить";
+    if (ui.requestSearchInput) ui.requestSearchInput.value = "";
+    list.innerHTML = `<div class="empty-state">Заявки не требуют подтверждения и не влияют на состояние завода. Создавайте и печатайте их через кнопку «Создать заявку».</div>`;
+    applyLanguage();
+    queueTranslateVisiblePage();
+    return;
+  }
   const waitingHere = visible.filter(req => requestNeedsRole(req, current.requestRole)).length;
   ui.requestsMeta.textContent = MANUAL_REQUEST_WORKFLOW
     ? `Всего заявок: ${visible.length}`
@@ -12314,15 +12323,6 @@ function directorCalendarItems(equipment = allEquipment()) {
 
 function directorReminderItems(equipment = allEquipment()) {
   const items = [];
-  const overdueRequests = allRequests().filter(req =>
-    !req.done && !req.stock && !req.rejected && !req.deleted && requestIsOverdue(req)
-  );
-  overdueRequests.forEach(req => items.push({
-    level: "red",
-    icon: "📋",
-    title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
-    text: req.equipment || req.area || req.text || "Требуется обработка"
-  }));
   equipment.filter(eq => eq.area !== "Резерв").forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
     const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
@@ -13228,11 +13228,7 @@ function directorEquipmentHealth(eq) {
     : eq.area === GAS_JOURNAL_AREA
       ? gasJournalIncompleteDays()
       : 0;
-  const emergencyRequests = allRequests().filter(req =>
-    !req.done && !req.stock && !req.rejected && !req.deleted &&
-    req.priority === "emergency" &&
-    (Number(req.equipmentId) === eq.id || (!req.equipmentId && req.area === eq.area))
-  ).length;
+  const emergencyRequests = 0;
   const since = Date.now() - 30 * 86400000;
   const repairs = downtimes().filter(item =>
     item.type !== "production" &&
@@ -13244,7 +13240,6 @@ function directorEquipmentHealth(eq) {
     - Math.min(remarks * 5, 20)
     - Math.round(missingRatio * 25)
     - Math.min(overdueDays * 3, 15)
-    - Math.min(emergencyRequests * 15, 30)
     - Math.min(repairs * 4, 20)
     - (journal.color === "red" && !overdueDays ? 5 : 0)
   )));
@@ -13275,15 +13270,11 @@ function directorOlderThanDay(item, fallbackDate = "") {
 }
 
 function directorRecentRequests() {
-  return allRequests()
-    .filter(req => !req.done && !req.stock && !req.rejected && !req.deleted)
-    .filter(req => directorWithinLastDay(req, req.date));
+  return [];
 }
 
 function directorArchivedRequests() {
-  return allRequests()
-    .filter(req => !req.done && !req.stock && !req.rejected && !req.deleted)
-    .filter(req => directorOlderThanDay(req, req.date));
+  return [];
 }
 
 function directorRecentRemarks() {
@@ -13504,28 +13495,6 @@ function annualRepairEvents(year = directorAnnualYear()) {
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
       text: item.comment || ""
-    });
-  });
-  allRequests().forEach(req => {
-    if (!req.mechanicInstalled && !req.done) return;
-    const targetRole = req.issueTargetRole || "";
-    if (!isResolutionExecutorRole(targetRole)) return;
-    const resolvedAt = req.updatedAt || req.createdAt || req.date || "";
-    const resolved = dateYearMonth(resolvedAt);
-    if (resolved?.year !== year) return;
-    events.push({
-      type: "install",
-      equipment: req.equipment || "",
-      area: req.area || "",
-      node: req.node || "",
-      createdAt: req.createdAt || req.date || "",
-      resolvedAt,
-      authorRole: req.sourceRole || "",
-      resolvedByRole: targetRole,
-      resolvedByName: req.issueTargetName || "",
-      durationMs: 0,
-      open: false,
-      text: partNameFromRequest(req)
     });
   });
   return events;
@@ -17421,6 +17390,27 @@ ui.tmcRequestForm?.addEventListener("submit", async event => {
   setButtonBusy(ui.submitTmcRequest, true, "Отправляем...");
   try {
     restoreTranslatedPage(ui.requestCreateScreen || document.body);
+    if (MANUAL_REQUEST_WORKFLOW) {
+      const draft = buildMobileTmcRequestDraft();
+      if (!draft) {
+        ui.tmcRequestStatus.textContent = "Заполните хотя бы одну строку с наименованием";
+        ui.tmcRequestStatus.classList.add("error");
+        return;
+      }
+      draft.whatsappOnly = mobileShareMode();
+      draft.reportOnly = true;
+      ui.tmcRequestStatus.classList.remove("error");
+      state.requests ||= {};
+      state.requests[draft.id] = draft;
+      saveState();
+      const archived = await archiveTmcRequestAfterOutput(draft, mobileShareMode() ? "Отправлено и сохранено в архив" : "Напечатано и сохранено в архив");
+      resetTmcRequestForm();
+      ui.tmcRequestStatus.textContent = archived?.outputStarted
+        ? "Заявка сохранена и отправлена на вывод"
+        : "Заявка сохранена в архиве. Разрешите открытие окна и повторите печать из архива";
+      renderTmcRequestArchivePanel();
+      return;
+    }
     if (workerSendsTmcRequestToEngineer()) {
       const submission = buildEngineerRequestSubmission();
       if (!submission) {

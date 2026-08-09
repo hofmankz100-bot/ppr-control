@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=430-inbox-close-no-score/);
-  assert.match(html, /styles\.css\?v=430-inbox-close-no-score/);
-  assert.match(serviceWorker, /app\.js\?v=430-inbox-close-no-score/);
+  assert.match(html, /app\.js\?v=431-requests-document-only/);
+  assert.match(html, /styles\.css\?v=431-requests-document-only/);
+  assert.match(serviceWorker, /app\.js\?v=431-requests-document-only/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1682,4 +1682,16 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
   assert.match(clientSource, /data-personal-remark-close-no-score/);
   assert.match(clientSource, /publishRemarkCollaborationAction\(message\.equipmentId, message\.nodeIndex, message\.date, "close-no-score"/);
+});
+
+test("requests are printable documents and never reduce factory status", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?Заявки — только документы: создать, распечатать или отправить/);
+  assert.match(clientSource, /Заявки не требуют подтверждения и не влияют на состояние завода/);
+  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?const draft = buildMobileTmcRequestDraft\(\)[\s\S]*?archiveTmcRequestAfterOutput/);
+  assert.match(clientSource, /const emergencyRequests = 0/);
+  const reminders = clientSource.slice(clientSource.indexOf("function directorReminderItems"), clientSource.indexOf("function globalControlEquipment"));
+  assert.doesNotMatch(reminders, /allRequests|Просрочена заявка/);
+  const repairs = clientSource.slice(clientSource.indexOf("function annualRepairEvents"), clientSource.indexOf("function directorAnnualStats"));
+  assert.doesNotMatch(repairs, /allRequests/);
 });
