@@ -240,10 +240,10 @@ test("permit output requires manual fields and acknowledged instructions", () =>
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v443-annual-ppr-type-priority/);
+  assert.match(serviceWorker, /ppr-v444-annual-ppr-plan-fact-sources/);
   assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /styles\.css\?v=443-annual-ppr-type-priority/);
-  assert.match(serviceWorker, /app\.js\?v=443-annual-ppr-type-priority/);
+  assert.match(serviceWorker, /styles\.css\?v=444-annual-ppr-plan-fact-sources/);
+  assert.match(serviceWorker, /app\.js\?v=444-annual-ppr-plan-fact-sources/);
 });

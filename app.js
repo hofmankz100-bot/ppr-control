@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v443-annual-ppr-type-priority";
+const APP_VERSION = "v444-annual-ppr-plan-fact-sources";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11582,6 +11582,16 @@ function annualPprMonthWorks(year, row, month) {
   return [...manual, ...automatic.filter(item => !manualIds.has(item.id))].sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
 }
 
+function annualPprAcceptedToForMonth(year, row, month) {
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  return Object.entries(state.pprSheets || {}).some(([date, sheet]) => {
+    if (!String(date).startsWith(prefix) || !sheet?.approvedAt || !sheet?.approvedByName) return false;
+    const linked = [...(Array.isArray(sheet.rows) ? sheet.rows : []), ...(Array.isArray(sheet.autofilledFor) ? sheet.autofilledFor : [])];
+    return linked.some(item => Number(item?.equipmentId) === Number(row.eq.id)
+      && String(item?.node || "").trim().toLocaleLowerCase("ru-RU") === String(row.node || "").trim().toLocaleLowerCase("ru-RU"));
+  });
+}
+
 function annualPprWorkDocumentDialog(year, work, kind, rerender) {
   const labels = { ZM: "Акт ЗМ — замена / демонтаж", MV: "Акт МВ — монтаж / ввод", ACT: "Отдельный акт" };
   if (work.documents?.[kind]?.fixedAt) {
@@ -11675,11 +11685,11 @@ function annualPprRows(year) {
         facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
           const month = index + 1;
           const types = new Set();
-          if (automatic[month] === "ТО") types.add("ТО");
+          if (annualPprAcceptedToForMonth(year, { eq, node, nodeIndex, nodeKey }, month)) types.add("ТО");
           annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month).forEach(item => {
-            if (["ТО", "ТР", "АР"].includes(item.type)) types.add(item.type);
+            if (["ТР", "АР"].includes(item.type)) types.add(item.type);
           });
-          return [month, ["ТО", "АР", "ТР"].find(type => types.has(type)) || ""];
+          return [month, ["ТО", "ТР", "АР"].filter(type => types.has(type)).join(" ")];
         })),
         periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
         lastRepair: saved.lastRepair || "",
