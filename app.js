@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v438-shgrp-print-window-fix";
+const APP_VERSION = "v439-shgrp-shift-qr";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -4246,6 +4246,34 @@ function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
     : "";
 }
 
+function shgrpSectionAKindForQr(equipmentId, nodeIndex) {
+  const eq = equipmentById(equipmentId);
+  const source = String(eq?.nodes?.[nodeIndex] || "").trim();
+  if (/^ПСК$/i.test(source)) return "psk";
+  if (/^ШГРП$/i.test(source)) return "shgrp";
+  return "";
+}
+
+async function publishShgrpSectionAResult(parsed, shiftInfo, hasRemark = false, comment = "", pressures = {}) {
+  if (!shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex)) return false;
+  const eq = equipmentById(parsed.equipmentId);
+  const result = await apiJson("/api/qr-walk/shgrp-a-result", {
+    method: "POST", timeout: 15000,
+    body: JSON.stringify({
+      actionId: nextActionId(), clientId: CLIENT_ID, equipmentId: parsed.equipmentId, nodeIndex: parsed.nodeIndex,
+      equipment: eq?.name || "", node: eq?.nodes?.[parsed.nodeIndex] || "", date: shiftInfo.date, shift: shiftInfo.key,
+      hasRemark, comment: hasRemark ? String(comment || "").trim() : "Замечаний нет",
+      inletMpa: pressures.inletMpa, outletMpa: pressures.outletMpa
+    })
+  });
+  if (result?.id && result?.row) {
+    state.gasJournal ||= {};
+    state.gasJournal[result.id] = result.row;
+    persistStateLocally(state);
+  }
+  return true;
+}
+
 async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comment = "") {
   const route = shgrpSectionBRouteForQr(parsed.equipmentId, parsed.nodeIndex);
   if (!route) return false;
@@ -4968,6 +4996,7 @@ function promptQrWalkDecision(parsed) {
   const shift = currentWalkShift();
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   const progress = qrWalkProgress(parsed.equipmentId, shift);
+  const shgrpAKind = shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex);
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay";
   overlay.innerHTML = `
@@ -4990,7 +5019,8 @@ function promptQrWalkDecision(parsed) {
         </div>
         <div class="qr-remark-form" hidden>
           <label><span>Комментарий по узлу</span><textarea rows="4" data-qr-comment placeholder="Опишите замечание..."></textarea></label>
-          <label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>
+          ${shgrpAKind === "shgrp" ? `<div class="qr-pressure-fields"><label><span>Давление входное, МПа</span><input type="number" step="0.1" min="0" data-qr-inlet-pressure></label><label><span>Давление выходное, МПа</span><input type="number" step="0.1" min="0" data-qr-outlet-pressure></label></div>` : ""}
+          ${shgrpAKind ? "" : `<label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>`}
           <div class="qr-remark-error" data-qr-error></div>
           <div class="qr-result-actions single">
             <button type="button" class="qr-save-remark-button" data-qr-save-remark>Сохранить замечание</button>
@@ -5017,6 +5047,7 @@ function promptQrWalkDecision(parsed) {
       markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
       const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
+      await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
       showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
       finish("continue");
     });
@@ -5039,6 +5070,12 @@ function promptQrWalkDecision(parsed) {
         if (errorEl) errorEl.textContent = "Напишите комментарий, чтобы сохранить замечание.";
         return;
       }
+      const inletMpa = Number(overlay.querySelector("[data-qr-inlet-pressure]")?.value);
+      const outletMpa = Number(overlay.querySelector("[data-qr-outlet-pressure]")?.value);
+      if (shgrpAKind === "shgrp" && (!Number.isFinite(inletMpa) || !Number.isFinite(outletMpa) || inletMpa <= outletMpa)) {
+        if (errorEl) errorEl.textContent = "Введите оба давления. Входное давление должно быть больше выходного.";
+        return;
+      }
       submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
@@ -5054,6 +5091,7 @@ function promptQrWalkDecision(parsed) {
         saveState();
         await publishStateNow().catch(scheduleRemoteRetry);
         await publishGrpShgrpResult(parsed, shift, true, comment);
+        await publishShgrpSectionAResult(parsed, shift, true, comment, { inletMpa, outletMpa });
         showQrSavedNotice("Обход сохранён с замечанием");
         finish("comment-saved");
       } catch {
@@ -9651,11 +9689,19 @@ function gasSectionBValueHtml(value, label, editorHtml, detectionValue = value) 
 }
 
 function gasJournalPrintableSection(section, includeBlank = false) {
-  const rows = includeBlank
+  let rows = includeBlank
     ? gasJournalSheetDates(section).map(date => gasJournalRecord(section, date))
     : Object.values(state.gasJournal || {})
       .filter(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (section === "A") {
+    rows = rows.flatMap(row => {
+      const shifts = row?.shiftRows && typeof row.shiftRows === "object"
+        ? [row.shiftRows.day, row.shiftRows.night].filter(Boolean)
+        : [];
+      return shifts.length ? shifts : [row];
+    });
+  }
   if (!rows.length) {
     return null;
   }
@@ -9664,11 +9710,14 @@ function gasJournalPrintableSection(section, includeBlank = false) {
     ? ["Дата", "Время", "Давление входное, МПа", "Давление выходное, МПа", "Температура входная, °C", "Температура выходная, °C", "Перепад давления, МПа", "Исправность оборудования", "Срабатывание ПСК", "Техническое обслуживание", "Замечания", "Подпись"]
     : ["Дата", "Время", "Участок", "Контрольный трубопровод и колодцы", "Запах газа", "Охранная зона", "Замечания", "Принятые меры", "Подпись"];
   const body = rows.map(row => sectionA
-    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml(row.time || "")}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
+    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml([row.shiftLabel, row.time].filter(Boolean).join(" · "))}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
     : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(gasSectionBAllGrpRoutes(), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "controls"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "grp"), true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
   ).join("");
   const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
-  return { section, title, table: `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>` };
+  const dates = rows.map(row => row.date).filter(Boolean).sort();
+  const period = dates.length ? `${dateHuman(dates[0])} — ${dateHuman(dates[dates.length - 1])}` : "пустой бланк";
+  const responsible = [...new Set(rows.map(row => row.checkedBy).filter(Boolean))].join(", ");
+  return { section, title, period, responsible, table: `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>` };
 }
 
 function printGasJournalSections(sections = ["A", "B"], includeBlank = false) {
@@ -9676,7 +9725,7 @@ function printGasJournalSections(sections = ["A", "B"], includeBlank = false) {
   if (!printable.length) return window.alert("В выбранных разделах ШГРП нет заполненных дней для печати.");
   const popup = window.open("", "_blank");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
-  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Агрегатный журнал ШГРП</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{min-height:194mm;display:flex;flex-direction:column;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}.official-head{border:2px solid #000;border-bottom:0;padding:3mm}.official-head>div{display:flex;justify-content:space-between;font-size:9pt}.official-head h1{text-align:center;margin:2mm 0 0;font-size:14pt}.official-head p{text-align:center;margin:1mm 0 0;font-size:9pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7pt;vertical-align:top;overflow-wrap:anywhere}th{background:#eee;text-align:center}.sheet[data-section="A"] td{height:11mm;vertical-align:middle}.sheet[data-section="B"] td{height:25mm}.gas-print-lines{display:grid;gap:.8mm}.signature{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:3mm;margin-top:auto;font-size:8pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${printable.map((item,index)=>`<section class="sheet" data-section="${item.section}"><header class="official-head"><div><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>Лист ${index+1} из ${printable.length}</span></div><h1>${escapeHtml(item.title)}</h1><p>Агрегатный журнал эксплуатации, технического обслуживания и обходов</p></header>${item.table}<footer class="signature"><span>Ответственный ____________________</span><span>Проверил ____________________</span><span>Дата ____________________</span></footer></section>`).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Агрегатный журнал ШГРП</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{min-height:194mm;display:flex;flex-direction:column;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}.official-head{border:2px solid #000;border-bottom:0;padding:3mm}.official-head>div{display:flex;justify-content:space-between;font-size:9pt}.official-head h1{text-align:center;margin:2mm 0 0;font-size:14pt}.official-head p{text-align:center;margin:1mm 0 0;font-size:9pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7pt;vertical-align:top;overflow-wrap:anywhere}th{background:#eee;text-align:center}.sheet[data-section="A"] td{height:11mm;vertical-align:middle}.sheet[data-section="B"] td{height:25mm}.gas-print-lines{display:grid;gap:.8mm}.signature{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:3mm;margin-top:auto;font-size:8pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${printable.map((item,index)=>`<section class="sheet" data-section="${item.section}"><header class="official-head"><div><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>Лист ${index+1} из ${printable.length}</span></div><h1>${escapeHtml(item.title)}</h1><p>Период: ${escapeHtml(item.period)} · Агрегатный журнал эксплуатации, технического обслуживания и обходов</p></header>${item.table}<footer class="signature"><span>Ответственный: ${escapeHtml(item.responsible || "____________________")}</span><span>Проверил ____________________</span><span>Дата ____________________</span></footer></section>`).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
   popup.document.close();
 }
 

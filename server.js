@@ -3650,6 +3650,65 @@ function shgrpSectionBDescriptorServer(source = "") {
   return null;
 }
 
+function shgrpSectionADescriptorServer(source = "") {
+  const text = String(source || "").trim();
+  if (/^ПСК$/i.test(text)) return { kind: "psk", label: "ПСК" };
+  if (/^ШГРП$/i.test(text)) return { kind: "shgrp", label: "ШГРП" };
+  return null;
+}
+
+function shgrpSectionARoleAllowedServer(profile = {}) {
+  if (engineerPermissionRoleServer(profile) === "engineer") return true;
+  return ["mechanic", "electrician"].includes(permissionBaseRoleServer(profile.role));
+}
+
+function shgrpPressureServer(min, max) {
+  return (min + Math.random() * (max - min)).toFixed(1);
+}
+
+function latestShgrpTemperaturesServer(db = {}) {
+  return Object.values(db.gasJournal || {}).filter(row => row?.section === "A")
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .map(row => ({ tempInC: row.tempInC, tempOutC: row.tempOutC }))
+    .find(row => Number.isFinite(Number(row.tempInC)) && Number.isFinite(Number(row.tempOutC))) || { tempInC: "", tempOutC: "" };
+}
+
+async function almatyTemperatureServer(db = {}) {
+  try {
+    const response = await fetch("https://api.open-meteo.com/v1/forecast?latitude=43.2389&longitude=76.8897&current=temperature_2m&timezone=Asia%2FAlmaty", { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error("weather_unavailable");
+    const value = Number((await response.json())?.current?.temperature_2m);
+    if (!Number.isFinite(value)) throw new Error("weather_invalid");
+    return { tempInC: value.toFixed(1), tempOutC: value.toFixed(1), source: "internet" };
+  } catch {
+    return { ...latestShgrpTemperaturesServer(db), source: "last-record" };
+  }
+}
+
+function buildShgrpSectionARowServer(current = {}, date = "", shift = "day", now = new Date().toISOString(), actor = {}) {
+  const checks = current.shgrpQrChecks && typeof current.shgrpQrChecks === "object" ? current.shgrpQrChecks : {};
+  const shgrp = checks[`shgrp:${shift}`];
+  const psk = checks[`psk:${shift}`];
+  const remarks = [shgrp, psk].filter(entry => entry?.status === "remark").map(entry => `${entry.label}: ${entry.comment}`);
+  const names = [...new Set([shgrp?.byName, psk?.byName].filter(Boolean))];
+  const complete = Boolean(shgrp && psk);
+  return {
+    ...current, id: `A::${date}`, section: "A", date, shift, shiftLabel: shift === "night" ? "Ночная смена" : "Дневная смена",
+    time: new Date((psk?.at || shgrp?.at) || now).toLocaleTimeString("ru-RU", { timeZone: "Asia/Qyzylorda", hour: "2-digit", minute: "2-digit", hour12: false }),
+    inletMpa: shgrp?.inletMpa || "", outletMpa: shgrp?.outletMpa || "",
+    tempInC: shgrp?.tempInC || "", tempOutC: shgrp?.tempOutC || "",
+    pressureDeltaMpa: shgrp ? (Number(shgrp.inletMpa) - Number(shgrp.outletMpa)).toFixed(1) : "",
+    equipmentStatus: shgrp ? (shgrp.status === "remark" ? "Неисправно" : "Исправно") : "",
+    pskTrigger: psk ? (psk.status === "remark" ? "Неисправно" : "Исправно") : "",
+    maintenance: shgrp ? (shgrp.status === "remark" ? "Требуется" : "Не требуется") : "",
+    remarks: remarks.join("; ") || (complete ? "Замечаний нет" : "Ожидается сканирование ШГРП и ПСК"),
+    checkedBy: names.join(", ") || String(actor.name || ""), updatedAt: now,
+    updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || ""),
+    entryStatus: complete ? "fixed" : "draft", fixedAt: complete ? (current.fixedAt || now) : "", fixedByName: complete ? names.join(", ") : "",
+    source: "qr-shgrp-a", shgrpQrChecks: checks
+  };
+}
+
 function shgrpCheckKeyServer(descriptor, shift) {
   if (descriptor.kind === "protectionZone") return `protection:${shift}`;
   if (descriptor.kind === "controlTube") return `tube:${shift}:${descriptor.number}`;
@@ -3781,6 +3840,26 @@ function linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, n
   const row = buildGrpSectionBRowServer(current, recordDate, now, actor);
   db.gasJournal[rowId] = row;
   return { [rowId]: row };
+}
+
+function linkResolvedShgrpARemarkToGasJournalServer(db, recordKey, remark, actor, now) {
+  if (!remark?.resolved || !recordKey) return {};
+  const date = String(recordKey).split(":").pop();
+  const id = `A::${date}`;
+  const current = db.gasJournal?.[id];
+  if (!current?.shgrpQrChecks) return {};
+  const check = Object.values(current.shgrpQrChecks).find(entry => entry?.status === "remark" && !entry.resolvedAt
+    && (String(entry.remarkId || "") === String(remark.id || "") || String(entry.sourceRecordKey || "") === recordKey));
+  if (!check) return {};
+  check.resolvedAt = String(remark.resolvedAt || now);
+  check.resolvedByName = String(remark.resolvedByName || remark.resolutionSubmittedByName || "");
+  check.resolutionComment = String(remark.resolvedComment || remark.resolutionSubmittedComment || "Устранено");
+  const shift = check.shift || "day";
+  const shiftRow = buildShgrpSectionARowServer(current, date, shift, now, actor);
+  shiftRow.remarks = `${shiftRow.remarks}; Устранено: ${check.resolutionComment}${check.resolvedByName ? ` (${check.resolvedByName})` : ""}`;
+  const shiftRows = { ...(current.shiftRows || {}), [shift]: shiftRow };
+  db.gasJournal[id] = { ...shiftRow, shiftRows };
+  return { [id]: db.gasJournal[id] };
 }
 
 async function handleApi(req, res, pathname, url) {
@@ -4414,6 +4493,62 @@ async function handleApi(req, res, pathname, url) {
       if (mark?.done) checks[recordKey] = record;
     });
     sendJson(res, 200, { ok: true, equipmentId, date, shift, group, checks });
+    return true;
+  }
+
+  if (pathname === "/api/qr-walk/shgrp-a-result" && req.method === "POST") {
+    if (!shgrpSectionARoleAllowedServer(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "shgrp_role_forbidden" });
+      return true;
+    }
+    const body = await readBody(req).catch(() => ({}));
+    const date = String(body.date || "");
+    const shift = String(body.shift || "");
+    const descriptor = shgrpSectionADescriptorServer(body.node || body.equipment);
+    const hasRemark = body.hasRemark === true;
+    const comment = String(body.comment || "").trim().slice(0, 2000);
+    const inlet = Number(body.inletMpa);
+    const outlet = Number(body.outletMpa);
+    if (!descriptor || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || (hasRemark && !comment)
+      || (descriptor.kind === "shgrp" && hasRemark && (!Number.isFinite(inlet) || !Number.isFinite(outlet) || inlet <= outlet))) {
+      sendJson(res, 400, { ok: false, error: "shgrp_a_result_invalid" });
+      return true;
+    }
+    const initialDb = readDb();
+    const weather = descriptor.kind === "shgrp" ? await almatyTemperatureServer(initialDb) : null;
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.gasJournal ||= {};
+      const id = `A::${date}`;
+      const current = db.gasJournal[id] && typeof db.gasJournal[id] === "object" ? db.gasJournal[id] : {};
+      const checks = current.shgrpQrChecks && typeof current.shgrpQrChecks === "object" ? { ...current.shgrpQrChecks } : {};
+      const checkKey = `${descriptor.kind}:${shift}`;
+      const alreadyDone = Boolean(checks[checkKey]);
+      if (!alreadyDone) {
+        const sourceRecordKey = `${Number(body.equipmentId)}:${Number(body.nodeIndex)}:${date}`;
+        const linkedRemark = db.checks?.[sourceRecordKey]?.to?.commentLog?.slice().reverse().find(entry =>
+          !entry?.resolved && String(entry?.text || "").trim() === comment
+        );
+        checks[checkKey] = {
+          kind: descriptor.kind, label: descriptor.label, shift, shiftLabel: shift === "night" ? "Ночь" : "День", at: new Date().toISOString(),
+          status: hasRemark ? "remark" : "ok", comment: hasRemark ? comment : "Замечаний нет",
+          ...(descriptor.kind === "shgrp" ? {
+            inletMpa: hasRemark ? inlet.toFixed(1) : shgrpPressureServer(5, 6),
+            outletMpa: hasRemark ? outlet.toFixed(1) : shgrpPressureServer(2, 2.9),
+            tempInC: weather?.tempInC || "", tempOutC: weather?.tempOutC || "", temperatureSource: weather?.source || "last-record"
+          } : {}),
+          sourceRecordKey, remarkId: String(linkedRemark?.id || ""),
+          byId: String(req.authUser?.id || ""), byName: String(req.authUser?.name || "").slice(0, 200), byRole: String(req.authUser?.role || "").slice(0, 100)
+        };
+      }
+      const row = buildShgrpSectionARowServer({ ...current, shgrpQrChecks: checks }, date, shift, new Date().toISOString(), req.authUser);
+      const shiftRows = { ...(current.shiftRows || {}), [shift]: row };
+      db.gasJournal[id] = { ...row, shiftRows };
+      writeDb(db, { action: "shgrp_section_a_qr_recorded", user: req.authUser, targetId: checkKey, targetLabel: descriptor.label, date, shift, hasRemark });
+      return { id, row: db.gasJournal[id], alreadyDone };
+    });
+    const stateVersion = broadcastState(String(body.clientId || "api"), String(body.actionId || ""), { gasJournal: { [result.id]: result.row } }, true);
+    sendJson(res, 200, { ok: true, ...result, stateVersion });
     return true;
   }
 
@@ -6969,7 +7104,7 @@ async function handleApi(req, res, pathname, url) {
       }
 
       const grpGasJournalPatch = remark.resolved && ["confirm", "admin-close", "admin-repair-close", "close-with-score"].includes(action)
-        ? linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, now)
+        ? { ...linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, now), ...linkResolvedShgrpARemarkToGasJournalServer(db, recordKey, remark, actor, now) }
         : {};
       if (Object.keys(grpGasJournalPatch).length) {
         writeDb(db, {
