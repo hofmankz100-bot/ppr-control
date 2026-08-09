@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v441-annual-ppr-clickable-month";
+const APP_VERSION = "v442-annual-ppr-type-labels";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11531,7 +11531,7 @@ function recommendedMaintenanceForDate(eq, date) {
   return null;
 }
 
-const ANNUAL_PPR_TYPES = ["", "ТО", "ТР", "АР", "КР"];
+const ANNUAL_PPR_TYPES = ["", "ТО", "КР"];
 
 function annualPprYearRecord(year, create = false) {
   state.annualPpr ||= {};
@@ -11668,24 +11668,22 @@ function annualPprRows(year) {
       const automatic = annualPprAutomaticPlan(eq, node, year);
       const months = {};
       for (let month = 1; month <= 12; month += 1) {
-        const repairWorks = annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month);
-        const repairType = repairWorks.some(item => item.type === "АР") ? "АР" : repairWorks.some(item => item.type === "ТР") ? "ТР" : "";
         months[month] = Object.prototype.hasOwnProperty.call(saved.months || {}, month)
           ? saved.months[month]
-          : repairType || automatic[month] || "";
+          : automatic[month] || "";
       }
       return {
         eq, node, nodeIndex, nodeKey, months,
         facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
           const month = index + 1;
-          const event = events.find(item => Number(item.equipmentId) === Number(eq.id) && item.node === node && Number(String(item.date || "").slice(5, 7)) === month);
-          const work = annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month).sort((a,b) => String(b.date).localeCompare(String(a.date)))[0];
-          const fact = facts.get(`${nodeKey}:${month}`);
-          const factType = months[month] || "ТО";
-          return [month, event
-            ? `✓ ${event.type} ${String(event.date).slice(8, 10)}.${String(event.date).slice(5, 7)}`
-            : work ? `${work.fixed || work.status === "Выполнено" ? "✓" : "•"} ${work.type} ${String(work.date).slice(8, 10)}.${String(work.date).slice(5, 7)}`
-            : fact ? `✓ ${factType} ${String(fact.date).slice(8, 10)}.${String(fact.date).slice(5, 7)}` : ""];
+          const types = new Set();
+          if (automatic[month] === "ТО") types.add("ТО");
+          annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month).forEach(item => {
+            if (["ТО", "ТР", "АР"].includes(item.type)) types.add(item.type);
+          });
+          events.filter(item => Number(item.equipmentId) === Number(eq.id) && item.node === node && Number(String(item.date || "").slice(5, 7)) === month)
+            .forEach(item => { if (["ЗМ", "МВ"].includes(item.type)) types.add(item.type); });
+          return [month, ["ТО", "ТР", "АР", "ЗМ", "МВ"].filter(type => types.has(type)).join(" ")];
         })),
         periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
         lastRepair: saved.lastRepair || "",

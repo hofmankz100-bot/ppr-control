@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=441-annual-ppr-clickable-month/);
-  assert.match(html, /styles\.css\?v=441-annual-ppr-clickable-month/);
-  assert.match(serviceWorker, /app\.js\?v=441-annual-ppr-clickable-month/);
+  assert.match(html, /app\.js\?v=442-annual-ppr-type-labels/);
+  assert.match(html, /styles\.css\?v=442-annual-ppr-type-labels/);
+  assert.match(serviceWorker, /app\.js\?v=442-annual-ppr-type-labels/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1577,7 +1577,7 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
   assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
   assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
-  assert.match(appSource, /fact \? `✓ \$\{factType\}/);
+  assert.match(appSource, /\["ТО", "ТР", "АР", "ЗМ", "МВ"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
   assert.match(appSource, /@page\{size:A3 landscape/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
 });
@@ -1620,7 +1620,7 @@ test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
 test("annual PPR records equipment replacement and commissioning with printable Kazakhstan act fields", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(appSource, /ANNUAL_PPR_TYPES = \["", "ТО", "ТР", "АР", "КР"\]/);
+  assert.match(appSource, /ANNUAL_PPR_TYPES = \["", "ТО", "КР"\]/);
   assert.match(appSource, /function openAnnualPprActs\(/);
   assert.match(appSource, /приказ МФ РК № 562/i);
   assert.match(appSource, /name="manufacturer"/);
