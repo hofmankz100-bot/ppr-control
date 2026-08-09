@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v424-month-close-scope";
+const APP_VERSION = "v425-month-remark-links";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -15033,7 +15033,7 @@ async function loadMonthClosePanel() {
     };
     const transferEntries = (groups.incompletePpr || []).map(entry => ({ key: `ppr:${entry.id}`, kind: "ppr", id: entry.id, label: `Лист ППР: ${entry.id}` }));
     const reasonOptions = ["Ожидание запчасти", "Ожидание подрядчика", "Ожидание бюджета", "Ожидание согласования", "Решение руководителя"];
-    const detailList = (title, tone, entries, label) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong></article>`).join("")}</details>`;
+    const detailList = (title, tone, entries, label, actions = null) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong>${actions ? actions(entry) : ""}</article>`).join("")}</details>`;
     host.className = "month-close-content";
     host.innerHTML = `
       <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
@@ -15044,7 +15044,7 @@ async function loadMonthClosePanel() {
         ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
       </div>
       <div class="month-close-work-lists">
-        ${detailList("Открытые критические замечания", "red", groups.openRemarks || [], remarkLabel)}
+        ${detailList("Открытые критические замечания", "red", groups.openRemarks || [], remarkLabel, entry => `<button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button>`)}
         ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
         ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Листы ППР для переноса · ${transferEntries.length}</summary><p>Заявки не входят в закрытие месяца. Отметьте только листы ППР и укажите причину.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Незавершённых листов ППР для переноса нет.</div>`}
       </div>
@@ -15078,6 +15078,19 @@ async function loadMonthClosePanel() {
     host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
     host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));
     host.querySelector("[data-month-refresh]")?.addEventListener("click", loadMonthClosePanel);
+    host.querySelectorAll("[data-open-month-remark]").forEach(button => button.addEventListener("click", () => {
+      const [equipmentId, nodeIndex, date] = String(button.dataset.recordKey || "").split(":");
+      if (!equipmentId || !nodeIndex || !date) return;
+      current.equipmentId = Number(equipmentId);
+      current.nodeIndex = Number(nodeIndex);
+      current.nodeDetailIndex = Number(nodeIndex);
+      current.date = date;
+      current.kind = "to";
+      current.scrollToCommentNode = Number(nodeIndex);
+      current.scrollToRemarkId = button.dataset.remarkId || "";
+      current.returnToRemarkListAfterResolve = false;
+      show("checklist");
+    }));
   } catch {
     if (host) { host.className = "empty-state"; host.textContent = "Не удалось проверить готовность месяца. Обновите страницу."; }
   }
