@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v426-no-score-without-employee";
+const APP_VERSION = "v427-global-remark-confirm";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -279,6 +279,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
 function canManageMonthClose(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "monthCloseManage"); }
+function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -5392,12 +5393,14 @@ function remarkConfirmationRule(entry = {}, eq = null) {
 function canCurrentUserConfirmRemark(entry = {}, eq = null) {
   const actor = resolutionActor();
   const rule = remarkConfirmationRule(entry, eq);
+  if (canConfirmRemarksAcrossShops()) return true;
   if (rule.mode === "shop") return actor.role === "shop" && sameRemarkArea(actor.area, rule.area);
   if (rule.mode === "engineer") return actor.role === "engineer" || isPrimaryAdminEngineer();
   return false;
 }
 
 function remarkConfirmationLabel(entry = {}, eq = null) {
+  if (canConfirmRemarksAcrossShops()) return "Начальник цеха или инженер с доступом ко всем цехам";
   const rule = remarkConfirmationRule(entry, eq);
   if (rule.mode === "shop") return `Начальник цеха · ${rule.area || "цех оборудования"}`;
   return "Инженер";
@@ -12472,6 +12475,7 @@ function rolePersonalMessageHtml(message) {
           <small>Подтверждает: ${escapeHtml(message.confirmationLabel)}</small>
         </div>
         <div class="role-personal-actions">
+          <button type="button" class="secondary" data-personal-remark-open-node>Открыть карточку</button>
           <button type="button" class="secondary" data-personal-remark-return>Вернуть с комментарием</button>
           <button type="button" data-personal-remark-confirm>Подтвердить устранение</button>
         </div>
@@ -12558,6 +12562,7 @@ function renderRolePersonalInbox() {
         <div><span>ЛИЧНО ВАМ</span><h2>Личные сообщения</h2></div>
         <strong>${messages.length}</strong>
       </div>
+      ${canConfirmRemarksAcrossShops() ? `<div class="role-personal-empty"><strong>Подтверждения всех цехов доступны</strong><span>Здесь сразу отображаются все ожидающие подтверждения. Можно открыть карточку, подтвердить устранение или вернуть на доработку.</span></div>` : ""}
       <div class="role-personal-message-list">
         ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>Новых личных сообщений нет</strong><span>Запросы на подтверждение и возвраты появятся здесь.</span></div>`}
       </div>
@@ -15852,7 +15857,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }

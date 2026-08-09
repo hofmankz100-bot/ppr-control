@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=426-no-score-without-employee/);
-  assert.match(html, /styles\.css\?v=426-no-score-without-employee/);
-  assert.match(serviceWorker, /app\.js\?v=426-no-score-without-employee/);
+  assert.match(html, /app\.js\?v=427-global-remark-confirm/);
+  assert.match(html, /styles\.css\?v=427-global-remark-confirm/);
+  assert.match(serviceWorker, /app\.js\?v=427-global-remark-confirm/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1665,4 +1665,16 @@ test("downtime journal paginates A4 sheets and prints current, selected, or all 
   assert.match(appSource, /<th>Подтвердил<\/th>/);
   assert.match(styles, /\.downtime-journal-sheet/);
   assert.match(styles, /\.downtime-journal-table/);
+});
+
+test("selected engineers and the administrator can confirm remarks from every shop", () => {
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(serverSource, /ADMIN_PERMISSION_KEYS[\s\S]*?remarkGlobalConfirm/);
+  assert.match(serverSource, /activeUserPermission\(user, "remarkGlobalConfirm"\)/);
+  assert.match(serverSource, /permissionBaseRoleServer\(actor\?\.role\) === "editor"/);
+  assert.match(clientSource, /function canConfirmRemarksAcrossShops[\s\S]*?remarkGlobalConfirm/);
+  assert.match(clientSource, /remarkGlobalConfirm","Подтверждение замечаний всех цехов/);
+  assert.match(clientSource, /Открыть карточку/);
+  assert.match(clientSource, /Подтверждения всех цехов доступны/);
 });

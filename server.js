@@ -2083,12 +2083,20 @@ function sameRemarkAreaServer(left = "", right = "") {
 function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   const users = approvedResolutionUsersServer(db);
   const area = String(equipmentArea || remark.confirmationArea || "").trim().slice(0, 200);
+  const globalUsers = (db.users || [])
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true)
+    .filter(user => permissionBaseRoleServer(user.role) === "editor"
+      || (engineerPermissionRoleServer(user) === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")))
+    .map(sanitizeResolutionParticipant);
+  const mergeUsers = (...groups) => [...new Map(groups.flat().map(user => [resolutionUserKeyServer(user), user])).values()];
   const shopUsers = area ? users.filter(user => permissionBaseRoleServer(user.role) === "shop" && sameRemarkAreaServer(user.area, area)) : [];
-  if (shopUsers.length) return { mode: "shop", role: "shop", area, users: shopUsers };
-  return { mode: "engineer", role: "engineer", area, users: users.filter(user => engineerPermissionRoleServer(user) === "engineer") };
+  if (shopUsers.length) return { mode: "shop", role: "shop", area, users: mergeUsers(shopUsers, globalUsers), globalUsers };
+  return { mode: "engineer", role: "engineer", area, users: mergeUsers(users.filter(user => engineerPermissionRoleServer(user) === "engineer"), globalUsers), globalUsers };
 }
 
 function actorCanConfirmRemarkServer(actor, remark, rule) {
+  if (permissionBaseRoleServer(actor?.role) === "editor") return true;
+  if ((rule.globalUsers || []).some(user => resolutionUserKeyServer(user) === resolutionUserKeyServer(actor))) return true;
   const role = engineerPermissionRoleServer(actor);
   if (rule.mode === "shop") return role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
   if (rule.mode === "engineer") return role === "engineer";
@@ -2860,7 +2868,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "monthCloseManage"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "monthCloseManage", "remarkGlobalConfirm"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
