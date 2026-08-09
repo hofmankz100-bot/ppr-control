@@ -4652,16 +4652,24 @@ async function handleApi(req, res, pathname, url) {
       } else {
         if (previous.status && previous.status !== "open") return { error: "month_already_closed" };
         if ((action === "close-full" && (readiness.criticalCount || readiness.warningCount)) || (action === "close-conditional" && readiness.criticalCount)) return { error: "month_not_ready", readiness };
-        const carryoverReason = action === "close-conditional" ? String(body.carryoverReason || "Решение руководителя").trim().slice(0, 500) : "";
+        const expectedTransferKeys = [
+          ...(readiness.groups.openRequests || []).map(item => `request:${item.requestKey || item.id}`),
+          ...(readiness.groups.incompletePpr || []).map(item => `ppr:${item.id}`)
+        ];
+        const transfers = action === "close-conditional" ? (Array.isArray(body.transfers) ? body.transfers : []).map(item => ({ key: String(item?.key || "").trim(), kind: String(item?.kind || "").trim(), id: String(item?.id || "").trim(), label: String(item?.label || "Работа").trim().slice(0, 500), reason: String(item?.reason || "").trim().slice(0, 500) })).filter(item => item.key && item.reason) : [];
+        if (action === "close-conditional" && (transfers.length !== expectedTransferKeys.length || expectedTransferKeys.some(key => !transfers.some(item => item.key === key)))) return { error: "month_transfers_incomplete", readiness };
+        const carryoverReason = action === "close-conditional" ? "Причины указаны отдельно для каждой работы" : "";
         const carryoverTo = action === "close-conditional" ? nextMonthKey(month) : "";
         if (action === "close-conditional") {
           (readiness.groups.openRequests || []).forEach(openRequest => {
             const request = db.requests?.[openRequest.requestKey] || Object.values(db.requests || {}).find(item => String(item?.id || "") === String(openRequest.id || ""));
-            if (request) Object.assign(request, { carryoverFrom: month, carryoverTo, carryoverReason, carriedOverAt: now, carriedOverByName: actor.name });
+            const transfer = transfers.find(item => item.key === `request:${openRequest.requestKey || openRequest.id}`);
+            if (request && transfer) Object.assign(request, { carryoverFrom: month, carryoverTo, carryoverReason: transfer.reason, carriedOverAt: now, carriedOverByName: actor.name });
           });
           (readiness.groups.incompletePpr || []).forEach(openSheet => {
             const sheet = db.pprSheets?.[openSheet.id];
-            if (sheet) Object.assign(sheet, { carryoverFrom: month, carryoverTo, carryoverReason, carriedOverAt: now, carriedOverByName: actor.name });
+            const transfer = transfers.find(item => item.key === `ppr:${openSheet.id}`);
+            if (sheet && transfer) Object.assign(sheet, { carryoverFrom: month, carryoverTo, carryoverReason: transfer.reason, carriedOverAt: now, carriedOverByName: actor.name });
           });
         }
         closure = {
@@ -4674,6 +4682,7 @@ async function handleApi(req, res, pathname, url) {
           reason,
           carryoverReason,
           carryoverTo,
+          carryovers: transfers,
           snapshot: { ...readiness, factoryReliabilityScore: Number.isFinite(Number(body.factoryReliabilityScore)) ? Math.max(0, Math.min(100, Math.round(Number(body.factoryReliabilityScore)))) : null }
         };
       }

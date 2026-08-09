@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v422-smart-month-close";
+const APP_VERSION = "v423-month-work-lists";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -15026,6 +15026,17 @@ async function loadMonthClosePanel() {
     const status = closure.status || "open";
     const groups = readiness.groups || {};
     const item = (tone, title, count, text) => `<article class="month-close-check ${tone}"><b>${Number(count || 0)}</b><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div></article>`;
+    const remarkLabel = entry => {
+      const [equipmentId, nodeIndex, date] = String(entry.recordKey || "").split(":");
+      const eq = equipmentById(Number(equipmentId));
+      return `${eq?.name || `Оборудование ${equipmentId}`} · ${eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`} · ${date || month}: ${entry.text || "Замечание"}`;
+    };
+    const transferEntries = [
+      ...(groups.openRequests || []).map(entry => ({ key: `request:${entry.requestKey || entry.id}`, kind: "request", id: entry.requestKey || entry.id, label: `Заявка: ${entry.text || entry.id}` })),
+      ...(groups.incompletePpr || []).map(entry => ({ key: `ppr:${entry.id}`, kind: "ppr", id: entry.id, label: `Лист ППР: ${entry.id}` }))
+    ];
+    const reasonOptions = ["Ожидание запчасти", "Ожидание подрядчика", "Ожидание бюджета", "Ожидание согласования", "Решение руководителя"];
+    const detailList = (title, tone, entries, label) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong></article>`).join("")}</details>`;
     host.className = "month-close-content";
     host.innerHTML = `
       <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
@@ -15034,7 +15045,12 @@ async function loadMonthClosePanel() {
         ${item(Number(readiness.warningCount) ? "yellow" : "green", "Можно перенести", readiness.warningCount, `${(groups.openRequests || []).length} заявок · ${(groups.incompletePpr || []).length} листов ППР`)}
         ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
       </div>
-      ${closure.snapshot ? `<div class="month-close-snapshot"><strong>Зафиксированный снимок</strong><span>Готовность ${Number(closure.snapshot.readinessPercent || 0)}% · критических ${Number(closure.snapshot.criticalCount || 0)} · перенесено ${Number(closure.snapshot.warningCount || 0)}</span><small>${escapeHtml(closure.carryoverReason || closure.reason || "")}</small></div>` : ""}
+      <div class="month-close-work-lists">
+        ${detailList("Открытые критические замечания", "red", groups.openRemarks || [], remarkLabel)}
+        ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
+        ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Работы для переноса · ${transferEntries.length}</summary><p>Отметьте каждую работу и укажите отдельную причину переноса.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Работ для переноса нет.</div>`}
+      </div>
+      ${closure.snapshot ? `<div class="month-close-snapshot"><strong>Зафиксированный снимок</strong><span>Готовность ${Number(closure.snapshot.readinessPercent || 0)}% · критических ${Number(closure.snapshot.criticalCount || 0)} · перенесено ${(closure.carryovers || []).length}</span>${(closure.carryovers || []).length ? `<div class="month-close-carryovers">${closure.carryovers.map(entry => `<small><b>${escapeHtml(entry.label || entry.key)}</b> — ${escapeHtml(entry.reason || "")}</small>`).join("")}</div>` : `<small>${escapeHtml(closure.reason || "")}</small>`}</div>` : ""}
       ${result.canManage ? `<div class="month-close-actions no-print">${status === "open" ? `<button type="button" data-month-confirm-area>Подтвердить свой участок</button><button type="button" class="secondary" data-month-close-conditional>Закрыть условно</button><button type="button" data-month-close-full ${Number(readiness.criticalCount || 0) || Number(readiness.warningCount || 0) ? "disabled" : ""}>Закрыть полностью</button>` : `<button type="button" class="danger" data-month-reopen>Повторно открыть месяц</button>`}<button type="button" class="secondary" data-month-refresh>Обновить проверку</button></div>` : `<div class="empty-state">Закрытие доступно только сотрудникам с индивидуальным правом.</div>`}
       <details class="month-close-history"><summary>История действий · ${(closure.history || []).length}</summary>${(closure.history || []).length ? (closure.history || []).map(entry => `<p><strong>${escapeHtml(entry.actor?.name || "Сотрудник")}</strong><span>${escapeHtml(entry.action === "close-full" ? "закрыл полностью" : entry.action === "close-conditional" ? "закрыл условно" : entry.action === "reopen" ? "повторно открыл" : "подтвердил участок")} · ${escapeHtml(dateTimeHuman(entry.at))}</span><small>${escapeHtml(entry.reason || "")}</small></p>`).join("") : `<div class="empty-state">Действий пока нет.</div>`}</details>`;
     const act = async (button, action, extra = {}) => {
@@ -15051,9 +15067,15 @@ async function loadMonthClosePanel() {
     };
     host.querySelector("[data-month-confirm-area]")?.addEventListener("click", event => act(event.currentTarget, "confirm-area", { area: profile?.area || "Общий участок" }));
     host.querySelector("[data-month-close-conditional]")?.addEventListener("click", event => {
-      const carryoverReason = window.prompt("Причина переноса незавершённых работ (например: ожидание запчасти, подрядчика, бюджета или согласования):")?.trim();
-      if (!carryoverReason) return;
-      act(event.currentTarget, "close-conditional", { carryoverReason });
+      const rows = [...host.querySelectorAll("[data-month-transfer-row]")];
+      const incomplete = rows.filter(row => !row.querySelector("[data-transfer-selected]")?.checked || !row.querySelector("[data-transfer-reason]")?.value);
+      if (incomplete.length) {
+        incomplete[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        window.alert(`Нужно отметить каждую переносимую работу и выбрать причину. Не заполнено: ${incomplete.length}.`);
+        return;
+      }
+      const transfers = rows.map(row => ({ key: row.dataset.transferKey || "", kind: row.dataset.transferKind || "", id: row.dataset.transferId || "", label: row.querySelector("strong")?.textContent || "Работа", reason: row.querySelector("[data-transfer-reason]")?.value || "" }));
+      act(event.currentTarget, "close-conditional", { transfers });
     });
     host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
     host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));

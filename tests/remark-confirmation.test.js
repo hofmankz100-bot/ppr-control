@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=422-smart-month-close/);
-  assert.match(html, /styles\.css\?v=422-smart-month-close/);
-  assert.match(serviceWorker, /app\.js\?v=422-smart-month-close/);
+  assert.match(html, /app\.js\?v=423-month-work-lists/);
+  assert.match(html, /styles\.css\?v=423-month-work-lists/);
+  assert.match(serviceWorker, /app\.js\?v=423-month-work-lists/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1477,6 +1477,10 @@ test("smart month closing stores snapshots, carryovers and individual access", (
   assert.match(server, /factoryReliabilityScore:/);
   assert.match(server, /carryoverTo/);
   assert.match(server, /action === "close-conditional" && readiness\.criticalCount/);
+  assert.match(client, /data-month-transfer-row/);
+  assert.match(client, /Нужно отметить каждую переносимую работу/);
+  assert.match(server, /month_transfers_incomplete/);
+  assert.match(server, /carryovers: transfers/);
   assert.match(server, /activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
   assert.match(styles, /\.month-close-panel/);
 });
