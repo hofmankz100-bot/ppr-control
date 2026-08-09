@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v433-remove-director-messages";
+const APP_VERSION = "v434-order-journal";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -280,6 +280,7 @@ function activeUserPermission(user = authenticatedProfile || profile || {}, key 
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
 function canManageMonthClose(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "monthCloseManage"); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
+function canManageOrderJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "orderJournalManage")); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -371,7 +372,7 @@ let remoteSaveInFlight = false;
 let remoteSavePending = false;
 let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
-  "checks", "requests", "inventory", "catalog", "serviceCosts",
+  "checks", "requests", "orders", "inventory", "catalog", "serviceCosts",
   "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince",
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
@@ -449,6 +450,9 @@ const ui = {
   profileBar: document.querySelector("#profileBar"),
   equipmentList: document.querySelector("#equipmentList"),
   alertCounter: document.querySelector("#alertCounter"),
+  ordersButton: document.querySelector("#ordersButton"),
+  ordersBadge: document.querySelector("#ordersBadge"),
+  ordersPanel: document.querySelector("#ordersPanel"),
   equipmentTitle: document.querySelector("#equipmentTitle"),
   equipmentMeta: document.querySelector("#equipmentMeta"),
   equipmentAlertBadge: document.querySelector("#equipmentAlertBadge"),
@@ -954,6 +958,7 @@ function loadState() {
     parsed.checks ||= {};
     parsed.checks = compactCheckRecords(parsed.checks);
     parsed.requests ||= {};
+    parsed.orders ||= {};
     parsed.inventory ||= {};
     parsed.catalog ||= { equipment: {} };
     parsed.catalog.equipment ||= {};
@@ -988,7 +993,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -1668,6 +1673,7 @@ function applyWorkCleanFromUrl() {
   if (cleanMode === "logs") {
     state.checks = {};
     state.requests = {};
+    state.orders = {};
     state.downtimes = [];
     state.serviceCosts = [];
     state.compressorJournal = {};
@@ -2353,6 +2359,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.requests = preferRemote
     ? { ...(remote.requests || {}) }
     : mergeObjectByFreshnessLocal(state.requests, remote.requests);
+  state.orders = preferRemote
+    ? { ...(remote.orders || {}) }
+    : mergeObjectByFreshnessLocal(state.orders, remote.orders);
   state.inventory = {};
   state.catalog ||= { equipment: {} };
   state.catalog.equipment = isEditorSession()
@@ -2430,6 +2439,7 @@ function mergeRealtimePatch(remote = {}) {
     state.gpmJournal.managerMigrationVersion = remote.gpmJournal.managerMigrationVersion || state.gpmJournal.managerMigrationVersion || "";
   }
   if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
+  if (remote.orders) state.orders = mergeObjectByFreshnessLocal(state.orders, remote.orders);
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
@@ -3392,6 +3402,7 @@ function canOpenView(view) {
   if (view === "engineerReport") return isProfileReady();
   if (view === "gpm") return isProfileReady();
   if (view === "workPermit") return isProfileReady();
+  if (view === "orders") return isProfileReady();
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "adminMaintenance") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
@@ -8742,6 +8753,7 @@ function scheduleRender(delay = 80) {
 }
 
 function render() {
+  updateOrderBadge();
   renderProfile();
   renderSystemBroadcastNotice();
   updateDirectorBadge();
@@ -8755,6 +8767,7 @@ function render() {
   if (current.view === "checklist") renderChecklist();
   if (current.view === "requestCreate") renderRequestCreate();
   if (current.view === "requests") renderRequests();
+  if (current.view === "orders") renderOrders();
   if (current.view === "director") renderDirector();
   if (current.view === "directorControl") renderDirectorControl();
   if (current.view === "engineerReport") renderEngineerReport();
@@ -11218,6 +11231,104 @@ function renderRequests() {
   rows.forEach(req => list.append(requestCard(req)));
   applyLanguage();
   queueTranslateVisiblePage();
+}
+
+function orderJournalEntries() {
+  state.orders ||= {};
+  return Object.values(state.orders).filter(Boolean).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+let orderJournalFilter = "active";
+
+function orderEventLabel(action = "") {
+  return ({ created: "Создано", complete: "Передано на подтверждение", "confirm-score": "Принято с баллами", "confirm-no-score": "Закрыто без баллов", return: "Возвращено на доработку" })[action] || action;
+}
+
+function orderWorkerUsers() {
+  return loadUsers()
+    .filter(user => user && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRole(user.role))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+}
+
+function orderActorKey() { return resolutionUserKey(authenticatedProfile || profile || {}); }
+function orderAssignedToMe(order = {}) { return (order.assignees || []).some(user => user.key === orderActorKey()); }
+function orderCanConfirm(order = {}) { return canManageOrderJournal() && (isEditorSession() || order.authorKey === orderActorKey()); }
+function orderVisible(order = {}) { return canManageOrderJournal() || orderAssignedToMe(order); }
+
+function updateOrderBadge() {
+  if (!ui.ordersButton || !ui.ordersBadge) return;
+  const visible = orderJournalEntries().filter(orderVisible);
+  const count = visible.filter(order => canManageOrderJournal() ? order.status === "pending" : orderAssignedToMe(order) && ["open", "returned"].includes(order.status)).length;
+  ui.ordersButton.hidden = !canManageOrderJournal() && !visible.length;
+  ui.ordersBadge.textContent = count;
+  ui.ordersButton.classList.toggle("request-alert", count > 0);
+}
+
+function orderStatusLabel(status = "open") {
+  return ({ open: "К выполнению", pending: "Ожидает подтверждения", returned: "Возвращено на доработку", closed: "Закрыто" })[status] || status;
+}
+
+function orderParticipantsText(list = []) { return list.map(user => user.name).filter(Boolean).join(", "); }
+
+function orderCardHtml(order) {
+  const canComplete = orderAssignedToMe(order) && ["open", "returned"].includes(order.status);
+  const canConfirm = orderCanConfirm(order) && order.status === "pending";
+  return `<article class="order-card ${escapeHtml(order.status || "open")}" data-order-id="${escapeHtml(order.id)}">
+    <header><div><strong>Распоряжение № ${escapeHtml(order.number || "")}</strong><small>${escapeHtml(order.authorName || "")} · ${escapeHtml(dateTimeHuman(order.createdAt))}</small></div><span>${escapeHtml(orderStatusLabel(order.status))}</span></header>
+    <p class="order-text">${userTextWithRussianHtml(order.text || "")}</p>
+    <small><b>Назначены:</b> ${escapeHtml(orderParticipantsText(order.assignees || []))}</small>
+    ${order.returnReason ? `<div class="order-return"><b>Вернули:</b> ${userTextWithRussianHtml(order.returnReason)}</div>` : ""}
+    ${order.completionComment ? `<div class="order-result"><b>Что сделали:</b><p>${userTextWithRussianHtml(order.completionComment)}</p><small>Устранили: ${escapeHtml(orderParticipantsText(order.performers || []))}</small></div>` : ""}
+    ${canComplete ? `<form class="order-complete-form"><label>Что сделали<textarea name="comment" rows="3" required></textarea></label><fieldset><legend>Кто устранил</legend>${(order.assignees || []).map(user => `<label><input type="checkbox" name="performers" value="${escapeHtml(user.key)}" ${user.key === orderActorKey() ? "checked" : ""}> ${escapeHtml(user.name)}</label>`).join("")}</fieldset><button type="submit">Передать на подтверждение</button></form>` : ""}
+    ${canConfirm ? `<div class="order-actions"><button type="button" data-order-score>Принять · по 15 баллов</button><button type="button" class="secondary" data-order-no-score>Закрыть без баллов</button><button type="button" class="danger" data-order-return>Вернуть на доработку</button></div>` : ""}
+    ${order.status === "closed" ? `<div class="order-closed"><b>${order.withScore ? "Закрыто с баллами" : "Закрыто без баллов"}</b>${order.withScore ? `<span>Каждому исполнителю начислено 15 баллов</span>` : ""}</div>` : ""}
+    <details class="order-history"><summary>История действий (${(order.events || []).length})</summary>${(order.events || []).map(item => `<div><span>${escapeHtml(orderEventLabel(item.action))}</span><small>${escapeHtml(item.name || "")} · ${escapeHtml(dateTimeHuman(item.at))}</small></div>`).join("")}</details>
+  </article>`;
+}
+
+async function publishOrderAction(action, details = {}) {
+  const result = await apiJson("/api/orders/action", { method: "POST", body: JSON.stringify({ action, actionId: nextActionId(), clientId: CLIENT_ID, ...details }) });
+  if (result.order) { state.orders ||= {}; state.orders[result.order.id] = result.order; saveState(); }
+  return result.order;
+}
+
+function saveOrderChange(order) {
+  if (order) { state.orders ||= {}; state.orders[order.id] = order; saveState(); }
+  renderOrders();
+}
+
+function renderOrders() {
+  if (!ui.ordersPanel) return;
+  ui.subtitle.textContent = "Журнал распоряжений";
+  const workers = orderWorkerUsers();
+  const allEntries = orderJournalEntries().filter(orderVisible);
+  const entries = allEntries.filter(order => orderJournalFilter === "all" || (orderJournalFilter === "closed" ? order.status === "closed" : order.status !== "closed"));
+  ui.ordersPanel.innerHTML = `<section class="orders-shell"><header class="orders-head"><div><span>ОТДЕЛЬНЫЙ ЖУРНАЛ</span><h1>Распоряжения</h1><p>Выполнено и принято — по 15 баллов каждому фактическому исполнителю</p></div><strong>${allEntries.filter(item => item.status !== "closed").length}</strong></header>
+    <div class="order-filters"><button type="button" data-order-filter="active" class="${orderJournalFilter === "active" ? "active" : ""}">Активные</button><button type="button" data-order-filter="closed" class="${orderJournalFilter === "closed" ? "active" : ""}">Архив</button><button type="button" data-order-filter="all" class="${orderJournalFilter === "all" ? "active" : ""}">Все</button></div>
+    ${canManageOrderJournal() ? `<form class="order-create-form"><label>Текст распоряжения<textarea name="text" rows="4" required placeholder="Напишите, что необходимо выполнить"></textarea></label><fieldset><legend>Конкретные исполнители</legend>${workers.map(user => `<label><input type="checkbox" name="assignees" value="${escapeHtml(resolutionUserKey(user))}"> ${escapeHtml(user.name)} · ${escapeHtml(requestRoleLabel(user.role))}</label>`).join("")}</fieldset><button type="submit">Опубликовать распоряжение</button></form>` : ""}
+    <div class="orders-list">${entries.length ? entries.map(orderCardHtml).join("") : `<div class="empty-state">Распоряжений пока нет</div>`}</div></section>`;
+  ui.ordersPanel.querySelector(".order-create-form")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const selected = [...form.querySelectorAll('[name="assignees"]:checked')].map(input => input.value);
+    if (!selected.length) return window.alert("Выберите хотя бы одного исполнителя.");
+    saveOrderChange(await publishOrderAction("create", { text: form.elements.text.value.trim(), assigneeKeys: selected }));
+  });
+  ui.ordersPanel.querySelectorAll("[data-order-filter]").forEach(button => button.addEventListener("click", () => { orderJournalFilter = button.dataset.orderFilter; renderOrders(); }));
+  ui.ordersPanel.querySelectorAll("[data-order-id]").forEach(card => {
+    const order = state.orders[card.dataset.orderId];
+    card.querySelector(".order-complete-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const keys = [...form.querySelectorAll('[name="performers"]:checked')].map(input => input.value);
+      if (!keys.length) return window.alert("Укажите, кто фактически устранил распоряжение.");
+      saveOrderChange(await publishOrderAction("complete", { orderId: order.id, comment: form.elements.comment.value.trim(), performerKeys: keys }));
+    });
+    card.querySelector("[data-order-score]")?.addEventListener("click", async () => saveOrderChange(await publishOrderAction("confirm-score", { orderId: order.id })));
+    card.querySelector("[data-order-no-score]")?.addEventListener("click", async () => saveOrderChange(await publishOrderAction("confirm-no-score", { orderId: order.id })));
+    card.querySelector("[data-order-return]")?.addEventListener("click", async () => { const reason = window.prompt("Что нужно доработать?")?.trim(); if (!reason) return; saveOrderChange(await publishOrderAction("return", { orderId: order.id, reason })); });
+  });
+  updateOrderBadge();
 }
 
 function directorTodayWalk(eq, group = "technical") {
@@ -13848,6 +13959,15 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
     });
   });
 
+  orderJournalEntries().forEach(order => {
+    if (order.status !== "closed" || !order.withScore || !order.confirmedAt || !inPeriod(order.confirmedAt)) return;
+    (order.performers || []).forEach(participant => add(participant.role, participant.name, 15, {
+      date: order.confirmedAt,
+      type: "order",
+      title: `Выполнено распоряжение № ${order.number || ""}`
+    }));
+  });
+
   const journalAwards = new Map();
   const addJournal = (role, name, date, journalKey) => {
     if (!isResolutionExecutorRole(role) || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !inPeriod(`${date}T12:00:00`)) return;
@@ -13899,6 +14019,7 @@ function workerRatingLedgerTypeLabel(type = "") {
     qr: "QR-обходы",
     ppr: "ППР",
     journal: "Журналы",
+    order: "Распоряжения",
     penalty: "Списания"
   })[type] || "Другое";
 }
@@ -15670,7 +15791,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"],["orderJournalManage","Создание и подтверждение распоряжений"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }
@@ -16875,6 +16996,7 @@ ui.engineerReportPrint?.addEventListener("click", () => {
 });
 
 ui.alertCounter?.addEventListener("click", openAllRemarkCards);
+ui.ordersButton?.addEventListener("click", () => show("orders"));
 
 ui.createTmcRequestButton?.addEventListener("click", () => {
   show("requestCreate");

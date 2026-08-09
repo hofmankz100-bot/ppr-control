@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=433-remove-director-messages/);
-  assert.match(html, /styles\.css\?v=433-remove-director-messages/);
-  assert.match(serviceWorker, /app\.js\?v=433-remove-director-messages/);
+  assert.match(html, /app\.js\?v=434-order-journal/);
+  assert.match(html, /styles\.css\?v=434-order-journal/);
+  assert.match(serviceWorker, /app\.js\?v=434-order-journal/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1715,4 +1715,18 @@ test("director private messaging is removed while admin employee approval remain
   assert.match(clientSource, /ui\.directorPanel\.innerHTML = renderDirectorUsers\(\)/);
   assert.match(serverSource, /delete db\.directorMessages/);
   assert.doesNotMatch(serverSource, /directorMessages:\s*db\.directorMessages|mergeArrayById\(db\.directorMessages/);
+});
+
+test("order journal is separate, permission controlled, and scores every selected performer", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.match(htmlSource, /id="ordersButton"/);
+  assert.match(htmlSource, /id="ordersScreen"/);
+  assert.match(clientSource, /function renderOrders\(\)/);
+  assert.match(clientSource, /type: "order"/);
+  assert.match(serverSource, /pathname === "\/api\/orders\/action"/);
+  assert.match(serverSource, /ADMIN_PERMISSION_KEYS[\s\S]*?orderJournalManage/);
+  assert.match(serverSource, /pointsPerPerformer = order\.withScore \? 15 : 0/);
+  assert.match(serverSource, /Array\.isArray\(body\.performerKeys\)/);
 });
