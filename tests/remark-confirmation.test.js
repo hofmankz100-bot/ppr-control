@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=435-selective-month-close/);
-  assert.match(html, /styles\.css\?v=435-selective-month-close/);
-  assert.match(serviceWorker, /app\.js\?v=435-selective-month-close/);
+  assert.match(html, /app\.js\?v=436-order-journal-print/);
+  assert.match(html, /styles\.css\?v=436-order-journal-print/);
+  assert.match(serviceWorker, /app\.js\?v=436-order-journal-print/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1734,4 +1734,8 @@ test("order journal is separate, permission controlled, and scores every selecte
   assert.match(serverSource, /ADMIN_PERMISSION_KEYS[\s\S]*?orderJournalManage/);
   assert.match(serverSource, /pointsPerPerformer = order\.withScore \? 15 : 0/);
   assert.match(serverSource, /Array\.isArray\(body\.performerKeys\)/);
+  assert.match(clientSource, /function printOrderJournal\(orders = \[\]\)/);
+  assert.match(clientSource, /data-print-order/);
+  assert.match(clientSource, /data-print-all-orders/);
+  assert.match(clientSource, /@page\{size:A4 landscape/);
 });

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v435-selective-month-close";
+const APP_VERSION = "v436-order-journal-print";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -11270,11 +11270,40 @@ function orderStatusLabel(status = "open") {
 
 function orderParticipantsText(list = []) { return list.map(user => user.name).filter(Boolean).join(", "); }
 
+function orderPrintSheetHtml(order, sheetNumber = 1, totalSheets = 1) {
+  const events = Array.isArray(order.events) ? order.events : [];
+  return `<section class="order-print-sheet">
+    <header><div><strong>ЖУРНАЛ РАСПОРЯЖЕНИЙ</strong><span>Лист ${sheetNumber} из ${totalSheets}</span></div><h1>Распоряжение № ${escapeHtml(order.number || "")}</h1></header>
+    <table><tbody>
+      <tr><th>Дата и время</th><td>${escapeHtml(dateTimeHuman(order.createdAt))}</td><th>Статус</th><td>${escapeHtml(orderStatusLabel(order.status))}</td></tr>
+      <tr><th>Автор</th><td colspan="3">${escapeHtml(order.authorName || "")}</td></tr>
+      <tr><th>Распоряжение</th><td colspan="3" class="order-print-text">${userTextWithRussianHtml(order.text || "")}</td></tr>
+      <tr><th>Назначенные сотрудники</th><td colspan="3">${escapeHtml(orderParticipantsText(order.assignees || []))}</td></tr>
+      <tr><th>Что выполнено</th><td colspan="3">${order.completionComment ? userTextWithRussianHtml(order.completionComment) : "—"}</td></tr>
+      <tr><th>Фактические исполнители</th><td colspan="3">${escapeHtml(orderParticipantsText(order.performers || [])) || "—"}</td></tr>
+      <tr><th>Результат</th><td>${order.status === "closed" ? (order.withScore ? "Принято с баллами" : "Закрыто без баллов") : "—"}</td><th>Баллы</th><td>${order.status === "closed" && order.withScore ? `По ${Number(order.pointsPerPerformer || 15)} каждому исполнителю` : "Без начисления"}</td></tr>
+      ${order.returnReason ? `<tr><th>Причина возврата</th><td colspan="3">${userTextWithRussianHtml(order.returnReason)}</td></tr>` : ""}
+    </tbody></table>
+    <div class="order-print-history"><strong>История действий</strong>${events.map(item => `<div><span>${escapeHtml(orderEventLabel(item.action))}</span><span>${escapeHtml(item.name || "")}</span><time>${escapeHtml(dateTimeHuman(item.at))}</time></div>`).join("") || "<p>Записей нет</p>"}</div>
+    <footer><span>Подпись ответственного ____________________</span><span>Дата ____________________</span></footer>
+  </section>`;
+}
+
+function printOrderJournal(orders = []) {
+  const rows = orders.filter(Boolean);
+  if (!rows.length) return window.alert("Нет распоряжений для печати.");
+  const popup = window.open("", "_blank", "noopener,noreferrer");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал распоряжений</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.order-print-sheet{min-height:190mm;display:flex;flex-direction:column;break-after:page;page-break-after:always}.order-print-sheet:last-child{break-after:auto;page-break-after:auto}.order-print-sheet header{border:2px solid #000;border-bottom:0;padding:4mm}.order-print-sheet header>div{display:flex;justify-content:space-between;font-size:10pt}.order-print-sheet h1{margin:3mm 0 0;text-align:center;font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:2.2mm;vertical-align:top;font-size:9pt;overflow-wrap:anywhere}th{width:17%;background:#eee;text-align:left}.order-print-text{font-size:11pt;font-weight:700;line-height:1.4}.order-print-history{border:1px solid #000;border-top:0;padding:3mm;flex:1}.order-print-history>strong{display:block;margin-bottom:2mm}.order-print-history>div{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:3mm;border-top:1px solid #bbb;padding:1.5mm 0;font-size:8pt}.order-print-history time{text-align:right}.order-print-sheet footer{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:4mm;font-size:9pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${rows.map((order, index) => orderPrintSheetHtml(order, index + 1, rows.length)).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
+  popup.document.close();
+}
+
 function orderCardHtml(order) {
   const canComplete = orderAssignedToMe(order) && ["open", "returned"].includes(order.status);
   const canConfirm = orderCanConfirm(order) && order.status === "pending";
   return `<article class="order-card ${escapeHtml(order.status || "open")}" data-order-id="${escapeHtml(order.id)}">
     <header><div><strong>Распоряжение № ${escapeHtml(order.number || "")}</strong><small>${escapeHtml(order.authorName || "")} · ${escapeHtml(dateTimeHuman(order.createdAt))}</small></div><span>${escapeHtml(orderStatusLabel(order.status))}</span></header>
+    <div class="order-card-tools"><button type="button" class="secondary" data-print-order>Печатать этот лист</button></div>
     <p class="order-text">${userTextWithRussianHtml(order.text || "")}</p>
     <small><b>Назначены:</b> ${escapeHtml(orderParticipantsText(order.assignees || []))}</small>
     ${order.returnReason ? `<div class="order-return"><b>Вернули:</b> ${userTextWithRussianHtml(order.returnReason)}</div>` : ""}
@@ -11304,7 +11333,7 @@ function renderOrders() {
   const allEntries = orderJournalEntries().filter(orderVisible);
   const entries = allEntries.filter(order => orderJournalFilter === "all" || (orderJournalFilter === "closed" ? order.status === "closed" : order.status !== "closed"));
   ui.ordersPanel.innerHTML = `<section class="orders-shell"><header class="orders-head"><div><span>ОТДЕЛЬНЫЙ ЖУРНАЛ</span><h1>Распоряжения</h1><p>Выполнено и принято — по 15 баллов каждому фактическому исполнителю</p></div><strong>${allEntries.filter(item => item.status !== "closed").length}</strong></header>
-    <div class="order-filters"><button type="button" data-order-filter="active" class="${orderJournalFilter === "active" ? "active" : ""}">Активные</button><button type="button" data-order-filter="closed" class="${orderJournalFilter === "closed" ? "active" : ""}">Архив</button><button type="button" data-order-filter="all" class="${orderJournalFilter === "all" ? "active" : ""}">Все</button></div>
+    <div class="order-filters"><button type="button" data-order-filter="active" class="${orderJournalFilter === "active" ? "active" : ""}">Активные</button><button type="button" data-order-filter="closed" class="${orderJournalFilter === "closed" ? "active" : ""}">Архив</button><button type="button" data-order-filter="all" class="${orderJournalFilter === "all" ? "active" : ""}">Все</button><button type="button" class="order-print-all" data-print-all-orders>Печатать весь журнал</button></div>
     ${canManageOrderJournal() ? `<form class="order-create-form"><label>Текст распоряжения<textarea name="text" rows="4" required placeholder="Напишите, что необходимо выполнить"></textarea></label><fieldset><legend>Конкретные исполнители</legend>${workers.map(user => `<label><input type="checkbox" name="assignees" value="${escapeHtml(resolutionUserKey(user))}"> ${escapeHtml(user.name)} · ${escapeHtml(requestRoleLabel(user.role))}</label>`).join("")}</fieldset><button type="submit">Опубликовать распоряжение</button></form>` : ""}
     <div class="orders-list">${entries.length ? entries.map(orderCardHtml).join("") : `<div class="empty-state">Распоряжений пока нет</div>`}</div></section>`;
   ui.ordersPanel.querySelector(".order-create-form")?.addEventListener("submit", async event => {
@@ -11315,8 +11344,10 @@ function renderOrders() {
     saveOrderChange(await publishOrderAction("create", { text: form.elements.text.value.trim(), assigneeKeys: selected }));
   });
   ui.ordersPanel.querySelectorAll("[data-order-filter]").forEach(button => button.addEventListener("click", () => { orderJournalFilter = button.dataset.orderFilter; renderOrders(); }));
+  ui.ordersPanel.querySelector("[data-print-all-orders]")?.addEventListener("click", () => printOrderJournal(allEntries));
   ui.ordersPanel.querySelectorAll("[data-order-id]").forEach(card => {
     const order = state.orders[card.dataset.orderId];
+    card.querySelector("[data-print-order]")?.addEventListener("click", () => printOrderJournal([order]));
     card.querySelector(".order-complete-form")?.addEventListener("submit", async event => {
       event.preventDefault();
       const form = event.currentTarget;
