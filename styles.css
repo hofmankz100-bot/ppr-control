@@ -6434,6 +6434,11 @@ body.editor-profile .director-card.request-alert{
 .order-filters .order-print-all{margin-left:auto;background:#1e6075;color:#fff}.order-card-tools{display:flex;justify-content:flex-end}.order-card-tools button{padding:7px 11px;font-size:12px}
 @media(max-width:680px){.order-filters button{flex:1}.order-history>div{display:grid}.order-history small{text-align:left}}
 
+/* Unified aggregate-journal frame for both SHGRP sections. */
+.gas-official-head{display:flex;justify-content:space-between;gap:12px;border:2px solid #111;border-bottom:0;padding:9px 11px;font-size:12px;letter-spacing:.04em}.gas-a4-sheet .aggregate-sheet-head{border:2px solid #111!important;border-bottom:0!important;margin:0!important;padding:10px 11px!important;background:#f3f5f6!important}.gas-a4-sheet .gas-a4-wrap{border:0}.gas-a4-sheet .gas-sheet-table{border-collapse:collapse!important}.gas-sheet-signatures{display:flex;justify-content:space-between;gap:20px;border:2px solid #111;border-top:0;padding:11px;font-size:12px;font-weight:700}.journal-date-navigation .gas-print-both{margin-left:auto;background:#1e6075;color:#fff}
+@media(max-width:680px){.gas-official-head,.gas-sheet-signatures{display:grid}.journal-date-navigation .gas-print-both{width:100%;margin-left:0}}
+@media print{.gas-official-head{border:1px solid #000;padding:2mm;font-size:8pt}.gas-a4-sheet .aggregate-sheet-head{border:1px solid #000!important;padding:2mm!important}.gas-sheet-signatures{border:1px solid #000;border-top:0;padding:2mm;font-size:7.5pt}.journal-date-navigation{display:none!important}}
+
 .admin-close-performers {
   min-width: 0;
   max-height: 240px;

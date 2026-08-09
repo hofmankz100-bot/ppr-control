@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=436-order-journal-print/);
-  assert.match(html, /styles\.css\?v=436-order-journal-print/);
-  assert.match(serviceWorker, /app\.js\?v=436-order-journal-print/);
+  assert.match(html, /app\.js\?v=437-shgrp-aggregate-print/);
+  assert.match(html, /styles\.css\?v=437-shgrp-aggregate-print/);
+  assert.match(serviceWorker, /app\.js\?v=437-shgrp-aggregate-print/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1503,6 +1503,12 @@ test("gas and compressor printing gathers filled days without date selectors", (
   assert.match(appSource, /function printGasJournalSheet\(section\)/);
   assert.match(appSource, /function printCompressorJournalFilledDays\(area/);
   assert.match(appSource, /gasJournalDateHasFilledRow\(section, row\.date\)/);
+  assert.match(appSource, /function printGasJournalSections\(sections = \["A", "B"\], includeBlank = false\)/);
+  assert.match(appSource, /data-gas-print-all/);
+  assert.match(appSource, /data-gas-print-blank-a/);
+  assert.match(appSource, /gas-official-head/);
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(styles, /Unified aggregate-journal frame for both SHGRP sections/);
   assert.match(appSource, /compressorJournalFilledRows\(area\)\.sort/);
   assert.match(appSource, /thead\{display:table-header-group\}/);
   assert.doesNotMatch(appSource, /data-gas-saved-date/);

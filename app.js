@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v436-order-journal-print";
+const APP_VERSION = "v437-shgrp-aggregate-print";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -9650,13 +9650,14 @@ function gasSectionBValueHtml(value, label, editorHtml, detectionValue = value) 
   return isQrSummary ? gasSectionBScreenHtml(value, label) : editorHtml;
 }
 
-function printGasJournalSheet(section) {
-  const rows = Object.values(state.gasJournal || {})
-    .filter(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date))
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+function gasJournalPrintableSection(section, includeBlank = false) {
+  const rows = includeBlank
+    ? gasJournalSheetDates(section).map(date => gasJournalRecord(section, date))
+    : Object.values(state.gasJournal || {})
+      .filter(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date))
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   if (!rows.length) {
-    window.alert(`В разделе ${section} нет заполненных дней для печати.`);
-    return;
+    return null;
   }
   const sectionA = section === "A";
   const headers = sectionA
@@ -9667,7 +9668,20 @@ function printGasJournalSheet(section) {
     : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(gasSectionBAllGrpRoutes(), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "controls"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "grp"), true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
   ).join("");
   const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
-  printFilledJournalDocument(title, `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
+  return { section, title, table: `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>` };
+}
+
+function printGasJournalSections(sections = ["A", "B"], includeBlank = false) {
+  const printable = sections.map(section => gasJournalPrintableSection(section, includeBlank)).filter(Boolean);
+  if (!printable.length) return window.alert("В выбранных разделах ШГРП нет заполненных дней для печати.");
+  const popup = window.open("", "_blank", "noopener,noreferrer");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Агрегатный журнал ШГРП</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{min-height:194mm;display:flex;flex-direction:column;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}.official-head{border:2px solid #000;border-bottom:0;padding:3mm}.official-head>div{display:flex;justify-content:space-between;font-size:9pt}.official-head h1{text-align:center;margin:2mm 0 0;font-size:14pt}.official-head p{text-align:center;margin:1mm 0 0;font-size:9pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7pt;vertical-align:top;overflow-wrap:anywhere}th{background:#eee;text-align:center}.sheet[data-section="A"] td{height:11mm;vertical-align:middle}.sheet[data-section="B"] td{height:25mm}.gas-print-lines{display:grid;gap:.8mm}.signature{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:3mm;margin-top:auto;font-size:8pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${printable.map((item,index)=>`<section class="sheet" data-section="${item.section}"><header class="official-head"><div><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>Лист ${index+1} из ${printable.length}</span></div><h1>${escapeHtml(item.title)}</h1><p>Агрегатный журнал эксплуатации, технического обслуживания и обходов</p></header>${item.table}<footer class="signature"><span>Ответственный ____________________</span><span>Проверил ____________________</span><span>Дата ____________________</span></footer></section>`).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
+  popup.document.close();
+}
+
+function printGasJournalSheet(section) {
+  printGasJournalSections([section]);
 }
 
 const GAS_JOURNAL_FIELD_LABELS = {
@@ -9735,6 +9749,8 @@ function renderGasJournal() {
       <button type="button" data-gas-all-today>Сегодня</button>
       <button type="button" class="gas-mobile-day-button" data-gas-day-next>День ›</button>
       <small class="gas-mobile-swipe-note">Свайп влево — следующий день, вправо — предыдущий.</small>
+      <button type="button" class="gas-print-both" data-gas-print-all>${printActionLabel("Печатать оба раздела", "PDF обоих разделов")}</button>
+      <button type="button" class="secondary" data-gas-print-blank-a>Пустой бланк раздела А</button>
     </div>
     <div class="gas-mobile-date-panel">
       <strong>${dateHuman(mobileDate)}</strong>
@@ -9744,6 +9760,7 @@ function renderGasJournal() {
       </div>
     </div>
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-a ${datesA.includes(todayISO()) && !gasJournalRowCompleteA(todayISO()) ? "gas-missing-today" : ""}" data-print-section="A">
+      <div class="gas-official-head"><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>АГРЕГАТНЫЙ ЖУРНАЛ</span></div>
       <div class="aggregate-sheet-head"><strong>Раздел А. Эксплуатация и ТО ГРП (ГРУ)</strong><span class="gas-sheet-date-label">${mobileMode ? dateHuman(mobileDate) : `Лист раздела А № ${sheetNoA}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
@@ -9770,10 +9787,12 @@ function renderGasJournal() {
           </tbody>
         </table>
       </div>
+      <div class="gas-sheet-signatures"><span>Ответственный ____________________</span><span>Проверил ____________________</span></div>
       ${gasSheetActionsHtml("A")}
     </div>
 
     <div class="aggregate-journal-sheet gas-journal-sheet gas-a4-sheet gas-section-b ${datesB.includes(todayISO()) && !gasJournalRowCompleteB(todayISO()) ? "gas-missing-today" : ""}" data-print-section="B">
+      <div class="gas-official-head"><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>АГРЕГАТНЫЙ ЖУРНАЛ</span></div>
       <div class="aggregate-sheet-head"><strong>Раздел Б. Обход подземного газопровода</strong><span class="gas-sheet-date-label">${mobileMode ? dateHuman(mobileDate) : `Лист раздела Б № ${sheetNoB}`}</span></div>
       <div class="mobile-table-swipe-hint">Проведите по таблице влево или вправо</div>
       <div class="aggregate-journal-table-wrap gas-a4-wrap">
@@ -9800,6 +9819,7 @@ function renderGasJournal() {
           </tbody>
         </table>
       </div>
+      <div class="gas-sheet-signatures"><span>Ответственный ____________________</span><span>Проверил ____________________</span></div>
       ${gasSheetActionsHtml("B")}
     </div>
   `;
@@ -9867,6 +9887,8 @@ function renderGasJournal() {
     });
   }
   ui.aggregateJournalList.querySelectorAll("[data-gas-print]").forEach(btn => btn.addEventListener("click", () => printGasJournalSheet(btn.dataset.gasPrint)));
+  ui.aggregateJournalList.querySelector("[data-gas-print-all]")?.addEventListener("click", () => printGasJournalSections(["A", "B"]));
+  ui.aggregateJournalList.querySelector("[data-gas-print-blank-a]")?.addEventListener("click", () => printGasJournalSections(["A"], true));
 }
 
 function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
