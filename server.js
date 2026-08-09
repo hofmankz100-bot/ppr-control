@@ -2814,7 +2814,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
@@ -6313,6 +6313,7 @@ async function handleApi(req, res, pathname, url) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
+      const canCloseForEmployees = actor.role === "editor" || activeUserPermission(registeredActor, "remarkMultiClose");
       if (action === "delete") {
         if (actor.role !== "editor") return { error: "remark_delete_forbidden" };
         item.commentLog = (Array.isArray(item.commentLog) ? item.commentLog : []).filter(entry => entry?.id !== remarkId);
@@ -6513,9 +6514,13 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "close-no-score") {
-        if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
+        if (!canCloseForEmployees) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
+        const performerKeys = [...new Set((Array.isArray(body.performerKeys) ? body.performerKeys : []).map(value => String(value || "").trim()).filter(Boolean))];
+        const performerUsers = performerKeys.map(performerKey => (db.users || []).find(user => resolutionUserKeyServer(user) === performerKey && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRoleServer(user.role)));
         if (!reason) return { error: "remark_resolution_text_required" };
+        if (!performerKeys.length || performerKeys.length > 100 || performerUsers.some(user => !user)) return { error: "remark_participant_invalid" };
+        const performers = performerUsers.map(sanitizeResolutionParticipant);
         remark.resolved = true;
         remark.resolvedAt = now;
         remark.resolvedDurationMs = 0;
@@ -6529,7 +6534,9 @@ async function handleApi(req, res, pathname, url) {
         remark.closedWithoutScoreByKey = actor.key;
         remark.closedWithoutScoreByName = actor.name;
         remark.resolutionPendingConfirmation = false;
+        remark.resolutionParticipants = performers;
         remark.resolutionCompletedParticipants = [];
+        remark.closedForParticipants = performers;
         remark.confirmedAt = now;
         remark.confirmedByKey = actor.key;
         remark.confirmedByName = actor.name;
@@ -6541,6 +6548,8 @@ async function handleApi(req, res, pathname, url) {
           name: actor.name,
           role: actor.role,
           reason,
+          targetKeys: performers.map(performer => performer.key),
+          targetNames: performers.map(performer => performer.name),
           at: now
         });
         clearParticipants = participants;
@@ -6549,23 +6558,19 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "close-with-score") {
-        if (actor.role !== "editor") return { error: "remark_confirmation_forbidden" };
+        if (!canCloseForEmployees) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
-        const performerKey = String(body.performerKey || "").trim();
-        const performerUser = (db.users || []).find(user =>
-          resolutionUserKeyServer(user) === performerKey
-          && user.approved !== false
-          && user.pendingApproval !== true
-          && isResolutionExecutorRoleServer(user.role)
-        );
+        const performerKeys = [...new Set((Array.isArray(body.performerKeys) ? body.performerKeys : [body.performerKey]).map(value => String(value || "").trim()).filter(Boolean))];
+        const performerUsers = performerKeys.map(performerKey => (db.users || []).find(user => resolutionUserKeyServer(user) === performerKey && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRoleServer(user.role)));
         if (!reason) return { error: "remark_resolution_text_required" };
-        if (!performerUser) return { error: "remark_participant_invalid" };
-        const performer = sanitizeResolutionParticipant(performerUser);
-        participants = [performer];
-        remark.resolutionParticipants = [performer];
+        if (!performerKeys.length || performerKeys.length > 100 || performerUsers.some(user => !user)) return { error: "remark_participant_invalid" };
+        const performers = performerUsers.map(sanitizeResolutionParticipant);
+        const performer = performers[0];
+        participants = performers;
+        remark.resolutionParticipants = performers;
         remark.resolutionLeadKey = performer.key;
         remark.resolutionLeadName = performer.name;
-        remark.resolutionCompletedParticipants = [performer];
+        remark.resolutionCompletedParticipants = performers;
         remark.resolved = true;
         remark.resolvedAt = now;
         remark.resolvedDurationMs = Math.max(0, Date.parse(now) - (Date.parse(remark.at || "") || Date.parse(now)));
@@ -6588,12 +6593,14 @@ async function handleApi(req, res, pathname, url) {
           role: actor.role,
           targetKey: performer.key,
           targetName: performer.name,
+          targetKeys: performers.map(entry => entry.key),
+          targetNames: performers.map(entry => entry.name),
           reason,
           at: now
         });
-        notifyParticipants = [performer];
+        notifyParticipants = performers;
         pushTitle = "Устранение закрыто администратором";
-        pushBody = `${performer.name}: ${reason.slice(0, 120)}`;
+        pushBody = `${performers.map(entry => entry.name).join(", ")}: ${reason.slice(0, 120)}`;
       }
 
       if (action === "admin-close") {

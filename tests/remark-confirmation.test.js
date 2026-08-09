@@ -1424,11 +1424,11 @@ test("an executor can submit work immediately and is joined automatically", () =
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
 });
 
-test("only admin can close a false or test remark without awarding points", () => {
+test("authorized users can close remarks for several employees with or without points", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(client, /const canCloseWithoutScore = resolutionActor\(\)\.role === "editor"/);
+  assert.match(client, /function canCloseRemarksForEmployees[\s\S]*?remarkMultiClose/);
   assert.match(client, /data-remark-close-no-score/);
   assert.match(client, /data-close-remark-no-score/);
   assert.match(client, /data-close-remark-with-score/);
@@ -1437,13 +1437,25 @@ test("only admin can close a false or test remark without awarding points", () =
   assert.match(client, /overlay\.querySelectorAll\("\[data-close-remark-no-score\]"\)/);
   assert.match(client, /if \(item\?\.closedWithoutScore\) return \[\]/);
   assert.match(server, /if \(action === "close-no-score"\)/);
-  assert.match(server, /if \(actor\.role !== "editor"\) return \{ error: "remark_confirmation_forbidden" \}/);
+  assert.match(server, /canCloseForEmployees = actor\.role === "editor" \|\| activeUserPermission\(registeredActor, "remarkMultiClose"\)/);
+  assert.match(server, /const performerKeys = \[\.\.\.new Set/);
   assert.match(server, /remark\.resolutionCompletedParticipants = \[\]/);
   assert.match(server, /if \(action === "close-with-score"\)/);
-  assert.match(server, /remark\.resolutionCompletedParticipants = \[performer\]/);
+  assert.match(server, /remark\.resolutionCompletedParticipants = performers/);
+  assert.match(client, /data-admin-close-performer value=/);
+  assert.match(client, /performerKeys: decision\.performerKeys/);
+  assert.match(client, /remarkMultiClose","Закрытие замечаний за нескольких сотрудников/);
+  assert.match(server, /ADMIN_PERMISSION_KEYS[\s\S]*?remarkMultiClose/);
   assert.match(styles, /\.send-kind-overlay\s*\{[\s\S]*?z-index:\s*5000/);
   assert.match(styles, /\.send-kind-dialog\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 32px\)/);
   assert.match(styles, /@media \(max-width:\s*560px\)[\s\S]*?\.send-kind-dialog/);
+});
+
+test("production stops do not reduce the factory reliability score", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /if \(item\.type !== "production"\) \{[\s\S]*?reliabilityStops[\s\S]*?reliabilityDowntimeMs/);
+  assert.match(client, /month\.reliabilityDowntimeMs \?\? month\.downtimeMs/);
+  assert.match(client, /month\.reliabilityStops \?\? month\.stops/);
 });
 
 test("gas and compressor printing gathers filled days without date selectors", () => {

@@ -277,6 +277,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
   return user.role === "editor" || user.qrWalkJournalAccess === true || activeUserPermission(user, "qrJournalView");
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
+function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -5312,6 +5313,12 @@ function resolutionParticipantsText(item = {}, fallback = "") {
   return names.length ? names.join(", ") : fallback;
 }
 
+function closedForParticipantsText(item = {}) {
+  return resolutionParticipants({ resolutionParticipants: item.closedForParticipants || [] })
+    .map(resolutionParticipantLabel)
+    .join(", ");
+}
+
 function isResolutionParticipant(item, user = resolutionActor()) {
   const key = resolutionUserKey(user);
   return resolutionParticipants(item).some(participant => participant.key === key);
@@ -5414,7 +5421,7 @@ const REMARK_COLLABORATION_FIELDS = [
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
   "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
-  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds"
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "closedForParticipants"
 ];
 
 function ensureRemarkEntries(item = {}) {
@@ -5725,7 +5732,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const submittedParticipants = resolutionParticipantsText(entry, submittedBy || "Сотрудник");
   const actorCanJoin = isResolutionExecutorRole(resolutionActor().jobRole || resolutionActor().role);
   const canWriteResolution = currentParticipant || actorCanJoin;
-  const canCloseWithoutScore = resolutionActor().role === "editor";
+  const canCloseWithoutScore = canCloseRemarksForEmployees();
 
   return `
     <article class="remark-card ${resolved ? "resolved" : pendingConfirmation ? "pending-confirmation" : returnedToRework ? "returned-rework" : "open"}" data-remark-card="${escapeHtml(remarkId)}">
@@ -5740,7 +5747,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
       ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
       ${resolved ? `
         <div class="comment-resolution-detail">
-          <strong>${entry.closedWithoutScore ? "Закрыто без баллов" : `Устранили: ${escapeHtml(completedBy)}`}</strong>
+          <strong>${entry.closedWithoutScore ? `Закрыто без баллов${closedForParticipantsText(entry) ? ` за: ${escapeHtml(closedForParticipantsText(entry))}` : ""}` : `Устранили: ${escapeHtml(completedBy)}`}</strong>
           <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
           ${entry.resolvedComment ? `<p>${userTextWithRussianHtml(entry.resolvedComment)}</p>` : ""}
           ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
@@ -8642,8 +8649,8 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              ${resolutionActor().role === "editor" ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
-              ${resolutionActor().role === "editor" ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
+              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+              ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
               <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
             </footer>
           </article>
@@ -8657,7 +8664,7 @@ function openAllRemarkCards() {
   });
   overlay.querySelector("[data-close-open-remarks]")?.addEventListener("click", close);
   overlay.querySelectorAll("[data-close-remark-no-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-    if (resolutionActor().role !== "editor") return;
+    if (!canCloseRemarksForEmployees()) return;
     const decision = await askAdminRemarkClose(false);
     if (!decision) return;
     await publishRemarkCollaborationAction(
@@ -8665,14 +8672,14 @@ function openAllRemarkCards() {
       Number(button.dataset.nodeIndex),
       button.dataset.date || todayISO(),
       "close-no-score",
-      { remarkId: button.dataset.remarkId || "", reason: decision.reason }
+      { remarkId: button.dataset.remarkId || "", reason: decision.reason, performerKeys: decision.performerKeys }
     );
     close();
     showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Закрываем...")));
   overlay.querySelectorAll("[data-close-remark-with-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-    if (resolutionActor().role !== "editor") return;
+    if (!canCloseRemarksForEmployees()) return;
     const decision = await askAdminRemarkClose(true);
     if (!decision) return;
     await publishRemarkCollaborationAction(
@@ -8680,10 +8687,10 @@ function openAllRemarkCards() {
       Number(button.dataset.nodeIndex),
       button.dataset.date || todayISO(),
       "close-with-score",
-      { remarkId: button.dataset.remarkId || "", reason: decision.reason, performerKey: decision.performerKey }
+      { remarkId: button.dataset.remarkId || "", reason: decision.reason, performerKeys: decision.performerKeys }
     );
     close();
-    showAppToast(`Предупреждение закрыто. Баллы получит: ${decision.performerName}.`, "ok");
+    showAppToast(`Предупреждение закрыто. Баллы получат: ${decision.performerNames.join(", ")}.`, "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Закрываем...")));
   overlay.querySelectorAll("[data-open-remark-card]").forEach(button => button.addEventListener("click", () => {
@@ -8703,7 +8710,7 @@ function openAllRemarkCards() {
 }
 
 function askAdminRemarkClose(withScore = false) {
-  if (resolutionActor().role !== "editor") return Promise.resolve(null);
+  if (!canCloseRemarksForEmployees()) return Promise.resolve(null);
   const workers = eligibleResolutionUsers(null);
   return new Promise(resolve => {
     const overlay = document.createElement("div");
@@ -8715,8 +8722,8 @@ function askAdminRemarkClose(withScore = false) {
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
         <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
-        <p>${withScore ? "Выберите фактического исполнителя. Баллы будут начислены только ему." : "Запись закроется как тестовая или ошибочная. Баллы не начисляются."}</p>
-        ${withScore ? `<label><span>Исполнитель</span><select data-admin-close-performer><option value="">Выберите сотрудника</option>${workers.map(worker => `<option value="${escapeHtml(worker.key)}">${escapeHtml(resolutionParticipantLabel(worker))}</option>`).join("")}</select></label>` : ""}
+        <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Выберите сотрудников, за которых закрывается тестовая или ошибочная запись. Баллы не начисляются."}</p>
+        <fieldset class="admin-close-performers"><legend>${withScore ? "Кому начислить баллы" : "За каких сотрудников закрыть"}</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>
         <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
         <div class="downtime-type-error" data-admin-close-error></div>
         <div class="send-kind-actions">
@@ -8727,11 +8734,11 @@ function askAdminRemarkClose(withScore = false) {
     `;
     overlay.querySelector("[data-admin-close-submit]")?.addEventListener("click", () => {
       const reason = String(overlay.querySelector("[data-admin-close-reason]")?.value || "").trim();
-      const performerKey = String(overlay.querySelector("[data-admin-close-performer]")?.value || "");
-      const performer = workers.find(worker => worker.key === performerKey);
+      const performerKeys = [...overlay.querySelectorAll("[data-admin-close-performer]:checked")].map(input => String(input.value || ""));
+      const performers = workers.filter(worker => performerKeys.includes(worker.key));
       const error = overlay.querySelector("[data-admin-close-error]");
-      if (withScore && !performer) {
-        if (error) error.textContent = "Выберите сотрудника, которому начислить баллы.";
+      if (!performers.length) {
+        if (error) error.textContent = withScore ? "Выберите одного или нескольких сотрудников для начисления баллов." : "Выберите одного или нескольких сотрудников.";
         return;
       }
       if (!reason) {
@@ -8739,14 +8746,14 @@ function askAdminRemarkClose(withScore = false) {
         overlay.querySelector("[data-admin-close-reason]")?.focus();
         return;
       }
-      close({ reason, performerKey, performerName: performer?.name || "" });
+      close({ reason, performerKeys, performerNames: performers.map(performer => performer.name) });
     });
     overlay.querySelector("[data-admin-close-cancel]")?.addEventListener("click", () => close(null));
     overlay.addEventListener("click", event => {
       if (event.target === overlay) close(null);
     });
     document.body.append(overlay);
-    overlay.querySelector(withScore ? "[data-admin-close-performer]" : "[data-admin-close-reason]")?.focus();
+    overlay.querySelector("[data-admin-close-performer]")?.focus();
   });
 }
 
@@ -10993,12 +11000,13 @@ function renderNodeWalkthrough(eq) {
         }
       }, "Публикуется..."));
       card.querySelector("[data-remark-close-no-score]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-        if (resolutionActor().role !== "editor") return;
+        if (!canCloseRemarksForEmployees()) return;
         const decision = await askAdminRemarkClose(false);
         if (!decision) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "close-no-score", {
           remarkId,
-          reason: decision.reason
+          reason: decision.reason,
+          performerKeys: decision.performerKeys
         });
         if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
         else renderNodeWalkthrough(equipmentById(eq.id));
@@ -13390,6 +13398,8 @@ function directorAnnualEmptyMonths() {
     repairsClosed: 0,
     stops: 0,
     downtimeMs: 0,
+    reliabilityStops: 0,
+    reliabilityDowntimeMs: 0,
     breakdowns: 0,
     qrDone: 0,
     qrPlan: 0
@@ -13510,6 +13520,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
     if (created?.year !== year) return;
     months[created.month].stops += 1;
     months[created.month].downtimeMs += downtimeDurationMs(item);
+    if (item.type !== "production") {
+      months[created.month].reliabilityStops += 1;
+      months[created.month].reliabilityDowntimeMs += downtimeDurationMs(item);
+    }
   });
   const today = todayISO();
   const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв");
@@ -13698,11 +13712,11 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
 }
 
 function directorFactoryReliabilityScore(month) {
-  const downtimeHours = month.downtimeMs / 3600000;
+  const downtimeHours = Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000;
   const openWorks = Math.max(month.repairsCreated - month.repairsClosed, 0);
   const qrPercent = month.qrPlan ? month.qrDone / month.qrPlan * 100 : 100;
   const downtimePenalty = Math.min(Math.round(downtimeHours / 125 * 45), 45);
-  const stopPenalty = Math.min(month.stops * 4, 20);
+  const stopPenalty = Math.min(Number(month.reliabilityStops ?? month.stops) * 4, 20);
   const openPenalty = Math.min(openWorks * 5, 25);
   const breakdownPenalty = Math.min(month.breakdowns * 3, 10);
   const qrPenalty = Math.min(Math.round((100 - qrPercent) * 0.25), 25);
@@ -15735,7 +15749,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }

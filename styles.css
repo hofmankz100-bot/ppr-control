@@ -6428,6 +6428,31 @@ body.editor-profile .director-card.request-alert{
   font-weight: 800;
 }
 
+.admin-close-performers {
+  min-width: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.admin-close-performers legend {
+  padding: 0 6px;
+  font-weight: 900;
+}
+
+.admin-close-performers label {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 9px 10px;
+}
+
 .send-kind-dialog select,
 .send-kind-dialog textarea {
   width: 100%;
