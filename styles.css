@@ -9579,7 +9579,7 @@ textarea:disabled {
 
   .mobile-nav {
     min-height: 78px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: end;
     padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
   }
@@ -9593,16 +9593,21 @@ textarea:disabled {
     grid-column: 1;
   }
 
-  .mobile-nav [data-mobile-view="home"] {
+  .mobile-nav [data-mobile-view="requests"] {
     order: 2;
     grid-column: 2;
+  }
+
+  .mobile-nav [data-mobile-view="home"] {
+    order: 3;
+    grid-column: 3;
     overflow: visible;
     transform: translateY(-7px);
   }
 
   .mobile-nav [data-mobile-view="profile"] {
-    order: 3;
-    grid-column: 3;
+    order: 4;
+    grid-column: 4;
   }
 
   .mobile-nav [data-mobile-view="home"].active {

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v431-requests-document-only";
+const APP_VERSION = "v432-mobile-remark-inbox";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -2968,7 +2968,7 @@ function applyLanguage() {
   ui.back?.setAttribute("title", t("back"));
   setText('[data-mobile-view="home"] small', t("home"));
   setText('[data-mobile-view="requestCreate"] small', t("createRequest"));
-  setText('[data-mobile-view="requests"] small', t("requests"));
+  setText('[data-mobile-view="requests"] small', MANUAL_REQUEST_WORKFLOW ? t("remarks") : t("requests"));
   setText('[data-mobile-view="downtime"] small', t("downtime"));
   setText('[data-mobile-view="profile"] small', t("profile"));
   const createRequestButton = document.querySelector("#createTmcRequestButton span");
@@ -3409,7 +3409,7 @@ function canOpenView(view) {
 
 function canShowMobileView(view) {
   if (view === "profile" || view === "home") return true;
-  if (view === "requests" && MANUAL_REQUEST_WORKFLOW) return false;
+  if (view === "requests" && MANUAL_REQUEST_WORKFLOW) return isProfileReady();
   return canOpenView(view);
 }
 
@@ -8313,8 +8313,14 @@ function updateRoleBadges() {
     button.setAttribute("aria-disabled", quickButton && !canEnter ? "true" : "false");
   });
   const ownRole = defaultRequestRole();
-  const ownWaiting = counts[ownRole] || 0;
-  document.querySelector('[data-mobile-view="requests"]')?.classList.toggle("request-alert", ownWaiting > 0);
+  const ownWaiting = (counts[ownRole] || 0) + personalCount;
+  const mobileRemarkButton = document.querySelector('[data-mobile-view="requests"]');
+  mobileRemarkButton?.classList.toggle("request-alert", ownWaiting > 0);
+  const mobileRemarkCount = mobileRemarkButton?.querySelector("[data-mobile-remark-count]");
+  if (mobileRemarkCount) {
+    mobileRemarkCount.textContent = ownWaiting;
+    mobileRemarkCount.hidden = ownWaiting === 0;
+  }
   updateTmcRequestButtonLabels();
   renderEngineerIncomingBanner();
   if (ui.createTmcRequestButton) ui.createTmcRequestButton.hidden = !canEditChecklist();

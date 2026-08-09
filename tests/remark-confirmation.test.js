@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=431-requests-document-only/);
-  assert.match(html, /styles\.css\?v=431-requests-document-only/);
-  assert.match(serviceWorker, /app\.js\?v=431-requests-document-only/);
+  assert.match(html, /app\.js\?v=432-mobile-remark-inbox/);
+  assert.match(html, /styles\.css\?v=432-mobile-remark-inbox/);
+  assert.match(serviceWorker, /app\.js\?v=432-mobile-remark-inbox/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1694,4 +1694,14 @@ test("requests are printable documents and never reduce factory status", () => {
   assert.doesNotMatch(reminders, /allRequests|Просрочена заявка/);
   const repairs = clientSource.slice(clientSource.indexOf("function annualRepairEvents"), clientSource.indexOf("function directorAnnualStats"));
   assert.doesNotMatch(repairs, /allRequests/);
+});
+
+test("mobile users have a direct warnings inbox with a live count", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(htmlSource, /data-mobile-view="requests"[\s\S]*?Предупреждения[\s\S]*?data-mobile-remark-count/);
+  assert.match(clientSource, /view === "requests" && MANUAL_REQUEST_WORKFLOW\) return isProfileReady\(\)/);
+  assert.match(clientSource, /mobileRemarkCount\.textContent = ownWaiting/);
+  assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="requests"\][\s\S]*?grid-column:\s*2/);
 });
