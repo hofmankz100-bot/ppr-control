@@ -623,10 +623,10 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   const reminderPanel = source.slice(source.indexOf("function renderGlobalReminderPanel"), source.indexOf("function updateGlobalReminderBadge"));
   assert.doesNotMatch(reminderPanel, /personalRemarkMessages|personal-remark-inbox|data-open-personal-remark/);
   assert.doesNotMatch(html, /id="personalInboxButton"/);
-  assert.match(source, /const personalCount = isEditorSession\(\) \? 0 : personalRemarkMessages\(\)\.length/);
-  assert.match(source, /const personalWaiting = role === profile\?\.role \? personalCount : 0/);
+  assert.match(source, /const personalCount = personalRemarkMessages\(\)\.length/);
+  assert.match(source, /isEditorSession\(\) && role === "engineer"/);
   assert.match(source, /role-personal-count">Личные:/);
-  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?if \(isEditorSession\(\) \|\| role === "all"\) return false[\s\S]*?return role === profile\?\.role/);
+  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?if \(isEditorSession\(\)\) return role === "engineer"[\s\S]*?return role === profile\?\.role/);
   assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
   assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
 });
@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=428-admin-engineer-confirm-inbox/);
-  assert.match(html, /styles\.css\?v=428-admin-engineer-confirm-inbox/);
-  assert.match(serviceWorker, /app\.js\?v=428-admin-engineer-confirm-inbox/);
+  assert.match(html, /app\.js\?v=429-admin-engineer-button/);
+  assert.match(html, /styles\.css\?v=429-admin-engineer-button/);
+  assert.match(serviceWorker, /app\.js\?v=429-admin-engineer-button/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1679,4 +1679,5 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /Подтверждения всех цехов доступны/);
   assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
   assert.match(clientSource, /ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА/);
+  assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
 });

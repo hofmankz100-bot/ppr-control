@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v428-admin-engineer-confirm-inbox";
+const APP_VERSION = "v429-admin-engineer-button";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -3442,7 +3442,8 @@ function canOpenRequestRole(role) {
 
 function canSeeRequestRoleIndicator(role) {
   if (MANUAL_REQUEST_WORKFLOW) {
-    if (isEditorSession() || role === "all") return false;
+    if (isEditorSession()) return role === "engineer";
+    if (role === "all") return false;
     return role === profile?.role && Boolean(ROLE_ACCESS[role]);
   }
   if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
@@ -8295,13 +8296,13 @@ function requestRoleCounts() {
 
 function updateRoleBadges() {
   const counts = requestRoleCounts();
-  const personalCount = isEditorSession() ? 0 : personalRemarkMessages().length;
+  const personalCount = personalRemarkMessages().length;
   document.querySelectorAll("[data-open-role], .request-tabs .tab[data-role]").forEach(button => {
     const role = button.dataset.openRole || button.dataset.role;
     const quickButton = Boolean(button.dataset.openRole);
     const canEnter = canOpenRequestRole(role);
     button.hidden = quickButton ? !canSeeRequestRoleIndicator(role) : !canEnter;
-    const personalWaiting = role === profile?.role ? personalCount : 0;
+    const personalWaiting = role === profile?.role || (isEditorSession() && role === "engineer") ? personalCount : 0;
     const waiting = (counts[role] || 0) + personalWaiting;
     const label = requestRoleLabel(role);
     button.innerHTML = `<span>${label}${personalWaiting ? `<small class="role-personal-count">Личные: ${personalWaiting}</small>` : ""}</span><strong>${waiting}</strong>`;
@@ -12549,7 +12550,7 @@ function bindRolePersonalInbox(messages) {
 function renderRolePersonalInbox() {
   if (!ui.rolePersonalInbox) return;
   const isOwnRole = current.requestRole === profile?.role;
-  const isAdminEngineerBlock = permissionBaseRole(profile?.role || "") === "editor" && current.requestRole === "engineer";
+  const isAdminEngineerBlock = isEditorSession() && current.requestRole === "engineer";
   const canShowInbox = isOwnRole || isAdminEngineerBlock;
   const messages = canShowInbox ? personalRemarkMessages() : [];
   ui.rolePersonalInbox.hidden = !canShowInbox;
