@@ -137,7 +137,6 @@ test.before(async () => {
         "3": { name: "Paint equipment", area: "Покрасочный цех", nodes: ["Paint node"] }
       }
     },
-    directorMessages: [],
     serviceCosts: [],
     downtimes: [
       {
