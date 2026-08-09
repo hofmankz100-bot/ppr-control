@@ -1674,21 +1674,17 @@ function monthCloseReadiness(db, month) {
     const ended = item.endedAt ? Date.parse(item.endedAt) : Date.now();
     return Number.isFinite(started) && started < endMs && ended >= startMs && !item.endedAt;
   }).map(item => ({ id: item.id || "", equipment: item.equipment || "Оборудование", reason: item.reason || item.comment || "Аварийная остановка" }));
-  const openRequests = Object.entries(db.requests || {}).filter(([, item]) => {
-    const date = String(item?.createdAt || item?.date || "").slice(0, 7);
-    return date === month && !item.done && !item.mechanicInstalled && !item.deleted;
-  }).map(([requestKey, item]) => ({ id: item.id || requestKey, requestKey, text: String(item.partName || item.comment || item.title || "Заявка").slice(0, 300) }));
   const incompletePpr = Object.entries(db.pprSheets || {}).filter(([key, sheet]) => key.includes(month) && sheet && !sheet.engineerApprovedAt && (sheet.rows || []).length).map(([key]) => ({ id: key }));
   const criticalCount = openRemarks.length + activeBreakdowns.length;
-  const warningCount = openRequests.length + incompletePpr.length;
+  const warningCount = incompletePpr.length;
   const readinessPercent = Math.max(0, 100 - Math.min(criticalCount * 15, 60) - Math.min(warningCount * 5, 40));
   return {
     month,
     readinessPercent,
     criticalCount,
     warningCount,
-    greenCount: Math.max(0, 4 - Number(Boolean(openRemarks.length)) - Number(Boolean(activeBreakdowns.length)) - Number(Boolean(openRequests.length)) - Number(Boolean(incompletePpr.length))),
-    groups: { openRemarks, activeBreakdowns, openRequests, incompletePpr },
+    greenCount: Math.max(0, 3 - Number(Boolean(openRemarks.length)) - Number(Boolean(activeBreakdowns.length)) - Number(Boolean(incompletePpr.length))),
+    groups: { openRemarks, activeBreakdowns, incompletePpr },
     productionStopsExcluded: (db.downtimes || []).filter(item => item?.type === "production" && String(item.startedAt || "").slice(0, 7) === month).length,
     calculatedAt: new Date().toISOString()
   };
@@ -4652,20 +4648,12 @@ async function handleApi(req, res, pathname, url) {
       } else {
         if (previous.status && previous.status !== "open") return { error: "month_already_closed" };
         if ((action === "close-full" && (readiness.criticalCount || readiness.warningCount)) || (action === "close-conditional" && readiness.criticalCount)) return { error: "month_not_ready", readiness };
-        const expectedTransferKeys = [
-          ...(readiness.groups.openRequests || []).map(item => `request:${item.requestKey || item.id}`),
-          ...(readiness.groups.incompletePpr || []).map(item => `ppr:${item.id}`)
-        ];
+        const expectedTransferKeys = (readiness.groups.incompletePpr || []).map(item => `ppr:${item.id}`);
         const transfers = action === "close-conditional" ? (Array.isArray(body.transfers) ? body.transfers : []).map(item => ({ key: String(item?.key || "").trim(), kind: String(item?.kind || "").trim(), id: String(item?.id || "").trim(), label: String(item?.label || "Работа").trim().slice(0, 500), reason: String(item?.reason || "").trim().slice(0, 500) })).filter(item => item.key && item.reason) : [];
         if (action === "close-conditional" && (transfers.length !== expectedTransferKeys.length || expectedTransferKeys.some(key => !transfers.some(item => item.key === key)))) return { error: "month_transfers_incomplete", readiness };
         const carryoverReason = action === "close-conditional" ? "Причины указаны отдельно для каждой работы" : "";
         const carryoverTo = action === "close-conditional" ? nextMonthKey(month) : "";
         if (action === "close-conditional") {
-          (readiness.groups.openRequests || []).forEach(openRequest => {
-            const request = db.requests?.[openRequest.requestKey] || Object.values(db.requests || {}).find(item => String(item?.id || "") === String(openRequest.id || ""));
-            const transfer = transfers.find(item => item.key === `request:${openRequest.requestKey || openRequest.id}`);
-            if (request && transfer) Object.assign(request, { carryoverFrom: month, carryoverTo, carryoverReason: transfer.reason, carriedOverAt: now, carriedOverByName: actor.name });
-          });
           (readiness.groups.incompletePpr || []).forEach(openSheet => {
             const sheet = db.pprSheets?.[openSheet.id];
             const transfer = transfers.find(item => item.key === `ppr:${openSheet.id}`);

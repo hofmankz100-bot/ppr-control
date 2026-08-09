@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v423-month-work-lists";
+const APP_VERSION = "v424-month-close-scope";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -15031,24 +15031,22 @@ async function loadMonthClosePanel() {
       const eq = equipmentById(Number(equipmentId));
       return `${eq?.name || `Оборудование ${equipmentId}`} · ${eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`} · ${date || month}: ${entry.text || "Замечание"}`;
     };
-    const transferEntries = [
-      ...(groups.openRequests || []).map(entry => ({ key: `request:${entry.requestKey || entry.id}`, kind: "request", id: entry.requestKey || entry.id, label: `Заявка: ${entry.text || entry.id}` })),
-      ...(groups.incompletePpr || []).map(entry => ({ key: `ppr:${entry.id}`, kind: "ppr", id: entry.id, label: `Лист ППР: ${entry.id}` }))
-    ];
+    const transferEntries = (groups.incompletePpr || []).map(entry => ({ key: `ppr:${entry.id}`, kind: "ppr", id: entry.id, label: `Лист ППР: ${entry.id}` }));
     const reasonOptions = ["Ожидание запчасти", "Ожидание подрядчика", "Ожидание бюджета", "Ожидание согласования", "Решение руководителя"];
     const detailList = (title, tone, entries, label) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong></article>`).join("")}</details>`;
     host.className = "month-close-content";
     host.innerHTML = `
       <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
+      <div class="month-close-purpose"><strong>Что закрываем?</strong><p>Только месячный показатель «Состояние завода». Заявки на закупку здесь не учитываются.</p><ol><li>Проверьте красные критические пункты.</li><li>Устраните замечания и аварийные остановки.</li><li>Закройте месяц полностью или перенесите только незавершённые листы ППР.</li></ol></div>
       <div class="month-close-checks">
         ${item(Number(readiness.criticalCount) ? "red" : "green", "Критические пункты", readiness.criticalCount, `${(groups.openRemarks || []).length} замечаний · ${(groups.activeBreakdowns || []).length} аварийных остановок`)}
-        ${item(Number(readiness.warningCount) ? "yellow" : "green", "Можно перенести", readiness.warningCount, `${(groups.openRequests || []).length} заявок · ${(groups.incompletePpr || []).length} листов ППР`)}
+        ${item(Number(readiness.warningCount) ? "yellow" : "green", "Незавершённые ППР", readiness.warningCount, `${(groups.incompletePpr || []).length} листов ППР можно перенести`)}
         ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
       </div>
       <div class="month-close-work-lists">
         ${detailList("Открытые критические замечания", "red", groups.openRemarks || [], remarkLabel)}
         ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
-        ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Работы для переноса · ${transferEntries.length}</summary><p>Отметьте каждую работу и укажите отдельную причину переноса.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Работ для переноса нет.</div>`}
+        ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Листы ППР для переноса · ${transferEntries.length}</summary><p>Заявки не входят в закрытие месяца. Отметьте только листы ППР и укажите причину.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Незавершённых листов ППР для переноса нет.</div>`}
       </div>
       ${closure.snapshot ? `<div class="month-close-snapshot"><strong>Зафиксированный снимок</strong><span>Готовность ${Number(closure.snapshot.readinessPercent || 0)}% · критических ${Number(closure.snapshot.criticalCount || 0)} · перенесено ${(closure.carryovers || []).length}</span>${(closure.carryovers || []).length ? `<div class="month-close-carryovers">${closure.carryovers.map(entry => `<small><b>${escapeHtml(entry.label || entry.key)}</b> — ${escapeHtml(entry.reason || "")}</small>`).join("")}</div>` : `<small>${escapeHtml(closure.reason || "")}</small>`}</div>` : ""}
       ${result.canManage ? `<div class="month-close-actions no-print">${status === "open" ? `<button type="button" data-month-confirm-area>Подтвердить свой участок</button><button type="button" class="secondary" data-month-close-conditional>Закрыть условно</button><button type="button" data-month-close-full ${Number(readiness.criticalCount || 0) || Number(readiness.warningCount || 0) ? "disabled" : ""}>Закрыть полностью</button>` : `<button type="button" class="danger" data-month-reopen>Повторно открыть месяц</button>`}<button type="button" class="secondary" data-month-refresh>Обновить проверку</button></div>` : `<div class="empty-state">Закрытие доступно только сотрудникам с индивидуальным правом.</div>`}
