@@ -13,7 +13,7 @@
   <link rel="icon" href="icon.svg?v=176" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png?v=176">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=432-mobile-remark-inbox">
+  <link rel="stylesheet" href="styles.css?v=433-remove-director-messages">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -98,7 +98,7 @@
           <button type="button" id="createTmcRequestButton" class="primary-nav-button"><span>Создать заявку</span><strong>+</strong></button>
           <button type="button" id="workPermitButton" class="work-permit-home-button"><span>Наряд-допуск</span><strong aria-hidden="true">🦺</strong></button>
           <button type="button" id="alertCounter"><span>Предупреждения</span><strong>0</strong></button>
-          <button type="button" id="directorOpenButton"><span id="directorOpenLabel">Директорская</span> <strong id="directorBadge">0</strong></button>
+          <button type="button" id="directorOpenButton" hidden><span id="directorOpenLabel">Админ</span> <strong id="directorBadge">0</strong></button>
         </div>
         <div id="equipmentList" class="equipment-list"></div>
       </section>
@@ -229,8 +229,8 @@
       <section id="directorScreen" class="view">
         <div class="panel-head compact">
           <div>
-            <h1 id="directorTitle">Директорская</h1>
-            <p id="directorMeta">Личные обращения директору</p>
+            <h1 id="directorTitle">Подтверждение сотрудников</h1>
+            <p id="directorMeta">Административное управление сотрудниками</p>
           </div>
         </div>
         <div id="directorPanel" class="director-panel"></div>
@@ -274,7 +274,7 @@
   <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts"></script>
   <script src="node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts"></script>
   <script src="modules/work-permit.js?v=421-annual-ppr-equipment-acts"></script>
-  <script src="app.js?v=432-mobile-remark-inbox"></script>
+  <script src="app.js?v=433-remove-director-messages"></script>
 </body>
 </html>
 

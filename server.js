@@ -181,7 +181,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -261,7 +261,7 @@ function normalizeDb(db) {
   db.inventory ||= {};
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
-  db.directorMessages ||= [];
+  delete db.directorMessages;
   delete db.codexTasks;
   delete db.codexAgent;
   db.serviceCosts ||= [];
@@ -936,7 +936,6 @@ function monthlyExport(db, month) {
   const checks = checkRecordsForMonth(db.checks, month);
   const requests = objectRecordsForMonth(db.requests, month);
   const pprSheets = objectRecordsForMonth(db.pprSheets, month);
-  const directorMessages = (db.directorMessages || []).filter(item => itemBelongsToMonth(item, month));
   const serviceCosts = (db.serviceCosts || []).filter(item => itemBelongsToMonth(item, month));
   const downtimes = (db.downtimes || []).filter(item => itemBelongsToMonth(item, month));
   return {
@@ -946,7 +945,6 @@ function monthlyExport(db, month) {
       checks: Object.keys(checks).length,
       requests: Object.keys(requests).length,
       pprSheets: Object.keys(pprSheets).length,
-      directorMessages: directorMessages.length,
       serviceCosts: serviceCosts.length,
       downtimes: downtimes.length,
       users: (db.users || []).length
@@ -956,7 +954,6 @@ function monthlyExport(db, month) {
     pprSheets,
     inventory: db.inventory || {},
     catalog: db.catalog || { equipment: {} },
-    directorMessages,
     serviceCosts,
     downtimes,
     users: (db.users || []).map(userPublic)
@@ -1167,23 +1164,6 @@ function monthlyCsvRows(db, month) {
       "",
       "",
       item?.reason || item?.comment || JSON.stringify(item || {})
-    ]);
-  }
-  for (const item of exported.directorMessages || []) {
-    rows.push([
-      "Директорская",
-      item?.createdAt || item?.date || "",
-      item?.department || item?.area || "",
-      "",
-      "",
-      item?.status || "",
-      "",
-      item?.from || item?.name || "",
-      "",
-      "",
-      "",
-      "",
-      item?.subject ? `${item.subject}. ${item.text || item.message || ""}` : item?.text || item?.message || JSON.stringify(item || {})
     ]);
   }
   return rows;
@@ -1624,7 +1604,7 @@ function purgeRemovedEquipmentData(db) {
   const nextRequests = Object.fromEntries(Object.entries(db.requests || {}).filter(([, item]) => !isRemovedItem(item)));
   if (Object.keys(nextRequests).length !== Object.keys(db.requests || {}).length) changed = true;
   db.requests = nextRequests;
-  for (const field of ["directorMessages", "serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
+  for (const field of ["serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
     const current = Array.isArray(db[field]) ? db[field] : [];
     const filtered = current.filter(item => !isRemovedItem(item));
     if (filtered.length !== current.length) changed = true;
@@ -1703,7 +1683,6 @@ function publicState(db = readDb()) {
       formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies,
       excludedRatingWorkers: normalizedAdminConfig(db.adminConfig).excludedRatingWorkers
     },
-    directorMessages: db.directorMessages,
     serviceCosts: db.serviceCosts,
     downtimes: db.downtimes,
     monthlyClosures: db.monthlyClosures || {},
@@ -3626,7 +3605,7 @@ function changedStatePatch(before = {}, after = {}) {
   }
   const equipment = changedRecordPatch(before?.catalog?.equipment, after?.catalog?.equipment);
   if (Object.keys(equipment).length) patch.catalog = { equipment };
-  for (const key of ["directorMessages", "serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
+  for (const key of ["serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
     if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) patch[key] = after?.[key] || [];
   }
   for (const key of ["operationalResetAt", "walkShiftCleanupVersion"]) {
@@ -5975,7 +5954,6 @@ async function handleApi(req, res, pathname, url) {
         ));
         // Inventory and warehouse-linked requests are financial/stock records,
         // so an operational reset must never erase them.
-        db.directorMessages = [];
         db.serviceCosts = [];
         db.downtimes = [];
         db.compressorJournal = {};
@@ -5987,7 +5965,7 @@ async function handleApi(req, res, pathname, url) {
         db.operationalResetAt = new Date().toISOString();
       }
       const operationalFields = [
-        "checks", "requests", "directorMessages", "serviceCosts", "downtimes",
+        "checks", "requests", "serviceCosts", "downtimes",
         "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
@@ -6014,7 +5992,6 @@ async function handleApi(req, res, pathname, url) {
       db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
       db.catalog.equipment = mergedCatalog;
       if (acceptOperational) {
-        db.directorMessages = mergeArrayById(db.directorMessages, body.directorMessages);
         db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);

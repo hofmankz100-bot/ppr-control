@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v432-mobile-remark-inbox";
+const APP_VERSION = "v433-remove-director-messages";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -150,7 +150,7 @@ const I18N = {
     createRequest: "Создать заявку",
     workPermit: "Наряд-допуск",
     remarks: "Предупреждения",
-    director: "Директорская",
+    director: "Администрирование",
     aggregateJournal: "Агрегатный журнал"
   },
   kk: {
@@ -371,7 +371,7 @@ let remoteSaveInFlight = false;
 let remoteSavePending = false;
 let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
-  "checks", "requests", "inventory", "catalog", "directorMessages", "serviceCosts",
+  "checks", "requests", "inventory", "catalog", "serviceCosts",
   "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince",
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
@@ -958,7 +958,6 @@ function loadState() {
     parsed.catalog ||= { equipment: {} };
     parsed.catalog.equipment ||= {};
     parsed.adminConfig ||= { companyName: "ТОО «Aluminium of Kazakhstan»", departments: [], positions: [] };
-    parsed.directorMessages ||= [];
     parsed.serviceCosts ||= [];
     parsed.downtimes ||= [];
     parsed.monthlyClosures ||= {};
@@ -989,7 +988,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, directorMessages: [], serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -1656,7 +1655,6 @@ async function clearRecordedDataEverywhere() {
   state.compressorJournal = {};
   state.gasJournal = {};
   state.pprSheets = {};
-  state.directorMessages = [];
   state.serviceCosts = [];
   persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
@@ -1686,7 +1684,6 @@ function applyWorkCleanFromUrl() {
   state.compressorJournal = {};
   state.gasJournal = {};
   state.pprSheets = {};
-  state.directorMessages = [];
   state.serviceCosts = [];
   state.serviceCosts = [];
   persistStateLocally(state);
@@ -2343,7 +2340,6 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.gasJournal = {};
     state.pprSheets = {};
     state.journalDueSince = {};
-    state.directorMessages = [];
     state.serviceCosts = [];
     state.auditHistory = [];
     state.operationalResetAt = remoteResetAt;
@@ -2363,7 +2359,6 @@ function mergeRemoteState(remote = {}, options = {}) {
     ? { ...(state.catalog.equipment || {}), ...(remote.catalog?.equipment || {}) }
     : { ...(remote.catalog?.equipment || {}) };
   state.adminConfig = { ...(state.adminConfig || {}), ...(remote.adminConfig || {}) };
-  state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   state.serviceCosts = [];
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   state.monthlyClosures = { ...(state.monthlyClosures || {}), ...(remote.monthlyClosures || {}) };
@@ -2439,7 +2434,6 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.monthlyClosures) state.monthlyClosures = { ...(state.monthlyClosures || {}), ...remote.monthlyClosures };
-  if (remote.directorMessages) state.directorMessages = mergeArrayByIdLocal(state.directorMessages, remote.directorMessages);
   if (remote.serviceCosts) state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
   if (remote.auditHistory) state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   if (Object.prototype.hasOwnProperty.call(remote, "operationalResetAt")) state.operationalResetAt = remote.operationalResetAt;
@@ -3044,9 +3038,7 @@ const MANUAL_CONTENT_TRANSLATION_SELECTOR = [
   ".aggregate-journal-sheet",
   ".checklist-table",
   ".node-walk-row",
-  ".director-card",
   ".director-users",
-  ".director-memo-form",
   ".equipment-card",
   ".calendar-grid",
   ".downtime-card",
@@ -3809,99 +3801,19 @@ function auditHistoryRows() {
   `).join("");
 }
 
-function directorMessages() {
-  state.directorMessages ||= [];
-  return state.directorMessages;
-}
-
 function pendingUserApprovalCount() {
   if (!isEditorSession()) return 0;
   return loadUsers().filter(user => user.approved === false || user.pendingApproval === true).length;
 }
 
-function directorUnreadCount() {
-  if (isEditorSession()) return pendingUserApprovalCount();
-  if (directorCanAnswer()) return directorMessages().filter(msg => !msg.directorRead).length;
-  return directorMessages().filter(msg => directorMessageVisibleForProfile(msg) && msg.reply && !msg.userRead).length;
-}
-
 function updateDirectorBadge() {
   if (!ui.directorOpenButton || !ui.directorBadge) return;
   const adminSession = isEditorSession();
-  const hiddenForRole = ["mechanic", "electrician", "operator"].includes(profile?.role);
-  ui.directorOpenButton.hidden = !adminSession && hiddenForRole;
-  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = adminSession ? "Админ" : "Директорская";
-  const count = directorUnreadCount();
+  ui.directorOpenButton.hidden = !adminSession;
+  if (ui.directorOpenLabel) ui.directorOpenLabel.textContent = "Админ";
+  const count = pendingUserApprovalCount();
   ui.directorBadge.textContent = count;
   ui.directorOpenButton.classList.toggle("request-alert", count > 0);
-}
-
-function directorCanAnswer() {
-  return profile?.role === "director";
-}
-
-function directorMessageRoleId(msg) {
-  if (msg.fromRoleId) return msg.fromRoleId;
-  const label = String(msg.fromRole || "").trim();
-  return Object.keys(ROLE_ACCESS).find(role => ROLE_ACCESS[role].label === label) || "";
-}
-
-function directorMessageVisibleForProfile(msg) {
-  if (directorCanAnswer()) return true;
-  const roleId = directorMessageRoleId(msg);
-  if (roleId) return roleId === profile?.role;
-  return msg.fromKey === profileKey();
-}
-
-function createDirectorMessage(data) {
-  const text = typeof data === "string" ? data.trim() : String(data?.body || "").trim();
-  const writtenName = typeof data === "string" ? "" : String(data?.fromName || "").trim();
-  const message = {
-    id: `director:${Date.now()}:${Math.random().toString(16).slice(2)}`,
-    fromKey: profileKey(),
-    fromName: writtenName || profile?.name || "",
-    fromPhone: profile?.phone || "",
-    fromRoleId: profile?.role || "",
-    fromRole: ROLE_ACCESS[profile?.role]?.label || profile?.role || "",
-    fromArea: profile?.area || "",
-    memoFullText: typeof data === "string" ? text : String(data?.memoFullText || text).trim(),
-    memoNumber: typeof data === "string" ? "" : String(data?.memoNumber || "").trim(),
-    memoDate: typeof data === "string" ? todayISO() : String(data?.memoDate || todayISO()),
-    memoDay: typeof data === "string" ? "" : String(data?.memoDay || "").trim(),
-    memoMonth: typeof data === "string" ? "" : String(data?.memoMonth || "").trim(),
-    memoYear: typeof data === "string" ? "" : String(data?.memoYear || "").trim(),
-    position: typeof data === "string" ? "" : String(data?.position || "").trim(),
-    department: typeof data === "string" ? "" : String(data?.department || "").trim(),
-    topic: typeof data === "string" ? "" : String(data?.topic || "").trim(),
-    text,
-    reply: "",
-    directorRead: false,
-    userRead: false,
-    createdAt: new Date().toISOString(),
-    repliedAt: ""
-  };
-  directorMessages().unshift(message);
-  saveState();
-  return message;
-}
-
-function directorMemoText(data) {
-  return `Г-ну Азизову Б.
-Директору ТОО «Aluminium of Kazakhstan»
-
-от ${String(data?.fromName || "__________________________").trim()}
-должность ${String(data?.position || "___________________").trim()}
-подразделение ${String(data?.department || "_______________").trim()}
-
-СЛУЖЕБНАЯ ЗАПИСКА
-
-№ ${String(data?.memoNumber || "_________").trim()}                           «${String(data?.memoDay || "").trim()}» ${String(data?.memoMonth || "__________").trim()} ${String(data?.memoYear || "20__").trim()} г.
-
-Тема: ${String(data?.topic || "___________________________________________").trim()}
-
-Уважаемый Азизов Б.!
-
-${String(data?.body || "").trim()}`;
 }
 
 function requestVisibleForRole(req, role) {
@@ -15331,17 +15243,11 @@ function renderDirectorControl() {
   const directorAnalyticsHtml = `
     <div class="director-control-head director-analytics-head director-analytics-only-head">
       <div><span>СТАТИСТИКА ПРЕДПРИЯТИЯ</span><h1>Главный график завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
-      <div class="director-control-actions">
-        <button type="button" class="${directorUnreadCount() ? "has-alerts" : ""}" data-open-director-messages>
-          Личные сообщения${directorUnreadCount() ? ` (${directorUnreadCount()})` : ""}
-        </button>
-      </div>
     </div>
     <div class="director-main-graph-only">${directorFactoryAnalyticsGraphHtml()}</div>
   `;
   if (directorAnalyticsOnly) {
     ui.directorControlPanel.innerHTML = directorAnalyticsHtml;
-    ui.directorControlPanel.querySelector("[data-open-director-messages]")?.addEventListener("click", () => show("director"));
     return;
   }
   ui.directorControlPanel.innerHTML = `
@@ -15351,7 +15257,6 @@ function renderDirectorControl() {
         ${profile?.role === "editor" ? `<button type="button" class="director-normal-screen-button" data-open-normal-screen>← Главный экран</button>` : ""}
         <button type="button" class="director-reminder-button ${totals.reminders.length ? "has-alerts" : ""}" data-open-global-reminders>🔔 Напоминания <strong>${totals.reminders.length}</strong></button>
         <button type="button" data-refresh-director-control>Общее состояние завода</button>
-        <button type="button" data-open-director-messages>Директорская</button>
         <button type="button" data-toggle-audit-history>История изменений</button>
       </div>
     </div>
@@ -15392,7 +15297,6 @@ function renderDirectorControl() {
       await loadRemoteUsers();
     }, "Обновляем...");
   });
-  ui.directorControlPanel.querySelector("[data-open-director-messages]")?.addEventListener("click", () => show("director"));
   ui.directorControlPanel.querySelector("[data-toggle-audit-history]")?.addEventListener("click", () => {
     current.directorAuditOpen = !current.directorAuditOpen;
     renderDirectorControl();
@@ -15442,62 +15346,16 @@ function renderDirectorControl() {
 }
 
 function renderDirector() {
-  const isEditor = isEditorSession();
-  ui.subtitle.textContent = isEditor ? "Админ · Регистрации" : "Директорская";
-  if (ui.directorTitle) ui.directorTitle.textContent = isEditor ? "Подтверждение сотрудников" : "Директорская";
+  if (!isEditorSession()) {
+    show(homeViewForProfile(profile?.role), false);
+    return;
+  }
+  ui.subtitle.textContent = "Админ · Регистрации";
+  if (ui.directorTitle) ui.directorTitle.textContent = "Подтверждение сотрудников";
   if (!ui.directorPanel) return;
-  state.directorMessages ||= [];
-  const isDirector = directorCanAnswer();
-  const messages = directorMessages().filter(msg => directorMessageVisibleForProfile(msg));
-  let readChanged = false;
-  if (isDirector) {
-    directorMessages().forEach(msg => {
-      if (!msg.directorRead) {
-        msg.directorRead = true;
-        readChanged = true;
-      }
-    });
-  } else {
-    messages.forEach(msg => {
-      if (msg.reply && !msg.userRead) {
-        msg.userRead = true;
-        readChanged = true;
-      }
-    });
-  }
-  if (readChanged) saveState();
   updateDirectorBadge();
-
-  ui.directorMeta.textContent = isEditor
-    ? `Ожидают подтверждения: ${pendingUserApprovalCount()}. Всего сотрудников: ${loadUsers().length}`
-    : isDirector
-      ? `Обращений: ${messages.length}`
-      : "Ваши сообщения видите только вы и директор";
-
-  ui.directorPanel.innerHTML = `
-    ${isEditor ? renderDirectorUsers() : isDirector ? "" : renderDirectorSendForm()}
-    ${isEditor ? "" : `<div class="director-messages">
-      ${messages.length ? "" : `<div class="empty-state">${isDirector ? "Новых обращений нет" : "Вы еще не писали директору"}</div>`}
-    </div>`}
-  `;
-
-  const sendForm = ui.directorPanel.querySelector("#directorSendForm");
-  if (sendForm) {
-    sendForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      const memo = ui.directorPanel.querySelector("#directorMemoFullText");
-      const button = sendForm.querySelector("button[type='submit']");
-      if (!memo.value.trim()) return;
-      setButtonBusy(button, true);
-      createDirectorMessage({
-        memoFullText: memo.value,
-        body: memo.value
-      });
-      await publishStateNow();
-      sendForm.reset();
-      renderDirector();
-    });
-  }
+  ui.directorMeta.textContent = `Ожидают подтверждения: ${pendingUserApprovalCount()}. Всего сотрудников: ${loadUsers().length}`;
+  ui.directorPanel.innerHTML = renderDirectorUsers();
 
   ui.directorPanel.querySelectorAll("[data-whatsapp-user]").forEach(link => {
     link.addEventListener("click", event => {
@@ -15721,42 +15579,6 @@ function renderDirector() {
     });
   });
 
-  const list = ui.directorPanel.querySelector(".director-messages");
-  if (!isEditor) messages.forEach(msg => {
-    const card = document.createElement("div");
-    card.className = `director-card ${msg.reply && !msg.userRead && !isDirector ? "request-alert" : ""}`;
-    card.innerHTML = `
-      <div class="director-card-main">
-        <strong>${msg.fromName || "Сотрудник"}</strong>
-        <span>${msg.fromRole || ""}${msg.fromArea ? ` · ${msg.fromArea}` : ""}${msg.fromPhone ? ` · ${msg.fromPhone}` : ""}</span>
-        <pre class="director-memo-view full-memo-view">${userTextWithRussianHtml(msg.memoFullText || msg.text)}</pre>
-        ${msg.reply ? `<div class="director-reply"><b>Ответ директора:</b><p>${userTextWithRussianHtml(msg.reply)}</p></div>` : `<div class="readonly-note">Ответа директора пока нет</div>`}
-      </div>
-      ${isDirector ? `
-        <div class="director-reply-form">
-          <textarea data-director-reply="${msg.id}" rows="3" placeholder="Ответ сотруднику">${escapeHtml(msg.reply || "")}</textarea>
-          <div class="director-reply-actions">
-            <button type="button" data-save-director-reply="${msg.id}">Ответить</button>
-            <button type="button" data-print-director-memo="${msg.id}">${printActionLabel("Печать", "PDF")}</button>
-          </div>
-        </div>
-      ` : `<div class="director-reply-form"><div class="director-reply-actions"><button type="button" data-print-director-memo="${msg.id}">${printActionLabel("Печать", "PDF")}</button></div></div>`}
-    `;
-    card.querySelector("[data-save-director-reply]")?.addEventListener("click", async event => {
-      const text = card.querySelector(`[data-director-reply="${msg.id}"]`)?.value.trim() || "";
-      setButtonBusy(event.currentTarget, true);
-      msg.reply = text;
-      msg.userRead = false;
-      msg.repliedAt = new Date().toISOString();
-      saveState();
-      await publishStateNow();
-      renderDirector();
-    });
-    card.querySelector("[data-print-director-memo]")?.addEventListener("click", () => {
-      printDirectorMemo(msg);
-    });
-    list.append(card);
-  });
 }
 
 function renderDowntime() {
@@ -16481,72 +16303,6 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
       </body>
     </html>`);
   popup.document.close();
-}
-
-function printDirectorMemo(msg) {
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`
-    <!doctype html>
-    <html lang="ru">
-      <head>
-        <meta charset="utf-8">
-        <title>Служебная записка</title>
-        <style>
-          body { font-family: "Times New Roman", serif; padding: 28mm 20mm; color: #111; }
-          pre { white-space: pre-wrap; font: inherit; font-size: 14pt; line-height: 1.45; margin: 0; }
-          @media print { body { padding: 0; } }
-        </style>
-      </head>
-      <body><pre>${escapeHtml(msg.memoFullText || msg.text)}</pre></body>
-    </html>
-  `);
-  win.document.close();
-  win.focus();
-  win.print();
-}
-
-function renderDirectorSendForm() {
-  const now = new Date();
-  const memoNumber = String(directorMessages().length + 1).padStart(3, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = now.toLocaleDateString("ru-RU", { month: "long" });
-  const year = String(now.getFullYear());
-  const name = profile?.name || "";
-  const position = ROLE_ACCESS[profile?.role]?.label || "";
-  const department = profile?.area || "";
-  const template = `УТВЕРЖДАЮ
-____________________
-
-                                                                        Г-ну Азизову Б.
-                                                                        Директору ТОО «Aluminium of Kazakhstan»
-
-                                                                        от ${name}
-                                                                        должность ${position}
-                                                                        подразделение ${department}
-
-                         СЛУЖЕБНАЯ ЗАПИСКА
-
-№ ${memoNumber}                           «${day}» ${month} ${year} г.
-
-Тема: 
-
-Уважаемый Азизов Б.!
-
-
-
-
-
-
-С уважением        ${name}`;
-  return `
-    <form class="director-send director-memo-form" id="directorSendForm">
-      <div class="memo-paper">
-        <textarea id="directorMemoFullText" class="memo-full-editor" rows="18">${escapeHtml(template)}</textarea>
-      </div>
-      <button type="submit">Отправить директору</button>
-    </form>
-  `;
 }
 
 function systemLoadMetrics() {

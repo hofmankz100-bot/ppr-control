@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=432-mobile-remark-inbox/);
-  assert.match(html, /styles\.css\?v=432-mobile-remark-inbox/);
-  assert.match(serviceWorker, /app\.js\?v=432-mobile-remark-inbox/);
+  assert.match(html, /app\.js\?v=433-remove-director-messages/);
+  assert.match(html, /styles\.css\?v=433-remove-director-messages/);
+  assert.match(serviceWorker, /app\.js\?v=433-remove-director-messages/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1704,4 +1704,16 @@ test("mobile users have a direct warnings inbox with a live count", () => {
   assert.match(clientSource, /view === "requests" && MANUAL_REQUEST_WORKFLOW\) return isProfileReady\(\)/);
   assert.match(clientSource, /mobileRemarkCount\.textContent = ownWaiting/);
   assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="requests"\][\s\S]*?grid-column:\s*2/);
+});
+
+test("director private messaging is removed while admin employee approval remains", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.doesNotMatch(clientSource, /directorMessages|createDirectorMessage|renderDirectorSendForm|data-open-director-messages|Директорская/);
+  assert.doesNotMatch(htmlSource, /Директорская|Личные обращения директору/);
+  assert.match(clientSource, /function renderDirector\(\)[\s\S]*?if \(!isEditorSession\(\)\)/);
+  assert.match(clientSource, /ui\.directorPanel\.innerHTML = renderDirectorUsers\(\)/);
+  assert.match(serverSource, /delete db\.directorMessages/);
+  assert.doesNotMatch(serverSource, /directorMessages:\s*db\.directorMessages|mergeArrayById\(db\.directorMessages/);
 });
