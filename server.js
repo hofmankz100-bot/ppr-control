@@ -4606,12 +4606,12 @@ async function handleApi(req, res, pathname, url) {
     const month = validMonthKey(url.searchParams.get("month") || "");
     if (!month) { sendJson(res, 400, { ok: false, error: "month_invalid" }); return true; }
     const db = readDb();
-    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: req.authUser?.role === "editor" || activeUserPermission(req.authUser, "monthCloseManage") });
+    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: activeUserPermission(req.authUser, "monthCloseManage") });
     return true;
   }
 
   if (pathname === "/api/month-close" && req.method === "POST") {
-    if (req.authUser?.role !== "editor" && !activeUserPermission(req.authUser, "monthCloseManage")) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
+    if (!activeUserPermission(req.authUser, "monthCloseManage")) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
     const body = await readBody(req).catch(() => ({}));
     const month = validMonthKey(body.month);
     const action = String(body.action || "");

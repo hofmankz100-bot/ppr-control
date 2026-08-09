@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v434-order-journal";
+const APP_VERSION = "v435-selective-month-close";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -278,7 +278,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
-function canManageMonthClose(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "monthCloseManage"); }
+function canManageMonthClose(user = authenticatedProfile || profile || {}) { return activeUserPermission(user, "monthCloseManage"); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canManageOrderJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "orderJournalManage")); }
 

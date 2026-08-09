@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=434-order-journal/);
-  assert.match(html, /styles\.css\?v=434-order-journal/);
-  assert.match(serviceWorker, /app\.js\?v=434-order-journal/);
+  assert.match(html, /app\.js\?v=435-selective-month-close/);
+  assert.match(html, /styles\.css\?v=435-selective-month-close/);
+  assert.match(serviceWorker, /app\.js\?v=435-selective-month-close/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1490,6 +1490,9 @@ test("smart month closing stores snapshots, carryovers and individual access", (
   assert.match(client, /data-open-month-remark/);
   assert.match(client, /current\.scrollToRemarkId = button\.dataset\.remarkId/);
   assert.match(server, /activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
+  assert.match(client, /function canManageMonthClose[^\n]+return activeUserPermission\(user, "monthCloseManage"\)/);
+  assert.doesNotMatch(server, /req\.authUser\?\.role === "editor" \|\| activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
+  assert.doesNotMatch(server, /req\.authUser\?\.role !== "editor" && !activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
   assert.match(styles, /\.month-close-panel/);
 });
 
