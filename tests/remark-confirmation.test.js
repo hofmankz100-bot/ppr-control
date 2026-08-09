@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=442-annual-ppr-type-labels/);
-  assert.match(html, /styles\.css\?v=442-annual-ppr-type-labels/);
-  assert.match(serviceWorker, /app\.js\?v=442-annual-ppr-type-labels/);
+  assert.match(html, /app\.js\?v=443-annual-ppr-type-priority/);
+  assert.match(html, /styles\.css\?v=443-annual-ppr-type-priority/);
+  assert.match(serviceWorker, /app\.js\?v=443-annual-ppr-type-priority/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1577,7 +1577,7 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
   assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
   assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
-  assert.match(appSource, /\["ТО", "ТР", "АР", "ЗМ", "МВ"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
+  assert.match(appSource, /\["ТО", "АР", "ТР"\]\.find\(type => types\.has\(type\)\)/);
   assert.match(appSource, /@page\{size:A3 landscape/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
 });
