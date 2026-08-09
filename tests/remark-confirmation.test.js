@@ -811,9 +811,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=429-admin-engineer-button/);
-  assert.match(html, /styles\.css\?v=429-admin-engineer-button/);
-  assert.match(serviceWorker, /app\.js\?v=429-admin-engineer-button/);
+  assert.match(html, /app\.js\?v=430-inbox-close-no-score/);
+  assert.match(html, /styles\.css\?v=430-inbox-close-no-score/);
+  assert.match(serviceWorker, /app\.js\?v=430-inbox-close-no-score/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1680,4 +1680,6 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
   assert.match(clientSource, /ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА/);
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
+  assert.match(clientSource, /data-personal-remark-close-no-score/);
+  assert.match(clientSource, /publishRemarkCollaborationAction\(message\.equipmentId, message\.nodeIndex, message\.date, "close-no-score"/);
 });

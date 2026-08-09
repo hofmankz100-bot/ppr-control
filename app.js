@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v429-admin-engineer-button";
+const APP_VERSION = "v430-inbox-close-no-score";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -12477,6 +12477,7 @@ function rolePersonalMessageHtml(message) {
         </div>
         <div class="role-personal-actions">
           <button type="button" class="secondary" data-personal-remark-open-node>Открыть карточку</button>
+          ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-personal-remark-close-no-score>Закрыть без баллов</button>` : ""}
           <button type="button" class="secondary" data-personal-remark-return>Вернуть с комментарием</button>
           <button type="button" data-personal-remark-confirm>Подтвердить устранение</button>
         </div>
@@ -12528,6 +12529,18 @@ function bindRolePersonalInbox(messages) {
       markPersonalRemarkMessagesRead([message]);
       refreshPersonalRemarkSurfaces();
       showAppToast("Устранение подтверждено и записано в журналы и отчёты.", "ok");
+    }));
+    card.querySelector("[data-personal-remark-close-no-score]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      if (!canCloseRemarksForEmployees()) return;
+      const decision = await askAdminRemarkClose(false);
+      if (!decision) return;
+      await publishRemarkCollaborationAction(message.equipmentId, message.nodeIndex, message.date, "close-no-score", {
+        remarkId: message.remarkId,
+        reason: decision.reason
+      });
+      markPersonalRemarkMessagesRead([message]);
+      refreshPersonalRemarkSurfaces();
+      showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
     }));
     card.querySelector("[data-personal-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
       const reason = window.prompt("Укажите, что нужно доработать:");
