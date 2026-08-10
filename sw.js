@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v444-annual-ppr-plan-fact-sources";
+const CACHE_NAME = "ppr-v445-psk-qr-sync";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=444-annual-ppr-plan-fact-sources",
+  "./styles.css?v=445-psk-qr-sync",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=421-annual-ppr-equipment-acts",
-  "./app.js?v=444-annual-ppr-plan-fact-sources",
+  "./app.js?v=445-psk-qr-sync",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

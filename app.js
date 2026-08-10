@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v444-annual-ppr-plan-fact-sources";
+const APP_VERSION = "v445-psk-qr-sync";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -9710,7 +9710,7 @@ function gasJournalPrintableSection(section, includeBlank = false) {
     ? ["Дата", "Время", "Давление входное, МПа", "Давление выходное, МПа", "Температура входная, °C", "Температура выходная, °C", "Перепад давления, МПа", "Исправность оборудования", "Срабатывание ПСК", "Техническое обслуживание", "Замечания", "Подпись"]
     : ["Дата", "Время", "Участок", "Контрольный трубопровод и колодцы", "Запах газа", "Охранная зона", "Замечания", "Принятые меры", "Подпись"];
   const body = rows.map(row => sectionA
-    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml([row.shiftLabel, row.time].filter(Boolean).join(" · "))}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
+    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml([row.shiftLabel, row.time].filter(Boolean).join(" · "))}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(normalizedPskTrigger(row.pskTrigger ?? row.psk))}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
     : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(gasSectionBAllGrpRoutes(), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "controls"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "grp"), true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
   ).join("");
   const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
@@ -9748,6 +9748,13 @@ const GAS_JOURNAL_FIELD_LABELS = {
   remarks: "Замечания",
   actions: "Принятые меры"
 };
+
+function normalizedPskTrigger(value = "") {
+  const text = String(value || "").trim();
+  if (text === "Исправно") return "Нет";
+  if (text === "Неисправно") return "Есть";
+  return text;
+}
 
 function gasControlAriaLabel(section, field) {
   return `Раздел ${section} — ${GAS_JOURNAL_FIELD_LABELS[field] || field}`;
@@ -9827,7 +9834,7 @@ function renderGasJournal() {
                 <td data-mobile-label="Температура выходная, °C">${gasInputHtml("A", date, "tempOutC", row.tempOutC)}</td>
                 <td data-mobile-label="Перепад давления, МПа">${gasInputHtml("A", date, "pressureDeltaMpa", row.pressureDeltaMpa ?? row.filterDelta)}</td>
                 <td data-mobile-label="Оборудование">${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["Исправно", "Неисправно"])}</td>
-                <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
+                <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", normalizedPskTrigger(row.pskTrigger ?? row.psk), ["Нет", "Есть"])}</td>
                 <td data-mobile-label="Техобслуживание">${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
                 <td data-mobile-label="Замечания">${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
                 <td data-mobile-label="Подпись">${gasJournalEntrySignatureHtml("A", date, row)}</td>

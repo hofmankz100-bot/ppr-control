@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=444-annual-ppr-plan-fact-sources/);
-  assert.match(html, /styles\.css\?v=444-annual-ppr-plan-fact-sources/);
-  assert.match(serviceWorker, /app\.js\?v=444-annual-ppr-plan-fact-sources/);
+  assert.match(html, /app\.js\?v=445-psk-qr-sync/);
+  assert.match(html, /styles\.css\?v=445-psk-qr-sync/);
+  assert.match(serviceWorker, /app\.js\?v=445-psk-qr-sync/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1106,6 +1106,16 @@ test("SHGRP entries require an explicit fixation after editing", () => {
   assert.match(appSource, /const locked = gasJournalEntryIsFixed\(section, gasJournalRecord\(section, date\)\)/);
   assert.match(styleSource, /\.gas-entry-fix-button/);
   assert.match(styleSource, /\.gas-journal-table input:disabled/);
+});
+
+test("QR PSK status and comment are synchronized with the gas journal", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /pskTrigger: psk \? \(psk\.status === "remark" \? "Есть" : "Нет"\) : ""/);
+  assert.match(serverSource, /\.map\(entry => `\$\{entry\.label\}: \$\{entry\.comment\}`\)/);
+  assert.match(appSource, /if \(text === "Исправно"\) return "Нет"/);
+  assert.match(appSource, /if \(text === "Неисправно"\) return "Есть"/);
+  assert.match(appSource, /normalizedPskTrigger\(row\.pskTrigger \?\? row\.psk\), \["Нет", "Есть"\]/);
 });
 
 test("one compressor button fixes and locks all three rows for a date", () => {

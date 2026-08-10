@@ -3699,7 +3699,7 @@ function buildShgrpSectionARowServer(current = {}, date = "", shift = "day", now
     tempInC: shgrp?.tempInC || "", tempOutC: shgrp?.tempOutC || "",
     pressureDeltaMpa: shgrp ? (Number(shgrp.inletMpa) - Number(shgrp.outletMpa)).toFixed(1) : "",
     equipmentStatus: shgrp ? (shgrp.status === "remark" ? "Неисправно" : "Исправно") : "",
-    pskTrigger: psk ? (psk.status === "remark" ? "Неисправно" : "Исправно") : "",
+    pskTrigger: psk ? (psk.status === "remark" ? "Есть" : "Нет") : "",
     maintenance: shgrp ? (shgrp.status === "remark" ? "Требуется" : "Не требуется") : "",
     remarks: remarks.join("; ") || (complete ? "Замечаний нет" : "Ожидается сканирование ШГРП и ПСК"),
     checkedBy: names.join(", ") || String(actor.name || ""), updatedAt: now,
