@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v448-compressor-qr-journal";
+const APP_VERSION = "v449-qr-cross-device-sync";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -269,8 +269,7 @@ const QR_WALK_GROUPS = Object.freeze({
 });
 
 function qrWalkGroup(role = profile?.role) {
-  const effectiveRole = authenticatedProfile?.role === "editor" ? "editor" : role;
-  return ["operator", "shop"].includes(String(effectiveRole || "")) ? "operational" : "technical";
+  return ["operator", "shop"].includes(String(role || "")) ? "operational" : "technical";
 }
 
 function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
@@ -4319,12 +4318,44 @@ async function refreshQrWalkStatusFromServer(equipmentId, shiftInfo = currentWal
       group: qrWalkGroup()
     });
     const result = await apiJson(`/api/qr-walk/status?${query.toString()}`, { timeout: 12000 });
+    reconcileQrWalkStatusFromServer(equipmentId, shiftInfo, qrWalkGroup(), result?.checks || {});
     if (result?.checks) mergeRealtimePatch({ checks: result.checks });
     return true;
   } catch (error) {
     console.warn("QR status refresh failed; using local state", error);
     return false;
   }
+}
+
+function reconcileQrWalkStatusFromServer(equipmentId, shiftInfo, group, serverChecks = {}) {
+  const eq = equipmentById(equipmentId);
+  if (!eq || !shiftInfo?.date || !shiftInfo?.key || !["technical", "operational"].includes(group)) return false;
+  let changed = false;
+  eq.nodes.forEach((_, nodeIndex) => {
+    const recordKey = key(equipmentId, nodeIndex, shiftInfo.date);
+    if (serverChecks[recordKey]) return;
+    const rec = state.checks?.[recordKey];
+    const item = rec?.to;
+    if (!item) return;
+    if (item.walkGroups?.[group]?.[shiftInfo.key]) {
+      delete item.walkGroups[group][shiftInfo.key];
+      changed = true;
+    }
+    if (group === "technical" && item.walkShifts?.[shiftInfo.key]) {
+      delete item.walkShifts[shiftInfo.key];
+      changed = true;
+    }
+    if (group === "technical" && shiftInfo.key === "day" && (item.walkDone || item.tasks?.[0])) {
+      item.walkDone = false;
+      if (Array.isArray(item.tasks)) item.tasks[0] = false;
+      changed = true;
+    }
+  });
+  if (changed) {
+    state.checks = compactCheckRecords(state.checks);
+    persistStateLocally(state);
+  }
+  return changed;
 }
 
 function confirmQrScanFeedback() {

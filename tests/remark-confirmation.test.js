@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=448-compressor-qr-journal/);
-  assert.match(html, /styles\.css\?v=448-compressor-qr-journal/);
-  assert.match(serviceWorker, /app\.js\?v=448-compressor-qr-journal/);
+  assert.match(html, /app\.js\?v=449-qr-cross-device-sync/);
+  assert.match(html, /styles\.css\?v=449-qr-cross-device-sync/);
+  assert.match(serviceWorker, /app\.js\?v=449-qr-cross-device-sync/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -874,7 +874,10 @@ test("QR walks are separated into technical and operational journals", () => {
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(client, /const QR_WALK_GROUPS/);
   assert.match(client, /function qrWalkGroup\(role = profile\?\.role\)/);
-  assert.match(client, /authenticatedProfile\?\.role === "editor" \? "editor" : role/);
+  assert.match(client, /\["operator", "shop"\]\.includes\(String\(role \|\| ""\)\)/);
+  assert.match(client, /function reconcileQrWalkStatusFromServer\(equipmentId, shiftInfo, group, serverChecks = \{\}\)/);
+  assert.match(client, /delete item\.walkGroups\[group\]\[shiftInfo\.key\]/);
+  assert.match(client, /reconcileQrWalkStatusFromServer\(equipmentId, shiftInfo, qrWalkGroup\(\), result\?\.checks \|\| \{\}\)/);
   assert.match(client, /walkGroups\[group\]\[shiftInfo\.key\]/);
   assert.match(client, /Object\.values\(item\.walkGroups\)\.some\(group =>/);
   assert.match(client, /Object\.values\(group\)\.some\(shift => shift\?\.done\)/);
@@ -893,6 +896,10 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(server, /entry\.archivedNode === true/);
   assert.match(server, /db\.qrWalkJournal\.push/);
   assert.match(server, /group !== expectedGroup/);
+  assert.match(server, /role === "editor" && \["technical", "operational"\]\.includes\(requestedGroup\)/);
+  assert.match(server, /targetedCleanupVersions\.compressorWalk20260810/);
+  assert.match(server, /recordKey\.startsWith\("9:"\) && recordKey\.endsWith\(`:\$\{testDate\}`\)/);
+  assert.match(server, /Number\(entry\?\.equipmentId\) === 9 && entry\?\.date === testDate/);
   assert.match(server, /function restoreQrWalkChecksFromJournal/);
   assert.match(server, /restoreQrWalkChecksFromJournal\(db\)/);
   assert.match(server, /currentItem\.walkGroups\?\.\[group\]\?\.\[shift\]\?\.done/);

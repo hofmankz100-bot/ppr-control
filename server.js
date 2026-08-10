@@ -282,6 +282,18 @@ function normalizeDb(db) {
   db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
+  db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
+  if (!db.targetedCleanupVersions.compressorWalk20260810) {
+    const testDate = "2026-08-10";
+    Object.keys(db.checks).forEach(recordKey => {
+      if (recordKey.startsWith("9:") && recordKey.endsWith(`:${testDate}`)) delete db.checks[recordKey];
+    });
+    Object.keys(db.compressorJournal).forEach(rowId => {
+      if (rowId.startsWith(`Компрессорная::${testDate}::`)) delete db.compressorJournal[rowId];
+    });
+    db.qrWalkJournal = db.qrWalkJournal.filter(entry => !(Number(entry?.equipmentId) === 9 && entry?.date === testDate));
+    db.targetedCleanupVersions.compressorWalk20260810 = new Date().toISOString();
+  }
   db.adminTrash = Array.isArray(db.adminTrash) ? db.adminTrash : [];
   db.adminAuditLog = Array.isArray(db.adminAuditLog) ? db.adminAuditLog : [];
   db.adminArchives = Array.isArray(db.adminArchives) ? db.adminArchives : [];
@@ -4566,8 +4578,11 @@ async function handleApi(req, res, pathname, url) {
     const date = String(url.searchParams.get("date") || "");
     const shift = String(url.searchParams.get("shift") || "");
     const role = String(req.authUser?.role || "");
-    const expectedGroup = ["operator", "shop"].includes(role) ? "operational" : "technical";
-    const group = String(url.searchParams.get("group") || expectedGroup);
+    const requestedGroup = String(url.searchParams.get("group") || "");
+    const expectedGroup = role === "editor" && ["technical", "operational"].includes(requestedGroup)
+      ? requestedGroup
+      : ["operator", "shop"].includes(role) ? "operational" : "technical";
+    const group = requestedGroup || expectedGroup;
     if (!Number.isSafeInteger(equipmentId) || equipmentId < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !["day", "night"].includes(shift) || group !== expectedGroup) {
       sendJson(res, 400, { ok: false, error: "qr_walk_status_invalid" });
       return true;
@@ -4702,8 +4717,11 @@ async function handleApi(req, res, pathname, url) {
     const date = String(body.date || "");
     const shift = String(body.shift || "");
     const role = String(req.authUser?.role || "");
-    const expectedGroup = ["operator", "shop"].includes(role) ? "operational" : "technical";
-    const group = String(body.group || expectedGroup);
+    const requestedGroup = String(body.group || "");
+    const expectedGroup = role === "editor" && ["technical", "operational"].includes(requestedGroup)
+      ? requestedGroup
+      : ["operator", "shop"].includes(role) ? "operational" : "technical";
+    const group = requestedGroup || expectedGroup;
     const allowedRoles = new Set([
       "editor", "engineer", "shop", "mechanic", "electrician", "operator",
       "welder", "turner", "forkliftDriver", "safetyEngineer", "energyEngineer",
