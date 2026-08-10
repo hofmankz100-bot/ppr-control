@@ -66,19 +66,21 @@
 .annual-ppr-meta { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 10px; font-size: 13px; }
 .annual-ppr-meta input { width: 70px; }
 .annual-ppr-scroll { overflow: auto; border: 1px solid #9aabb8; }
-.annual-ppr-table { width: 100%; min-width: 1720px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+.annual-ppr-table { width: 100%; min-width: 2250px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
 .annual-ppr-table th, .annual-ppr-table td { border: 1px solid #8fa0ad; padding: 4px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .annual-ppr-table thead th { position: sticky; top: 0; z-index: 2; background: #dce7ef; }
 .annual-ppr-table th:nth-child(2), .annual-ppr-table th:nth-child(3), .annual-ppr-table th:nth-child(4) { width: 145px; }
 .annual-ppr-table th:nth-child(n+6):nth-child(-n+17) { width: 48px; }
-.annual-ppr-table input, .annual-ppr-table select { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; }
+.annual-ppr-table input, .annual-ppr-table select, .annual-ppr-table textarea { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; resize: vertical; }
 .annual-ppr-plan { background: #eef7e9; }
 .annual-ppr-fact { background: #fff8dc; font-weight: 800; }
+.annual-ppr-month-editor{display:grid;gap:3px}.annual-ppr-month-editor input[type="date"]{font-size:9px;padding:2px}.annual-ppr-table :disabled{color:#233746;opacity:1;background:#edf1f3;border-color:transparent}.annual-ppr-status{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#e5ebef;color:#29495b;font-size:12px;font-weight:900;white-space:nowrap}.annual-ppr-status.review{background:#fff0c7;color:#8b5900}.annual-ppr-status.approved{background:#d9f3e5;color:#176640}.annual-ppr-status.archived{background:#e3e4e8;color:#535963}
 .annual-ppr-clickable-month{cursor:pointer;transition:box-shadow .15s ease,filter .15s ease}.annual-ppr-clickable-month:hover{box-shadow:inset 0 0 0 2px #3d718f;filter:brightness(.97)}
 .annual-ppr-note { margin: 10px 0; color: #52616d; font-size: 12px; }
 .annual-ppr-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 14px; }
 .annual-ppr-signatures label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
 .annual-ppr-signatures input, .annual-ppr-approval input { min-width: 250px; border: 0; border-bottom: 1px solid #333; border-radius: 0; background: transparent; }
+.annual-ppr-history{margin:10px 0;padding:10px;border:1px solid #c7d4db;border-radius:10px;background:#f7fafb}.annual-ppr-history summary{cursor:pointer;font-weight:900}.annual-ppr-history div{display:grid;grid-template-columns:145px 160px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid #e0e7eb;font-size:12px}.annual-ppr-history div:last-child{border-bottom:0}.annual-ppr-history time,.annual-ppr-history span{color:#597080}
 .annual-ppr-pdf-output .annual-ppr-scroll { overflow: visible; }
 .annual-ppr-pdf-output .annual-ppr-table { min-width: 0; font-size: 7px; }
 .annual-ppr-pdf-output .annual-ppr-table th,
