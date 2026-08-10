@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=446-psk-qr-sync/);
-  assert.match(html, /styles\.css\?v=446-psk-qr-sync/);
-  assert.match(serviceWorker, /app\.js\?v=446-psk-qr-sync/);
+  assert.match(html, /app\.js\?v=444-annual-ppr-plan-fact-sources/);
+  assert.match(html, /styles\.css\?v=444-annual-ppr-plan-fact-sources/);
+  assert.match(serviceWorker, /app\.js\?v=444-annual-ppr-plan-fact-sources/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1106,18 +1106,6 @@ test("SHGRP entries require an explicit fixation after editing", () => {
   assert.match(appSource, /const locked = gasJournalEntryIsFixed\(section, gasJournalRecord\(section, date\)\)/);
   assert.match(styleSource, /\.gas-entry-fix-button/);
   assert.match(styleSource, /\.gas-journal-table input:disabled/);
-});
-
-test("QR PSK status and comment are synchronized with the gas journal", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-
-  assert.match(serverSource, /pskTrigger: psk \? \(psk\.status === "remark" \? "Есть" : "Нет"\) : ""/);
-  assert.match(serverSource, /\.map\(entry => `\$\{entry\.label\}: \$\{entry\.comment\}`\)/);
-  assert.match(appSource, /function normalizedPskTrigger\(value = ""\)/);
-  assert.match(appSource, /if \(text === "Исправно"\) return "Нет"/);
-  assert.match(appSource, /if \(text === "Неисправно"\) return "Есть"/);
-  assert.match(appSource, /normalizedPskTrigger\(row\.pskTrigger \?\? row\.psk\), \["Нет", "Есть"\]/);
 });
 
 test("one compressor button fixes and locks all three rows for a date", () => {
@@ -1589,52 +1577,9 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
   assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
   assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
-  assert.match(appSource, /types\.has\("ТО"\) \? "ТО" : types\.has\("АР"\) \? "АР" : types\.has\("ТР"\) \? "ТР" : ""/);
+  assert.match(appSource, /\["ТО", "ТР", "АР"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
   assert.match(appSource, /@page\{size:A3 landscape/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
-});
-
-test("annual PPR marks real remarks and resolutions as TR and opens their journal", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /function annualPprEventDate\(value, fallback = ""\)/);
-  assert.match(appSource, /const createdDate = annualPprEventDate\(item\.at, recordDate\)/);
-  assert.match(appSource, /item\.resolutionSubmittedAt \|\| item\.resolvedAt \|\| item\.confirmedAt/);
-  assert.match(appSource, /eventKind: "remark", type: "ТР"/);
-  assert.match(appSource, /eventKind: "resolution", type: "ТР"/);
-  assert.match(appSource, /data-open-ppr-month="\$\{index \+ 1\}"/);
-  assert.match(appSource, /openAnnualPprMonthJournal\(year, row, Number\(cell\.dataset\.openPprMonth\)\)/);
-});
-
-test("annual PPR fact cell shows one repair type using TO then AR then TR priority", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /const displayedType = types\.has\("ТО"\) \? "ТО" : types\.has\("АР"\) \? "АР" : types\.has\("ТР"\) \? "ТР" : ""/);
-  assert.match(appSource, /return \[month, displayedType\]/);
-});
-
-test("annual PPR fact opens the full journal inside the annual schedule", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /function openAnnualPprInlineJournal\(year, row, month, scheduleOverlay\)/);
-  assert.match(appSource, /aggregateJournalItems\(row\.eq\.area, row\.eq\.id\)\.filter/);
-  assert.match(appSource, /className = "annual-ppr-work-overlay annual-ppr-inline-journal"/);
-  assert.match(appSource, /scheduleOverlay\.append\(journal\)/);
-  assert.match(appSource, /tr\?\.dataset\.annualPprFactRow\) openAnnualPprInlineJournal\(year, row, Number\(cell\.dataset\.openPprMonth\), overlay\)/);
-  assert.match(appSource, /title="Открыть агрегатный журнал оборудования"/);
-});
-
-test("annual PPR is a fillable controlled plan with approval and revision history", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(appSource, /status: "draft",[\s\S]*approvedAt: "",[\s\S]*changeHistory: \[\]/);
-  assert.match(appSource, /data-annual-ppr-month-date=/);
-  assert.match(appSource, /data-annual-ppr-field="basis"/);
-  assert.match(appSource, /data-annual-ppr-field="durationHours"/);
-  assert.match(appSource, /data-annual-ppr-field="plannedDowntimeHours"/);
-  assert.match(appSource, /data-annual-ppr-review/);
-  assert.match(appSource, /data-annual-ppr-approve/);
-  assert.match(appSource, /data-annual-ppr-revise/);
-  assert.match(appSource, /function recordAnnualPprChange\(/);
-  assert.match(appSource, /После утверждения план блокируется; изменения выполняются новой редакцией/);
-  assert.match(stylesSource, /\.annual-ppr-status\.approved/);
 });
 
 test("only admin or an explicitly permitted engineer can edit annual PPR", () => {

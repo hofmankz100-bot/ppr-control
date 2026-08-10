@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v446-psk-qr-sync";
+const APP_VERSION = "v444-annual-ppr-plan-fact-sources";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -9710,7 +9710,7 @@ function gasJournalPrintableSection(section, includeBlank = false) {
     ? ["Дата", "Время", "Давление входное, МПа", "Давление выходное, МПа", "Температура входная, °C", "Температура выходная, °C", "Перепад давления, МПа", "Исправность оборудования", "Срабатывание ПСК", "Техническое обслуживание", "Замечания", "Подпись"]
     : ["Дата", "Время", "Участок", "Контрольный трубопровод и колодцы", "Запах газа", "Охранная зона", "Замечания", "Принятые меры", "Подпись"];
   const body = rows.map(row => sectionA
-    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml([row.shiftLabel, row.time].filter(Boolean).join(" · "))}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(normalizedPskTrigger(row.pskTrigger ?? row.psk))}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
+    ? `<tr><td>${dateHuman(row.date)}</td><td>${escapeHtml([row.shiftLabel, row.time].filter(Boolean).join(" · "))}</td><td>${escapeHtml(row.inletMpa || "")}</td><td>${escapeHtml(row.outletMpa || "")}</td><td>${escapeHtml(row.tempInC ?? row.tempC ?? "")}</td><td>${escapeHtml(row.tempOutC || "")}</td><td>${escapeHtml(row.pressureDeltaMpa ?? row.filterDelta ?? "")}</td><td>${escapeHtml(row.equipmentStatus ?? row.regulator ?? "")}</td><td>${escapeHtml(row.pskTrigger ?? row.psk ?? "")}</td><td>${escapeHtml(row.maintenance || "")}</td><td>${escapeHtml(row.remarks ?? row.result ?? "")}</td><td>${escapeHtml(row.checkedBy || "")}</td></tr>`
     : `<tr><td>${dateHuman(row.date)}</td><td>${gasSectionBPrintHtml(gasSectionBTimeLabel(row))}</td><td>${gasSectionBPrintHtml(gasSectionBAllGrpRoutes(), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "controls"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCategorizedValue(row, "grp"), true)}</td><td>${gasSectionBPrintHtml(row.protectionZone, true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.remarks, "remarks"), true)}</td><td>${gasSectionBPrintHtml(gasSectionBCondensedValue(row.actions, "actions"), true)}</td><td>${gasSectionBPrintHtml(row.checkedBy)}</td></tr>`
   ).join("");
   const title = sectionA ? "Журнал ШГРП — раздел А. Эксплуатация и ТО ГРП (ГРУ)" : "Журнал ШГРП — раздел Б. Обход подземного газопровода";
@@ -9748,13 +9748,6 @@ const GAS_JOURNAL_FIELD_LABELS = {
   remarks: "Замечания",
   actions: "Принятые меры"
 };
-
-function normalizedPskTrigger(value = "") {
-  const text = String(value || "").trim();
-  if (text === "Исправно") return "Нет";
-  if (text === "Неисправно") return "Есть";
-  return text;
-}
 
 function gasControlAriaLabel(section, field) {
   return `Раздел ${section} — ${GAS_JOURNAL_FIELD_LABELS[field] || field}`;
@@ -9834,7 +9827,7 @@ function renderGasJournal() {
                 <td data-mobile-label="Температура выходная, °C">${gasInputHtml("A", date, "tempOutC", row.tempOutC)}</td>
                 <td data-mobile-label="Перепад давления, МПа">${gasInputHtml("A", date, "pressureDeltaMpa", row.pressureDeltaMpa ?? row.filterDelta)}</td>
                 <td data-mobile-label="Оборудование">${gasSelectHtml("A", date, "equipmentStatus", row.equipmentStatus ?? row.regulator, ["Исправно", "Неисправно"])}</td>
-                <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", normalizedPskTrigger(row.pskTrigger ?? row.psk), ["Нет", "Есть"])}</td>
+                <td data-mobile-label="Срабатывание ПСК">${gasSelectHtml("A", date, "pskTrigger", row.pskTrigger ?? row.psk, ["Нет", "Есть"])}</td>
                 <td data-mobile-label="Техобслуживание">${gasSelectHtml("A", date, "maintenance", row.maintenance, ["Не требуется", "Требуется"])}</td>
                 <td data-mobile-label="Замечания">${gasInputHtml("A", date, "remarks", row.remarks ?? row.result)}</td>
                 <td data-mobile-label="Подпись">${gasJournalEntrySignatureHtml("A", date, row)}</td>
@@ -11552,30 +11545,13 @@ function annualPprYearRecord(year, create = false) {
       agreedProductionBy: "",
       agreedSafetyBy: "",
       preparedBy: profile?.name || "",
-      status: "draft",
-      approvedAt: "",
-      changeHistory: [],
       overrides: {},
       works: [],
       events: [],
       updatedAt: new Date().toISOString()
     };
   }
-  return state.annualPpr[key] || { year: Number(year), revision: "01", status: "draft", changeHistory: [], overrides: {}, works: [], events: [] };
-}
-
-function annualPprStatusLabel(status = "draft") {
-  return ({ draft: "Черновик", review: "На согласовании", approved: "Утверждён", archived: "Архив" })[status] || "Черновик";
-}
-
-function annualPprIsLocked(record) {
-  return ["approved", "archived"].includes(record?.status);
-}
-
-function recordAnnualPprChange(record, action, details = "") {
-  record.changeHistory ||= [];
-  record.changeHistory.push({ id: `annual-change:${Date.now()}:${Math.random().toString(16).slice(2)}`, at: new Date().toISOString(), action, details, byName: profile?.name || "" });
-  record.changeHistory = record.changeHistory.slice(-250);
+  return state.annualPpr[key] || { year: Number(year), revision: "01", overrides: {}, works: [], events: [] };
 }
 
 function annualPprWorks(year) {
@@ -11583,39 +11559,18 @@ function annualPprWorks(year) {
   return Array.isArray(record.works) ? record.works : [];
 }
 
-function annualPprEventDate(value, fallback = "") {
-  const match = String(value || "").match(/^\d{4}-\d{2}-\d{2}/);
-  return match?.[0] || fallback;
-}
-
 function annualPprMonthWorks(year, row, month) {
   const prefix = `${year}-${String(month).padStart(2, "0")}`;
   const manual = annualPprWorks(year).filter(item => item.nodeKey === row.nodeKey && String(item.date || "").startsWith(prefix));
   const automatic = [];
   Object.entries(state.checks || {}).forEach(([recordKey, record]) => {
-    const [equipmentId, nodeIndex, recordDate] = recordKey.split(":");
-    if (Number(equipmentId) !== Number(row.eq.id) || Number(nodeIndex) !== Number(row.nodeIndex)) return;
-    (record?.to?.commentLog || []).filter(item => String(item?.text || "").trim()).forEach(item => {
-      const remarkId = item.id || item.at || recordDate;
-      const createdDate = annualPprEventDate(item.at, recordDate);
-      const resolvedDate = annualPprEventDate(item.resolutionSubmittedAt || item.resolvedAt || item.confirmedAt);
-      if (createdDate.startsWith(prefix)) {
-        automatic.push({
-          id: `remark:${recordKey}:${remarkId}`, source: "remark", eventKind: "remark", type: "ТР", date: createdDate,
-          description: item.text, result: item.resolved ? (item.resolvedComment || "Устранено") : "Ожидает устранения",
-          performer: item.name || item.commentOwnerName || "", status: item.resolved ? "Выполнено" : "В работе",
-          fixed: Boolean(item.resolved), linkedCard: recordKey
-        });
-      }
-      if (resolvedDate && resolvedDate.startsWith(prefix) && resolvedDate !== createdDate) {
-        automatic.push({
-          id: `remark-resolution:${recordKey}:${remarkId}`, source: "remark", eventKind: "resolution", type: "ТР", date: resolvedDate,
-          description: `Устранение замечания: ${item.text}`, result: item.resolvedComment || "Устранено",
-          performer: item.resolvedByName || item.resolutionSubmittedByName || item.confirmedByName || "",
-          status: item.resolved ? "Выполнено" : "Ожидает подтверждения", fixed: Boolean(item.resolved), linkedCard: recordKey
-        });
-      }
-    });
+    const [equipmentId, nodeIndex, date] = recordKey.split(":");
+    if (Number(equipmentId) !== Number(row.eq.id) || Number(nodeIndex) !== Number(row.nodeIndex) || !String(date).startsWith(prefix)) return;
+    (record?.to?.commentLog || []).filter(item => String(item?.text || "").trim()).forEach(item => automatic.push({
+      id: `remark:${recordKey}:${item.id || item.at}`, source: "remark", type: "ТР", date, description: item.text,
+      result: item.resolved ? (item.resolvedComment || "Устранено") : "Ожидает устранения", performer: item.resolvedByName || item.resolutionSubmittedByName || "",
+      status: item.resolved ? "Выполнено" : "В работе", fixed: Boolean(item.resolved), linkedCard: recordKey
+    }));
   });
   (state.downtimes || []).filter(item => item?.type !== "production" && Number(item?.equipmentId) === Number(row.eq.id)
     && Number(item?.nodeIndex) === Number(row.nodeIndex) && String(item?.startedAt || item?.startAt || "").startsWith(prefix)).forEach(item => automatic.push({
@@ -11665,7 +11620,7 @@ function openAnnualPprMonthJournal(year, row, month) {
     const works = annualPprMonthWorks(year, row, month);
     overlay.innerHTML = `<section class="annual-ppr-work-dialog"><header><div><strong>Журнал ТО / ТР / АР</strong><span>${escapeHtml(row.eq.name)} · ${escapeHtml(row.node)} · ${String(month).padStart(2,"0")}.${year}</span></div><button type="button" data-work-back>← Назад</button></header>
       <form data-work-form><label>Дата<input required type="date" name="date" min="${year}-${String(month).padStart(2,"0")}-01" max="${year}-${String(month).padStart(2,"0")}-${String(new Date(year, month, 0).getDate()).padStart(2,"0")}" value="${year}-${String(month).padStart(2,"0")}-01"></label><label>Вид<select name="type"><option>ТО</option><option>ТР</option><option>АР</option></select></label><label class="wide">Перечень работ<textarea required name="description" rows="3" placeholder="Что необходимо выполнить"></textarea></label><label>Статус<select name="status"><option>Запланировано</option><option>В работе</option><option>Выполнено</option><option>Перенесено</option></select></label><label>Исполнитель<input name="performer" placeholder="Ф.И.О."></label><label class="wide">Результат / комментарий<textarea name="result" rows="2"></textarea></label><button type="submit">Добавить работу</button></form>
-      <div class="annual-ppr-work-list">${works.length ? works.map(item => `<article class="${item.fixed ? "fixed" : ""}"><div class="work-main"><b>${escapeHtml(item.type)} · ${escapeHtml(dateHuman(item.date))}</b><strong>${escapeHtml(item.description)}</strong><span>${escapeHtml(item.status || "Запланировано")}${item.performer ? ` · ${escapeHtml(item.performer)}` : ""}</span><small>${escapeHtml(item.result || "Результат ещё не указан")}</small>${item.source ? `<em>Автоматически из ${item.source === "remark" ? (item.eventKind === "resolution" ? "устранения замечания" : "замечания") : "аварийного простоя"}</em>` : ""}</div><div class="work-actions">${!item.source && !item.fixed ? `<button data-work-fix="${escapeHtml(item.id)}">Зафиксировать</button>` : ""}<button data-work-doc="ZM" data-work-id="${escapeHtml(item.id)}">ЗМ${item.documents?.ZM ? " ✓" : ""}</button><button data-work-doc="MV" data-work-id="${escapeHtml(item.id)}">МВ${item.documents?.MV ? " ✓" : ""}</button><button data-work-doc="ACT" data-work-id="${escapeHtml(item.id)}">Акты${item.documents?.ACT ? " ✓" : ""}</button></div></article>`).join("") : `<div class="empty-state">В этом месяце работ пока нет.</div>`}</div></section>`;
+      <div class="annual-ppr-work-list">${works.length ? works.map(item => `<article class="${item.fixed ? "fixed" : ""}"><div class="work-main"><b>${escapeHtml(item.type)} · ${escapeHtml(dateHuman(item.date))}</b><strong>${escapeHtml(item.description)}</strong><span>${escapeHtml(item.status || "Запланировано")}${item.performer ? ` · ${escapeHtml(item.performer)}` : ""}</span><small>${escapeHtml(item.result || "Результат ещё не указан")}</small>${item.source ? `<em>Автоматически из ${item.source === "remark" ? "замечания" : "аварийного простоя"}</em>` : ""}</div><div class="work-actions">${!item.source && !item.fixed ? `<button data-work-fix="${escapeHtml(item.id)}">Зафиксировать</button>` : ""}<button data-work-doc="ZM" data-work-id="${escapeHtml(item.id)}">ЗМ${item.documents?.ZM ? " ✓" : ""}</button><button data-work-doc="MV" data-work-id="${escapeHtml(item.id)}">МВ${item.documents?.MV ? " ✓" : ""}</button><button data-work-doc="ACT" data-work-id="${escapeHtml(item.id)}">Акты${item.documents?.ACT ? " ✓" : ""}</button></div></article>`).join("") : `<div class="empty-state">В этом месяце работ пока нет.</div>`}</div></section>`;
     overlay.querySelector("[data-work-back]")?.addEventListener("click", () => overlay.remove());
     overlay.querySelector("[data-work-form]")?.addEventListener("submit", event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget).entries()); record.works.push({ ...values, id: `annual-work:${Date.now()}`, nodeKey: row.nodeKey, equipmentId: row.eq.id, equipmentName: row.eq.name, area: row.eq.area, node: row.node, createdAt: new Date().toISOString(), createdByName: profile?.name || "", fixed: false, documents: {} }); record.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry); render(); });
     overlay.querySelectorAll("[data-work-fix]").forEach(button => button.addEventListener("click", () => { const work = record.works.find(item => item.id === button.dataset.workFix); if (!work || work.fixed) return; work.fixed = true; work.fixedAt = new Date().toISOString(); work.fixedByName = profile?.name || ""; record.updatedAt = work.fixedAt; persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry); render(); }));
@@ -11727,7 +11682,6 @@ function annualPprRows(year) {
       }
       return {
         eq, node, nodeIndex, nodeKey, months,
-        monthDates: saved.monthDates || {},
         facts: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
           const month = index + 1;
           const types = new Set();
@@ -11735,13 +11689,9 @@ function annualPprRows(year) {
           annualPprMonthWorks(year, { eq, node, nodeIndex, nodeKey }, month).forEach(item => {
             if (["ТР", "АР"].includes(item.type)) types.add(item.type);
           });
-          const displayedType = types.has("ТО") ? "ТО" : types.has("АР") ? "АР" : types.has("ТР") ? "ТР" : "";
-          return [month, displayedType];
+          return [month, ["ТО", "ТР", "АР"].filter(type => types.has(type)).join(" ")];
         })),
         periodicity: saved.periodicity || (Object.keys(automatic).length >= 10 ? "ежемесячно" : Object.keys(automatic).length >= 4 ? "ежеквартально" : "по графику"),
-        basis: saved.basis || "Инструкция изготовителя / фактическое состояние",
-        durationHours: saved.durationHours || "",
-        plannedDowntimeHours: saved.plannedDowntimeHours || "",
         lastRepair: saved.lastRepair || "",
         responsible: saved.responsible || ""
       };
@@ -11848,61 +11798,35 @@ function openAnnualPprActs(year, scheduleOverlay) {
   form.addEventListener("submit", () => { wordButton.disabled = false; });
 }
 
-function annualPprMonthSelect(row, month, locked = false) {
+function annualPprMonthSelect(row, month) {
   const value = row.months[month] || "";
-  const date = row.monthDates?.[month] || "";
-  return `<div class="annual-ppr-month-editor"><select data-annual-ppr-month="${month}" aria-label="Вид ремонта ${month}" ${locked ? "disabled" : ""}>${ANNUAL_PPR_TYPES.map(type => `<option value="${type}" ${type === value ? "selected" : ""}>${type || "—"}</option>`).join("")}</select><input data-annual-ppr-month-date="${month}" type="date" value="${escapeHtml(date)}" aria-label="Плановая дата ${month}" title="Плановая дата" ${locked ? "disabled" : ""}></div>`;
+  return `<select data-annual-ppr-month="${month}" aria-label="План ${month}">${ANNUAL_PPR_TYPES.map(type => `<option value="${type}" ${type === value ? "selected" : ""}>${type || "—"}</option>`).join("")}</select>`;
 }
 
-function openAnnualPprInlineJournal(year, row, month, scheduleOverlay) {
-  document.querySelector(".annual-ppr-inline-journal")?.remove();
-  const prefix = `${year}-${String(month).padStart(2, "0")}`;
-  const items = aggregateJournalItems(row.eq.area, row.eq.id).filter(item =>
-    Number(item.nodeIndex) === Number(row.nodeIndex)
-    && [item.date, item.at, item.resolvedAt].some(value => String(value || "").startsWith(prefix))
-  );
-  const journal = document.createElement("div");
-  journal.className = "annual-ppr-work-overlay annual-ppr-inline-journal";
-  journal.innerHTML = `<section class="annual-ppr-work-dialog"><header><div><strong>Агрегатный журнал</strong><span>${escapeHtml(row.eq.name)} · ${escapeHtml(row.node)} · ${String(month).padStart(2, "0")}.${year}</span></div><button type="button" data-inline-journal-back>← К годовому графику</button></header>
-    <div class="aggregate-journal-table-wrap"><table class="aggregate-journal-table"><thead><tr><th>№</th><th>Вид</th><th>Дата обнаружения</th><th>Замечание / дефект</th><th>Кто обнаружил</th><th>Дата устранения</th><th>Что выполнено</th><th>Кто устранил</th><th>Статус</th></tr></thead><tbody>
-      ${items.length ? items.map((item, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.kind || "Замечание")}</td><td>${escapeHtml(dateTimeHuman(item.at || item.date))}</td><td>${escapeHtml(item.text || "")}</td><td>${escapeHtml(item.authorName || "—")}</td><td>${item.resolvedAt ? escapeHtml(dateTimeHuman(item.resolvedAt)) : "—"}</td><td>${escapeHtml(item.resolvedComment || "—")}</td><td>${escapeHtml(item.resolvedByName || "—")}</td><td>${item.resolved ? "Устранено" : "В работе"}</td></tr>`).join("") : `<tr><td colspan="9"><div class="empty-state">В журнале за выбранный месяц записей нет.</div></td></tr>`}
-    </tbody></table></div></section>`;
-  journal.querySelector("[data-inline-journal-back]")?.addEventListener("click", () => journal.remove());
-  journal.addEventListener("click", event => { if (event.target === journal) journal.remove(); });
-  scheduleOverlay.append(journal);
-}
-
-function annualPprTableHtml(year, locked = false) {
+function annualPprTableHtml(year) {
   const rows = annualPprRows(year);
   const months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
   let number = 0;
   return `<table class="annual-ppr-table">
-    <thead><tr><th>№</th><th>Участок</th><th>Оборудование</th><th>Узел / объект ремонта</th><th>Строка</th>${months.map(month => `<th>${month}</th>`).join("")}<th>Периодичность</th><th>Основание</th><th>Длительность, ч</th><th>Простой, ч</th><th>Последний ремонт</th><th>Ответственный</th></tr></thead>
+    <thead><tr><th>№</th><th>Участок</th><th>Оборудование</th><th>Узел / объект ремонта</th><th>Строка</th>${months.map(month => `<th>${month}</th>`).join("")}<th>Периодичность</th><th>Последний ремонт</th><th>Ответственный</th></tr></thead>
     <tbody>${rows.map(row => {
       number += 1;
-      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${annualPprMonthSelect(row, index + 1, locked)}</td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}" ${locked ? "disabled" : ""}></td><td rowspan="2"><textarea data-annual-ppr-field="basis" rows="3" ${locked ? "disabled" : ""}>${escapeHtml(row.basis)}</textarea></td><td rowspan="2"><input data-annual-ppr-field="durationHours" type="number" min="0" step="0.5" value="${escapeHtml(row.durationHours)}" ${locked ? "disabled" : ""}></td><td rowspan="2"><input data-annual-ppr-field="plannedDowntimeHours" type="number" min="0" step="0.5" value="${escapeHtml(row.plannedDowntimeHours)}" ${locked ? "disabled" : ""}></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}" ${locked ? "disabled" : ""}></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О." ${locked ? "disabled" : ""}></td></tr>
-      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть агрегатный журнал оборудования">${escapeHtml(row.facts[index + 1] || "")}</td>`).join("")}</tr>`;
+      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${annualPprMonthSelect(row, index + 1)}</td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}"></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}"></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О."></td></tr>
+      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${escapeHtml(row.facts[index + 1] || "")}</td>`).join("")}</tr>`;
     }).join("")}</tbody>
   </table>`;
 }
 
 function saveAnnualPprRow(rowElement, year) {
   const record = annualPprYearRecord(year, true);
-  if (annualPprIsLocked(record)) return;
   const nodeKey = rowElement.dataset.annualPprRow;
-  const saved = record.overrides[nodeKey] ||= { months: {}, monthDates: {} };
-  saved.months ||= {};
-  saved.monthDates ||= {};
+  const saved = record.overrides[nodeKey] ||= { months: {} };
   rowElement.querySelectorAll("[data-annual-ppr-month]").forEach(select => {
     saved.months[Number(select.dataset.annualPprMonth)] = select.value;
-  });
-  rowElement.querySelectorAll("[data-annual-ppr-month-date]").forEach(input => {
-    saved.monthDates[Number(input.dataset.annualPprMonthDate)] = input.value;
   });
   rowElement.querySelectorAll("[data-annual-ppr-field]").forEach(input => { saved[input.dataset.annualPprField] = input.value.trim(); });
   saved.updatedAt = new Date().toISOString();
   record.updatedAt = saved.updatedAt;
-  recordAnnualPprChange(record, "row_updated", nodeKey);
   persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   publishStateNow().catch(scheduleRemoteRetry);
@@ -11922,7 +11846,6 @@ function annualPprOutputClone(overlay) {
   if (!clone) return null;
   clone.querySelectorAll("select").forEach(select => { const span = document.createElement("span"); span.textContent = select.value || ""; select.replaceWith(span); });
   clone.querySelectorAll("input").forEach(input => { const span = document.createElement("span"); span.textContent = input.type === "date" && input.value ? dateHuman(input.value) : input.value || ""; input.replaceWith(span); });
-  clone.querySelectorAll("textarea").forEach(textarea => { const span = document.createElement("span"); span.textContent = textarea.value || ""; textarea.replaceWith(span); });
   clone.classList.add("annual-ppr-pdf-output");
   return clone;
 }
@@ -11999,45 +11922,15 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   document.querySelector(".annual-ppr-overlay")?.remove();
   const year = Math.max(2020, Math.min(2100, Number(initialYear) || new Date().getFullYear()));
   const record = annualPprYearRecord(year, true);
-  record.status ||= "draft";
-  record.changeHistory ||= [];
-  const locked = annualPprIsLocked(record);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>План формирует задания, строка факта открывает журнал</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><span class="annual-ppr-status ${escapeHtml(record.status)}">${escapeHtml(annualPprStatusLabel(record.status))}</span>${locked ? `<button type="button" data-annual-ppr-revise>Новая редакция</button>` : `<button type="button" data-annual-ppr-review>На согласование</button><button type="button" data-annual-ppr-approve>Утвердить</button>`}<button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О." ${locked ? "disabled" : ""}><br>${record.approvedAt ? `Дата утверждения: ${escapeHtml(dateHuman(record.approvedAt))}` : `«___» __________ ${year} г.`}</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}" ${locked ? "disabled" : ""}></span><span>Статус: <strong>${escapeHtml(annualPprStatusLabel(record.status))}</strong></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year, locked)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; АР — аварийный ремонт; КР — капитальный ремонт. Плановые даты и виды ремонта сохраняются отдельно от факта. Замечания автоматически попадают в ТР, аварийные простои — в АР. После утверждения план блокируется; изменения выполняются новой редакцией.</p>${record.changeHistory.length ? `<details class="annual-ppr-history no-print"><summary>История изменений · ${record.changeHistory.length}</summary>${record.changeHistory.slice().reverse().slice(0, 20).map(item => `<div><time>${escapeHtml(dateTimeHuman(item.at))}</time><strong>${escapeHtml(item.byName || "Система")}</strong><span>${escapeHtml(item.action)}${item.details ? ` · ${escapeHtml(item.details)}` : ""}</span></div>`).join("")}</details>` : ""}<div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись" ${locked ? "disabled" : ""}></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись" ${locked ? "disabled" : ""}></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись" ${locked ? "disabled" : ""}></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите «Журнал» или строку факта нужного месяца</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; АР — аварийный ремонт; КР — капитальный ремонт. ЗМ, МВ и остальные акты создаются отдельными кнопками внутри конкретной работы. Замечания автоматически попадают в ТР, аварийные простои — в АР.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
   overlay.querySelector("[data-annual-ppr-year]")?.addEventListener("change", event => { overlay.remove(); openAnnualPprSchedule(event.currentTarget.value); });
   overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
   overlay.querySelector("[data-share-annual-ppr-pdf]")?.addEventListener("click", event => shareAnnualPprPdf(overlay, year, event.currentTarget));
-  overlay.querySelector("[data-annual-ppr-review]")?.addEventListener("click", () => {
-    record.status = "review";
-    record.updatedAt = new Date().toISOString();
-    recordAnnualPprChange(record, "sent_to_review", `Редакция ${record.revision || "01"}`);
-    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
-    overlay.remove(); openAnnualPprSchedule(year);
-  });
-  overlay.querySelector("[data-annual-ppr-approve]")?.addEventListener("click", () => {
-    const required = [record.approvedBy, record.agreedProductionBy, record.agreedSafetyBy, record.preparedBy].every(value => String(value || "").trim());
-    if (!required) return window.alert("Перед утверждением заполните руководителя, оба согласования и составителя графика.");
-    record.status = "approved";
-    record.approvedAt = new Date().toISOString();
-    record.updatedAt = record.approvedAt;
-    recordAnnualPprChange(record, "approved", `Редакция ${record.revision || "01"}`);
-    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
-    overlay.remove(); openAnnualPprSchedule(year);
-  });
-  overlay.querySelector("[data-annual-ppr-revise]")?.addEventListener("click", () => {
-    const nextRevision = String((Number.parseInt(record.revision, 10) || 0) + 1).padStart(2, "0");
-    record.revision = nextRevision;
-    record.status = "draft";
-    record.approvedAt = "";
-    record.updatedAt = new Date().toISOString();
-    recordAnnualPprChange(record, "new_revision", `Редакция ${nextRevision}`);
-    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
-    overlay.remove(); openAnnualPprSchedule(year);
-  });
   overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
   overlay.querySelectorAll("[data-open-ppr-month]").forEach(cell => cell.addEventListener("click", event => {
     if (event.target.closest("select,input")) return;
@@ -12045,17 +11938,10 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
     const tr = cell.closest("tr");
     const nodeKey = tr?.dataset.annualPprRow || tr?.dataset.annualPprFactRow;
     const row = annualPprRows(year).find(item => item.nodeKey === nodeKey);
-    if (!row) return;
-    if (tr?.dataset.annualPprFactRow) openAnnualPprInlineJournal(year, row, Number(cell.dataset.openPprMonth), overlay);
-    else openAnnualPprMonthJournal(year, row, Number(cell.dataset.openPprMonth));
+    if (row) openAnnualPprMonthJournal(year, row, Number(cell.dataset.openPprMonth));
   }));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
-    const live = annualPprYearRecord(year, true);
-    if (annualPprIsLocked(live)) return;
-    live[input.dataset.annualPprMeta] = input.value.trim();
-    live.updatedAt = new Date().toISOString();
-    recordAnnualPprChange(live, "meta_updated", input.dataset.annualPprMeta);
-    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
+    const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
   }));
 }
 
