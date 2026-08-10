@@ -4012,7 +4012,8 @@ body.editor-profile .director-card.request-alert{
 .journal-date-navigation button { border-color: #14324a; background: #14324a; color: #fff; }
 .journal-date-navigation small { flex: 1 1 240px; padding-bottom: 6px; }
 .compressor-journal-table {
-  min-width: 1120px;
+  min-width: 1320px;
+  border: 1px solid #111;
 }
 
 .compressor-journal-table th:nth-child(1) { width: 190px; }
@@ -4024,6 +4025,25 @@ body.editor-profile .director-card.request-alert{
 .compressor-journal-table th:nth-child(7) { width: 150px; }
 .compressor-journal-table th:nth-child(8) { width: 150px; }
 .compressor-journal-table th:nth-child(9) { width: 150px; }
+.compressor-journal-table th:nth-child(10) { width: 180px; }
+
+.compressor-journal-table th {
+  background: #dce8ef;
+  color: #102b3b;
+  text-align: center;
+}
+
+.compressor-journal-table th,
+.compressor-journal-table td {
+  border-color: #111;
+}
+
+.compressor-date-cell small {
+  display: block;
+  margin-top: 5px;
+  color: #526876;
+  font-weight: 700;
+}
 
 .equipment-journal-cell .compressor-journal-alert {
   animation: none !important;
@@ -5286,13 +5306,43 @@ body.editor-profile .director-card.request-alert{
 }
 
 .qr-remark-form textarea,
-.qr-remark-form input {
+.qr-remark-form input,
+.qr-remark-form select {
   width: 100%;
   border: 1px solid #b8c8d1;
   border-radius: 9px;
   background: #fff;
   padding: 11px;
   font: inherit;
+}
+
+.compressor-qr-form {
+  border: 1px solid #111;
+  background: #f8fafb;
+  padding: 12px;
+}
+
+.compressor-qr-form label {
+  gap: 0;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.compressor-qr-form label > span {
+  background: #dce8ef;
+  color: #102b3b;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.compressor-qr-form input,
+.compressor-qr-form select,
+.compressor-qr-form textarea {
+  min-height: 48px;
+  border: 0;
+  border-top: 1px solid #111;
+  border-radius: 0;
+  padding: 11px;
 }
 
 .qr-result-panel > label textarea,

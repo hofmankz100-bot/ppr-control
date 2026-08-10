@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=447-psk-counter-backfill/);
-  assert.match(html, /styles\.css\?v=447-psk-counter-backfill/);
-  assert.match(serviceWorker, /app\.js\?v=447-psk-counter-backfill/);
+  assert.match(html, /app\.js\?v=448-compressor-qr-journal/);
+  assert.match(html, /styles\.css\?v=448-compressor-qr-journal/);
+  assert.match(serviceWorker, /app\.js\?v=448-compressor-qr-journal/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1133,7 +1133,9 @@ test("one compressor button fixes and locks all three rows for a date", () => {
     airPressure: "7",
     airTemp: "28",
     oilPressureTemp: "3 / 65",
-    leakGrounding: "исправно",
+    leakGrounding: "Заземлено, утечек нет",
+    operatingState: "Включено",
+    remarks: "Без замечаний",
     shiftTime: "день 10:15",
     blowTime: "10:15",
     checkedBy: "Сотрудник"
@@ -1160,6 +1162,14 @@ test("one compressor button fixes and locks all three rows for a date", () => {
   assert.match(styleSource, /\.compressor-journal-table tbody tr \{[\s\S]*?border-radius: 11px/);
   assert.match(styleSource, /\.compressor-journal-table input,[\s\S]*?font-size: 16px !important/);
   assert.match(appSource, /aria-label="\$\{escapeHtml\(row\.compressor\)\} — утечки и заземление"/);
+  assert.match(appSource, /function promptCompressorQrDecision\(parsed\)/);
+  assert.match(appSource, /compressorJournalCompressorForQr\(parsed\.equipmentId, parsed\.nodeIndex\)/);
+  assert.match(appSource, /Заземлено, утечек нет/);
+  assert.match(appSource, /Замечание добавлено в предупреждения/);
+  assert.match(appSource, /sourceRecordKey: key\(parsed\.equipmentId, parsed\.nodeIndex, shift\.date\)/);
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /function linkResolvedCompressorRemarkToJournalServer\(db, recordKey, remark, actor, now\)/);
+  assert.match(serverSource, /compressorJournal: compressorJournalPatch/);
   assert.match(appSource, /input\.addEventListener\("change", \(\) => \{\s*renderEquipment\(\);/);
   assert.match(styleSource, /\.equipment-journal-cell \.compressor-journal-alert \{[\s\S]*?animation: none !important/);
   assert.match(styleSource, /\.compressor-journal-alert \{ animation: none !important/);

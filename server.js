@@ -3922,6 +3922,37 @@ function linkResolvedShgrpARemarkToGasJournalServer(db, recordKey, remark, actor
   return { [id]: db.gasJournal[id] };
 }
 
+function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, actor, now) {
+  if (!remark?.resolved || !recordKey) return {};
+  const match = String(recordKey).match(/^9:(\d+):(\d{4}-\d{2}-\d{2})$/);
+  if (!match) return {};
+  const compressors = ["№1 EKOMAK 90", "№2 EKOMAK 90", "№3 EKOMAK 110"];
+  const compressor = compressors[Number(match[1])] || "";
+  if (!compressor) return {};
+  const rowId = `Компрессорная::${match[2]}::${compressor}`;
+  const current = db.compressorJournal?.[rowId];
+  if (!current) return {};
+  const sameRemark = String(current.remarkId || "") === String(remark.id || "")
+    || String(current.sourceRecordKey || "") === String(recordKey);
+  if (!sameRemark) return {};
+  const resolvedAt = String(remark.resolvedAt || now);
+  const resolutionComment = String(remark.resolvedComment || remark.resolutionSubmittedComment || "Устранено").trim().slice(0, 2000);
+  const resolvedByName = String(remark.resolvedByName || remark.resolutionSubmittedByName || actor?.name || "").trim().slice(0, 200);
+  const row = {
+    ...current,
+    resolutionComment,
+    resolvedAt,
+    resolvedByName,
+    leakGrounding: "Заземлено, утечек нет",
+    updatedAt: now,
+    updatedByName: String(actor?.name || ""),
+    updatedByRole: String(actor?.role || "")
+  };
+  db.compressorJournal ||= {};
+  db.compressorJournal[rowId] = row;
+  return { [rowId]: row };
+}
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -7166,6 +7197,9 @@ async function handleApi(req, res, pathname, url) {
       const grpGasJournalPatch = remark.resolved && ["confirm", "admin-close", "admin-repair-close", "close-with-score"].includes(action)
         ? { ...linkResolvedGrpRemarkToGasJournalServer(db, recordKey, remark, actor, now), ...linkResolvedShgrpARemarkToGasJournalServer(db, recordKey, remark, actor, now) }
         : {};
+      const compressorJournalPatch = remark.resolved && ["confirm", "admin-close", "admin-repair-close", "close-with-score"].includes(action)
+        ? linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, actor, now)
+        : {};
       if (Object.keys(grpGasJournalPatch).length) {
         writeDb(db, {
           action: "shgrp_section_b_resolution_linked",
@@ -7185,6 +7219,7 @@ async function handleApi(req, res, pathname, url) {
       const patch = {
         checks: { [recordKey]: record },
         ...(Object.keys(grpGasJournalPatch).length ? { gasJournal: grpGasJournalPatch } : {}),
+        ...(Object.keys(compressorJournalPatch).length ? { compressorJournal: compressorJournalPatch } : {}),
         ...(action === "resolve" || action === "confirm" || action === "return"
           ? { downtimes: db.downtimes || [] }
           : {})

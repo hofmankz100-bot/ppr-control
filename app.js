@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v447-psk-counter-backfill";
+const APP_VERSION = "v448-compressor-qr-journal";
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -4990,7 +4990,151 @@ function qrWalkProgress(equipmentId, shift = currentWalkShift()) {
   return { done, total: eq.nodes.length };
 }
 
+function compressorJournalCompressorForQr(equipmentId, nodeIndex) {
+  if (Number(equipmentId) !== 9) return "";
+  return COMPRESSOR_JOURNAL_COMPRESSORS[Number(nodeIndex)] || "";
+}
+
+function saveCompressorQrJournalRow(parsed, shift, values, remarkEntry = null) {
+  const compressor = compressorJournalCompressorForQr(parsed.equipmentId, parsed.nodeIndex);
+  if (!compressor) return null;
+  const now = new Date();
+  const savedAt = now.toISOString();
+  const rowId = compressorJournalKey(COMPRESSOR_JOURNAL_AREA, shift.date, compressor);
+  const old = state.compressorJournal?.[rowId] || {};
+  state.compressorJournal ||= {};
+  state.compressorJournal[rowId] = {
+    ...old,
+    id: rowId,
+    area: COMPRESSOR_JOURNAL_AREA,
+    date: shift.date,
+    compressor,
+    shiftTime: `${shift.label} · ${localTimeNow()}`,
+    checkedBy: profile?.name || "Сотрудник",
+    airPressure: values.airPressure,
+    airTemp: values.airTemp,
+    oilPressureTemp: values.oilPressureTemp,
+    operatingState: values.operatingState,
+    leakGrounding: values.hasRemark ? "Проверяется" : "Заземлено, утечек нет",
+    remarks: values.hasRemark ? values.comment : "Нет",
+    resolutionComment: values.hasRemark ? "" : "Не требуется",
+    resolvedAt: "",
+    resolvedByName: "",
+    blowTime: localTimeNow(),
+    source: "qr-compressor",
+    sourceRecordKey: key(parsed.equipmentId, parsed.nodeIndex, shift.date),
+    remarkId: remarkEntry?.id || "",
+    updatedAt: savedAt,
+    updatedByName: profile?.name || "",
+    updatedByRole: profile?.role || "",
+    entryStatus: "fixed",
+    fixedAt: savedAt,
+    fixedByName: profile?.name || ""
+  };
+  return state.compressorJournal[rowId];
+}
+
+function promptCompressorQrDecision(parsed) {
+  const eq = equipmentById(parsed.equipmentId);
+  const compressor = compressorJournalCompressorForQr(parsed.equipmentId, parsed.nodeIndex);
+  const shift = currentWalkShift();
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay";
+  overlay.innerHTML = `
+    <section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Осмотр компрессора">
+      <div class="qr-result-progress">${escapeHtml(dateHuman(shift.date))} · ${escapeHtml(shift.label)} · ${escapeHtml(localTimeNow())}</div>
+      <h2>ЖУРНАЛ КОМПРЕССОРНОЙ</h2>
+      <p class="qr-result-node">${escapeHtml(compressor)}</p>
+      <div class="qr-remark-form compressor-qr-form">
+        <div class="qr-pressure-fields">
+          <label><span>Давление воздуха</span><input type="number" step="0.01" inputmode="decimal" data-compressor-air-pressure></label>
+          <label><span>Температура воздуха, °C</span><input type="number" step="0.1" inputmode="decimal" data-compressor-air-temp></label>
+        </div>
+        <label><span>Давление / температура масла</span><input type="text" data-compressor-oil placeholder="Например: 2,5 бар / 65 °C"></label>
+        <label><span>Состояние компрессора</span>
+          <select data-compressor-state>
+            <option value="">Выберите состояние</option>
+            <option value="Включено">Включено</option>
+            <option value="Отключено">Отключено</option>
+            <option value="Аварийная остановка">Аварийная остановка</option>
+          </select>
+        </label>
+        <label><span>Результат осмотра</span>
+          <select data-compressor-result>
+            <option value="">Выберите результат</option>
+            <option value="good">Без комментария</option>
+            <option value="remark">С комментарием</option>
+          </select>
+        </label>
+        <label data-compressor-comment-wrap hidden><span>Комментарий / замечание</span><textarea rows="4" data-compressor-comment placeholder="Опишите замечание..."></textarea></label>
+        <div class="qr-remark-error" data-qr-error></div>
+        <div class="qr-result-actions single">
+          <button type="button" class="qr-save-remark-button" data-compressor-save>Зафиксировать</button>
+          <button type="button" class="qr-finish-button" data-compressor-cancel>Закрыть</button>
+        </div>
+      </div>
+    </section>`;
+  document.body.append(overlay);
+  return new Promise(resolve => {
+    let submitting = false;
+    const finish = result => { overlay.remove(); resolve(result); };
+    const resultSelect = overlay.querySelector("[data-compressor-result]");
+    const commentWrap = overlay.querySelector("[data-compressor-comment-wrap]");
+    resultSelect?.addEventListener("change", () => {
+      if (commentWrap) commentWrap.hidden = resultSelect.value !== "remark";
+      if (resultSelect.value === "remark") overlay.querySelector("[data-compressor-comment]")?.focus();
+    });
+    overlay.querySelector("[data-compressor-cancel]")?.addEventListener("click", () => finish("finish"));
+    overlay.querySelector("[data-compressor-save]")?.addEventListener("click", async event => {
+      if (submitting) return;
+      const values = {
+        airPressure: String(overlay.querySelector("[data-compressor-air-pressure]")?.value || "").trim(),
+        airTemp: String(overlay.querySelector("[data-compressor-air-temp]")?.value || "").trim(),
+        oilPressureTemp: String(overlay.querySelector("[data-compressor-oil]")?.value || "").trim(),
+        operatingState: String(overlay.querySelector("[data-compressor-state]")?.value || "").trim(),
+        hasRemark: resultSelect?.value === "remark",
+        result: String(resultSelect?.value || ""),
+        comment: String(overlay.querySelector("[data-compressor-comment]")?.value || "").trim()
+      };
+      const errorEl = overlay.querySelector("[data-qr-error]");
+      if (!values.airPressure || !values.airTemp || !values.oilPressureTemp || !values.operatingState || !values.result) {
+        if (errorEl) errorEl.textContent = "Заполните все показания, состояние компрессора и результат осмотра.";
+        return;
+      }
+      if (values.hasRemark && !values.comment) {
+        if (errorEl) errorEl.textContent = "Введите комментарий к замечанию.";
+        return;
+      }
+      submitting = true;
+      setButtonBusy(event.currentTarget, true, "Сохраняем...");
+      try {
+        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+        const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
+        const remarkEntry = values.hasRemark
+          ? appendCommentEntry(item, values.comment, "", { area: eq?.area || COMPRESSOR_JOURNAL_AREA })
+          : null;
+        if (remarkEntry) syncItemRemarkSummary(item);
+        saveCompressorQrJournalRow(parsed, shift, values, remarkEntry);
+        saveState({ remote: false });
+        await publishStateNow().catch(scheduleRemoteRetry);
+        showQrSavedNotice(values.hasRemark
+          ? "Осмотр компрессора сохранён. Замечание добавлено в предупреждения."
+          : "Осмотр компрессора сохранён: заземлено, утечек нет.");
+        finish(values.hasRemark ? "comment-saved" : "continue");
+      } catch (error) {
+        submitting = false;
+        setButtonBusy(event.currentTarget, false);
+        if (errorEl) errorEl.textContent = "Не удалось сохранить осмотр. Проверьте связь и повторите.";
+      }
+    });
+  });
+}
+
 function promptQrWalkDecision(parsed) {
+  if (compressorJournalCompressorForQr(parsed.equipmentId, parsed.nodeIndex)) {
+    return promptCompressorQrDecision(parsed);
+  }
   const eq = equipmentById(parsed.equipmentId);
   const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
   const shift = currentWalkShift();
@@ -9077,17 +9221,18 @@ function printCompressorJournalFilledDays(area = COMPRESSOR_JOURNAL_AREA) {
     window.alert("В компрессорном журнале нет заполненных дней для печати.");
     return;
   }
-  const headers = ["Дата", "Проверяющий", "Компрессор", "Смена / Время", "Давление воздуха", "Температура воздуха", "Давление / температура масла", "Контроль утечек и заземления", "Время продувки"];
+  const headers = ["Дата", "Проверяющий", "Компрессор", "Время продувки влагоотделителя", "Давление воздуха (МПа/бар)", "Температура воздуха (°C)", "Давление / температура масла", "Контроль утечек и заземления", "Замечания", "Устранения замечания"];
   const body = rows.map(row => `<tr>
-    <td>${dateHuman(row.date)}</td>
+    <td>${dateHuman(row.date)}<br>${escapeHtml(row.shiftTime || "")}</td>
     <td>${escapeHtml(row.checkedBy || "")}</td>
     <td>${escapeHtml(row.compressor || "")}</td>
-    <td>${escapeHtml(row.shiftTime || "")}</td>
+    <td>${escapeHtml(row.blowTime || "")}</td>
     <td>${escapeHtml(row.airPressure || "")}</td>
     <td>${escapeHtml(row.airTemp || "")}</td>
     <td>${escapeHtml(row.oilPressureTemp || "")}</td>
     <td>${escapeHtml(row.leakGrounding || "")}</td>
-    <td>${escapeHtml(row.blowTime || "")}</td>
+    <td>${escapeHtml([row.operatingState, row.remarks].filter(Boolean).join("; "))}</td>
+    <td>${escapeHtml(row.resolutionComment || "")}${row.resolvedAt ? `<br>${escapeHtml(dateTimeHuman(row.resolvedAt))}` : ""}</td>
   </tr>`).join("");
   printFilledJournalDocument("Компрессорный журнал — все заполненные дни", `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
 }
@@ -9224,7 +9369,7 @@ function updateCompressorJournalRow(rowId, field, value) {
     fixedAt: "",
     fixedByName: ""
   };
-  const hasManualValue = ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding"]
+  const hasManualValue = ["airPressure", "airTemp", "oilPressureTemp", "leakGrounding", "operatingState", "remarks"]
     .some(name => String(nextRow[name] || "").trim());
   if (!hasManualValue) {
     state.compressorJournal[rowId] = {
@@ -9237,6 +9382,11 @@ function updateCompressorJournalRow(rowId, field, value) {
       airTemp: "",
       oilPressureTemp: "",
       leakGrounding: "",
+      operatingState: "",
+      remarks: "",
+      resolutionComment: "",
+      resolvedAt: "",
+      resolvedByName: "",
       blowTime: "",
       checkedBy: "",
       updatedAt: now.toISOString(),
@@ -9258,7 +9408,9 @@ const COMPRESSOR_JOURNAL_REQUIRED_FIELDS = [
   ["airPressure", "давление воздуха"],
   ["airTemp", "температуру воздуха"],
   ["oilPressureTemp", "давление и температуру масла"],
-  ["leakGrounding", "контроль утечек и заземления"]
+  ["leakGrounding", "контроль утечек и заземления"],
+  ["operatingState", "состояние компрессора"],
+  ["remarks", "результат осмотра"]
 ];
 
 function compressorJournalDateFixationHtml(area, date, rows = compressorJournalDateRows(area, date)) {
@@ -9977,7 +10129,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
     </div>
     <div class="aggregate-journal-sheet compressor-journal-sheet" data-compressor-sheet="${activeSheetIndex}">
       <div class="aggregate-sheet-head">
-        <strong>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f</strong>
+        <strong>ЖУРНАЛ КОМПРЕССОРНОЙ</strong>
         <span>${mobileMode ? dateHuman(mobileDate) : `${dateHuman(compressorJournalSheetDates(activeSheetIndex)[0] || todayISO())} – ${dateHuman(compressorJournalSheetDates(activeSheetIndex).slice(-1)[0] || todayISO())} · \u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}`}</span>
       </div>
       ${mobileMode ? `<div class="compressor-mobile-date-panel"><strong>${dateHuman(mobileDate)}</strong>${compressorJournalDateFixationHtml(area, mobileDate, sheetRows)}</div>` : ""}
@@ -9988,12 +10140,13 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
               <th>\u0414\u0430\u0442\u0430</th>
               <th>\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e\u0449\u0438\u0439</th>
               <th>\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440</th>
-              <th>\u0421\u043c\u0435\u043d\u0430 / \u0412\u0440\u0435\u043c\u044f</th>
+              <th>\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0434\u0443\u0432\u043a\u0438 \u0432\u043b\u0430\u0433\u043e\u043e\u0442\u0434\u0435\u043b\u0438\u0442\u0435\u043b\u044f</th>
               <th>\u0414\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0432\u043e\u0437\u0434\u0443\u0445\u0430 (\u041c\u041f\u0430/\u0431\u0430\u0440)</th>
               <th>\u0422\u0435\u043c\u043f\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u0432\u043e\u0437\u0434\u0443\u0445\u0430 (\u00b0C)</th>
               <th>\u0414\u0430\u0432\u043b\u0435\u043d\u0438\u0435 / \u0422\u0435\u043c\u043f\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u043c\u0430\u0441\u043b\u0430</th>
               <th>\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0443\u0442\u0435\u0447\u0435\u043a \u0438 \u0437\u0430\u0437\u0435\u043c\u043b\u0435\u043d\u0438\u044f</th>
-              <th>\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0434\u0443\u0432\u043a\u0438 \u0432\u043b\u0430\u0433\u043e\u043e\u0442\u0434\u0435\u043b\u0438\u0442\u0435\u043b\u044f</th>
+              <th>Замечания</th>
+              <th>Устранения замечания</th>
             </tr>
           </thead>
           <tbody>
@@ -10002,21 +10155,28 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
               const locked = compressorJournalRowComplete(row);
               return `
               <tr data-compressor-date="${row.date}" class="${compressorDayAttention ? "overdue-line-blink" : ""} ${compressorJournalDateHasFilledRow(area, row.date) ? "" : "print-empty-day"}">
-                ${!mobileMode && index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? `<td rowspan="${COMPRESSOR_JOURNAL_COMPRESSORS.length}" class="compressor-date-cell"><strong>${dateHuman(row.date)}</strong>${compressorJournalDateFixationHtml(area, row.date, compressorJournalDateRows(area, row.date))}</td>` : ""}
+                <td class="compressor-date-cell" data-mobile-label="Дата"><strong>${dateHuman(row.date)}</strong><small>${escapeHtml(row.shiftTime || "После сканирования QR")}</small>${!mobileMode && index % COMPRESSOR_JOURNAL_COMPRESSORS.length === 0 ? compressorJournalDateFixationHtml(area, row.date, compressorJournalDateRows(area, row.date)) : ""}</td>
                 <td data-mobile-label="Проверяющий" data-compressor-checked="${escapeHtml(row.id)}">${escapeHtml(row.checkedBy || "Ожидает фиксации")}</td>
                 <td data-mobile-label="Компрессор"><strong>${escapeHtml(row.compressor)}</strong></td>
-                <td data-mobile-label="Смена / время" data-compressor-shift="${escapeHtml(row.id)}">${escapeHtml(row.shiftTime || "После фиксации")}</td>
+                <td data-mobile-label="Время продувки" data-compressor-blow="${escapeHtml(row.id)}">${escapeHtml(row.blowTime || "После сканирования QR")}</td>
                 <td data-mobile-label="Давление воздуха"><input aria-label="${escapeHtml(row.compressor)} — давление воздуха" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airPressure" value="${escapeHtml(row.airPressure || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
                 <td data-mobile-label="Температура воздуха"><input aria-label="${escapeHtml(row.compressor)} — температура воздуха" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="airTemp" value="${escapeHtml(row.airTemp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
                 <td data-mobile-label="Давление / температура масла"><input aria-label="${escapeHtml(row.compressor)} — давление и температура масла" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="oilPressureTemp" value="${escapeHtml(row.oilPressureTemp || "")}" ${locked ? "disabled" : ""}></td>
                 <td data-mobile-label="Утечки и заземление">
                   <select aria-label="${escapeHtml(row.compressor)} — утечки и заземление" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="leakGrounding" ${locked ? "disabled" : ""}>
                     <option value=""></option>
-                    <option value="\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ${row.leakGrounding === "\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e" ? "selected" : ""}>\u0438\u0441\u043f\u0440\u0430\u0432\u043d\u043e</option>
-                    <option value="\u043d\u0435\u0442" ${row.leakGrounding === "\u043d\u0435\u0442" ? "selected" : ""}>\u043d\u0435\u0442</option>
+                    <option value="Заземлено, утечек нет" ${row.leakGrounding === "Заземлено, утечек нет" ? "selected" : ""}>Заземлено, утечек нет</option>
+                    <option value="Проверяется" ${row.leakGrounding === "Проверяется" ? "selected" : ""}>Проверяется</option>
                   </select>
                 </td>
-                <td data-mobile-label="Время продувки" data-compressor-blow="${escapeHtml(row.id)}">${escapeHtml(row.blowTime || "После фиксации")}</td>
+                <td data-mobile-label="Замечания">
+                  <select aria-label="${escapeHtml(row.compressor)} — состояние" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="operatingState" ${locked ? "disabled" : ""}>
+                    <option value="">Состояние</option>
+                    ${["Включено", "Отключено", "Аварийная остановка"].map(value => `<option value="${value}" ${row.operatingState === value ? "selected" : ""}>${value}</option>`).join("")}
+                  </select>
+                  <input aria-label="${escapeHtml(row.compressor)} — замечания" data-compressor-row="${escapeHtml(row.id)}" data-compressor-field="remarks" value="${escapeHtml(row.remarks || "")}" placeholder="Нет / комментарий" ${locked ? "disabled" : ""}>
+                </td>
+                <td data-mobile-label="Устранения замечания">${escapeHtml(row.resolutionComment || (row.remarks === "Нет" ? "Не требуется" : "Ожидается устранение"))}${row.resolvedAt ? `<br><small>${escapeHtml(dateTimeHuman(row.resolvedAt))}${row.resolvedByName ? ` · ${escapeHtml(row.resolvedByName)}` : ""}</small>` : ""}</td>
               </tr>
             `;
             }).join("")}
