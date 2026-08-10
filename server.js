@@ -3734,6 +3734,34 @@ function reconcileMissingShgrpQrChecksServer(db) {
   let changed = false;
   (Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : []).forEach(mark => {
     if (mark?.invalid) return;
+    const sectionADescriptor = shgrpSectionADescriptorServer(mark.node || mark.equipment);
+    if (sectionADescriptor?.kind === "psk" && /^\d{4}-\d{2}-\d{2}$/.test(String(mark.date || "")) && ["day", "night"].includes(mark.shift)) {
+      const rowId = `A::${mark.date}`;
+      const current = db.gasJournal[rowId] && typeof db.gasJournal[rowId] === "object" ? db.gasJournal[rowId] : {};
+      const checks = current.shgrpQrChecks && typeof current.shgrpQrChecks === "object" ? { ...current.shgrpQrChecks } : {};
+      const checkKey = `psk:${mark.shift}`;
+      if (!checks[checkKey]) {
+        const recordKey = `${Number(mark.equipmentId)}:${Number(mark.nodeIndex)}:${mark.date}`;
+        const remarks = Array.isArray(db.checks?.[recordKey]?.to?.commentLog) ? db.checks[recordKey].to.commentLog : [];
+        const linkedRemark = remarks.slice().reverse().find(entry => {
+          const stamp = walkShiftAtServer(entry?.at);
+          return stamp.date === mark.date && stamp.shift === mark.shift;
+        });
+        checks[checkKey] = {
+          kind: "psk", label: "ПСК", shift: mark.shift, shiftLabel: mark.shift === "night" ? "Ночь" : "День",
+          at: String(mark.at || linkedRemark?.at || new Date().toISOString()),
+          status: linkedRemark ? "remark" : "ok",
+          comment: linkedRemark ? String(linkedRemark.text || "Замечание") : "Замечаний нет",
+          sourceRecordKey: recordKey, remarkId: String(linkedRemark?.id || ""),
+          byId: "", byName: String(mark.byName || linkedRemark?.name || "").slice(0, 200),
+          byRole: String(mark.byRole || linkedRemark?.role || "").slice(0, 100)
+        };
+        const row = buildShgrpSectionARowServer({ ...current, shgrpQrChecks: checks }, mark.date, mark.shift, new Date().toISOString(), { name: "Система", role: "system" });
+        const shiftRows = { ...(current.shiftRows || {}), [mark.shift]: row };
+        db.gasJournal[rowId] = { ...row, shiftRows };
+        changed = true;
+      }
+    }
     const descriptor = shgrpSectionBDescriptorServer(`${mark.equipment || ""} ${mark.node || ""}`);
     if (!descriptor || !/^\d{4}-\d{2}-\d{2}$/.test(String(mark.date || "")) || !["day", "night"].includes(mark.shift)) return;
     const rowId = `B::${mark.date}`;
