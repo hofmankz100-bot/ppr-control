@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v446-psk-qr-backfill";
+const CACHE_NAME = "ppr-v447-psk-counter-backfill";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=446-psk-qr-backfill",
+  "./styles.css?v=447-psk-counter-backfill",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=421-annual-ppr-equipment-acts",
-  "./app.js?v=446-psk-qr-backfill",
+  "./app.js?v=447-psk-counter-backfill",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

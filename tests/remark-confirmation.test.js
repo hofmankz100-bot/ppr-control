@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=446-psk-qr-backfill/);
-  assert.match(html, /styles\.css\?v=446-psk-qr-backfill/);
-  assert.match(serviceWorker, /app\.js\?v=446-psk-qr-backfill/);
+  assert.match(html, /app\.js\?v=447-psk-counter-backfill/);
+  assert.match(html, /styles\.css\?v=447-psk-counter-backfill/);
+  assert.match(serviceWorker, /app\.js\?v=447-psk-counter-backfill/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1115,6 +1115,8 @@ test("QR PSK status and comment are synchronized with the gas journal", () => {
   assert.match(serverSource, /sectionADescriptor\?\.kind === "psk"/);
   assert.match(serverSource, /const checkKey = `psk:\$\{mark\.shift\}`/);
   assert.match(serverSource, /buildShgrpSectionARowServer\(\{ \.\.\.current, shgrpQrChecks: checks \}/);
+  assert.match(serverSource, /recordKey\.match\(\/\^15:5:/);
+  assert.match(serverSource, /record\?\.to\?\.walkGroups\?\.technical\?\.\[shift\]/);
   assert.match(serverSource, /\.map\(entry => `\$\{entry\.label\}: \$\{entry\.comment\}`\)/);
   assert.match(appSource, /if \(text === "Исправно"\) return "Нет"/);
   assert.match(appSource, /if \(text === "Неисправно"\) return "Есть"/);

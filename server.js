@@ -3794,6 +3794,38 @@ function reconcileMissingShgrpQrChecksServer(db) {
     db.gasJournal[rowId] = buildGrpSectionBRowServer({ ...current, grpQrChecks: checks }, mark.date, new Date().toISOString(), { name: "Система", role: "system" });
     changed = true;
   });
+  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+    const match = recordKey.match(/^15:5:(\d{4}-\d{2}-\d{2})$/);
+    if (!match) return;
+    const date = match[1];
+    ["day", "night"].forEach(shift => {
+      const walk = record?.to?.walkGroups?.technical?.[shift] || record?.to?.walkShifts?.[shift];
+      if (!walk?.done) return;
+      const rowId = `A::${date}`;
+      const current = db.gasJournal[rowId] && typeof db.gasJournal[rowId] === "object" ? db.gasJournal[rowId] : {};
+      const checks = current.shgrpQrChecks && typeof current.shgrpQrChecks === "object" ? { ...current.shgrpQrChecks } : {};
+      const checkKey = `psk:${shift}`;
+      if (checks[checkKey]) return;
+      const remarks = Array.isArray(record?.to?.commentLog) ? record.to.commentLog : [];
+      const linkedRemark = remarks.slice().reverse().find(entry => {
+        const stamp = walkShiftAtServer(entry?.at);
+        return stamp.date === date && stamp.shift === shift;
+      });
+      checks[checkKey] = {
+        kind: "psk", label: "ПСК", shift, shiftLabel: shift === "night" ? "Ночь" : "День",
+        at: String(walk.at || linkedRemark?.at || record.updatedAt || new Date().toISOString()),
+        status: linkedRemark ? "remark" : "ok",
+        comment: linkedRemark ? String(linkedRemark.text || "Замечание") : "Замечаний нет",
+        sourceRecordKey: recordKey, remarkId: String(linkedRemark?.id || ""),
+        byId: "", byName: String(walk.byName || linkedRemark?.name || "").slice(0, 200),
+        byRole: String(walk.byRole || linkedRemark?.role || "").slice(0, 100)
+      };
+      const row = buildShgrpSectionARowServer({ ...current, shgrpQrChecks: checks }, date, shift, new Date().toISOString(), { name: "Система", role: "system" });
+      const shiftRows = { ...(current.shiftRows || {}), [shift]: row };
+      db.gasJournal[rowId] = { ...row, shiftRows };
+      changed = true;
+    });
+  });
   return changed;
 }
 
