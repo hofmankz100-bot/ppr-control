@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v455-mobile-welding-form";
+const APP_VERSION = "v456-production-workshops";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -373,7 +373,7 @@ let remoteSavePending = false;
 let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
   "checks", "requests", "orders", "inventory", "catalog", "serviceCosts",
-  "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "weldingJournal", "pprSheets", "annualPpr", "journalDueSince",
+  "downtimes", "compressorJournal", "gasJournal", "gpmJournal", "weldingJournal", "turningJournal", "pprSheets", "annualPpr", "journalDueSince",
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
 const remoteSectionFingerprints = new Map();
@@ -977,6 +977,7 @@ function loadState() {
     parsed.gpmJournal.events ||= {};
     parsed.gpmJournal.managers ||= {};
     parsed.weldingJournal ||= {};
+    parsed.turningJournal ||= {};
     parsed.nodeDocumentMemoRoles ||= ["energyEngineer", "designEngineer", "mechanicalEngineer"];
     parsed.pprSheets ||= {};
     parsed.annualPpr ||= {};
@@ -997,7 +998,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, weldingJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -2401,6 +2402,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.weldingJournal = preferRemote
     ? { ...(remote.weldingJournal || {}) }
     : mergeObjectByFreshnessLocal(state.weldingJournal || {}, remote.weldingJournal || {});
+  state.turningJournal = preferRemote
+    ? { ...(remote.turningJournal || {}) }
+    : mergeObjectByFreshnessLocal(state.turningJournal || {}, remote.turningJournal || {});
   state.pprSheets = preferRemote
     ? { ...(remote.pprSheets || {}) }
     : mergeObjectByFreshnessLocal(state.pprSheets || {}, remote.pprSheets || {});
@@ -2449,6 +2453,7 @@ function mergeRealtimePatch(remote = {}) {
     state.gpmJournal.managerMigrationVersion = remote.gpmJournal.managerMigrationVersion || state.gpmJournal.managerMigrationVersion || "";
   }
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
+  if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
   if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
   if (remote.orders) state.orders = mergeObjectByFreshnessLocal(state.orders, remote.orders);
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
@@ -8936,6 +8941,20 @@ function isWelderUser(user = profile || authenticatedProfile || {}) {
   return WELDER_TITLE_PATTERN.test([user?.position, user?.jobTitle, user?.profession, user?.jobRoleLabel, ROLE_ACCESS[user?.jobRole]?.label].filter(Boolean).join(" "));
 }
 
+function isTurnerUser(user = profile || authenticatedProfile || {}) {
+  if ([user?.role, user?.jobRole, user?.editorPreviewRole].some(value => String(value || "") === "turner")) return true;
+  return /(^|\s|[-–—])токарь/i.test([user?.position, user?.jobTitle, user?.profession, ROLE_ACCESS[user?.jobRole]?.label].filter(Boolean).join(" "));
+}
+
+function isProductionWorkerProfile(user = profile || {}) {
+  return isWelderUser(user) || isTurnerUser(user);
+}
+
+function applyProductionWorkerVisibility() {
+  const limited = isProductionWorkerProfile();
+  document.body.classList.toggle("production-worker-profile", limited);
+}
+
 function weldingRecords() {
   state.weldingJournal ||= {};
   return Object.values(state.weldingJournal).filter(item => item && !item.deletedAt);
@@ -8954,10 +8973,34 @@ function weldingPendingCount() {
   ).length;
 }
 
+function turningRecords() {
+  state.turningJournal ||= {};
+  return Object.values(state.turningJournal).filter(item => item && !item.deletedAt);
+}
+
+function turningPendingCount() {
+  const actor = weldingActor();
+  return turningRecords().filter(item =>
+    (isTurnerUser() && ["new", "returned"].includes(item.status))
+    || (item.status === "awaitingAcceptance" && item.createdById === actor.id)
+  ).length;
+}
+
 function updateWeldingBadge() {
-  const count = weldingPendingCount();
+  const count = weldingPendingCount() + turningPendingCount();
   if (ui.weldingHomeBadge) ui.weldingHomeBadge.textContent = String(count);
-  ui.weldingHomeButton?.classList.toggle("has-pending", isWelderUser() && count > 0);
+  ui.weldingHomeButton?.classList.toggle("has-pending", isProductionWorkerProfile() && count > 0);
+}
+
+function productionTabs(active) {
+  return `<div class="production-work-tabs" role="tablist" aria-label="Вид производственных работ"><button type="button" data-production-tab="welding" class="${active === "welding" ? "active" : ""}">Сварочные работы <b>${weldingPendingCount()}</b></button><button type="button" data-production-tab="turning" class="${active === "turning" ? "active" : ""}">Токарные работы <b>${turningPendingCount()}</b></button></div>`;
+}
+
+function bindProductionTabs() {
+  ui.weldingPanel?.querySelectorAll("[data-production-tab]").forEach(button => button.addEventListener("click", () => {
+    current.productionTab = button.dataset.productionTab;
+    renderWeldingJournal();
+  }));
 }
 
 function weldingTypeLabel(value) {
@@ -9095,13 +9138,15 @@ function weldingRecordCard(item) {
 }
 
 function renderWeldingJournal() {
+  current.productionTab ||= isTurnerUser() && !isWelderUser() ? "turning" : "welding";
+  if (current.productionTab === "turning") return renderTurningJournal();
   updateWeldingBadge();
   if (!ui.weldingPanel) return;
   const month = current.weldingMonth || todayISO().slice(0, 7);
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
   ui.subtitle.textContent = "Сварочные работы";
-  ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварочные работы</h1><p>Заявки, выполнение и производственный журнал</p></div></div>
+  ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
     <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Заполните три коротких поля — дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
       <label><span><b>1</b> Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
@@ -9112,6 +9157,7 @@ function renderWeldingJournal() {
     <div class="welding-summary"><span>Новые: <b>${records.filter(x => x.status === "new").length}</b></span><span>В работе: <b>${records.filter(x => ["accepted", "returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x => x.status === "awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x => x.status === "completed").length}</b></span></div>
     <div class="welding-list">${records.length ? records.map(weldingRecordCard).join("") : `<div class="empty-state">Заявок на сварочные работы пока нет.</div>`}</div>`;
   ui.weldingPanel.querySelector("#weldingRequestForm")?.addEventListener("submit", event => { event.preventDefault(); createWeldingRequest(event.currentTarget); });
+  bindProductionTabs();
   ui.weldingPanel.querySelector("[data-welding-month]")?.addEventListener("change", event => { current.weldingMonth = event.currentTarget.value || todayISO().slice(0, 7); renderWeldingJournal(); });
   ui.weldingPanel.querySelector("[data-welding-print]")?.addEventListener("click", () => printWeldingJournal(month));
   ui.weldingPanel.querySelectorAll("[data-welding-id]").forEach(card => {
@@ -9132,6 +9178,56 @@ function printWeldingJournal(month = todayISO().slice(0, 7)) {
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Ф.И.О.; клеймо; удостоверение</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(item.welderName || "—")}<br>Клеймо: ${escapeHtml(item.welderStamp || "не указано")}<br>Уд.: ${escapeHtml(item.welderCertificate || "не указано")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   win.document.close();
 }
+
+function saveTurningRecord(record) {
+  state.turningJournal ||= {};
+  state.turningJournal[record.id] = { ...record, updatedAt: new Date().toISOString() };
+  saveState(); updateWeldingBadge(); renderTurningJournal();
+}
+
+function createTurningRequest(form) {
+  const data = new FormData(form), actor = weldingActor(), now = new Date().toISOString();
+  const description = String(data.get("description") || "").trim();
+  if (!description) return window.alert("Опишите деталь или требуемую токарную обработку.");
+  saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role });
+  showAppToast("Заявка на токарные работы отправлена.");
+}
+
+function turningTypeLabel(value) { return ({ manufacture:"Изготовление", restore:"Восстановление", drawing:"По чертежу", emergency:"Аварийный ремонт" })[value] || value || "—"; }
+
+function acceptTurningRequest(item) {
+  if (!isTurnerUser()) return window.alert("Принять заявку может только сотрудник с ролью или должностью токаря.");
+  if (item.status !== "new") return window.alert("Эта заявка уже принята другим токарем.");
+  const actor=weldingActor();
+  saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role });
+  window.setTimeout(()=>{ const card=ui.weldingPanel?.querySelector(`[data-turning-id="${CSS.escape(item.id)}"]`); card?.scrollIntoView({behavior:"smooth",block:"start"}); card?.querySelector("textarea[name='material']")?.focus({preventScroll:true}); },80);
+}
+
+function completeTurningRequest(item, form) {
+  const actor=weldingActor();
+  if (!isTurnerUser() || (item.turnerId && item.turnerId !== actor.id && profile?.role !== "editor")) return window.alert("Завершить работу может принявший её токарь или администратор.");
+  const d=new FormData(form); const material=String(d.get("material")||"").trim(); const operations=String(d.get("operations")||"").trim();
+  if (!material || !operations) return window.alert("Заполните материал и выполненные операции.");
+  saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name });
+  showAppToast("Работа отправлена заявителю на приёмку.");
+}
+
+function acceptTurningWork(item) { const actor=weldingActor(); if(item.status!=="awaitingAcceptance"||item.createdById!==actor.id)return window.alert("Принять работу может только её заявитель."); saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:new Date().toISOString(),acceptedByRequesterId:actor.id,acceptedByRequesterName:actor.name}); showAppToast("Токарная работа принята и внесена в журнал."); }
+function returnTurningWork(item) { const actor=weldingActor(); if(item.status!=="awaitingAcceptance"||item.createdById!==actor.id)return window.alert("Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}); showAppToast("Работа возвращена токарю на доработку."); }
+
+function turningCard(item) {
+  const actor=weldingActor(), canAccept=item.status==="new"&&isTurnerUser(), canComplete=["accepted","returned"].includes(item.status)&&isTurnerUser()&&(!item.turnerId||item.turnerId===actor.id||profile?.role==="editor"), requesterCanDecide=item.status==="awaitingAcceptance"&&item.createdById===actor.id;
+  return `<article class="welding-card turning-card status-${escapeHtml(item.status)}" data-turning-id="${escapeHtml(item.id)}"><div class="welding-card-head"><div><strong>${escapeHtml(item.description)}</strong><small>${escapeHtml(turningTypeLabel(item.requestType))}${item.drawingNumber?` · ${escapeHtml(item.drawingNumber)}`:""}${item.quantity?` · ${escapeHtml(item.quantity)} шт.`:""}</small></div><span>${escapeHtml(weldingStatusLabel(item.status))}</span></div><p>Заявитель: <b>${escapeHtml(item.createdByName||"—")}</b> · ${escapeHtml(dateTimeHuman(item.createdAt))}</p>${item.turnerName?`<p>Токарь: <b>${escapeHtml(item.turnerName)}</b></p>`:""}${["awaitingAcceptance","returned","completed"].includes(item.status)?`<div class="welding-result"><p><b>Материал:</b> ${escapeHtml(item.material||"—")}</p><p><b>Заготовка / станок:</b> ${escapeHtml(item.blankSize||"—")} / ${escapeHtml(item.machine||"—")}</p><p><b>Операции:</b> ${escapeHtml(item.operations||"—")}</p><p><b>Изготовлено / годных / брак:</b> ${escapeHtml(item.madeQty||"0")} / ${escapeHtml(item.goodQty||"0")} / ${escapeHtml(item.rejectQty||"0")}</p>${item.measurements?`<p><b>Контрольные размеры:</b><br>${escapeHtml(item.measurements)}</p>`:""}${item.rejectReason?`<p><b>Причина брака:</b> ${escapeHtml(item.rejectReason)}</p>`:""}${item.returnReason?`<p class="welding-return-reason"><b>Возвращено:</b> ${escapeHtml(item.returnReason)}</p>`:""}</div>`:""}${canAccept?`<button type="button" class="primary-nav-button" data-turning-accept>Принять заявку</button>`:""}${requesterCanDecide?`<div class="welding-requester-decision"><strong>Личное сообщение: токарь завершил вашу заявку</strong><div><button type="button" data-turning-requester-accept>Принять работу</button><button type="button" class="danger" data-turning-requester-return>Вернуть токарю</button></div></div>`:""}${canComplete?`<form class="welding-complete-form turning-complete-form"><div class="welding-form-title"><strong>${item.status==="returned"?"Доработка детали":"Заполнение токарной работы"}</strong><span>Заполните данные по выполненной детали</span></div><label><span><b>1</b> Материал и марка</span><textarea name="material" required>${escapeHtml(item.status==="returned"?item.material||"":"")}</textarea></label><label><span><b>2</b> Размер заготовки</span><input name="blankSize" value="${escapeHtml(item.status==="returned"?item.blankSize||"":"")}" placeholder="Диаметр, длина"></label><label><span><b>3</b> Станок</span><input name="machine" value="${escapeHtml(item.status==="returned"?item.machine||"":"")}" placeholder="Название или номер"></label><label><span><b>4</b> Выполненные операции</span><textarea name="operations" required placeholder="Точение, растачивание, резьба...">${escapeHtml(item.status==="returned"?item.operations||"":"")}</textarea></label><div class="turning-qty-grid"><label><span>Изготовлено</span><input name="madeQty" inputmode="numeric" value="${escapeHtml(item.status==="returned"?item.madeQty||"":"")}"></label><label><span>Годных</span><input name="goodQty" inputmode="numeric" value="${escapeHtml(item.status==="returned"?item.goodQty||"":"")}"></label><label><span>Брак</span><input name="rejectQty" inputmode="numeric" value="${escapeHtml(item.status==="returned"?item.rejectQty||"":"")}"></label></div><label><span><b>5</b> Контрольные размеры: по чертежу / фактически</span><textarea name="measurements" placeholder="Диаметр: 50 / 49,98 мм&#10;Длина: 120 / 120,1 мм">${escapeHtml(item.status==="returned"?item.measurements||"":"")}</textarea></label><label><span><b>6</b> Причина брака</span><textarea name="rejectReason" placeholder="Если брака нет — оставьте пустым">${escapeHtml(item.status==="returned"?item.rejectReason||"":"")}</textarea></label><label><span><b>7</b> Комментарий</span><textarea name="workComment">${escapeHtml(item.status==="returned"?item.workComment||"":"")}</textarea></label><div class="welding-mobile-submit"><button type="submit">✓ Завершить и отправить заявителю</button></div></form>`:""}</article>`;
+}
+
+function renderTurningJournal() {
+  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||todayISO().slice(0,7); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
+  ui.subtitle.textContent="Токарные работы";
+  ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку и заполните технологические данные детали.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x=>x.status==="completed").length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
+  bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||todayISO().slice(0,7);renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
+}
+
+function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Токарь / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(x.turnerName||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); win.document.close(); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);
@@ -9191,6 +9287,7 @@ function render() {
   updateDowntimeBadge();
   updateGpmBadge();
   updateRoleBadges();
+  applyProductionWorkerVisibility();
   renderGlobalReminderPanel();
   if (current.view === "equipment") renderEquipment();
   if (current.view === "node") renderNodes();
@@ -10516,6 +10613,15 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 
 function renderEquipment() {
   const activeWalkGroup = qrWalkGroup();
+  if (isProductionWorkerProfile()) {
+    ui.subtitle.textContent = "Производственные работы";
+    ui.equipmentList.innerHTML = `<section class="production-worker-home">
+      <div><span>Рабочее место</span><h1>${isTurnerUser() && !isWelderUser() ? "Токарные работы" : "Сварочные работы"}</h1><p>Здесь находятся ваши заявки, заполнение выполненных работ и журнал для печати.</p></div>
+      <button type="button" data-open-production-work>Открыть производственные работы</button>
+    </section>`;
+    ui.equipmentList.querySelector("[data-open-production-work]")?.addEventListener("click", () => show("welding"));
+    return;
+  }
   ui.subtitle.textContent = "Оборудование";
   const editorSchedule = false;
   const today = new Date();
