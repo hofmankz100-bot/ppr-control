@@ -2882,7 +2882,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "monthCloseManage", "remarkGlobalConfirm", "orderJournalManage"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "aggregateJournalCorrect", "monthCloseManage", "remarkGlobalConfirm", "orderJournalManage"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
@@ -7151,7 +7151,7 @@ async function handleApi(req, res, pathname, url) {
       }
 
       if (action === "admin-edit-resolved") {
-        if (actor.role !== "editor" || !remark.resolved || remark.closedWithoutScore) return { error: "remark_confirmation_forbidden" };
+        if ((actor.role !== "editor" && !activeUserPermission(registeredActor, "aggregateJournalCorrect")) || !remark.resolved || remark.closedWithoutScore) return { error: "remark_confirmation_forbidden" };
         const defectText = String(body.defectText || "").trim().slice(0, 4000);
         const resolvedComment = String(body.resolvedComment || "").trim().slice(0, 4000);
         const performerKey = String(body.performerKey || "").trim();

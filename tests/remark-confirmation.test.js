@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=457-aggregate-corrections/);
-  assert.match(html, /styles\.css\?v=457-aggregate-corrections/);
-  assert.match(serviceWorker, /app\.js\?v=457-aggregate-corrections/);
+  assert.match(html, /app\.js\?v=458-aggregate-permissions/);
+  assert.match(html, /styles\.css\?v=458-aggregate-permissions/);
+  assert.match(serviceWorker, /app\.js\?v=458-aggregate-permissions/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1815,6 +1815,9 @@ test("aggregate journal corrections reassign the scorer and exclude no-score clo
   assert.match(clientSource, /data-correct-resolved-remark/);
   assert.match(clientSource, /Комментарий исправил/);
   assert.match(serverSource, /action === "admin-edit-resolved"/);
+  assert.match(clientSource, /canCorrectAggregateJournal/);
+  assert.match(clientSource, /aggregateJournalCorrect","Исправление записей агрегатного журнала/);
+  assert.match(serverSource, /activeUserPermission\(registeredActor, "aggregateJournalCorrect"\)/);
   assert.match(serverSource, /remark\.resolutionCompletedParticipants = \[performer\]/);
   assert.match(serverSource, /remark\.confirmedByKey = actor\.key/);
   const correctionBlock = serverSource.slice(serverSource.indexOf('if (action === "admin-edit-resolved")'), serverSource.indexOf('if (action === "confirm")'));

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v457-aggregate-corrections";
+const APP_VERSION = "v458-aggregate-permissions";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -281,6 +281,7 @@ function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {
 function canManageMonthClose(user = authenticatedProfile || profile || {}) { return activeUserPermission(user, "monthCloseManage"); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canManageOrderJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "orderJournalManage")); }
+function canCorrectAggregateJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "aggregateJournalCorrect"); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -16502,7 +16503,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"],["orderJournalManage","Создание и подтверждение распоряжений"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"],["orderJournalManage","Создание и подтверждение распоряжений"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }
@@ -16931,7 +16932,7 @@ function renderAggregateJournal() {
   const openCount = items.filter(item => !item.resolved).length;
   const repairMode = profile?.role === "editor"
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
-  const correctionUsers = profile?.role === "editor" ? eligibleResolutionUsers(selectedEquipment) : [];
+  const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -17006,7 +17007,7 @@ function renderAggregateJournal() {
                 <td>
                   ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
                   ${item.commentEditedByName ? `<small class="aggregate-comment-editor">Комментарий исправил: ${escapeHtml(item.commentEditedByName)} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}</small>` : ""}
-                  ${profile?.role === "editor" && item.kind === "Замечание" && item.resolved ? `
+                  ${canCorrectAggregateJournal() && item.kind === "Замечание" && item.resolved ? `
                     <details class="aggregate-correction no-print">
                       <summary>Исправить запись</summary>
                       <label>Комментарий замечания<textarea data-correction-defect>${escapeHtml(item.text || "")}</textarea></label>
