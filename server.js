@@ -3321,7 +3321,8 @@ function remarkDecisionTime(entry = {}) {
   return Math.max(
     Date.parse(entry.confirmedAt || "") || 0,
     Date.parse(entry.resolutionReturnedAt || "") || 0,
-    Date.parse(entry.resolutionSubmittedAt || "") || 0
+    Date.parse(entry.resolutionSubmittedAt || "") || 0,
+    Date.parse(entry.commentEditedAt || "") || 0
   );
 }
 
@@ -3340,6 +3341,7 @@ function mergeCommentLogs(current = [], incoming = []) {
     const preservePreviousDecision = fromIncoming && previousDecisionTime > 0 && previousDecisionTime >= incomingDecisionTime;
     if (preservePreviousDecision) {
       [
+        "text", "commentEditedAt", "commentEditedByKey", "commentEditedByName", "commentEditedByRole",
         "resolved",
         "resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto",
         ...REMARK_COLLABORATION_FIELDS_SERVER
@@ -3352,6 +3354,7 @@ function mergeCommentLogs(current = [], incoming = []) {
     }
     next.resolutionEvents = mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents);
     next.resolutionUpdates = mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.commentEditHistory = mergeRemarkHistoryItems(previous.commentEditHistory, entry.commentEditHistory);
     next.resolutionParticipants = mergeRemarkHistoryItems(
       previous.resolutionParticipants,
       entry.resolutionParticipants,
@@ -6737,7 +6740,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "close-no-score", "close-with-score"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score"]);
     const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
@@ -6751,7 +6754,7 @@ async function handleApi(req, res, pathname, url) {
       const remarkId = String(body.remarkId || "").trim();
       const remarks = ensureRemarkEntriesServer(item);
       const remark = remarks.find(entry => entry.id === remarkId);
-      if (!remark || remark.resolved) return { error: "remark_not_open" };
+      if (!remark || (remark.resolved && action !== "admin-edit-resolved")) return { error: "remark_not_open" };
       const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
       const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
       const delegatedByEditor = req.authUser?.role === "editor";
@@ -7145,6 +7148,73 @@ async function handleApi(req, res, pathname, url) {
         notifyParticipants = [performer];
         pushTitle = "Распределение устранения исправлено";
         pushBody = `${performer.name}: устранение подтверждено`;
+      }
+
+      if (action === "admin-edit-resolved") {
+        if (actor.role !== "editor" || !remark.resolved || remark.closedWithoutScore) return { error: "remark_confirmation_forbidden" };
+        const defectText = String(body.defectText || "").trim().slice(0, 4000);
+        const resolvedComment = String(body.resolvedComment || "").trim().slice(0, 4000);
+        const performerKey = String(body.performerKey || "").trim();
+        const performerUser = (db.users || []).find(user =>
+          resolutionUserKeyServer(user) === performerKey
+          && user.approved !== false
+          && user.pendingApproval !== true
+          && isResolutionExecutorRoleServer(user.role)
+        );
+        if (!defectText || !resolvedComment || !performerUser) return { error: "remark_participant_invalid" };
+        const performer = sanitizeResolutionParticipant(performerUser);
+        participants = [performer];
+        const previousPerformers = resolutionParticipantsServer({
+          resolutionParticipants: remark.resolutionCompletedParticipants?.length
+            ? remark.resolutionCompletedParticipants
+            : remark.resolutionParticipants
+        });
+        const previousDefectText = String(remark.text || "");
+        const previousResolvedComment = String(remark.resolvedComment || "");
+        remark.text = defectText;
+        remark.resolvedComment = resolvedComment;
+        remark.resolutionParticipants = [performer];
+        remark.resolutionCompletedParticipants = [performer];
+        remark.resolutionLeadKey = performer.key;
+        remark.resolutionLeadName = performer.name;
+        remark.resolvedByKey = performer.key;
+        remark.resolvedByName = performer.name;
+        remark.resolvedByRole = performer.role;
+        remark.commentEditHistory = Array.isArray(remark.commentEditHistory) ? remark.commentEditHistory : [];
+        remark.commentEditHistory.push({
+          id: `remark-edit:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          at: now,
+          editorKey: actor.key,
+          editorName: actor.name,
+          editorRole: actor.role,
+          previousDefectText,
+          defectText,
+          previousResolvedComment,
+          resolvedComment,
+          previousPerformerKeys: previousPerformers.map(entry => entry.key),
+          previousPerformerNames: previousPerformers.map(entry => entry.name),
+          performerKey: performer.key,
+          performerName: performer.name,
+          performerRole: performer.role
+        });
+        remark.commentEditedAt = now;
+        remark.commentEditedByKey = actor.key;
+        remark.commentEditedByName = actor.name;
+        remark.commentEditedByRole = actor.role;
+        remark.resolutionEvents.push({
+          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
+          action: "resolved-record-edited",
+          actorKey: actor.key,
+          name: actor.name,
+          role: actor.role,
+          targetKey: performer.key,
+          targetName: performer.name,
+          previousTargetKeys: previousPerformers.map(entry => entry.key),
+          at: now
+        });
+        notifyParticipants = [performer];
+        pushTitle = "Запись агрегатного журнала исправлена";
+        pushBody = `${actor.name}: исполнитель — ${performer.name}`;
       }
 
       if (action === "confirm") {

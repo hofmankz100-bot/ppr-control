@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v456-production-workshops";
+const APP_VERSION = "v457-aggregate-corrections";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9347,6 +9347,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     if (!item) return;
     visibleCommentEntries(item).forEach((entry, entryIndex) => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
+      if (entry.closedWithoutScore) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
         recordKey,
@@ -9371,6 +9372,10 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         confirmedAt: entry.confirmedAt || "",
         confirmedByName: entry.confirmedByName || "",
         confirmedByRole: entry.confirmedByRole || "",
+        commentEditedAt: entry.commentEditedAt || "",
+        commentEditedByName: entry.commentEditedByName || "",
+        commentEditedByRole: entry.commentEditedByRole || "",
+        commentEditHistory: Array.isArray(entry.commentEditHistory) ? entry.commentEditHistory : [],
         durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
@@ -16926,6 +16931,7 @@ function renderAggregateJournal() {
   const openCount = items.filter(item => !item.resolved).length;
   const repairMode = profile?.role === "editor"
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
+  const correctionUsers = profile?.role === "editor" ? eligibleResolutionUsers(selectedEquipment) : [];
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -16999,6 +17005,20 @@ function renderAggregateJournal() {
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td>
                   ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
+                  ${item.commentEditedByName ? `<small class="aggregate-comment-editor">Комментарий исправил: ${escapeHtml(item.commentEditedByName)} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}</small>` : ""}
+                  ${profile?.role === "editor" && item.kind === "Замечание" && item.resolved ? `
+                    <details class="aggregate-correction no-print">
+                      <summary>Исправить запись</summary>
+                      <label>Комментарий замечания<textarea data-correction-defect>${escapeHtml(item.text || "")}</textarea></label>
+                      <label>Что выполнено<textarea data-correction-resolution>${escapeHtml(item.resolvedComment || "")}</textarea></label>
+                      <label>Кто реально устранил<select data-correction-performer>
+                        <option value="">Выберите сотрудника</option>
+                        ${correctionUsers.map(user => `<option value="${escapeHtml(user.key)}" ${completedResolutionParticipants(item).some(entry => entry.key === user.key) ? "selected" : ""}>${escapeHtml(resolutionParticipantLabel(user))}</option>`).join("")}
+                      </select></label>
+                      <p>Подтвердивший работу останется без изменения. Баллы будут перенесены выбранному исполнителю.</p>
+                      <button type="button" class="mini-action" data-correct-resolved-remark="${escapeHtml(item.recordKey)}" data-remark-id="${escapeHtml(item.remarkId)}">Сохранить исправление</button>
+                    </details>
+                  ` : ""}
                   ${repairMode && item.kind === "Замечание" && !item.resolved ? `
                     <span class="no-print">
                       <input type="text" data-repair-performer placeholder="Исполнитель" value="${escapeHtml(item.resolutionParticipants[0]?.name || item.resolvedByName || "")}">
@@ -17057,6 +17077,29 @@ function renderAggregateJournal() {
       current.aggregateRepairEquipmentId = 0;
       renderAggregateJournal();
     }, "Исправляем..."));
+  });
+  ui.aggregateJournalList.querySelectorAll("[data-correct-resolved-remark]").forEach(button => {
+    button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      const recordKey = event.currentTarget.dataset.correctResolvedRemark || "";
+      const remarkId = event.currentTarget.dataset.remarkId || "";
+      const form = event.currentTarget.closest(".aggregate-correction");
+      const defectText = form?.querySelector("[data-correction-defect]")?.value.trim() || "";
+      const resolvedComment = form?.querySelector("[data-correction-resolution]")?.value.trim() || "";
+      const performerKey = form?.querySelector("[data-correction-performer]")?.value || "";
+      if (!defectText || !resolvedComment || !performerKey) {
+        showAppToast("Заполните оба комментария и выберите фактического исполнителя.", "error");
+        return;
+      }
+      const [equipmentId, nodeIndex, date] = recordKey.split(":");
+      await publishRemarkCollaborationAction(Number(equipmentId), Number(nodeIndex), date, "admin-edit-resolved", {
+        remarkId,
+        defectText,
+        resolvedComment,
+        performerKey
+      });
+      showAppToast("Запись исправлена, баллы перенесены фактическому исполнителю.", "ok");
+      renderAggregateJournal();
+    }, "Сохраняем..."));
   });
 }
 

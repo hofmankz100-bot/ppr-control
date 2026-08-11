@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=456-production-workshops/);
-  assert.match(html, /styles\.css\?v=456-production-workshops/);
-  assert.match(serviceWorker, /app\.js\?v=456-production-workshops/);
+  assert.match(html, /app\.js\?v=457-aggregate-corrections/);
+  assert.match(html, /styles\.css\?v=457-aggregate-corrections/);
+  assert.match(serviceWorker, /app\.js\?v=457-aggregate-corrections/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1806,4 +1806,17 @@ test("order journal is separate, permission controlled, and scores every selecte
   assert.match(clientSource, /data-print-all-orders/);
   assert.match(clientSource, /@page\{size:A4 landscape/);
   assert.doesNotMatch(clientSource, /window\.open\("", "_blank", "noopener,noreferrer"\)/);
+});
+
+test("aggregate journal corrections reassign the scorer and exclude no-score closures", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(clientSource, /if \(entry\.closedWithoutScore\) return/);
+  assert.match(clientSource, /data-correct-resolved-remark/);
+  assert.match(clientSource, /Комментарий исправил/);
+  assert.match(serverSource, /action === "admin-edit-resolved"/);
+  assert.match(serverSource, /remark\.resolutionCompletedParticipants = \[performer\]/);
+  assert.match(serverSource, /remark\.confirmedByKey = actor\.key/);
+  const correctionBlock = serverSource.slice(serverSource.indexOf('if (action === "admin-edit-resolved")'), serverSource.indexOf('if (action === "confirm")'));
+  assert.doesNotMatch(correctionBlock, /remark\.confirmedByKey\s*=/);
 });
