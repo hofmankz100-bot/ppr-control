@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v450-remove-create-request";
+const CACHE_NAME = "ppr-v451-single-attendance-button";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=450-remove-create-request",
+  "./styles.css?v=451-single-attendance-button",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=421-annual-ppr-equipment-acts",
-  "./app.js?v=450-remove-create-request",
+  "./app.js?v=451-single-attendance-button",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

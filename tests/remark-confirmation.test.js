@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=450-remove-create-request/);
-  assert.match(html, /styles\.css\?v=450-remove-create-request/);
-  assert.match(serviceWorker, /app\.js\?v=450-remove-create-request/);
+  assert.match(html, /app\.js\?v=451-single-attendance-button/);
+  assert.match(html, /styles\.css\?v=451-single-attendance-button/);
+  assert.match(serviceWorker, /app\.js\?v=451-single-attendance-button/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1045,7 +1045,7 @@ test("engineers receive visible counters and push notifications for incoming req
   assert.match(appSource, /requestedView === "requestCreate"/);
   assert.match(appSource, /function syncPushSubscriptionProfile\(\)/);
   assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role, actor\.area, actor\.language \|\| currentLanguage\(\)\]/);
-  assert.match(htmlSource, /data-mobile-request-count/);
+  assert.doesNotMatch(htmlSource, /data-mobile-request-count/);
   assert.match(serverSource, /sendEngineerRequestPushNotifications/);
   assert.match(serverSource, /engineerPermissionRoleServer\(entry\.profile\) === "engineer"/);
   assert.match(serverSource, /ALKZ — новая заявка инженеру/);
@@ -1608,6 +1608,21 @@ test("create request feature is removed and production erases request records", 
   assert.match(server, /error: "request_feature_removed"/);
 });
 
+test("mobile navigation reuses one attendance button instead of the removed request slot", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.equal((html.match(/id="attendanceHomeButton"/g) || []).length, 1);
+  assert.doesNotMatch(html, /data-mobile-view="requestCreate"/);
+  assert.doesNotMatch(html, /data-mobile-view="requests"/);
+  assert.match(html, /id="attendanceHomeButton"[^>]*data-mobile-view="attendance"/);
+  assert.match(client, /function placeSingleAttendanceButton\(\)/);
+  assert.match(client, /mobileNav\.prepend\(button\)/);
+  assert.match(client, /quickNav\.insertBefore\(button, permitButton\)/);
+  assert.match(styles, /\.mobile-nav \[data-mobile-view="attendance"\]/);
+  assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+});
+
 test("a full server refresh replaces stale local check records", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /state\.checks = preferRemote\s*\? compactCheckRecords\(\{ \.\.\.\(remote\.checks \|\| \{\}\) \}\)\s*:\s*compactCheckRecords\(mergeCheckRecordsLocal\(state\.checks, remote\.checks\)\)/);
@@ -1751,14 +1766,15 @@ test("requests are printable documents and never reduce factory status", () => {
   assert.doesNotMatch(repairs, /allRequests/);
 });
 
-test("mobile users have a direct warnings inbox with a live count", () => {
+test("mobile users use the single main warnings button", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(htmlSource, /data-mobile-view="requests"[\s\S]*?Предупреждения[\s\S]*?data-mobile-remark-count/);
+  assert.match(htmlSource, /id="alertCounter"[\s\S]*?Предупреждения/);
+  assert.doesNotMatch(htmlSource, /data-mobile-view="requests"/);
   assert.match(clientSource, /view === "requests" && MANUAL_REQUEST_WORKFLOW\) return isProfileReady\(\)/);
   assert.match(clientSource, /mobileRemarkCount\.textContent = ownWaiting/);
-  assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="requests"\][\s\S]*?grid-column:\s*2/);
+  assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="attendance"\][\s\S]*?grid-column:\s*1/);
 });
 
 test("director private messaging is removed while admin employee approval remains", () => {

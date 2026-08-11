@@ -13,7 +13,7 @@
   <link rel="icon" href="icon.svg?v=176" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png?v=176">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=450-remove-create-request">
+  <link rel="stylesheet" href="styles.css?v=451-single-attendance-button">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -94,7 +94,7 @@
           <button type="button" data-open-role="operator">Оператор</button>
           <button type="button" id="factoryStatusButton" class="factory-status-button" hidden><span>Состояние завода</span><strong>🏭</strong></button>
           <button type="button" id="qrWalkButton" class="qr-walk-button"><span>Обход QR</span><strong>▣</strong></button>
-          <button type="button" id="attendanceHomeButton" class="attendance-home-button" hidden><span>Кто на работе</span><strong>👥</strong></button>
+          <button type="button" id="attendanceHomeButton" class="attendance-home-button" data-mobile-view="attendance" hidden><span>Кто на работе</span><strong>👥</strong></button>
           <button type="button" id="createTmcRequestButton" class="primary-nav-button" hidden><span>Создать заявку</span><strong>+</strong></button>
           <button type="button" id="workPermitButton" class="work-permit-home-button"><span>Наряд-допуск</span><strong aria-hidden="true">🦺</strong></button>
           <button type="button" id="alertCounter"><span>Предупреждения</span><strong>0</strong></button>
@@ -247,16 +247,6 @@
         <span class="iphone-home-button" aria-hidden="true"><i></i></span>
         <small>Назад</small>
       </button>
-      <button type="button" data-mobile-view="requestCreate" hidden>
-        <span aria-hidden="true">+</span>
-        <small>Создать</small>
-        <strong class="mobile-request-count" data-mobile-request-count hidden>0</strong>
-      </button>
-      <button type="button" data-mobile-view="requests">
-        <span aria-hidden="true">!</span>
-        <small>Предупреждения</small>
-        <strong class="mobile-request-count" data-mobile-remark-count hidden>0</strong>
-      </button>
       <button type="button" data-mobile-view="downtime">
         <span aria-hidden="true">◷</span>
         <small>Простои</small>
@@ -279,7 +269,7 @@
   <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts"></script>
   <script src="node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts"></script>
   <script src="modules/work-permit.js?v=421-annual-ppr-equipment-acts"></script>
-  <script src="app.js?v=450-remove-create-request"></script>
+  <script src="app.js?v=451-single-attendance-button"></script>
 </body>
 </html>
 

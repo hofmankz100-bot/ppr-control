@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v450-remove-create-request";
+const APP_VERSION = "v451-single-attendance-button";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -17873,6 +17873,30 @@ function disableTmcRequestFeature() {
   document.querySelectorAll('[data-mobile-view="requestCreate"], [data-open-engineer-requests], [data-open-engineer-incoming]').forEach(element => element.remove());
 }
 
+function placeSingleAttendanceButton() {
+  const button = ui.attendanceHomeButton;
+  const mobileNav = document.querySelector(".mobile-nav");
+  const quickNav = document.querySelector("#equipmentScreen .quick-nav");
+  if (!button || !mobileNav || !quickNav) return;
+  if (window.matchMedia("(max-width: 680px)").matches) {
+    if (button.dataset.layout !== "mobile") {
+      button.innerHTML = '<span aria-hidden="true">👥</span><small>Кто на работе</small>';
+      button.dataset.layout = "mobile";
+    }
+    if (button.parentElement !== mobileNav) mobileNav.prepend(button);
+    return;
+  }
+  if (button.dataset.layout !== "desktop") {
+    button.innerHTML = '<span>Кто на работе</span><strong aria-hidden="true">👥</strong>';
+    button.dataset.layout = "desktop";
+  }
+  if (button.parentElement !== quickNav) {
+    const permitButton = ui.workPermitButton;
+    if (permitButton?.parentElement === quickNav) quickNav.insertBefore(button, permitButton);
+    else quickNav.append(button);
+  }
+}
+
 window.addEventListener("error", event => {
   reportClientError(event.message, event.filename, event.lineno, event.colno);
 });
@@ -17919,6 +17943,8 @@ if ("serviceWorker" in navigator) {
 
 setupTheme();
 disableTmcRequestFeature();
+placeSingleAttendanceButton();
+window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);
 setupPublicAttendanceEntry();
