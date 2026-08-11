@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v451-single-attendance-button";
+const CACHE_NAME = "ppr-v454-local-welding-acceptance";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=451-single-attendance-button",
+  "./styles.css?v=454-local-welding-acceptance",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=421-annual-ppr-equipment-acts",
-  "./app.js?v=451-single-attendance-button",
+  "./app.js?v=454-local-welding-acceptance",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

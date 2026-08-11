@@ -182,7 +182,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, weldingJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -277,6 +277,7 @@ function normalizeDb(db) {
   db.gpmJournal.inspections ||= {};
   db.gpmJournal.events ||= {};
   db.gpmJournal.managers ||= {};
+  db.weldingJournal ||= {};
   db.pprSheets ||= {};
   db.annualPpr ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
@@ -1720,6 +1721,7 @@ function publicState(db = readDb()) {
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
     gpmJournal: db.gpmJournal,
+    weldingJournal: db.weldingJournal || {},
     pprSheets: db.pprSheets,
     annualPpr: db.annualPpr,
     journalDueSince: db.journalDueSince,
@@ -6221,6 +6223,7 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
+        db.weldingJournal = {};
         db.pprSheets = {};
         db.journalDueSince = {};
         db.auditHistory = [];
@@ -6229,7 +6232,7 @@ async function handleApi(req, res, pathname, url) {
       }
       const operationalFields = [
         "checks", "requests", "serviceCosts", "downtimes",
-        "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
+        "compressorJournal", "gasJournal", "gpmJournal", "weldingJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
       const hasOperationalPayload = operationalFields.some(field => Object.prototype.hasOwnProperty.call(body, field));
@@ -6266,6 +6269,7 @@ async function handleApi(req, res, pathname, url) {
           managers: mergeObjectRecordsByFreshness(db.gpmJournal?.managers, body.gpmJournal?.managers),
           managerMigrationVersion: db.gpmJournal?.managerMigrationVersion || body.gpmJournal?.managerMigrationVersion || ""
         };
+        db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
         db.annualPpr = mergeObjectRecordsByFreshness(db.annualPpr, body.annualPpr);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
