@@ -75,7 +75,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v449-qr-cross-device-sync";
+const APP_VERSION = "v450-remove-create-request";
+const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -2355,9 +2356,11 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.checks = preferRemote
     ? compactCheckRecords({ ...(remote.checks || {}) })
     : compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
-  state.requests = preferRemote
-    ? { ...(remote.requests || {}) }
-    : mergeObjectByFreshnessLocal(state.requests, remote.requests);
+  state.requests = TMC_REQUESTS_DISABLED
+    ? {}
+    : preferRemote
+      ? { ...(remote.requests || {}) }
+      : mergeObjectByFreshnessLocal(state.requests, remote.requests);
   state.orders = preferRemote
     ? { ...(remote.orders || {}) }
     : mergeObjectByFreshnessLocal(state.orders, remote.orders);
@@ -2420,7 +2423,8 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.checks) {
     state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
   }
-  if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
+  if (TMC_REQUESTS_DISABLED) state.requests = {};
+  else if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
   state.inventory = {};
   if (remote.catalog?.equipment) {
     state.catalog ||= { equipment: {} };
@@ -3405,7 +3409,7 @@ function canOpenView(view) {
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "adminMaintenance") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
-  if (view === "requestCreate") return canEditChecklist();
+  if (view === "requestCreate") return !TMC_REQUESTS_DISABLED && canEditChecklist();
   return true;
 }
 
@@ -17859,6 +17863,16 @@ function reportClientError(message, source = "", line = 0, column = 0) {
   }).catch(() => {});
 }
 
+function disableTmcRequestFeature() {
+  if (!TMC_REQUESTS_DISABLED) return;
+  state.requests = {};
+  persistStateLocally(state);
+  ui.createTmcRequestButton?.remove();
+  ui.requestCreateScreen?.remove();
+  ui.engineerIncomingBanner?.remove();
+  document.querySelectorAll('[data-mobile-view="requestCreate"], [data-open-engineer-requests], [data-open-engineer-incoming]').forEach(element => element.remove());
+}
+
 window.addEventListener("error", event => {
   reportClientError(event.message, event.filename, event.lineno, event.colno);
 });
@@ -17904,6 +17918,7 @@ if ("serviceWorker" in navigator) {
 }
 
 setupTheme();
+disableTmcRequestFeature();
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);
 setupPublicAttendanceEntry();

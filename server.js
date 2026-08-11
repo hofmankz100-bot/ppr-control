@@ -46,6 +46,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
 const SERVER_VERSION = "v421-annual-ppr-equipment-acts";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -258,6 +259,7 @@ function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
   db.requests ||= {};
+  if (TMC_REQUESTS_DISABLED) db.requests = {};
   db.orders ||= {};
   db.inventory ||= {};
   db.catalog ||= { equipment: {} };
@@ -6247,7 +6249,7 @@ async function handleApi(req, res, pathname, url) {
       if (acceptOperational) {
         db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
         if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
-        db.requests = mergeObjectRecordsByFreshness(db.requests, body.requests);
+        db.requests = TMC_REQUESTS_DISABLED ? {} : mergeObjectRecordsByFreshness(db.requests, body.requests);
         removeJournalRequestsServer(db);
       }
       db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
@@ -6313,6 +6315,10 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/engineer-request/action" && req.method === "POST") {
+    if (TMC_REQUESTS_DISABLED) {
+      sendJson(res, 410, { ok: false, error: "request_feature_removed" });
+      return true;
+    }
     const body = await readBody(req);
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});

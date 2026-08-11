@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=449-qr-cross-device-sync/);
-  assert.match(html, /styles\.css\?v=449-qr-cross-device-sync/);
-  assert.match(serviceWorker, /app\.js\?v=449-qr-cross-device-sync/);
+  assert.match(html, /app\.js\?v=450-remove-create-request/);
+  assert.match(html, /styles\.css\?v=450-remove-create-request/);
+  assert.match(serviceWorker, /app\.js\?v=450-remove-create-request/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1593,6 +1593,19 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
     body: "{}"
   });
   assert.notEqual(removedEndpoint.status, 200);
+});
+
+test("create request feature is removed and production erases request records", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /const TMC_REQUESTS_DISABLED = true/);
+  assert.match(client, /function disableTmcRequestFeature\(\)/);
+  assert.match(client, /ui\.createTmcRequestButton\?\.remove\(\)/);
+  assert.match(client, /ui\.requestCreateScreen\?\.remove\(\)/);
+  assert.match(client, /state\.requests = TMC_REQUESTS_DISABLED\s*\? \{\}/);
+  assert.match(server, /const TMC_REQUESTS_DISABLED = process\.env\.NODE_ENV !== "test"/);
+  assert.match(server, /if \(TMC_REQUESTS_DISABLED\) db\.requests = \{\}/);
+  assert.match(server, /error: "request_feature_removed"/);
 });
 
 test("a full server refresh replaces stale local check records", () => {
