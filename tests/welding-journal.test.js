@@ -41,3 +41,13 @@ test("welding journal participates in localhost server synchronization", () => {
   assert.match(server, /db\.weldingJournal = mergeObjectRecordsByFreshness/);
   assert.match(app, /"gpmJournal", "weldingJournal"/);
 });
+
+test("welding forms are optimized for phone filling", () => {
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(app, /welding-mobile-submit/);
+  assert.match(app, /Заполните обязательные поля по порядку/);
+  assert.match(app, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+  assert.match(styles, /min-height:52px/);
+  assert.match(styles, /font-size:16px/);
+  assert.match(styles, /position:sticky;bottom:76px/);
+});

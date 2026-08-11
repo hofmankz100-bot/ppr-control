@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v454-local-welding-acceptance";
+const APP_VERSION = "v455-mobile-welding-form";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9021,6 +9021,11 @@ function acceptWeldingRequest(item) {
   if (item.status !== "new") return window.alert("Эта заявка уже принята другим сварщиком.");
   const actor = weldingActor();
   saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate });
+  window.setTimeout(() => {
+    const card = ui.weldingPanel?.querySelector(`[data-welding-id="${CSS.escape(item.id)}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card?.querySelector("textarea[name='material']")?.focus({ preventScroll: true });
+  }, 80);
 }
 
 function completeWeldingRequest(item, form) {
@@ -9079,11 +9084,12 @@ function weldingRecordCard(item) {
     ${canAccept ? `<button type="button" class="primary-nav-button" data-welding-accept>Принять заявку</button>` : ""}
     ${requesterCanDecide ? `<div class="welding-requester-decision"><strong>Личное сообщение: сварщик завершил вашу заявку</strong><div><button type="button" data-welding-requester-accept>Принять работу</button><button type="button" class="danger" data-welding-requester-return>Вернуть сварщику</button></div></div>` : ""}
     ${canComplete ? `<form class="welding-complete-form">
-      <label><span>Основной материал, марка / толщина / количество</span><textarea name="material" required placeholder="Например: Сталь 09Г2С, 5 мм, 2 листа. Расход 1,5 м²"></textarea></label>
-      <label><span>Вид и положение шва</span><select name="jointPosition"><option value="lower">Нижнее</option><option value="horizontal">Горизонтальное</option><option value="vertical">Вертикальное</option><option value="overhead">Потолочное</option></select></label>
-      <label><span>Электрод / проволока / флюс / защитный газ</span><textarea name="consumables" required placeholder="Укажите марку и расход либо «Не требуется»"></textarea></label>
-      <label><span>Комментарий сварщика</span><textarea name="workComment" placeholder="Дополнительные сведения"></textarea></label>
-      <button type="submit">Завершить работу</button>
+      <div class="welding-form-title"><strong>${item.status === "returned" ? "Доработка изделия" : "Заполнение выполненной работы"}</strong><span>Заполните обязательные поля по порядку</span></div>
+      <label><span><b>1</b> Основной материал, марка / толщина / количество</span><textarea name="material" required inputmode="text" placeholder="Например: Сталь 09Г2С, 5 мм, 2 листа. Расход 1,5 м²">${escapeHtml(item.status === "returned" ? item.material || "" : "")}</textarea><small>Если материал не использовался — напишите «Не требуется»</small></label>
+      <label><span><b>2</b> Вид и положение шва</span><select name="jointPosition"><option value="lower" ${item.jointPosition === "lower" ? "selected" : ""}>Нижнее</option><option value="horizontal" ${item.jointPosition === "horizontal" ? "selected" : ""}>Горизонтальное</option><option value="vertical" ${item.jointPosition === "vertical" ? "selected" : ""}>Вертикальное</option><option value="overhead" ${item.jointPosition === "overhead" ? "selected" : ""}>Потолочное</option></select></label>
+      <label><span><b>3</b> Электрод / проволока / флюс / защитный газ</span><textarea name="consumables" required inputmode="text" placeholder="Укажите марку и расход либо «Не требуется»">${escapeHtml(item.status === "returned" ? item.consumables || "" : "")}</textarea></label>
+      <label><span><b>4</b> Комментарий сварщика</span><textarea name="workComment" placeholder="Что изготовлено или исправлено">${escapeHtml(item.status === "returned" ? item.workComment || "" : "")}</textarea></label>
+      <div class="welding-mobile-submit"><button type="submit">✓ Завершить и отправить заявителю</button></div>
     </form>` : ""}
   </article>`;
 }
@@ -9097,11 +9103,11 @@ function renderWeldingJournal() {
   ui.subtitle.textContent = "Сварочные работы";
   ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварочные работы</h1><p>Заявки, выполнение и производственный журнал</p></div></div>
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
-    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><div class="welding-form-grid">
-      <label><span>Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
-      <label><span>Номер заказа или чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label>
-      <label class="wide"><span>Изделие, узел или требуемая работа</span><textarea name="description" required placeholder="Что необходимо изготовить или отремонтировать"></textarea></label>
-    </div><button type="submit">Отправить сварщикам</button></form>
+    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Заполните три коротких поля — дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
+      <label><span><b>1</b> Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
+      <label><span><b>2</b> Номер заказа или чертежа</span><input name="drawingNumber" inputmode="text" placeholder="Если номера нет — оставьте пустым"></label>
+      <label class="wide"><span><b>3</b> Что нужно изготовить или отремонтировать</span><textarea name="description" required inputmode="text" placeholder="Например: изготовить кронштейн по чертежу № 15"></textarea></label>
+    </div><button type="submit" class="welding-send-button">Отправить сварщикам</button></form>
     <div class="welding-toolbar"><label>Месяц журнала <input type="month" data-welding-month value="${escapeHtml(month)}"></label><button type="button" data-welding-print>Печатать журнал</button></div>
     <div class="welding-summary"><span>Новые: <b>${records.filter(x => x.status === "new").length}</b></span><span>В работе: <b>${records.filter(x => ["accepted", "returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x => x.status === "awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x => x.status === "completed").length}</b></span></div>
     <div class="welding-list">${records.length ? records.map(weldingRecordCard).join("") : `<div class="empty-state">Заявок на сварочные работы пока нет.</div>`}</div>`;
