@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=465-aggregate-corrections/);
-  assert.match(html, /styles\.css\?v=465-aggregate-corrections/);
-  assert.match(serviceWorker, /app\.js\?v=465-aggregate-corrections/);
+  assert.match(html, /app\.js\?v=466-private-month-close/);
+  assert.match(html, /styles\.css\?v=466-private-month-close/);
+  assert.match(serviceWorker, /app\.js\?v=466-private-month-close/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1523,16 +1523,16 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /month\.reliabilityStops \?\? month\.stops/);
 });
 
-test("smart month closing stores snapshots, carryovers and individual access", () => {
+test("smart month closing is private to the primary administrator", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(client, /function canManageMonthClose[\s\S]*?monthCloseManage/);
+  assert.match(client, /function canManageMonthClose[^\n]+return isPrimaryAdminEngineer\(user\)/);
   assert.match(client, /Умное закрытие месяца/);
   assert.match(client, /data-month-close-conditional/);
   assert.match(client, /data-month-close-full/);
   assert.match(client, /data-month-reopen/);
-  assert.match(client, /monthCloseManage","Закрытие и повторное открытие месяца/);
+  assert.doesNotMatch(server, /ADMIN_PERMISSION_KEYS[^\n]+monthCloseManage/);
   assert.match(server, /function monthCloseReadiness/);
   assert.match(server, /item\.type === "production"/);
   assert.match(server, /pathname === "\/api\/month-close"/);
@@ -1551,10 +1551,10 @@ test("smart month closing stores snapshots, carryovers and individual access", (
   assert.match(client, /Заявки на закупку здесь не учитываются/);
   assert.match(client, /data-open-month-remark/);
   assert.match(client, /current\.scrollToRemarkId = button\.dataset\.remarkId/);
-  assert.match(server, /activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
-  assert.match(client, /function canManageMonthClose[^\n]+return activeUserPermission\(user, "monthCloseManage"\)/);
-  assert.doesNotMatch(server, /req\.authUser\?\.role === "editor" \|\| activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
-  assert.doesNotMatch(server, /req\.authUser\?\.role !== "editor" && !activeUserPermission\(req\.authUser, "monthCloseManage"\)/);
+  assert.match(server, /pathname === "\/api\/month-close" && req\.method === "GET"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
+  assert.match(server, /pathname === "\/api\/month-close" && req\.method === "POST"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
+  assert.match(client, /canManageMonthClose\(\) \? monthClosePanelHtml\(\) : ""/);
+  assert.match(client, /canManageMonthClose\(\) \? monthClosePanelHtml\(current\.engineerReportMonth\) : ""/);
   assert.match(server, /function resetMonthClosePermissionsOnce[\s\S]*?delete user\.permissionOverrides\.monthCloseManage/);
   assert.match(server, /monthClosePermissionResetVersion === "all-users-v1"/);
   assert.match(styles, /\.month-close-panel/);

@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v465-aggregate-corrections";
+const APP_VERSION = "v466-private-month-close";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -278,7 +278,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
-function canManageMonthClose(user = authenticatedProfile || profile || {}) { return activeUserPermission(user, "monthCloseManage"); }
+function canManageMonthClose(user = authenticatedProfile || profile || {}) { return isPrimaryAdminEngineer(user); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canManageOrderJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "orderJournalManage")); }
 function canCorrectAggregateJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "aggregateJournalCorrect"); }
@@ -15969,13 +15969,13 @@ function renderEngineerReport() {
     : "Общий индекс надёжности предприятия";
   if (controls) controls.hidden = !detailed;
   if (!detailed) {
-    ui.engineerReportPanel.innerHTML = `${monthClosePanelHtml()}<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
+    ui.engineerReportPanel.innerHTML = `${canManageMonthClose() ? monthClosePanelHtml() : ""}<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
     ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; loadMonthClosePanel(); });
     loadMonthClosePanel();
     return;
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
-  ui.engineerReportPanel.innerHTML = `${monthClosePanelHtml(current.engineerReportMonth)}${engineerMonthlyReportHtml(current.engineerReportMonth)}`;
+  ui.engineerReportPanel.innerHTML = `${canManageMonthClose() ? monthClosePanelHtml(current.engineerReportMonth) : ""}${engineerMonthlyReportHtml(current.engineerReportMonth)}`;
   ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; if (ui.engineerReportMonth) ui.engineerReportMonth.value = event.currentTarget.value; loadMonthClosePanel(); });
   loadMonthClosePanel();
   ui.engineerReportPanel.querySelector("#serviceCostArea")?.addEventListener("change", event => {
