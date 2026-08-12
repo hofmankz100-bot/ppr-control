@@ -1455,6 +1455,11 @@ test("an executor can submit work immediately and is joined automatically", () =
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
 });
 
+test("specialized executor roles can join collaborative resolution", () => {
+  const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(source, /const allowedRoles = new Set\(\[[\s\S]*?"welder"[\s\S]*?"turner"[\s\S]*?"forkliftDriver"[\s\S]*?\]\);/);
+});
+
 test("authorized users can close remarks for several employees with or without points", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
