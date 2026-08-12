@@ -6136,6 +6136,7 @@
     if (/^brigade_.*_(briefing|instructor)$/.test(control.name)) return false;
     if (/^approval_.*_date$/.test(control.name)) return false;
     if (/^change_.*_(issuer|date)$/.test(control.name)) return false;
+    if (/^(finish_date|finish_time)$/.test(control.name)) return false;
     if (control.name === "completed_measures_extra") return false;
     return true;
   }
@@ -6220,20 +6221,20 @@
       const fileName = `naryad-dopusk-${number}.pdf`;
       const worker = window.html2pdf()
         .set({
-          margin: [10, 10, 8, 22],
+          margin: [5, 6, 5, 6],
           filename: fileName,
           image: { type: "jpeg", quality: 0.96 },
           html2canvas: {
-            scale: 1.55,
+            scale: 1.7,
             useCORS: true,
             backgroundColor: "#ffffff",
             windowWidth: 1200,
-            windowHeight: 1600,
+            windowHeight: 1120,
             scrollX: 0,
             scrollY: 0
           },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-          pagebreak: { mode: ["css", "legacy"], avoid: [".work-permit-section"] }
+          pagebreak: { mode: ["css", "legacy"], avoid: [".work-permit-table tr"] }
         })
         .from(paper)
         .toPdf();
@@ -6314,7 +6315,7 @@
     style.textContent = `
       @page {
         size: A4 portrait;
-        margin: 10mm;
+        margin: 5mm 6mm;
       }
 
       @media print {
@@ -6362,18 +6363,27 @@
         .work-permit-paper {
           border: none !important;
           box-shadow: none !important;
+          width: 198mm !important;
+          max-width: 198mm !important;
+          font-size: 6.4pt !important;
+          line-height: 1.08 !important;
+          display: grid !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          column-gap: 3mm !important;
+          align-content: start !important;
         }
 
         body.printing-work-permit
         .work-permit-section {
           page-break-inside: avoid;
           break-inside: avoid;
+          min-width: 0 !important;
         }
 
         body.printing-work-permit
         .work-permit-section-long {
-          page-break-inside: auto;
-          break-inside: auto;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
 
         body.printing-work-permit
@@ -7598,6 +7608,138 @@
       [name="permit_accepted"] {
         border-color: #9ad1e1 !important;
         background: #f0f9fc !important;
+      }
+
+      /* Compact official output: a normal completed permit fits one A4 sheet. */
+      .work-permit-paper.is-print-layout {
+        width: 198mm !important;
+        max-width: 198mm !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        column-gap: 3mm !important;
+        align-content: start !important;
+        font-size: 6.4pt !important;
+        line-height: 1.08 !important;
+      }
+
+      .work-permit-paper.is-print-layout > .work-permit-document-head,
+      .work-permit-paper.is-print-layout > .work-permit-safety-section,
+      .work-permit-paper.is-print-layout > [data-optional-section="completedMeasures"],
+      .work-permit-paper.is-print-layout > [data-optional-section="approval"],
+      .work-permit-paper.is-print-layout > [data-optional-section="brigade"],
+      .work-permit-paper.is-print-layout > [data-optional-section="breaks"],
+      .work-permit-paper.is-print-layout > [data-optional-section="changes"],
+      .work-permit-paper.is-print-layout > .work-permit-section:last-child {
+        grid-column: 1 / -1 !important;
+      }
+
+      .work-permit-paper.is-print-layout > .work-permit-section {
+        min-width: 0 !important;
+        padding: .9mm 0 !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      .work-permit-paper.is-print-layout > .work-permit-section:nth-of-type(1),
+      .work-permit-paper.is-print-layout > .work-permit-section:nth-of-type(3) {
+        padding-right: 1.5mm !important;
+      }
+
+      .work-permit-paper.is-print-layout > .work-permit-section:nth-of-type(2),
+      .work-permit-paper.is-print-layout > .work-permit-section:nth-of-type(4) {
+        padding-left: 1.5mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-document-head {
+        padding-bottom: 1.2mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-company {
+        padding-bottom: .5mm !important;
+        font-size: 6.5pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row {
+        padding-top: .7mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row h1 {
+        font-size: 12pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-title-row p,
+      .work-permit-paper.is-print-layout .work-permit-section > h2 {
+        font-size: 7pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-section > h2 {
+        margin-bottom: .45mm !important;
+        line-height: 1.05 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-grid {
+        gap: .45mm 1mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-field {
+        gap: .15mm !important;
+        font-size: 5.5pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-print-value {
+        min-height: 2.7mm !important;
+        padding: .2mm !important;
+        font-size: 6.2pt !important;
+        line-height: 1.05 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-list {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        column-gap: 3mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-item {
+        padding: .3mm 0 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-check {
+        grid-template-columns: 4mm minmax(0, 1fr) !important;
+        font-size: 6.2pt !important;
+        line-height: 1.05 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-safety-details {
+        margin: .15mm 0 0 4mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table th,
+      .work-permit-paper.is-print-layout .work-permit-table td {
+        padding: .35mm !important;
+        font-size: 5.4pt !important;
+        line-height: 1.05 !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-table .work-permit-print-value {
+        min-height: 2.6mm !important;
+        font-size: 5.4pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-subsection {
+        margin-top: .5mm !important;
+        padding-top: .4mm !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-subsection h3 {
+        margin: 0 0 .3mm !important;
+        font-size: 6.5pt !important;
+      }
+
+      .work-permit-paper.is-print-layout .work-permit-completion-checks {
+        display: flex !important;
+        gap: 4mm !important;
+        margin: .3mm 0 !important;
+        font-size: 6pt !important;
       }
 
       @media print {

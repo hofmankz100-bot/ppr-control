@@ -12691,6 +12691,46 @@ body.editor-profile #createTmcRequestButton.request-alert,
     font-size: 9pt !important;
     line-height: 1.35 !important;
   }
+
+  body.printing-work-permit .work-permit-paper {
+    width: 198mm !important;
+    max-width: 198mm !important;
+    display: grid !important;
+    grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+    column-gap: 3mm !important;
+    align-content: start !important;
+    font-size: 6.4pt !important;
+    line-height: 1.08 !important;
+  }
+  body.printing-work-permit .work-permit-paper>.work-permit-document-head,
+  body.printing-work-permit .work-permit-paper>.work-permit-safety-section,
+  body.printing-work-permit .work-permit-paper>[data-optional-section="completedMeasures"],
+  body.printing-work-permit .work-permit-paper>[data-optional-section="approval"],
+  body.printing-work-permit .work-permit-paper>[data-optional-section="brigade"],
+  body.printing-work-permit .work-permit-paper>[data-optional-section="breaks"],
+  body.printing-work-permit .work-permit-paper>[data-optional-section="changes"],
+  body.printing-work-permit .work-permit-paper>.work-permit-section:last-child {grid-column:1/-1!important}
+  body.printing-work-permit .work-permit-section{min-width:0!important;padding:.9mm 0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  body.printing-work-permit .work-permit-document-head{padding-bottom:1.2mm!important}
+  body.printing-work-permit .work-permit-company{padding-bottom:.5mm!important;font-size:6.5pt!important}
+  body.printing-work-permit .work-permit-title-row{padding-top:.7mm!important}
+  body.printing-work-permit .work-permit-title-row h1{font-size:12pt!important;line-height:1!important}
+  body.printing-work-permit .work-permit-title-row p,
+  body.printing-work-permit .work-permit-section>h2{font-size:7pt!important}
+  body.printing-work-permit .work-permit-section>h2{margin:0 0 .45mm!important;line-height:1.05!important}
+  body.printing-work-permit .work-permit-grid{gap:.45mm 1mm!important}
+  body.printing-work-permit .work-permit-field{gap:.15mm!important;font-size:5.5pt!important}
+  body.printing-work-permit .work-permit-print-value{min-height:2.7mm!important;padding:.2mm!important;font-size:6.2pt!important;line-height:1.05!important}
+  body.printing-work-permit .work-permit-safety-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;column-gap:3mm!important}
+  body.printing-work-permit .work-permit-safety-item{padding:.3mm 0!important}
+  body.printing-work-permit .work-permit-safety-check{grid-template-columns:4mm minmax(0,1fr)!important;font-size:6.2pt!important;line-height:1.05!important}
+  body.printing-work-permit .work-permit-safety-details{margin:.15mm 0 0 4mm!important}
+  body.printing-work-permit .work-permit-table th,
+  body.printing-work-permit .work-permit-table td{padding:.35mm!important;font-size:5.4pt!important;line-height:1.05!important}
+  body.printing-work-permit .work-permit-table .work-permit-print-value{min-height:2.6mm!important;font-size:5.4pt!important}
+  body.printing-work-permit .work-permit-subsection{margin-top:.5mm!important;padding-top:.4mm!important}
+  body.printing-work-permit .work-permit-subsection h3{margin:0 0 .3mm!important;font-size:6.5pt!important}
+  body.printing-work-permit .work-permit-completion-checks{display:flex!important;gap:4mm!important;margin:.3mm 0!important;font-size:6pt!important}
 }
 .system-monitor-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.system-monitor-grid article{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px solid #d7e3e7;border-radius:14px;background:#f8fbfc}.system-monitor-grid b{font-size:1.12rem;color:#075b69}.system-monitor-grid span{color:#5f7279;font-size:.88rem}.admin-alert-list{display:grid;gap:10px}.admin-alert-list article{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border:1px solid #f1c77b;border-left:5px solid #e59c22;border-radius:12px;background:#fffaf0}.admin-alert-list article.critical{border-color:#efb1b1;border-left-color:#c93636;background:#fff6f6}.admin-alert-list article.resolved{opacity:.7;border-color:#d5e0e3;border-left-color:#7d9299;background:#f7fafb}.admin-alert-list article>div{display:flex;flex-direction:column;gap:4px}.admin-alert-list small{color:#65777d}.admin-alert-list button{min-width:112px}.empty-state.ok{color:#166b43;background:#effaf4;border:1px solid #bfe5cf}
 .admin-settings-shortcuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.admin-settings-form{display:grid;gap:16px}.admin-settings-form label{display:flex;flex-direction:column;gap:6px}.admin-settings-form label>span{font-weight:700;color:#274b56}.admin-settings-form small{color:#667b82}.admin-settings-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}.admin-settings-numbers{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}.admin-config-history{margin-top:24px}.admin-config-history article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid #dce6e9}.admin-config-history article>div{display:flex;flex-direction:column;gap:3px}.admin-config-history span{color:#667b82;font-size:.9rem}
