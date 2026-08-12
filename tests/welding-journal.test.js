@@ -51,3 +51,13 @@ test("welding forms are optimized for phone filling", () => {
   assert.match(styles, /font-size:16px/);
   assert.match(styles, /position:sticky;bottom:76px/);
 });
+
+test("welding and turning work support teams and request/result photos", () => {
+  assert.match(app, /function joinProductionWork\(item, trade\)/);
+  assert.match(app, /data-welding-join>Присоединиться к работе/);
+  assert.match(app, /data-turning-join>Присоединиться к работе/);
+  assert.match(app, /name="requestPhoto" type="file" accept="image\/\*"/);
+  assert.match(app, /name="resultPhoto" type="file" accept="image\/\*"/);
+  assert.match(app, /productionParticipantNames\(item, "welding"\)/);
+  assert.match(app, /productionParticipantNames\(x,"turning"\)/);
+});
