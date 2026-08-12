@@ -2882,7 +2882,7 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "aggregateJournalCorrect", "monthCloseManage", "remarkGlobalConfirm", "orderJournalManage"]);
+const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "aggregateJournalCorrect", "remarkGlobalConfirm", "orderJournalManage"]);
 function activeUserPermission(user = {}, key = "") {
   const entry = user.permissionOverrides?.[key];
   if (!entry || entry.enabled !== true) return false;
@@ -4873,15 +4873,16 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/month-close" && req.method === "GET") {
+    if (!isPrimaryAdminEngineerServer(req.authUser)) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
     const month = validMonthKey(url.searchParams.get("month") || "");
     if (!month) { sendJson(res, 400, { ok: false, error: "month_invalid" }); return true; }
     const db = readDb();
-    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: activeUserPermission(req.authUser, "monthCloseManage") });
+    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: true });
     return true;
   }
 
   if (pathname === "/api/month-close" && req.method === "POST") {
-    if (!activeUserPermission(req.authUser, "monthCloseManage")) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
+    if (!isPrimaryAdminEngineerServer(req.authUser)) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
     const body = await readBody(req).catch(() => ({}));
     const month = validMonthKey(body.month);
     const action = String(body.action || "");
