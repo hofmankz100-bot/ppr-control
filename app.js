@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v464-welder-credentials";
+const APP_VERSION = "v465-aggregate-corrections";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9225,7 +9225,7 @@ function renderWeldingJournal() {
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
   ui.subtitle.textContent = "Сварочные работы";
-  ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
+  ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварщик и токарь</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
     <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Заполните три коротких поля — дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
       <label><span><b>1</b> Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
@@ -9468,6 +9468,9 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         resolutionParticipants: resolutionParticipants(entry),
         resolutionCompletedParticipants: completedResolutionParticipants(entry),
         resolvedComment: entry.resolvedComment || "",
+        correctedDefectText: entry.correctedDefectText || "",
+        correctedResolvedComment: entry.correctedResolvedComment || "",
+        correctionReason: entry.correctionReason || "",
         confirmedAt: entry.confirmedAt || "",
         confirmedByName: entry.confirmedByName || "",
         confirmedByRole: entry.confirmedByRole || "",
@@ -10718,7 +10721,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
 function renderEquipment() {
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
-    ui.subtitle.textContent = "Производственные работы";
+    ui.subtitle.textContent = "Сварщик и токарь";
     ui.equipmentList.innerHTML = `<section class="production-worker-home">
       <div><span>Рабочее место</span><h1>${isTurnerUser() && !isWelderUser() ? "Токарные работы" : "Сварочные работы"}</h1><p>Здесь находятся ваши заявки, заполнение выполненных работ и журнал для печати.</p></div>
       <button type="button" data-open-production-work>Открыть производственные работы</button>
@@ -17113,10 +17116,10 @@ function renderAggregateJournal() {
                 <td>${rowNumber}</td>
                 <td>${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
                 <td>${dateTimeHuman(item.at)}</td>
-                <td>${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}</td>
+                <td>${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
                 <td>${escapeHtml(author)}</td>
                 <td>${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
-                <td>${escapeHtml(partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}</td>
+                <td>${escapeHtml(partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
                 <td>${escapeHtml(partNames || "")}</td>
                 <td>${escapeHtml(partQty || "")}</td>
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
@@ -17126,8 +17129,9 @@ function renderAggregateJournal() {
                   ${canCorrectAggregateJournal() && item.kind === "Замечание" && item.resolved ? `
                     <details class="aggregate-correction no-print">
                       <summary>Исправить запись</summary>
-                      <label>Комментарий замечания<textarea data-correction-defect>${escapeHtml(item.text || "")}</textarea></label>
-                      <label>Что выполнено<textarea data-correction-resolution>${escapeHtml(item.resolvedComment || "")}</textarea></label>
+                      <label>Исправленный комментарий замечания<textarea data-correction-defect>${escapeHtml(item.correctedDefectText || item.text || "")}</textarea></label>
+                      <label>Исправленная запись о выполненной работе<textarea data-correction-resolution>${escapeHtml(item.correctedResolvedComment || item.resolvedComment || "")}</textarea></label>
+                      <label>Причина исправления<textarea data-correction-reason>${escapeHtml(item.correctionReason || "")}</textarea></label>
                       <label>Кто реально устранил<select data-correction-performer>
                         <option value="">Выберите сотрудника</option>
                         ${correctionUsers.map(user => `<option value="${escapeHtml(user.key)}" ${completedResolutionParticipants(item).some(entry => entry.key === user.key) ? "selected" : ""}>${escapeHtml(resolutionParticipantLabel(user))}</option>`).join("")}
@@ -17203,8 +17207,9 @@ function renderAggregateJournal() {
       const defectText = form?.querySelector("[data-correction-defect]")?.value.trim() || "";
       const resolvedComment = form?.querySelector("[data-correction-resolution]")?.value.trim() || "";
       const performerKey = form?.querySelector("[data-correction-performer]")?.value || "";
-      if (!defectText || !resolvedComment || !performerKey) {
-        showAppToast("Заполните оба комментария и выберите фактического исполнителя.", "error");
+      const correctionReason = form?.querySelector("[data-correction-reason]")?.value.trim() || "";
+      if (!defectText || !resolvedComment || !correctionReason || !performerKey) {
+        showAppToast("Заполните оба исправленных комментария, причину и выберите исполнителя.", "error");
         return;
       }
       const [equipmentId, nodeIndex, date] = recordKey.split(":");
@@ -17212,6 +17217,7 @@ function renderAggregateJournal() {
         remarkId,
         defectText,
         resolvedComment,
+        correctionReason,
         performerKey
       });
       showAppToast("Запись исправлена, баллы перенесены фактическому исполнителю.", "ok");

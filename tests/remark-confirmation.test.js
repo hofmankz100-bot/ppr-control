@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=464-welder-credentials/);
-  assert.match(html, /styles\.css\?v=464-welder-credentials/);
-  assert.match(serviceWorker, /app\.js\?v=464-welder-credentials/);
+  assert.match(html, /app\.js\?v=465-aggregate-corrections/);
+  assert.match(html, /styles\.css\?v=465-aggregate-corrections/);
+  assert.match(serviceWorker, /app\.js\?v=465-aggregate-corrections/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1851,5 +1851,19 @@ test("aggregate journal corrections reassign the scorer and exclude no-score clo
   assert.match(serverSource, /remark\.resolutionCompletedParticipants = \[performer\]/);
   assert.match(serverSource, /remark\.confirmedByKey = actor\.key/);
   const correctionBlock = serverSource.slice(serverSource.indexOf('if (action === "admin-edit-resolved")'), serverSource.indexOf('if (action === "confirm")'));
+  assert.match(correctionBlock, /remark\.correctedDefectText = defectText/);
+  assert.match(correctionBlock, /remark\.correctedResolvedComment = resolvedComment/);
+  assert.match(correctionBlock, /remark\.correctionReason = correctionReason/);
+  assert.doesNotMatch(correctionBlock, /remark\.text\s*=\s*defectText/);
+  assert.doesNotMatch(correctionBlock, /remark\.resolvedComment\s*=\s*resolvedComment/);
+  assert.match(clientSource, /Исправленный комментарий:/);
+  assert.match(clientSource, /data-correction-reason/);
   assert.doesNotMatch(correctionBlock, /remark\.confirmedByKey\s*=/);
+});
+
+test("production work section is named welder and turner", () => {
+  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(htmlSource, /<span>Сварщик и токарь<\/span>/);
+  assert.match(clientSource, /<h1>Сварщик и токарь<\/h1>/);
 });

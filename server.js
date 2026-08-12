@@ -7167,6 +7167,7 @@ async function handleApi(req, res, pathname, url) {
         if ((actor.role !== "editor" && !activeUserPermission(registeredActor, "aggregateJournalCorrect")) || !remark.resolved || remark.closedWithoutScore) return { error: "remark_confirmation_forbidden" };
         const defectText = String(body.defectText || "").trim().slice(0, 4000);
         const resolvedComment = String(body.resolvedComment || "").trim().slice(0, 4000);
+        const correctionReason = String(body.correctionReason || "").trim().slice(0, 1000);
         const performerKey = String(body.performerKey || "").trim();
         const performerUser = (db.users || []).find(user =>
           resolutionUserKeyServer(user) === performerKey
@@ -7174,7 +7175,7 @@ async function handleApi(req, res, pathname, url) {
           && user.pendingApproval !== true
           && isResolutionExecutorRoleServer(user.role)
         );
-        if (!defectText || !resolvedComment || !performerUser) return { error: "remark_participant_invalid" };
+        if (!defectText || !resolvedComment || !correctionReason || !performerUser) return { error: "remark_participant_invalid" };
         const performer = sanitizeResolutionParticipant(performerUser);
         participants = [performer];
         const previousPerformers = resolutionParticipantsServer({
@@ -7182,10 +7183,11 @@ async function handleApi(req, res, pathname, url) {
             ? remark.resolutionCompletedParticipants
             : remark.resolutionParticipants
         });
-        const previousDefectText = String(remark.text || "");
-        const previousResolvedComment = String(remark.resolvedComment || "");
-        remark.text = defectText;
-        remark.resolvedComment = resolvedComment;
+        const previousDefectText = String(remark.correctedDefectText || "");
+        const previousResolvedComment = String(remark.correctedResolvedComment || "");
+        remark.correctedDefectText = defectText;
+        remark.correctedResolvedComment = resolvedComment;
+        remark.correctionReason = correctionReason;
         remark.resolutionParticipants = [performer];
         remark.resolutionCompletedParticipants = [performer];
         remark.resolutionLeadKey = performer.key;
@@ -7204,6 +7206,7 @@ async function handleApi(req, res, pathname, url) {
           defectText,
           previousResolvedComment,
           resolvedComment,
+          correctionReason,
           previousPerformerKeys: previousPerformers.map(entry => entry.key),
           previousPerformerNames: previousPerformers.map(entry => entry.name),
           performerKey: performer.key,
