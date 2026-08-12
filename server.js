@@ -1745,7 +1745,7 @@ function openRemarkKeysServer(db = readDb()) {
 }
 
 function permissionBaseRoleServer(role) {
-  return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", technicalDirector: "director" })[role] || role;
+  return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", generalDirector: "productionDirector", technicalDirector: "director" })[role] || role;
 }
 
 function isPrimaryAdminEngineerServer(profile = {}) {
@@ -3278,6 +3278,7 @@ function protectPaidRequestProgress(current = {}, incoming = {}) {
     issued: 9,
     waitingShopDone: 10,
     productionDirector: 11,
+    generalDirector: 11,
     accounting: 12,
     done: 13,
     stock: 13,
@@ -4734,7 +4735,7 @@ async function handleApi(req, res, pathname, url) {
     const allowedRoles = new Set([
       "editor", "engineer", "shop", "mechanic", "electrician", "operator",
       "welder", "turner", "forkliftDriver", "safetyEngineer", "energyEngineer",
-      "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "productionDirector"
+      "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "productionDirector", "generalDirector"
     ]);
     if (
       !allowedRoles.has(String(req.authUser?.role || ""))
@@ -5381,7 +5382,7 @@ async function handleApi(req, res, pathname, url) {
     if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
     const reason = String(body.reason || "").trim().slice(0, 500);
     if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const allowedRoles = new Set(["mechanic","electrician","welder","turner","forkliftDriver","operator","shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer","productionDirector","director","technicalDirector","editor"]);
+    const allowedRoles = new Set(["mechanic","electrician","welder","turner","forkliftDriver","operator","shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer","productionDirector","generalDirector","director","technicalDirector","editor"]);
     const result = await enqueueStateWrite(async () => {
       const db = readDb(); db.systemBroadcasts ||= [];
       if (body.action === "close") {
@@ -6611,7 +6612,7 @@ async function handleApi(req, res, pathname, url) {
     const allowedRoles = new Set([
       "mechanic", "electrician", "welder", "turner", "forkliftDriver", "operator", "shop",
       "engineer", "safetyEngineer", "energyEngineer", "designEngineer", "mechanicalEngineer",
-      "instrumentationEngineer", "editor", "productionDirector"
+      "instrumentationEngineer", "editor", "productionDirector", "generalDirector"
     ]);
     if (!downtimeId || !comment || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "downtime_close_invalid" });
@@ -6741,7 +6742,7 @@ async function handleApi(req, res, pathname, url) {
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
     const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score"]);
-    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector"]);
+    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector", "generalDirector"]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
       return true;
