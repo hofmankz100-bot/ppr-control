@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v460-work-permit-single-sheet-fix";
+const APP_VERSION = "v461-resolution-invitations";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -13107,8 +13107,15 @@ function personalRemarkMessages() {
     if (!eq) return;
     ensureRemarkEntries(rec?.to || {}).forEach(entry => {
       (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).forEach(event => {
-        if (!["submitted", "returned"].includes(event.action)) return;
-        if (event.action === "submitted") {
+        if (!["added", "submitted", "returned"].includes(event.action)) return;
+        if (event.action === "added") {
+          if (
+            entry.resolved
+            || entry.resolutionPendingConfirmation
+            || String(event.targetKey || "") !== actorKey
+            || String(event.actorKey || "") === actorKey
+          ) return;
+        } else if (event.action === "submitted") {
           if (!entry.resolutionPendingConfirmation || event.at !== entry.resolutionSubmittedAt || !canCurrentUserConfirmRemark(entry, eq)) return;
         } else if (
           entry.resolutionPendingConfirmation
@@ -13121,8 +13128,10 @@ function personalRemarkMessages() {
           id,
           unread: !readIds.has(id),
           action: event.action,
-          title: event.action === "submitted" ? "Требуется подтвердить устранение" : "Возвращено на доработку",
-          text: event.action === "submitted"
+          title: event.action === "added" ? "Вас добавили к совместному устранению" : event.action === "submitted" ? "Требуется подтвердить устранение" : "Возвращено на доработку",
+          text: event.action === "added"
+            ? `${event.name || "Ответственный сотрудник"} добавил вас в исполнители`
+            : event.action === "submitted"
             ? `${entry.resolutionSubmittedByName || event.name || "Сотрудник"}: ${entry.resolutionSubmittedComment || "Работа передана на подтверждение"}`
             : String(event.reason || entry.resolutionReturnReason || "Требуется доработка"),
           at: event.at || "",
@@ -13197,6 +13206,7 @@ function rolePersonalMessageHtml(message) {
       </article>
     `;
   }
+  const invited = message.action === "added";
   const submitted = message.action === "submitted";
   return `
     <article class="role-personal-message ${escapeHtml(message.action)}" data-role-personal-message="${escapeHtml(message.id)}">
@@ -13212,7 +13222,15 @@ function rolePersonalMessageHtml(message) {
         <p>${userTextWithRussianHtml(message.originalText || "Без текста")}</p>
         ${message.originalPhoto ? `<img src="${message.originalPhoto}" alt="Фото предупреждения">` : ""}
       </div>
-      ${submitted ? `
+      ${invited ? `
+        <div class="role-personal-resolution invited">
+          <strong>Совместное устранение</strong>
+          <p>${userTextWithRussianHtml(message.text || "Откройте карточку и приступите к устранению замечания")}</p>
+        </div>
+        <div class="role-personal-actions">
+          <button type="button" data-personal-remark-open-node>Открыть и присоединиться</button>
+        </div>
+      ` : submitted ? `
         <div class="role-personal-resolution">
           <strong>Устранил: ${escapeHtml(message.submittedBy)}</strong>
           <p>${userTextWithRussianHtml(message.submittedComment || "Работа передана на подтверждение")}</p>

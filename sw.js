@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v460-work-permit-single-sheet-fix";
+const CACHE_NAME = "ppr-v461-resolution-invitations";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=460-work-permit-single-sheet-fix",
+  "./styles.css?v=461-resolution-invitations",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=460-work-permit-single-sheet-fix",
-  "./app.js?v=460-work-permit-single-sheet-fix",
+  "./modules/work-permit.js?v=461-resolution-invitations",
+  "./app.js?v=461-resolution-invitations",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
