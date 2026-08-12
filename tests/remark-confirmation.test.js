@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=460-work-permit-single-sheet-fix/);
-  assert.match(html, /styles\.css\?v=460-work-permit-single-sheet-fix/);
-  assert.match(serviceWorker, /app\.js\?v=460-work-permit-single-sheet-fix/);
+  assert.match(html, /app\.js\?v=461-resolution-invitations/);
+  assert.match(html, /styles\.css\?v=461-resolution-invitations/);
+  assert.match(serviceWorker, /app\.js\?v=461-resolution-invitations/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1458,6 +1458,14 @@ test("an executor can submit work immediately and is joined automatically", () =
 test("specialized executor roles can join collaborative resolution", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(source, /const allowedRoles = new Set\(\[[\s\S]*?"welder"[\s\S]*?"turner"[\s\S]*?"forkliftDriver"[\s\S]*?\]\);/);
+});
+
+test("an invited resolver receives a personal message that opens the exact remark", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /\["added", "submitted", "returned"\]\.includes\(event\.action\)/);
+  assert.match(source, /String\(event\.targetKey \|\| ""\) !== actorKey/);
+  assert.match(source, /Вас добавили к совместному устранению/);
+  assert.match(source, /data-personal-remark-open-node>Открыть и присоединиться/);
 });
 
 test("authorized users can close remarks for several employees with or without points", () => {
