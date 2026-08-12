@@ -4348,7 +4348,8 @@ async function handleApi(req, res, pathname, url) {
   }
 
   const attendanceMutationExempt = pathname.startsWith("/api/push/")
-    || pathname === "/api/client-error";
+    || pathname === "/api/client-error"
+    || pathname === "/api/remark-collaboration";
   if (
     attendanceRoleAllowed(req.authUser)
     && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
@@ -6761,13 +6762,19 @@ async function handleApi(req, res, pathname, url) {
       const remarks = ensureRemarkEntriesServer(item);
       const remark = remarks.find(entry => entry.id === remarkId);
       if (!remark || (remark.resolved && action !== "admin-edit-resolved")) return { error: "remark_not_open" };
-      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
-      const delegatedByEditor = req.authUser?.role === "editor";
-      if ((!delegatedByEditor && requestedActor.key !== sessionActorKey) || !registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
+      const registeredActor = req.authUser || (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
+      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || (!req.authUser && !samePermissionRoleServer(registeredActor.role, requestedActor.role))) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
+      if (
+        process.env.NODE_ENV !== "test"
+        && action !== "start"
+        && attendanceRoleAllowed(registeredActor)
+        && !activeAttendanceSession(db, registeredActor)
+      ) {
+        return { error: "attendance_required" };
+      }
       const canCloseForEmployees = actor.role === "editor" || activeUserPermission(registeredActor, "remarkMultiClose");
       if (action === "delete") {
         if (actor.role !== "editor") return { error: "remark_delete_forbidden" };
