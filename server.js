@@ -6742,7 +6742,12 @@ async function handleApi(req, res, pathname, url) {
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
     const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score"]);
-    const allowedRoles = new Set(["mechanic", "electrician", "operator", "shop", "engineer", "editor", "productionDirector", "generalDirector"]);
+    const allowedRoles = new Set([
+      "mechanic", "electrician", "welder", "turner", "forkliftDriver",
+      "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
+      "designEngineer", "mechanicalEngineer", "instrumentationEngineer",
+      "editor", "productionDirector", "generalDirector", "director", "technicalDirector"
+    ]);
     if (!recordKey || recordKey.includes("\uFFFD") || !allowedActions.has(action) || !requestedActor.key || !allowedRoles.has(requestedActor.role)) {
       sendJson(res, 400, { ok: false, error: "remark_collaboration_invalid" });
       return true;
