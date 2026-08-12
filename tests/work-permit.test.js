@@ -16,7 +16,7 @@ test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
   assert.match(html, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(html, /modules\/work-permit\.js\?v=421-annual-ppr-equipment-acts/);
+  assert.match(html, /modules\/work-permit\.js\?v=459-one-page-work-permit/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -157,7 +157,7 @@ test("permit draft and print-safe values are preserved", () => {
   assert.match(permit, /function restoreDraft\(\)/);
   assert.match(permit, /data-work-permit-print-for/);
   assert.match(permit, /function syncAllPrintValues\(\)/);
-  assert.match(permit, /@page\s*\{[\s\S]*?size:\s*A4 portrait;[\s\S]*?margin:\s*10mm/);
+  assert.match(permit, /@page\s*\{[\s\S]*?size:\s*A4 portrait;[\s\S]*?margin:\s*5mm 6mm/);
 });
 
 test("official print uses only the selected language and omits instruction bodies", () => {
@@ -172,7 +172,7 @@ test("official print uses only the selected language and omits instruction bodie
   assert.match(permit, /syncSafetyLanguageText\(\);/);
   assert.match(permit, /work-permit-paper\.is-print-layout \.work-permit-instruction-list/);
   assert.match(permit, /work-permit-paper\.is-print-layout \.work-permit-reminder/);
-  assert.match(permit, /margin:\s*\[10, 10, 8, 22\]/);
+  assert.match(permit, /margin:\s*\[5, 6, 5, 6\]/);
   assert.match(permit, /font-family:\s*Calibri, Arial, sans-serif/);
 });
 
@@ -190,7 +190,7 @@ test("phone layout is card based with final actions and PDF sharing", () => {
   assert.match(permit, /position:\s*sticky;[\s\S]*?work-permit-final-actions/);
   assert.match(permit, /#workPermitFinishButton[\s\S]*?display:\s*none !important/);
   assert.match(permit, /#workPermitPrintButton[\s\S]*?display:\s*none !important/);
-  assert.match(permit, /html2canvas:[\s\S]*?windowWidth:\s*1200[\s\S]*?windowHeight:\s*1600/);
+  assert.match(permit, /html2canvas:[\s\S]*?windowWidth:\s*1200[\s\S]*?windowHeight:\s*1120/);
   assert.match(permit, /form\.dataset\.eventsBound === "true"/);
   assert.match(permit, /form\.addEventListener\(\s*"click"/);
   assert.match(permit, /openSection:\s*"Показать поля"/);
@@ -239,11 +239,19 @@ test("permit output requires manual fields and acknowledged instructions", () =>
   assert.match(permit, /work-permit-validation-error/);
 });
 
+test("permit completion fields are optional and official output is compact A4", () => {
+  assert.match(permit, /\^\(finish_date\|finish_time\)\$/);
+  assert.match(permit, /margin:\s*5mm 6mm/);
+  assert.match(permit, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(permit, /work-permit-safety-list[\s\S]*?grid-template-columns:\s*repeat\(2/);
+  assert.match(permit, /work-permit-completion-checks[\s\S]*?font-size:\s*6pt/);
+});
+
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v458-aggregate-permissions/);
+  assert.match(serviceWorker, /ppr-v459-one-page-work-permit/);
   assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /styles\.css\?v=458-aggregate-permissions/);
-  assert.match(serviceWorker, /app\.js\?v=458-aggregate-permissions/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=459-one-page-work-permit/);
+  assert.match(serviceWorker, /styles\.css\?v=459-one-page-work-permit/);
+  assert.match(serviceWorker, /app\.js\?v=459-one-page-work-permit/);
 });
