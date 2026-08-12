@@ -52,7 +52,7 @@ async function waitForHealth(url, timeoutMs = 15000) {
 async function postRemark(key, remarkId, action, actor, extra = {}, expectedStatus = 200) {
   const response = await fetch(`${baseUrl}/api/remark-collaboration`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-test-user-id": actor.id },
     body: JSON.stringify({
       actionId: `test-${Date.now()}-${Math.random()}`,
       clientId: "remark-workflow-test",
@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=461-resolution-invitations/);
-  assert.match(html, /styles\.css\?v=461-resolution-invitations/);
-  assert.match(serviceWorker, /app\.js\?v=461-resolution-invitations/);
+  assert.match(html, /app\.js\?v=462-resolution-session-fix/);
+  assert.match(html, /styles\.css\?v=462-resolution-session-fix/);
+  assert.match(serviceWorker, /app\.js\?v=462-resolution-session-fix/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1466,6 +1466,23 @@ test("an invited resolver receives a personal message that opens the exact remar
   assert.match(source, /String\(event\.targetKey \|\| ""\) !== actorKey/);
   assert.match(source, /Вас добавили к совместному устранению/);
   assert.match(source, /data-personal-remark-open-node>Открыть и присоединиться/);
+});
+
+test("production remark actions trust the authenticated session instead of a stale phone profile", () => {
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const collaborationEndpoint = serverSource.slice(serverSource.indexOf('if (pathname === "/api/remark-collaboration"'), serverSource.indexOf('if (pathname === "/api/node-update"'));
+  assert.match(collaborationEndpoint, /const registeredActor = req\.authUser \|\| \(db\.users \|\| \[\]\)\.find/);
+  assert.doesNotMatch(collaborationEndpoint, /requestedActor\.key !== sessionActorKey/);
+  assert.match(appSource, /remark_actor_invalid: "Сервер не подтвердил учётную запись сотрудника/);
+});
+
+test("joining a collaborative resolution does not require an open attendance shift", () => {
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(serverSource, /attendanceMutationExempt[\s\S]*?pathname === "\/api\/remark-collaboration"/);
+  assert.match(serverSource, /action !== "start"[\s\S]*?attendanceRoleAllowed\(registeredActor\)[\s\S]*?!activeAttendanceSession\(db, registeredActor\)/);
+  assert.match(appSource, /attendance_required: "Для записи выполненной работы сначала откройте смену/);
 });
 
 test("authorized users can close remarks for several employees with or without points", () => {

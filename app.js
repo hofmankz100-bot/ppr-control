@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v461-resolution-invitations";
+const APP_VERSION = "v462-resolution-session-fix";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -1635,7 +1635,15 @@ async function runButtonOperation(button, handler, text = "В ожидании..
   } catch (error) {
     if (requestId) pendingRequestIds.delete(requestId);
     console.error("Request action failed", error);
-    window.alert("Действие не сохранилось. Попробуйте ещё раз.");
+    const actionErrors = {
+      remark_actor_invalid: "Сервер не подтвердил учётную запись сотрудника. Выйдите из приложения и войдите снова.",
+      remark_not_open: "Это замечание уже закрыто или было обновлено. Откройте список предупреждений заново.",
+      remark_awaiting_confirmation: "Работа уже передана на подтверждение.",
+      remark_participant_required: "Ваша роль пока не добавлена к исполнителям этого устранения.",
+      attendance_required: "Для записи выполненной работы сначала откройте смену: отсканируйте рабочий QR-код «Кто на работе».",
+      authentication_required: "Сеанс входа завершён. Войдите в приложение снова."
+    };
+    window.alert(actionErrors[error?.message] || "Действие не сохранилось. Попробуйте ещё раз.");
     if (current.view === "requests") renderRequests();
   } finally {
     if (requestId && localStorage.getItem(`${STORE_KEY}-pending`) !== "1") {
