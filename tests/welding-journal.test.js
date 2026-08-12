@@ -60,4 +60,7 @@ test("welding and turning work support teams and request/result photos", () => {
   assert.match(app, /name="resultPhoto" type="file" accept="image\/\*"/);
   assert.match(app, /productionParticipantNames\(item, "welding"\)/);
   assert.match(app, /productionParticipantNames\(x,"turning"\)/);
+  assert.match(app, /name="welderStamp" required/);
+  assert.match(app, /name="welderCertificate" required/);
+  assert.match(app, /person\.id === actor\.id[\s\S]*?stamp: welderStamp, certificate: welderCertificate/);
 });

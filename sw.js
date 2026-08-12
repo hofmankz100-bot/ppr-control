@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v463-production-team-photos";
+const CACHE_NAME = "ppr-v464-welder-credentials";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=463-production-team-photos",
+  "./styles.css?v=464-welder-credentials",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=463-production-team-photos",
-  "./app.js?v=463-production-team-photos",
+  "./modules/work-permit.js?v=464-welder-credentials",
+  "./app.js?v=464-welder-credentials",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

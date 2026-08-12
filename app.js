@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v463-production-team-photos";
+const APP_VERSION = "v464-welder-credentials";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9141,10 +9141,16 @@ async function completeWeldingRequest(item, form) {
   const data = new FormData(form);
   const material = String(data.get("material") || "").trim();
   const consumables = String(data.get("consumables") || "").trim();
+  const welderStamp = String(data.get("welderStamp") || "").trim().slice(0, 100);
+  const welderCertificate = String(data.get("welderCertificate") || "").trim().slice(0, 200);
   if (!material) return window.alert("Заполните основной материал, марку, толщину и количество либо укажите «Не требуется».");
   if (!consumables) return window.alert("Укажите электрод, проволоку, флюс или защитный газ либо «Не требуется».");
+  if (!welderStamp || !welderCertificate) return window.alert("Укажите своё клеймо сварщика и номер удостоверения.");
   const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
   const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
+  const participants = productionParticipants(item, "welding").map(person => person.id === actor.id
+    ? { ...person, stamp: welderStamp, certificate: welderCertificate }
+    : person);
   saveWeldingRecord({
     ...item,
     status: "awaitingAcceptance",
@@ -9156,9 +9162,9 @@ async function completeWeldingRequest(item, form) {
     welderId: item.welderId || actor.id,
     welderName: item.welderName || actor.name,
     welderPosition: item.welderPosition || actor.position,
-    welderStamp: item.welderStamp || actor.stamp,
-    welderCertificate: item.welderCertificate || actor.certificate,
-    participants: productionParticipants(item, "welding"),
+    welderStamp: item.welderId === actor.id ? welderStamp : (item.welderStamp || actor.stamp),
+    welderCertificate: item.welderId === actor.id ? welderCertificate : (item.welderCertificate || actor.certificate),
+    participants,
     resultPhoto
   });
   showAppToast("Работа отправлена заявителю на приёмку.");
@@ -9186,6 +9192,7 @@ function weldingRecordCard(item) {
   const canComplete = ["accepted", "returned"].includes(item.status) && (isProductionParticipant(item, "welding", actor) || profile?.role === "editor");
   const canJoin = ["accepted", "returned"].includes(item.status) && isWelderUser() && !isProductionParticipant(item, "welding", actor);
   const requesterCanDecide = item.status === "awaitingAcceptance" && item.createdById === actor.id;
+  const currentWelder = productionParticipants(item, "welding").find(person => person.id === actor.id) || productionParticipant(actor);
   return `<article class="welding-card status-${escapeHtml(item.status)}" data-welding-id="${escapeHtml(item.id)}">
     <div class="welding-card-head"><div><strong>${escapeHtml(item.description)}</strong><small>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? ` · ${escapeHtml(item.drawingNumber)}` : ""}</small></div><span>${escapeHtml(weldingStatusLabel(item.status))}</span></div>
     <p>Заявитель: <b>${escapeHtml(item.createdByName || "—")}</b> · ${escapeHtml(dateTimeHuman(item.createdAt))}</p>
@@ -9201,7 +9208,9 @@ function weldingRecordCard(item) {
       <label><span><b>2</b> Вид и положение шва</span><select name="jointPosition"><option value="lower" ${item.jointPosition === "lower" ? "selected" : ""}>Нижнее</option><option value="horizontal" ${item.jointPosition === "horizontal" ? "selected" : ""}>Горизонтальное</option><option value="vertical" ${item.jointPosition === "vertical" ? "selected" : ""}>Вертикальное</option><option value="overhead" ${item.jointPosition === "overhead" ? "selected" : ""}>Потолочное</option></select></label>
       <label><span><b>3</b> Электрод / проволока / флюс / защитный газ</span><textarea name="consumables" required inputmode="text" placeholder="Укажите марку и расход либо «Не требуется»">${escapeHtml(item.status === "returned" ? item.consumables || "" : "")}</textarea></label>
       <label><span><b>4</b> Комментарий сварщика</span><textarea name="workComment" placeholder="Что изготовлено или исправлено">${escapeHtml(item.status === "returned" ? item.workComment || "" : "")}</textarea></label>
-      <label><span><b>5</b> Фото выполненной работы</span><input name="resultPhoto" type="file" accept="image/*" capture="environment"><small>Можно сфотографировать готовое изделие или выбрать фото.</small></label>
+      <label><span><b>5</b> Моё клеймо сварщика</span><input name="welderStamp" required value="${escapeHtml(currentWelder.stamp || "")}" placeholder="Номер или обозначение клейма"></label>
+      <label><span><b>6</b> № удостоверения сварщика</span><input name="welderCertificate" required value="${escapeHtml(currentWelder.certificate || "")}" placeholder="Серия и номер удостоверения"></label>
+      <label><span><b>7</b> Фото выполненной работы</span><input name="resultPhoto" type="file" accept="image/*" capture="environment"><small>Можно сфотографировать готовое изделие или выбрать фото.</small></label>
       <div class="welding-mobile-submit"><button type="submit">✓ Завершить и отправить заявителю</button></div>
     </form>` : ""}
   </article>`;
