@@ -302,6 +302,7 @@ const ROLE_ACCESS = {
   mechanicalEngineer: { label: "Инженер-механик", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
   instrumentationEngineer: { label: "Инженер КИПиА", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
   productionDirector: { label: "Директор производства", requestRoles: [], equipment: "all", checklist: true },
+  generalDirector: { label: "Генеральный директор", requestRoles: [], equipment: "all", checklist: true },
   director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
   technicalDirector: { label: "Технический директор", requestRoles: [], equipment: "none", checklist: false },
   editor: { label: "Админ", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true }
@@ -317,6 +318,7 @@ const ROLE_PERMISSION_BASE = {
   designEngineer: "engineer",
   mechanicalEngineer: "engineer",
   instrumentationEngineer: "engineer",
+  generalDirector: "productionDirector",
   technicalDirector: "director"
 };
 
@@ -3423,7 +3425,7 @@ function canOpenView(view) {
   if (view === "orders") return isProfileReady();
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "adminMaintenance") return profile?.role === "editor";
-  if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(profile?.role);
+  if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role));
   if (view === "requestCreate") return !TMC_REQUESTS_DISABLED && canEditChecklist();
   return true;
 }
@@ -3473,7 +3475,7 @@ function canSeeRequestRoleIndicator(role) {
 }
 
 function canActAsRole(role) {
-  return profile?.role === "editor" || profile?.role === role;
+  return profile?.role === "editor" || permissionBaseRole(profile?.role) === permissionBaseRole(role);
 }
 
 function canConfirmInstallation() {
@@ -7551,6 +7553,7 @@ function requestRoleLabel(role) {
     shop: "Начальник цеха",
     engineer: "Инженер",
     productionDirector: "Директор производства",
+    generalDirector: "Генеральный директор",
     mechanic: "Электромеханик",
     electrician: "Электромеханик",
     welder: "Сварщик",
@@ -8750,7 +8753,7 @@ function remarksSectionLabel() {
 function remarkVisibleToCurrentRole(eq) {
   if (!eq) return false;
   if (["shop", "operator"].includes(profile?.role)) return Boolean(profile?.area) && eq.area === profile.area;
-  if (["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(profile?.role)) return true;
+  if (["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role))) return true;
   return visibleEquipment().some(item => Number(item.id) === Number(eq.id));
 }
 
@@ -10861,7 +10864,7 @@ function nodeDocumentMemoRoleOptionsHtml() {
   if (!canConfigureNodeDocumentMemo()) return "";
   const selected = new Set(state.nodeDocumentMemoRoles || DEFAULT_NODE_DOCUMENT_MEMO_ROLES);
   const roles = Object.entries(ROLE_ACCESS)
-    .filter(([role, access]) => role !== "editor" && access.checklist && !["director", "technicalDirector", "productionDirector"].includes(role));
+    .filter(([role, access]) => role !== "editor" && access.checklist && !["director", "technicalDirector", "productionDirector", "generalDirector"].includes(role));
   return `
     <details class="node-document-access">
       <summary>Кто видит памятку</summary>
