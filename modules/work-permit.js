@@ -7614,6 +7614,7 @@
       .work-permit-paper.is-print-layout {
         width: 198mm !important;
         max-width: 198mm !important;
+        zoom: .86 !important;
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         column-gap: 3mm !important;
@@ -7740,6 +7741,12 @@
         gap: 4mm !important;
         margin: .3mm 0 !important;
         font-size: 6pt !important;
+      }
+
+      .work-permit-paper.is-print-layout > .work-permit-section:last-child {
+        padding-top: .35mm !important;
+        padding-bottom: 0 !important;
+        border-bottom: 0 !important;
       }
 
       @media print {
