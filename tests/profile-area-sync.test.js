@@ -12,6 +12,8 @@ test("employee access follows current equipment areas and refreshes without logo
   assert.match(app, /const areaOptions = selected =>[\s\S]*?assignableEquipmentAreas\(\)/);
   assert.match(app, /<select data-access-area>\$\{accessAreaOptions\(user\.area \|\| ""\)\}<\/select>/);
   assert.match(app, /role,[\s\S]*?area,[\s\S]*?actionId: nextActionId\(\)/);
+  assert.match(app, /function equipmentEmployeeArea\(eq = \{\}\)[\s\S]*?return name/);
+  assert.match(app, /equipment\.filter\(eq => areaAllowed\(equipmentEmployeeArea\(eq\)\)\)/);
   assert.match(app, /async function refreshAuthenticatedProfile\(\)[\s\S]*?\/api\/auth\/session[\s\S]*?previousAccess !== nextAccess[\s\S]*?resetCurrentForProfile\(\)/);
 
   const roleEndpoint = server.slice(server.indexOf('pathname === "/api/users/role"'), server.indexOf('pathname === "/api/users/password"'));

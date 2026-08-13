@@ -3687,6 +3687,13 @@ function assignableEquipmentAreas() {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
+function equipmentEmployeeArea(eq = {}) {
+  const area = String(eq.area || "").trim();
+  const name = String(eq.name || "").trim();
+  if (area.toLocaleLowerCase("ru-RU") === "резерв" && name && !/^оборудование\s+\d+$/iu.test(name)) return name;
+  return area;
+}
+
 function saveEquipmentCatalog(equipmentId, patch) {
   const eq = equipmentById(equipmentId);
   if (!eq || !canEditEquipmentCatalog(eq)) return false;
@@ -3832,7 +3839,7 @@ function autofillNodeReminder(equipmentId, nodeIndex) {
 function areaAllowed(area) {
   if (!needsArea()) return true;
   if (!profile?.area) return false;
-  return area === profile.area;
+  return sameRemarkArea(area, profile.area);
 }
 
 function visibleEquipment() {
@@ -3840,7 +3847,7 @@ function visibleEquipment() {
   if (mode === "none") return [];
   const equipment = allEquipment();
   if (profile?.jobRole === "forkliftDriver") return equipment.filter(eq => String(eq.name || "").trim().toLocaleLowerCase("ru-RU") === "вилочные погрузчики");
-  if (mode === "area") return equipment.filter(eq => areaAllowed(eq.area));
+  if (mode === "area") return equipment.filter(eq => areaAllowed(equipmentEmployeeArea(eq)));
   return equipment;
 }
 
@@ -8841,7 +8848,7 @@ function remarksSectionLabel() {
 
 function remarkVisibleToCurrentRole(eq) {
   if (!eq) return false;
-  if (["shop", "operator"].includes(profile?.role)) return Boolean(profile?.area) && eq.area === profile.area;
+  if (["shop", "operator"].includes(profile?.role)) return Boolean(profile?.area) && sameRemarkArea(equipmentEmployeeArea(eq), profile.area);
   if (["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role))) return true;
   return visibleEquipment().some(item => Number(item.id) === Number(eq.id));
 }
