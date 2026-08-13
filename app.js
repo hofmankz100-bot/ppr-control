@@ -3373,6 +3373,27 @@ async function restoreServerSession() {
   }
 }
 
+async function refreshAuthenticatedProfile() {
+  if (!authenticatedProfile) return false;
+  try {
+    const result = await apiJson("/api/auth/session", { timeout: 8000 });
+    if (!result?.user) return false;
+    const previousAccess = `${authenticatedProfile.role || ""}|${authenticatedProfile.area || ""}`;
+    const nextAccess = `${result.user.role || ""}|${result.user.area || ""}`;
+    authenticatedProfile = result.user;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
+    profile = activeProfileFromSession(authenticatedProfile);
+    if (previousAccess !== nextAccess) {
+      resetCurrentForProfile();
+      renderProfile();
+      show(current.view, false);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function finishAuthOnCurrentPage() {
   authenticatedProfile = loadProfile();
   profile = activeProfileFromSession(authenticatedProfile);
@@ -3645,6 +3666,10 @@ function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
 function availableEquipmentAreas() {
   return [...new Set(allEquipment().map(eq => String(eq.area || "").trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function assignableEquipmentAreas() {
+  return availableEquipmentAreas().filter(area => area.toLocaleLowerCase("ru-RU") !== "резерв");
 }
 
 function saveEquipmentCatalog(equipmentId, patch) {
@@ -16808,8 +16833,9 @@ async function renderAdminMaintenance() {
   if (tab === "access") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     const qrRoles = new Set(["shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer"]);
+    const accessAreaOptions = selected => `<option value="">Без участка</option>${assignableEquipmentAreas().map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`).join("")}`;
     const roleOptions = Object.entries(ROLE_ACCESS).map(([value,item]) => `<option value="${escapeHtml(value)}">${escapeHtml(item.label || value)}</option>`).join("");
-    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Права и учётные записи</strong><span>Сотрудников: ${accessUsers.length}</span></div><div class="admin-access-tools no-print"><input type="search" data-access-search placeholder="Поиск по ФИО, табельному номеру или телефону"><select data-access-role-filter><option value="">Все роли</option>${roleOptions}</select></div><div class="admin-access-list">${accessUsers.map(user => `<article data-access-row data-search="${escapeHtml([user.name,user.employeeId,user.phone,user.area].join(" ").toLowerCase())}" data-role="${escapeHtml(user.role || "")}" class="${user.accessDisabled ? "disabled" : ""}"><div class="admin-access-person"><strong>${escapeHtml(user.name || "Без имени")}</strong><span>${escapeHtml(user.employeeId || "Без табельного")} · ${escapeHtml(user.phone || "Без телефона")}</span><small>${user.accessDisabled ? "Доступ отключён" : user.pendingApproval ? "Ожидает подтверждения" : user.loginDiagnostics?.locked ? "Вход временно заблокирован" : "Учётная запись активна"}</small></div><div class="admin-access-fields no-print"><select data-access-role>${roleOptions.replace(`value="${escapeHtml(user.role || "")}"`, `value="${escapeHtml(user.role || "")}" selected`)}</select><input data-access-area value="${escapeHtml(user.area || "")}" placeholder="Участок"><button type="button" data-access-save-role="${escapeHtml(user.id || "")}">Сохранить роль</button></div><div class="admin-access-rights"><span>Редактор инструкций: ${Number(user.instructionEditorCount || 0)}</span>${qrRoles.has(user.role) ? `<label class="no-print"><input type="checkbox" data-access-qr="${escapeHtml(user.id || "")}" ${user.qrWalkJournalAccess ? "checked" : ""}> Просмотр QR-журнала</label>` : ""}</div>${adminUserDetailsHtml(user)}<div class="admin-access-actions no-print">${user.loginDiagnostics?.locked ? `<button type="button" data-access-unlock="${escapeHtml(user.id || "")}">Разблокировать вход</button>` : ""}${user.role !== "editor" ? `<button type="button" class="${user.accessDisabled ? "" : "danger"}" data-access-toggle="${escapeHtml(user.id || "")}" data-disabled="${user.accessDisabled ? "false" : "true"}">${user.accessDisabled ? "Включить доступ" : "Отключить доступ"}</button>` : `<span>Защищённый администратор</span>`}</div></article>`).join("")}</div>`;
+    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Права и учётные записи</strong><span>Сотрудников: ${accessUsers.length}</span></div><div class="admin-access-tools no-print"><input type="search" data-access-search placeholder="Поиск по ФИО, табельному номеру или телефону"><select data-access-role-filter><option value="">Все роли</option>${roleOptions}</select></div><div class="admin-access-list">${accessUsers.map(user => `<article data-access-row data-search="${escapeHtml([user.name,user.employeeId,user.phone,user.area].join(" ").toLowerCase())}" data-role="${escapeHtml(user.role || "")}" class="${user.accessDisabled ? "disabled" : ""}"><div class="admin-access-person"><strong>${escapeHtml(user.name || "Без имени")}</strong><span>${escapeHtml(user.employeeId || "Без табельного")} · ${escapeHtml(user.phone || "Без телефона")}</span><small>${user.accessDisabled ? "Доступ отключён" : user.pendingApproval ? "Ожидает подтверждения" : user.loginDiagnostics?.locked ? "Вход временно заблокирован" : "Учётная запись активна"}</small></div><div class="admin-access-fields no-print"><select data-access-role>${roleOptions.replace(`value="${escapeHtml(user.role || "")}"`, `value="${escapeHtml(user.role || "")}" selected`)}</select><select data-access-area>${accessAreaOptions(user.area || "")}</select><button type="button" data-access-save-role="${escapeHtml(user.id || "")}">Сохранить роль</button></div><div class="admin-access-rights"><span>Редактор инструкций: ${Number(user.instructionEditorCount || 0)}</span>${qrRoles.has(user.role) ? `<label class="no-print"><input type="checkbox" data-access-qr="${escapeHtml(user.id || "")}" ${user.qrWalkJournalAccess ? "checked" : ""}> Просмотр QR-журнала</label>` : ""}</div>${adminUserDetailsHtml(user)}<div class="admin-access-actions no-print">${user.loginDiagnostics?.locked ? `<button type="button" data-access-unlock="${escapeHtml(user.id || "")}">Разблокировать вход</button>` : ""}${user.role !== "editor" ? `<button type="button" class="${user.accessDisabled ? "" : "danger"}" data-access-toggle="${escapeHtml(user.id || "")}" data-disabled="${user.accessDisabled ? "false" : "true"}">${user.accessDisabled ? "Включить доступ" : "Отключить доступ"}</button>` : `<span>Защищённый администратор</span>`}</div></article>`).join("")}</div>`;
   }
   if (tab === "report") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
@@ -17441,7 +17467,7 @@ function renderDirectorUsers() {
       .map(([role, access]) => `<option value="${role}" ${normalizedSelected === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`)
       .join("")}`;
   };
-  const areaOptions = selected => `<option value="">Без участка</option>${[...new Set([...availableEquipmentAreas(), ...(state.adminConfig?.departments || [])])].sort((a, b) => a.localeCompare(b, "ru"))
+  const areaOptions = selected => `<option value="">Без участка</option>${assignableEquipmentAreas()
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `
@@ -18446,6 +18472,7 @@ window.addEventListener("visibilitychange", () => {
       return;
     }
     resetAppNotificationsForOpen();
+    refreshAuthenticatedProfile();
     flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
@@ -18482,6 +18509,7 @@ placeSingleAttendanceButton();
 window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);
+window.setInterval(refreshAuthenticatedProfile, 30000);
 setupPublicAttendanceEntry();
 setupLogin();
 setupHofmannForkliftMascot();

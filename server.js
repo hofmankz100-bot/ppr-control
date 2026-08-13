@@ -7671,7 +7671,6 @@ async function handleApi(req, res, pathname, url) {
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
       syncPushProfilesForUser(db, target);
-      db.authSessions = (db.authSessions || []).filter(session => session.userId !== target.id);
       writeDb(db, {
         action: "user_role_update",
         actionId: String(body.actionId || ""),
