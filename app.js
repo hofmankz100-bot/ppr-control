@@ -75,7 +75,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v468-admin-data-fast-load";
+const APP_VERSION = "v469-admin-tabs-lazy-load";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -16631,8 +16631,9 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Данные и корзина";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
+  const requestedTab = current.adminMaintenanceTab || "audit";
   let result;
-  try { result = await apiJson("/api/admin/maintenance", { timeout: 15000 }); }
+  try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
   catch { ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Не удалось загрузить административные данные. Проверьте соединение.</div>`; return; }
   if (current.view !== "adminMaintenance") return;
   const audit = Array.isArray(result.audit) ? result.audit : [];

@@ -119,7 +119,7 @@ test("production API requires a server session and rate-limits failed logins", a
     });
     assert.equal(instructionAckResponse.status, 200);
     assert.equal((await instructionAckResponse.json()).ok, true);
-    const maintenanceAfterInstructionAck = await fetch(`${baseUrl}/api/admin/maintenance`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const maintenanceAfterInstructionAck = await fetch(`${baseUrl}/api/admin/maintenance?tab=instructionLog`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(maintenanceAfterInstructionAck.instructionAcknowledgements.some(item => item.instructionId === "general" && item.actorName === editor.name), true);
     const instructionStateAfterAck = await fetch(`${baseUrl}/api/work-permit-instructions`, { headers: { cookie, "x-client-protocol": CLIENT_PROTOCOL_VERSION } }).then(response => response.json());
     assert.equal(instructionStateAfterAck.acknowledgedIds.includes("general"), true);

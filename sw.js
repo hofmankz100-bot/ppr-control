@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v468-admin-data-fast-load";
+const CACHE_NAME = "ppr-v469-admin-tabs-lazy-load";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=468-admin-data-fast-load",
+  "./styles.css?v=469-admin-tabs-lazy-load",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=468-admin-data-fast-load",
-  "./app.js?v=468-admin-data-fast-load",
+  "./modules/work-permit.js?v=469-admin-tabs-lazy-load",
+  "./app.js?v=469-admin-tabs-lazy-load",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
