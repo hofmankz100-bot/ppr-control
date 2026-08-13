@@ -926,6 +926,13 @@ async function refreshSystemMonitoring() {
   return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
 }
 
+function adminDiagnosticWithin(promise, fallback, timeoutMs = 2500) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => fallback),
+    new Promise(resolve => setTimeout(() => resolve(fallback), timeoutMs))
+  ]);
+}
+
 
 
 function safeFileName(value) {
@@ -5316,17 +5323,12 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
-    const monitoringResult = await refreshSystemMonitoring();
     const db = readDb();
-    let postgres = { connected: false, mode: storageStatus.mode || "json" };
-    if (postgresPool) {
-      try {
-        const result = await postgresPool.query("SELECT now() AS now, pg_database_size(current_database()) AS size");
-        postgres = { connected: true, mode: "postgres", checkedAt: result.rows[0]?.now, sizeBytes: Number(result.rows[0]?.size || 0) };
-      } catch (error) {
-        postgres = { connected: false, mode: "postgres-degraded", error: String(error.message || error) };
-      }
-    }
+    const monitoringSnapshot = db.systemMonitor && typeof db.systemMonitor === "object"
+      ? db.systemMonitor
+      : { node: { online: true }, api: {}, postgres: { connected: Boolean(postgresPool), mode: storageStatus.mode || "json" } };
+    const monitoringResult = { snapshot: monitoringSnapshot, alerts: (db.adminAlerts || []).slice(0, 200) };
+    const postgres = { connected: Boolean(monitoringSnapshot.postgres?.connected), mode: monitoringSnapshot.postgres?.mode || storageStatus.mode || "json", checkedAt: monitoringSnapshot.checkedAt || "", sizeBytes: Number(monitoringSnapshot.postgres?.sizeBytes || 0), error: monitoringSnapshot.postgres?.error || "" };
     const trash = (db.adminTrash || []).map(item => ({
       id: item.id,
       type: item.type,
@@ -5341,7 +5343,10 @@ async function handleApi(req, res, pathname, url) {
       restoredByName: item.restoredByName || ""
     }));
     const archivePreview = adminArchiveSelection(db, 180);
-    const backups = await listAdminBackups();
+    const [backups, archives] = await Promise.all([
+      adminDiagnosticWithin(listAdminBackups(), []),
+      adminDiagnosticWithin(listAdminArchives(db), [])
+    ]);
     const backupRetention = {
       dailyDays: 14,
       weeklyUntilDays: 56,
@@ -5356,7 +5361,7 @@ async function handleApi(req, res, pathname, url) {
       return { id: item.id, title: item.title || "Объявление", text: item.text || "", priority: item.priority || "normal", roles, active: item.active !== false, startsAt: item.startsAt || item.at || "", expiresAt: item.expiresAt || "", createdAt: item.createdAt || item.at || "", author: item.author || "", remindedAt: item.remindedAt || "", recipientCount: recipients.length, readCount: recipients.filter(user => readIds.has(String(user.id || ""))).length, recipients: recipients.map(user => ({ id: user.id, name: user.name || "Без имени", role: user.role || "", employeeId: user.employeeId || "", readAt: (item.readBy || []).find(entry => String(entry.userId || "") === String(user.id || ""))?.at || "" })) };
     });
     const access = (db.users || []).map(user => ({ ...userPublic(user), loginDiagnostics: userLoginDiagnostics(db, user), operationalSummary: adminUserOperationalSummary(db, user), instructionEditorCount: Object.values(db.workPermitInstructions || {}).filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key)))).length }));
-    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, instructionAcknowledgements: (db.workPermitInstructionAcknowledgements || []).slice(0, 2000), notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives: await listAdminArchives(db), postgres, backups, backupRetention, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
+    sendJson(res, 200, { ok: true, trash, audit: (db.adminAuditLog || []).slice(0, 1000), access, broadcasts, instructionAcknowledgements: (db.workPermitInstructionAcknowledgements || []).slice(0, 2000), notificationPolicy: { defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(db.adminNotificationPolicy?.unreadReminderHours || 8))) }, activity: adminActivityFeed(db, req.authUser), alerts: monitoringResult.alerts, monitoring: monitoringResult.snapshot, systemReport, automation: adminAutomationSnapshot(db), integrity: dataIntegrityReport(db), archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts }, archives, postgres, backups, backupRetention, config: normalizedAdminConfig(db.adminConfig), configHistory: (db.adminConfigHistory || []).slice(0, 20).map(item => ({ id: item.id, at: item.at, actorName: item.actorName, reason: item.reason })) });
     return true;
   }
 
