@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=467-night-shift-date/);
-  assert.match(html, /styles\.css\?v=467-night-shift-date/);
-  assert.match(serviceWorker, /app\.js\?v=467-night-shift-date/);
+  assert.match(html, /app\.js\?v=468-admin-data-fast-load/);
+  assert.match(html, /styles\.css\?v=468-admin-data-fast-load/);
+  assert.match(serviceWorker, /app\.js\?v=468-admin-data-fast-load/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -923,6 +923,11 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(server, /adminTrash/);
   assert.match(server, /adminAuditLog/);
   assert.match(server, /pathname === "\/api\/admin\/maintenance"/);
+  assert.match(server, /function adminDiagnosticWithin/);
+  assert.match(server, /const \[backups, archives\] = await Promise\.all/);
+  assert.match(server, /adminDiagnosticWithin\(listAdminBackups\(\), \[\]\)/);
+  const maintenanceGet = server.slice(server.indexOf('if (pathname === "/api/admin/maintenance" && req.method === "GET")'), server.indexOf('if (pathname === "/api/admin/notification-policy"'));
+  assert.doesNotMatch(maintenanceGet, /await refreshSystemMonitoring\(\)/);
   assert.match(server, /createManualBackup\("before-trash-purge"\)/);
   assert.match(server, /30 \* 24 \* 60 \* 60 \* 1000/);
   assert.match(server, /passwordMatches\(String\(body\.password/);
