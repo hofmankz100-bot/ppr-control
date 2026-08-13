@@ -2382,9 +2382,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     : mergeObjectByFreshnessLocal(state.orders, remote.orders);
   state.inventory = {};
   state.catalog ||= { equipment: {} };
-  state.catalog.equipment = isEditorSession()
-    ? { ...(state.catalog.equipment || {}), ...(remote.catalog?.equipment || {}) }
-    : { ...(remote.catalog?.equipment || {}) };
+  state.catalog.equipment = { ...(remote.catalog?.equipment || {}) };
   state.adminConfig = { ...(state.adminConfig || {}), ...(remote.adminConfig || {}) };
   state.serviceCosts = [];
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);

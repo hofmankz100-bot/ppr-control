@@ -255,6 +255,83 @@ function removeWarehouseWorkflow(db) {
   }
 }
 
+function normalizedCatalogNodeName(value = "") {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+}
+
+function catalogNodeTombstone(item, name, event = {}) {
+  const cleanName = String(name || "").trim().slice(0, 200);
+  if (!cleanName) return;
+  item.removedNodes = Array.isArray(item.removedNodes) ? item.removedNodes : [];
+  const normalizedName = normalizedCatalogNodeName(cleanName);
+  if (item.removedNodes.some(entry => normalizedCatalogNodeName(entry?.name) === normalizedName)) return;
+  item.removedNodes.push({
+    name: cleanName,
+    at: String(event.at || new Date().toISOString()).slice(0, 50),
+    by: String(event.by || event.actorName || "").trim().slice(0, 200),
+    reason: String(event.reason || "").trim().slice(0, 500)
+  });
+  item.removedNodes = item.removedNodes.slice(-500);
+}
+
+function removeCatalogNodeByHistory(item, name, preferredIndex = -1) {
+  if (!Array.isArray(item?.nodes)) return false;
+  const normalizedName = normalizedCatalogNodeName(name);
+  if (!normalizedName) return false;
+  let index = Number.isSafeInteger(preferredIndex)
+    && normalizedCatalogNodeName(item.nodes[preferredIndex]) === normalizedName
+    ? preferredIndex
+    : item.nodes.findIndex(node => normalizedCatalogNodeName(node) === normalizedName);
+  if (index < 0 || item.nodes.length <= 1) return false;
+  item.nodes.splice(index, 1);
+  return true;
+}
+
+function repairCatalogNodeHistory(db) {
+  const equipment = db?.catalog?.equipment;
+  if (!equipment || typeof equipment !== "object") return;
+  const events = [];
+  for (const entry of db.adminAuditLog || []) {
+    if (entry?.action !== "equipment_node_deleted") continue;
+    const [equipmentId, nodeIndexRaw] = String(entry.targetId || "").split(":");
+    if (!equipmentId || !equipment[equipmentId]) continue;
+    events.push({ type: "delete", at: entry.at || "", equipmentId, nodeIndex: Number(nodeIndexRaw), name: entry.targetLabel || "", entry });
+  }
+  for (const entry of db.auditHistory || []) {
+    const action = String(entry?.action || "").toLocaleLowerCase("ru-RU");
+    if (!action.includes("название узла")) continue;
+    const target = String(entry.target || "");
+    const separator = target.lastIndexOf(" · ");
+    const match = String(entry.details || "").match(/:\s*(.+)$/);
+    if (separator < 0 || !match?.[1]) continue;
+    const equipmentName = target.slice(0, separator).trim();
+    const oldName = target.slice(separator + 3).trim();
+    const equipmentId = Object.keys(equipment).find(id => normalizedCatalogNodeName(equipment[id]?.name) === normalizedCatalogNodeName(equipmentName));
+    if (!equipmentId) continue;
+    events.push({ type: "rename", at: entry.at || "", equipmentId, oldName, newName: match[1].trim(), entry });
+  }
+  events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  for (const event of events) {
+    const item = equipment[event.equipmentId];
+    if (!item || !Array.isArray(item.nodes)) continue;
+    if (event.type === "rename") {
+      const oldKey = normalizedCatalogNodeName(event.oldName);
+      const newKey = normalizedCatalogNodeName(event.newName);
+      const index = item.nodes.findIndex(node => normalizedCatalogNodeName(node) === oldKey);
+      if (index >= 0 && newKey && !item.nodes.some(node => normalizedCatalogNodeName(node) === newKey)) item.nodes[index] = event.newName;
+      catalogNodeTombstone(item, event.oldName, event.entry);
+    } else {
+      removeCatalogNodeByHistory(item, event.name, event.nodeIndex);
+      catalogNodeTombstone(item, event.name, event.entry);
+    }
+  }
+  for (const item of Object.values(equipment)) {
+    if (!Array.isArray(item?.nodes) || !Array.isArray(item.removedNodes)) continue;
+    const removed = new Set(item.removedNodes.map(entry => normalizedCatalogNodeName(entry?.name)).filter(Boolean));
+    item.nodes = item.nodes.filter(node => !removed.has(normalizedCatalogNodeName(node)));
+  }
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -309,6 +386,7 @@ function normalizeDb(db) {
   db.systemMonitor = db.systemMonitor && typeof db.systemMonitor === "object" ? db.systemMonitor : {};
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
+  repairCatalogNodeHistory(db);
   db.systemBroadcasts ||= [];
   if (!db.systemBroadcasts.some(item => item.id === "admin-stages-18-25-complete-v1")) {
     db.systemBroadcasts.unshift({
@@ -5021,6 +5099,7 @@ async function handleApi(req, res, pathname, url) {
         return next;
       };
       catalogItem.nodes = nodes.filter((_, index) => index !== nodeIndex);
+      catalogNodeTombstone(catalogItem, nodes[nodeIndex], { at: archivedAt, by: req.authUser?.name });
       catalogItem.reminders = shiftIndexedMap(catalogItem.reminders);
       catalogItem.reminderMeta = shiftIndexedMap(catalogItem.reminderMeta);
       catalogItem.nodeOperationalPauses = shiftIndexedMap(catalogItem.nodeOperationalPauses);
@@ -6145,13 +6224,37 @@ async function handleApi(req, res, pathname, url) {
           const requestedArea = String(rawItem.area || currentItem.area || "").trim().slice(0, 200);
           if (catalogRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
+          const currentUpdatedAt = Date.parse(currentItem.updatedAt || "");
+          const incomingUpdatedAt = Date.parse(rawItem.updatedAt || "");
+          if (Number.isFinite(currentUpdatedAt) && (!Number.isFinite(incomingUpdatedAt) || incomingUpdatedAt < currentUpdatedAt)) return;
           const requestedEditingEnabled = rawItem.editingEnabled === true;
           const editingEnabled = currentItem.editingEnabled === true;
           if (catalogRole !== "editor" && !editingEnabled) return;
           const item = { ...currentItem };
           if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
           if (Array.isArray(rawItem.nodes)) {
-            item.nodes = rawItem.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean).slice(0, 200);
+            const currentNodes = Array.isArray(currentItem.nodes) ? currentItem.nodes : [];
+            const removed = new Set((currentItem.removedNodes || []).map(entry => normalizedCatalogNodeName(entry?.name)).filter(Boolean));
+            const requestedNodes = rawItem.nodes
+              .map(value => String(value || "").trim().slice(0, 200))
+              .filter(value => value && !removed.has(normalizedCatalogNodeName(value)))
+              .slice(0, 200);
+            if (requestedNodes.length < currentNodes.length) {
+              const requestedNames = new Set(requestedNodes.map(normalizedCatalogNodeName));
+              currentNodes.forEach(oldName => {
+                if (!requestedNames.has(normalizedCatalogNodeName(oldName))) {
+                  catalogNodeTombstone(item, oldName, { at: rawItem.updatedAt, by: req.authUser?.name });
+                }
+              });
+            } else if (requestedNodes.length === currentNodes.length) {
+              currentNodes.forEach((oldName, index) => {
+                const nextName = requestedNodes[index];
+                if (nextName && normalizedCatalogNodeName(oldName) !== normalizedCatalogNodeName(nextName)) {
+                  catalogNodeTombstone(item, oldName, { at: rawItem.updatedAt, by: req.authUser?.name });
+                }
+              });
+            }
+            item.nodes = requestedNodes;
           }
           if (rawItem.reminders && typeof rawItem.reminders === "object") {
             item.reminders = {};
