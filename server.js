@@ -64,6 +64,28 @@ const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
 const REMOVED_EQUIPMENT_IDS = new Set(["16"]);
+const GAS_QR_EQUIPMENT_ID = "15";
+const GAS_QR_NODES = Object.freeze([
+  "ШГРП",
+  "КОНТРОЛЬНАЯ ТРУБКА №1",
+  "КОНТРОЛЬНАЯ ТРУБКА №2",
+  "КОНТРОЛЬНАЯ ТРУБКА №3",
+  "КОНТРОЛЬНАЯ ТРУБКА №4",
+  "КОНТРОЛЬНАЯ ТРУБКА №5",
+  "Охранная зона газопровода",
+  "Газорегуляторный пункт (ГРП) №1",
+  "Газорегуляторный пункт (ГРП) №2",
+  "Газорегуляторный пункт (ГРП) №3",
+  "Газорегуляторный пункт (ГРП) №4",
+  "Газорегуляторный пункт (ГРП) №5",
+  "Газорегуляторный пункт (ГРП) №6",
+  "Газорегуляторный пункт (ГРП) №7",
+  "Газорегуляторный пункт (ГРП) №8",
+  "Газорегуляторный пункт (ГРП) №9",
+  "Газорегуляторный пункт (ГРП) №10",
+  "Газорегуляторный пункт (ГРП) №11",
+  "ПСК"
+]);
 const loginAttempts = new Map();
 const contractorAttendanceAttempts = new Map();
 let postgresPool = null;
@@ -314,6 +336,7 @@ function repairCatalogNodeHistory(db) {
   for (const event of events) {
     const item = equipment[event.equipmentId];
     if (!item || !Array.isArray(item.nodes)) continue;
+    if (item.nodeHistoryRestoredAt && String(event.at || "") <= String(item.nodeHistoryRestoredAt)) continue;
     if (event.type === "rename") {
       const oldKey = normalizedCatalogNodeName(event.oldName);
       const newKey = normalizedCatalogNodeName(event.newName);
@@ -330,6 +353,22 @@ function repairCatalogNodeHistory(db) {
     const removed = new Set(item.removedNodes.map(entry => normalizedCatalogNodeName(entry?.name)).filter(Boolean));
     item.nodes = item.nodes.filter(node => !removed.has(normalizedCatalogNodeName(node)));
   }
+}
+
+function restoreGasQrCatalog(db) {
+  const equipment = db?.catalog?.equipment;
+  if (!equipment || typeof equipment !== "object") return;
+  const item = equipment[GAS_QR_EQUIPMENT_ID];
+  if (!item || !Array.isArray(item.nodes)) return;
+  if (item.gasQrRestoreVersion === "historical-order-v1") return;
+
+  const now = new Date().toISOString();
+  item.nodes = [...GAS_QR_NODES];
+  item.removedNodes = (Array.isArray(item.removedNodes) ? item.removedNodes : [])
+    .filter(entry => !GAS_QR_NODES.some(name => normalizedCatalogNodeName(name) === normalizedCatalogNodeName(entry?.name)));
+  item.nodeHistoryRestoredAt = now;
+  item.gasQrRestoreVersion = "historical-order-v1";
+  item.updatedAt = now;
 }
 
 function normalizeDb(db) {
@@ -387,6 +426,7 @@ function normalizeDb(db) {
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   repairCatalogNodeHistory(db);
+  restoreGasQrCatalog(db);
   db.systemBroadcasts ||= [];
   if (!db.systemBroadcasts.some(item => item.id === "admin-stages-18-25-complete-v1")) {
     db.systemBroadcasts.unshift({

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v470-order-visibility";
+const CACHE_NAME = "ppr-v471-restore-gas-qr-nodes";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=470-order-visibility",
-  "./app.js?v=470-order-visibility",
+  "./modules/work-permit.js?v=471-restore-gas-qr-nodes",
+  "./app.js?v=471-restore-gas-qr-nodes",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

@@ -714,6 +714,16 @@ test("deleted and renamed equipment nodes cannot return from stale clients", () 
   assert.match(serverSource, /removed\.has\(normalizedCatalogNodeName\(value\)\)/);
 });
 
+test("SHGRP QR nodes are restored in their historical index order", () => {
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /const GAS_QR_EQUIPMENT_ID = "15"/);
+  assert.match(serverSource, /function restoreGasQrCatalog\(db\)/);
+  assert.match(serverSource, /item\.nodeHistoryRestoredAt = now/);
+  assert.match(serverSource, /"Газорегуляторный пункт \(ГРП\) №11"/);
+  assert.match(serverSource, /"ПСК"/);
+  assert.match(serverSource, /restoreGasQrCatalog\(db\)/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -821,9 +831,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=470-order-visibility/);
+  assert.match(html, /app\.js\?v=471-restore-gas-qr-nodes/);
   assert.match(html, /styles\.css\?v=470-order-visibility/);
-  assert.match(serviceWorker, /app\.js\?v=470-order-visibility/);
+  assert.match(serviceWorker, /app\.js\?v=471-restore-gas-qr-nodes/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
