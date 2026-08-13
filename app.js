@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v471-restore-gas-qr-nodes";
+const APP_VERSION = "v472-rotatable-node-qr";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4165,7 +4165,8 @@ function printCurrentDocument(title = "ППР Контроль") {
 }
 
 function nodeQrPayload(equipmentId, nodeIndex) {
-  return `PPRQR|NODE|${Number(equipmentId)}|${Number(nodeIndex)}`;
+  const token = String(equipmentById(Number(equipmentId))?.qrTokens?.[Number(nodeIndex)] || "").trim();
+  return `PPRQR|NODE|${Number(equipmentId)}|${Number(nodeIndex)}${token ? `|${token}` : ""}`;
 }
 
 function nodeQrShortCode(equipmentId, nodeIndex) {
@@ -4173,7 +4174,8 @@ function nodeQrShortCode(equipmentId, nodeIndex) {
 }
 
 function nodeQrDisplayCode(equipmentId, nodeIndex) {
-  return `QR-${Number(equipmentId)}-${Number(nodeIndex)}`;
+  const token = String(equipmentById(Number(equipmentId))?.qrTokens?.[Number(nodeIndex)] || "").trim();
+  return `QR-${Number(equipmentId)}-${Number(nodeIndex)}${token ? `-${token.slice(0, 6).toUpperCase()}` : ""}`;
 }
 
 function nodeQrBaseUrl() {
@@ -4204,11 +4206,16 @@ function parseNodeQrPayload(value) {
     if (Number.isFinite(equipmentId) && Number.isFinite(nodeIndex)) return { equipmentId, nodeIndex };
   }
   const parts = text.split("|");
-  if (parts.length !== 4 || parts[0] !== "PPRQR" || parts[1] !== "NODE") return null;
+  if (![4, 5].includes(parts.length) || parts[0] !== "PPRQR" || parts[1] !== "NODE") return null;
   const equipmentId = Number(parts[2]);
   const nodeIndex = Number(parts[3]);
   if (!Number.isFinite(equipmentId) || !Number.isFinite(nodeIndex)) return null;
-  return { equipmentId, nodeIndex };
+  return { equipmentId, nodeIndex, qrToken: String(parts[4] || "") };
+}
+
+function currentNodeQrMatches(parsed = {}) {
+  const expected = String(equipmentById(Number(parsed.equipmentId))?.qrTokens?.[Number(parsed.nodeIndex)] || "").trim();
+  return !expected || expected === String(parsed.qrToken || "").trim();
 }
 
 function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().date, shiftInfo = currentWalkShift(), options = {}) {
@@ -4237,7 +4244,7 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   return { date, shift: shiftInfo };
 }
 
-async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
+async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "") {
   try {
     const result = await apiJson("/api/qr-walk/mark", {
       method: "POST",
@@ -4247,6 +4254,7 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo) {
         clientId: CLIENT_ID,
         equipmentId,
         nodeIndex,
+        qrToken,
         date,
         shift: shiftInfo?.key || "",
         group: qrWalkGroup(),
@@ -4439,6 +4447,11 @@ async function handleIncomingNodeQrFromUrl() {
   const eq = equipmentById(parsed.equipmentId);
   if (!eq?.nodes?.[parsed.nodeIndex]) {
     window.alert("QR найден, но узел в журнале не найден. Проверьте, что QR распечатан из этой версии ППР.");
+    clearIncomingNodeQrFromUrl();
+    return false;
+  }
+  if (!currentNodeQrMatches(parsed)) {
+    window.alert("Этот QR-код заменён. Отсканируйте новый код данного узла.");
     clearIncomingNodeQrFromUrl();
     return false;
   }
@@ -4667,6 +4680,22 @@ function printNodeQrCode(eq, nodeIndex) {
   win.document.close();
 }
 
+async function rotateAndPrintNodeQr(equipmentId, nodeIndex) {
+  const eq = equipmentById(Number(equipmentId));
+  const nodeName = eq?.nodes?.[Number(nodeIndex)] || "";
+  if (!eq || !nodeName || !isEditorSession()) return;
+  if (!window.confirm(`Обновить QR узла «${nodeName}»? Старый QR этого узла перестанет работать. Остальные QR не изменятся.`)) return;
+  const result = await apiJson("/api/admin/equipment/node-qr-rotate", {
+    method: "POST",
+    body: JSON.stringify({ equipmentId: Number(equipmentId), nodeIndex: Number(nodeIndex) })
+  });
+  state.catalog ||= { equipment: {} };
+  state.catalog.equipment ||= {};
+  state.catalog.equipment[String(equipmentId)] = { ...(state.catalog.equipment[String(equipmentId)] || {}), ...(result.item || {}) };
+  persistStateLocally(state);
+  printNodeQrCode(equipmentById(Number(equipmentId)), Number(nodeIndex));
+}
+
 function printEquipmentQrCodes(eq) {
   if (!eq?.nodes?.length) {
     window.alert("У этого оборудования нет узлов для печати QR.");
@@ -4743,6 +4772,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     const eq = equipmentById(parsed.equipmentId);
     if (!eq?.nodes?.[parsed.nodeIndex]) {
       if (statusEl) statusEl.textContent = "Не удалось отметить узел";
+      return false;
+    }
+    if (!currentNodeQrMatches(parsed)) {
+      if (statusEl) statusEl.textContent = "Этот QR заменён. Отсканируйте новый код узла";
       return false;
     }
     return parsed;
@@ -5177,7 +5210,7 @@ function promptCompressorQrDecision(parsed) {
       setButtonBusy(event.currentTarget, true, "Сохраняем...");
       try {
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = values.hasRemark
           ? appendCommentEntry(item, values.comment, "", { area: eq?.area || COMPRESSOR_JOURNAL_AREA })
@@ -5257,7 +5290,7 @@ function promptQrWalkDecision(parsed) {
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
       markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
       showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
@@ -5295,7 +5328,7 @@ function promptQrWalkDecision(parsed) {
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift);
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
@@ -11383,6 +11416,7 @@ function renderNodeWalkthrough(eq) {
             <input class="node-name-editor" data-node-name-list="${index}" type="text" value="${escapeHtml(nodeName)}">
             <button type="button" data-save-node-name="${index}">Сохранить</button>
             <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
+            ${catalogEditorRole() === "editor" ? `<button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button>` : ""}
             ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
             ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `
               <button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">
@@ -11408,6 +11442,10 @@ function renderNodeWalkthrough(eq) {
         const input = row.querySelector("[data-node-name-list]");
         if (input) input.value = nodeName;
       });
+      row.querySelector("[data-rotate-node-qr]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+        await rotateAndPrintNodeQr(eq.id, index);
+        renderNodeWalkthrough(equipmentById(eq.id));
+      }, "Обновляем..."));
       row.querySelector("[data-delete-node]")?.addEventListener("click", async event => {
         if (!canManageCatalogStructure(eq)) return;
         if (!window.confirm(`Точно удалить узел "${nodeName}"? После удаления QR-коды следующих узлов нужно распечатать заново.`)) return;

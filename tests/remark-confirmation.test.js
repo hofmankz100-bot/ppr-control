@@ -724,6 +724,17 @@ test("SHGRP QR nodes are restored in their historical index order", () => {
   assert.match(serverSource, /restoreGasQrCatalog\(db\)/);
 });
 
+test("admin can rotate one node QR without changing other node indexes", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /data-rotate-node-qr/);
+  assert.match(client, /function currentNodeQrMatches\(parsed = \{\}\)/);
+  assert.match(client, /api\/admin\/equipment\/node-qr-rotate/);
+  assert.match(serverSource, /pathname === "\/api\/admin\/equipment\/node-qr-rotate"/);
+  assert.match(serverSource, /crypto\.randomBytes\(12\)\.toString\("hex"\)/);
+  assert.match(serverSource, /error: "node_qr_replaced"/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -831,9 +842,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=471-restore-gas-qr-nodes/);
+  assert.match(html, /app\.js\?v=472-rotatable-node-qr/);
   assert.match(html, /styles\.css\?v=470-order-visibility/);
-  assert.match(serviceWorker, /app\.js\?v=471-restore-gas-qr-nodes/);
+  assert.match(serviceWorker, /app\.js\?v=472-rotatable-node-qr/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
