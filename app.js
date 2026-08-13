@@ -3669,7 +3669,22 @@ function availableEquipmentAreas() {
 }
 
 function assignableEquipmentAreas() {
-  return availableEquipmentAreas().filter(area => area.toLocaleLowerCase("ru-RU") !== "резерв");
+  const values = [];
+  allEquipment().forEach(eq => {
+    const area = String(eq.area || "").trim();
+    const name = String(eq.name || "").trim();
+    if (area && area.toLocaleLowerCase("ru-RU") !== "резерв") {
+      values.push(area);
+      return;
+    }
+    // Empty reserve slots are technical placeholders. Once an administrator
+    // gives one a real name (for example, НЗП), that live name becomes the
+    // assignable employee workshop while the word "Резерв" stays hidden.
+    if (area.toLocaleLowerCase("ru-RU") === "резерв" && name && !/^оборудование\s+\d+$/iu.test(name)) {
+      values.push(name);
+    }
+  });
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function saveEquipmentCatalog(equipmentId, patch) {

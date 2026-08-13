@@ -8,7 +8,7 @@ const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 
 test("employee access follows current equipment areas and refreshes without logout", () => {
-  assert.match(app, /function assignableEquipmentAreas\(\)[\s\S]*?availableEquipmentAreas\(\)[\s\S]*?!== "резерв"/);
+  assert.match(app, /function assignableEquipmentAreas\(\)[\s\S]*?allEquipment\(\)[\s\S]*?area\.toLocaleLowerCase\("ru-RU"\) === "резерв"[\s\S]*?values\.push\(name\)/);
   assert.match(app, /const areaOptions = selected =>[\s\S]*?assignableEquipmentAreas\(\)/);
   assert.match(app, /<select data-access-area>\$\{accessAreaOptions\(user\.area \|\| ""\)\}<\/select>/);
   assert.match(app, /role,[\s\S]*?area,[\s\S]*?actionId: nextActionId\(\)/);
