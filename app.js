@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v473-live-employee-areas";
+const APP_VERSION = "v474-monthly-journals";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -559,6 +559,7 @@ let current = {
   serviceCostNodeIndex: "",
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
+  journalMonth: todayISO().slice(0, 7),
   aggregateRepairEquipmentId: 0,
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
@@ -9521,6 +9522,35 @@ function aggregateJournalAreas(equipment = visibleEquipment()) {
   return [...new Set(equipment.map(eq => eq.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
+function selectedJournalMonth() {
+  return /^\d{4}-\d{2}$/.test(String(current.journalMonth || ""))
+    ? String(current.journalMonth)
+    : todayISO().slice(0, 7);
+}
+
+function journalMonthMatches(value, month = selectedJournalMonth()) {
+  return String(value || "").slice(0, 7) === month;
+}
+
+function journalMonthLabel(month = selectedJournalMonth()) {
+  const date = new Date(`${month}-01T00:00:00`);
+  return Number.isNaN(date.getTime()) ? month : date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+
+function journalMonthControlHtml() {
+  return `<label class="journal-month-control no-print"><span>Месяц журнала</span><input type="month" data-journal-month value="${escapeHtml(selectedJournalMonth())}"></label>`;
+}
+
+function bindJournalMonthControl(root, render) {
+  root?.querySelector("[data-journal-month]")?.addEventListener("change", event => {
+    current.journalMonth = event.currentTarget.value || todayISO().slice(0, 7);
+    current.compressorSheetIndex = 0;
+    current.gasSheetAIndex = 0;
+    current.gasSheetBIndex = 0;
+    render();
+  });
+}
+
 function aggregateJournalItems(area, equipmentFilterId = 0) {
   const targetEquipmentId = Number(equipmentFilterId || 0);
   const items = [];
@@ -9529,7 +9559,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     const equipmentId = Number(equipmentIdRaw);
     const nodeIndex = Number(nodeIndexRaw);
     const eq = equipmentById(equipmentId);
-    if (!eq || eq.area !== area || (targetEquipmentId && equipmentId !== targetEquipmentId)) return;
+    if (!eq || eq.area !== area || !journalMonthMatches(date) || (targetEquipmentId && equipmentId !== targetEquipmentId)) return;
     const item = rec?.to;
     if (!item) return;
     visibleCommentEntries(item).forEach((entry, entryIndex) => {
@@ -9574,6 +9604,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     if (
       item.area !== area
       || item.type === "production"
+      || !journalMonthMatches(item.startedAt)
       || (targetEquipmentId && Number(item.equipmentId) !== targetEquipmentId)
     ) return;
     items.push({
@@ -9673,8 +9704,7 @@ function compressorJournalKey(area, date, compressor) {
 }
 
 function compressorJournalBaseDate() {
-  if (!current.compressorBaseDate) current.compressorBaseDate = todayISO();
-  return current.compressorBaseDate;
+  return `${selectedJournalMonth()}-01`;
 }
 
 function compressorJournalMobileMode() {
@@ -9716,17 +9746,15 @@ function compressorJournalSheetDates(sheetIndex = compressorJournalSheetIndex())
   const dates = [];
   for (let i = 0; i < COMPRESSOR_JOURNAL_DAYS_PER_SHEET; i++) {
     const date = compressorJournalAddDays(base, startOffset + i);
-    if (date <= COMPRESSOR_JOURNAL_END_DATE) dates.push(date);
+    if (date <= COMPRESSOR_JOURNAL_END_DATE && journalMonthMatches(date)) dates.push(date);
   }
   return dates;
 }
 
 function compressorJournalMaxSheetIndex() {
-  const base = compressorJournalBaseDate();
-  const start = new Date(base);
-  const end = new Date(COMPRESSOR_JOURNAL_END_DATE);
-  const diffDays = Math.max(0, Math.floor((end - start) / 86400000));
-  return Math.floor(diffDays / COMPRESSOR_JOURNAL_DAYS_PER_SHEET);
+  const [year, month] = selectedJournalMonth().split("-").map(Number);
+  const days = new Date(year, month, 0).getDate();
+  return Math.max(0, Math.ceil(days / COMPRESSOR_JOURNAL_DAYS_PER_SHEET) - 1);
 }
 
 function compressorJournalRows(area = COMPRESSOR_JOURNAL_AREA, sheetIndex = compressorJournalSheetIndex()) {
@@ -9750,6 +9778,7 @@ function compressorJournalRows(area = COMPRESSOR_JOURNAL_AREA, sheetIndex = comp
 function compressorJournalFilledRows(area = COMPRESSOR_JOURNAL_AREA) {
   return Object.values(state.compressorJournal || {})
     .filter(row => row?.area === area)
+    .filter(row => journalMonthMatches(row?.date))
     .filter(compressorJournalRowComplete);
 }
 
@@ -9776,7 +9805,7 @@ function printCompressorJournalFilledDays(area = COMPRESSOR_JOURNAL_AREA) {
     <td>${escapeHtml([row.operatingState, row.remarks].filter(Boolean).join("; "))}</td>
     <td>${escapeHtml(row.resolutionComment || "")}${row.resolvedAt ? `<br>${escapeHtml(dateTimeHuman(row.resolvedAt))}` : ""}</td>
   </tr>`).join("");
-  printFilledJournalDocument("Компрессорный журнал — все заполненные дни", `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
+  printFilledJournalDocument(`Компрессорный журнал — ${journalMonthLabel()}`, `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`);
 }
 
 function compressorJournalRowComplete(row) {
@@ -10041,9 +10070,7 @@ function gasJournalKey(section, date) {
 }
 
 function gasJournalBaseDate(section) {
-  const key = section === "A" ? "gasBaseDateA" : "gasBaseDateB";
-  if (!current[key]) current[key] = todayISO();
-  return current[key];
+  return `${selectedJournalMonth()}-01`;
 }
 
 function gasJournalSavedDates() {
@@ -10076,7 +10103,8 @@ function gasJournalSheetDates(section) {
   const sheetIndex = gasJournalSheetIndex(section);
   const daysPerSheet = gasJournalDaysPerSheet(section);
   const startOffset = sheetIndex * daysPerSheet;
-  return Array.from({ length: daysPerSheet }, (_, index) => addDaysISO(base, startOffset + index));
+  return Array.from({ length: daysPerSheet }, (_, index) => addDaysISO(base, startOffset + index))
+    .filter(date => journalMonthMatches(date));
 }
 
 function gasJournalMobileMode() {
@@ -10387,6 +10415,7 @@ function gasJournalPrintableSection(section, includeBlank = false) {
     ? gasJournalSheetDates(section).map(date => gasJournalRecord(section, date))
     : Object.values(state.gasJournal || {})
       .filter(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date))
+      .filter(row => journalMonthMatches(row?.date))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   if (section === "A") {
     rows = rows.flatMap(row => {
@@ -10470,7 +10499,7 @@ function gasInputHtml(section, date, field, value) {
 
 function gasSheetActionsHtml(section) {
   const label = section === "A" ? "А" : "Б";
-  const hasFilledRows = Object.values(state.gasJournal || {}).some(row => row?.section === section && gasJournalDateHasFilledRow(section, row.date));
+  const hasFilledRows = Object.values(state.gasJournal || {}).some(row => row?.section === section && journalMonthMatches(row?.date) && gasJournalDateHasFilledRow(section, row.date));
   return `<div class="gas-sheet-actions">
     <button type="button" class="gas-sheet-page-button" data-gas-sheet-prev="${section}">‹ Предыдущий лист</button>
     <button type="button" class="gas-sheet-today-button" data-gas-sheet-today="${section}">Сегодня</button>
@@ -10495,6 +10524,7 @@ function renderGasJournal() {
   const mobileCompleteB = gasJournalRowCompleteB(mobileDate);
   ui.aggregateJournalList.innerHTML = `
     <div class="journal-date-navigation">
+      ${journalMonthControlHtml()}
       <button type="button" class="gas-mobile-day-button" data-gas-day-prev>‹ День</button>
       <button type="button" data-gas-all-today>Сегодня</button>
       <button type="button" class="gas-mobile-day-button" data-gas-day-next>День ›</button>
@@ -10639,6 +10669,7 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-print]").forEach(btn => btn.addEventListener("click", () => printGasJournalSheet(btn.dataset.gasPrint)));
   ui.aggregateJournalList.querySelector("[data-gas-print-all]")?.addEventListener("click", () => printGasJournalSections(["A", "B"]));
   ui.aggregateJournalList.querySelector("[data-gas-print-blank-a]")?.addEventListener("click", () => printGasJournalSections(["A"], true));
+  bindJournalMonthControl(ui.aggregateJournalList, renderGasJournal);
 }
 
 function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
@@ -10656,6 +10687,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   ui.aggregateJournalMeta.textContent = `${filled} зафиксированных записей.`;
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions compressor-journal-actions">
+      ${journalMonthControlHtml()}
       <div class="segmented">
         <button type="button" class="compressor-sheet-page-button" data-compressor-sheet-prev ${activeSheetIndex <= 0 ? "disabled" : ""}>\u2039</button>
         <strong>\u041b\u0438\u0441\u0442 ${activeSheetIndex + 1}</strong>
@@ -10744,6 +10776,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   ui.aggregateJournalList.querySelector("[data-compressor-day-prev]")?.addEventListener("click", () => shiftCompressorJournalMobileDate(-1));
   ui.aggregateJournalList.querySelector("[data-compressor-day-next]")?.addEventListener("click", () => shiftCompressorJournalMobileDate(1));
   ui.aggregateJournalList.querySelector("[data-print-all-compressor]")?.addEventListener("click", () => printCompressorJournalFilledDays(area));
+  bindJournalMonthControl(ui.aggregateJournalList, () => renderCompressorJournal(area));
   const refreshCompressorSheetControls = () => {
     const nextButton = ui.aggregateJournalList.querySelector("[data-compressor-sheet-next]");
     if (nextButton) nextButton.disabled = activeSheetIndex >= maxSheetIndex;
@@ -13806,10 +13839,11 @@ function gpmDocumentLink(event) {
 
 function gpmDetailHtml(item) {
   const status = gpmStatus(item);
-  const inspections = gpmInspectionRows(item);
-  const events = gpmEventRows(item);
+  const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.updatedAt || entry.createdAt));
+  const events = gpmEventRows(item).filter(entry => journalMonthMatches(entry.completedDate || entry.createdAt));
   return `
     <section class="gpm-detail" data-gpm-print-root>
+      ${journalMonthControlHtml()}
       <div class="gpm-detail-head">
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Зав. № ${escapeHtml(item.serialNumber || "—")} · Рег. № ${escapeHtml(item.registrationNumber || "—")} · ${escapeHtml(item.capacity || "грузоподъёмность не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
@@ -14032,6 +14066,7 @@ function renderGpmJournal() {
     saveState();
     renderGpmJournal();
   }));
+  bindJournalMonthControl(ui.gpmPanel, renderGpmJournal);
 }
 
 function globalReminderItems(equipment = globalControlEquipment()) {
@@ -17157,6 +17192,7 @@ function renderAggregateJournal() {
   }
   ui.aggregateJournalList.innerHTML = `
     <div class="aggregate-print-actions">
+      ${journalMonthControlHtml()}
       <button type="button" data-print-aggregate-journal>${printActionLabel("Печать в альбомном виде", "PDF в альбомном виде")}</button>
       ${profile?.role === "editor" && openCount ? `
         <button type="button" class="${repairMode ? "danger" : ""}" data-toggle-aggregate-repair>
@@ -17259,6 +17295,7 @@ function renderAggregateJournal() {
     `).join("")}
   `;
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
+  bindJournalMonthControl(ui.aggregateJournalList, renderAggregateJournal);
   ui.aggregateJournalList.querySelector("[data-toggle-aggregate-repair]")?.addEventListener("click", () => {
     current.aggregateRepairEquipmentId = repairMode ? 0 : Number(selectedEquipment?.id || 0);
     renderAggregateJournal();
