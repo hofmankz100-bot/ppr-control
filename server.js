@@ -3746,7 +3746,7 @@ function walkShiftAtServer(value) {
   const localDate = `${parts.year}-${parts.month}-${parts.day}`;
   if (hour >= 8 && hour < 20) return { date: localDate, shift: "day", label: "День" };
   if (hour >= 20) return { date: localDate, shift: "night", label: "Ночь" };
-  const previous = new Date(`${localDate}T00:00:00+05:00`);
+  const previous = new Date(`${localDate}T12:00:00Z`);
   previous.setUTCDate(previous.getUTCDate() - 1);
   return { date: previous.toISOString().slice(0, 10), shift: "night", label: "Ночь" };
 }

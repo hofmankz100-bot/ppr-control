@@ -810,9 +810,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=466-private-month-close/);
-  assert.match(html, /styles\.css\?v=466-private-month-close/);
-  assert.match(serviceWorker, /app\.js\?v=466-private-month-close/);
+  assert.match(html, /app\.js\?v=467-night-shift-date/);
+  assert.match(html, /styles\.css\?v=467-night-shift-date/);
+  assert.match(serviceWorker, /app\.js\?v=467-night-shift-date/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1124,6 +1124,8 @@ test("QR PSK status and comment are synchronized with the gas journal", () => {
   assert.match(serverSource, /buildShgrpSectionARowServer\(\{ \.\.\.current, shgrpQrChecks: checks \}/);
   assert.match(serverSource, /recordKey\.match\(\/\^15:5:/);
   assert.match(serverSource, /record\?\.to\?\.walkGroups\?\.technical\?\.\[shift\]/);
+  assert.match(serverSource, /const previous = new Date\(`\$\{localDate\}T12:00:00Z`\)/);
+  assert.doesNotMatch(serverSource, /const previous = new Date\(`\$\{localDate\}T00:00:00\+05:00`\)/);
   assert.match(serverSource, /\.map\(entry => `\$\{entry\.label\}: \$\{entry\.comment\}`\)/);
   assert.match(appSource, /if \(text === "Исправно"\) return "Нет"/);
   assert.match(appSource, /if \(text === "Неисправно"\) return "Есть"/);
