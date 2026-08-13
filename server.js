@@ -6793,7 +6793,7 @@ async function handleApi(req, res, pathname, url) {
       if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true) return { error: "order_actor_invalid" };
       const actor = sanitizeResolutionParticipant(registeredActor);
       const canManage = permissionBaseRoleServer(registeredActor.role) === "editor"
-        || (engineerPermissionRoleServer(registeredActor) === "engineer" && activeUserPermission(registeredActor, "orderJournalManage"));
+        || (["engineer", "shop"].includes(engineerPermissionRoleServer(registeredActor)) && activeUserPermission(registeredActor, "orderJournalManage"));
       db.orders ||= {};
       const now = new Date().toISOString();
       let order;

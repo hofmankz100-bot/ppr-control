@@ -280,7 +280,14 @@ function activeUserPermission(user = authenticatedProfile || profile || {}, key 
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
 function canManageMonthClose(user = authenticatedProfile || profile || {}) { return isPrimaryAdminEngineer(user); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
-function canManageOrderJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "orderJournalManage")); }
+function canManageOrderJournal(user = authenticatedProfile || profile || {}) {
+  const role = permissionBaseRole(user?.role || "");
+  return role === "editor" || (["engineer", "shop"].includes(role) && activeUserPermission(user, "orderJournalManage"));
+}
+function canViewOrderJournal(user = authenticatedProfile || profile || {}) {
+  const role = permissionBaseRole(user?.role || "");
+  return canManageOrderJournal(user) || ["mechanic", "electrician", "forkliftDriver", "operator"].includes(role);
+}
 function canCorrectAggregateJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "aggregateJournalCorrect"); }
 
 function canEditAnnualPpr() {
@@ -11952,13 +11959,13 @@ function orderWorkerUsers() {
 function orderActorKey() { return resolutionUserKey(authenticatedProfile || profile || {}); }
 function orderAssignedToMe(order = {}) { return (order.assignees || []).some(user => user.key === orderActorKey()); }
 function orderCanConfirm(order = {}) { return canManageOrderJournal() && (isEditorSession() || order.authorKey === orderActorKey()); }
-function orderVisible(order = {}) { return canManageOrderJournal() || orderAssignedToMe(order); }
+function orderVisible() { return canViewOrderJournal(); }
 
 function updateOrderBadge() {
   if (!ui.ordersButton || !ui.ordersBadge) return;
   const visible = orderJournalEntries().filter(orderVisible);
-  const count = visible.filter(order => canManageOrderJournal() ? order.status === "pending" : orderAssignedToMe(order) && ["open", "returned"].includes(order.status)).length;
-  ui.ordersButton.hidden = !canManageOrderJournal() && !visible.length;
+  const count = visible.filter(order => canManageOrderJournal() ? order.status === "pending" : ["open", "returned"].includes(order.status)).length;
+  ui.ordersButton.hidden = !canViewOrderJournal();
   ui.ordersBadge.textContent = count;
   ui.ordersButton.classList.toggle("request-alert", count > 0);
 }
