@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v472-rotatable-node-qr";
+const CACHE_NAME = "ppr-v473-live-employee-areas";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=472-rotatable-node-qr",
-  "./app.js?v=472-rotatable-node-qr",
+  "./modules/work-permit.js?v=473-live-employee-areas",
+  "./app.js?v=473-live-employee-areas",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
