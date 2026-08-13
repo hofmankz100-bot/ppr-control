@@ -703,6 +703,17 @@ test("node editing permission is selective per equipment and admin keeps full ac
   assert.deepEqual(after.catalog.equipment["2"].nodes, ["Changed node 2"]);
 });
 
+test("deleted and renamed equipment nodes cannot return from stale clients", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(source, /state\.catalog\.equipment = \{ \.\.\.\(remote\.catalog\?\.equipment \|\| \{\}\) \}/);
+  assert.match(serverSource, /function repairCatalogNodeHistory\(db\)/);
+  assert.match(serverSource, /entry\?\.action !== "equipment_node_deleted"/);
+  assert.match(serverSource, /catalogNodeTombstone\(catalogItem, nodes\[nodeIndex\]/);
+  assert.match(serverSource, /incomingUpdatedAt < currentUpdatedAt/);
+  assert.match(serverSource, /removed\.has\(normalizedCatalogNodeName\(value\)\)/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
