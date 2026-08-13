@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v474-monthly-journals";
+const APP_VERSION = "v475-installed-parts-journal";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4610,6 +4610,8 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
         textBox?.focus();
         return;
       }
+      const partDetails = action === "resolve" ? await askInstalledPartDetails() : {};
+      if (action === "resolve" && !partDetails) return;
       if (action === "resolve" && !window.confirm("Работа фактически выполнена? Передать устранение на подтверждение?")) return;
       setButtonBusy(button, true, "Отправляем...");
       try {
@@ -4628,7 +4630,7 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
         if (!isResolutionParticipant(openRemark.entry)) {
           await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, openRemark.date, "start", { remarkId: openRemark.remarkId });
         }
-        await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, openRemark.date, action, { remarkId: openRemark.remarkId, text, photo });
+        await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, openRemark.date, action, { remarkId: openRemark.remarkId, text, photo, ...partDetails });
         showAppToast(action === "resolve" ? "Устранение отправлено на подтверждение." : "Запись добавлена к замечанию.");
         finish(action);
       } catch (submitError) {
@@ -5676,6 +5678,7 @@ function stableRemarkId(entry = {}) {
 
 const REMARK_COLLABORATION_FIELDS = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
+  "resolutionPartInstalled", "resolutionPartDescription", "resolutionPartPhotos", "partInstalled", "partDescription", "partPhotos",
   "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants",
   "resolutionPendingConfirmation", "resolutionSubmittedAt", "resolutionSubmittedByKey",
   "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
@@ -5767,6 +5770,55 @@ async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, ac
   if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
   persistStateLocally(state);
   return result;
+}
+
+async function askInstalledPartDetails() {
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay installed-part-overlay";
+  overlay.innerHTML = `<section class="qr-result-panel installed-part-panel" role="dialog" aria-modal="true" aria-label="Использование запчасти">
+    <h2>При устранении установили запчасть?</h2>
+    <div class="installed-part-choice">
+      <button type="button" data-part-choice="yes">Установил запчасть</button>
+      <button type="button" class="secondary" data-part-choice="no">Без запчасти</button>
+    </div>
+    <div data-part-details hidden>
+      <label><span>Описание установленной запчасти</span><textarea rows="5" data-part-description placeholder="Укажите полное название запчасти, производителя, модель, артикул, размеры, характеристики и количество. Например: подшипник SKF 6205-2RS, 25×52×15 мм, 1 шт. Также опишите, куда и вместо какой детали он установлен."></textarea></label>
+      <label><span>Фото запчасти, маркировки, чертежа или результата установки</span><input type="file" accept="image/*" capture="environment" multiple data-part-photos><small>Фотографии необязательны.</small></label>
+      <div class="installed-part-error" data-part-error></div>
+      <div class="qr-result-actions"><button type="button" data-part-submit>Продолжить</button><button type="button" class="secondary" data-part-back>Назад</button></div>
+    </div>
+    <button type="button" class="secondary" data-part-cancel>Отмена</button>
+  </section>`;
+  document.body.append(overlay);
+  return new Promise(resolve => {
+    const finish = value => { overlay.remove(); resolve(value); };
+    overlay.querySelector('[data-part-choice="no"]')?.addEventListener("click", () => finish({ partInstalled: false, partDescription: "", partPhotos: [] }));
+    overlay.querySelector('[data-part-choice="yes"]')?.addEventListener("click", () => {
+      overlay.querySelector(".installed-part-choice").hidden = true;
+      overlay.querySelector("[data-part-details]").hidden = false;
+      overlay.querySelector("[data-part-description]")?.focus();
+    });
+    overlay.querySelector("[data-part-back]")?.addEventListener("click", () => {
+      overlay.querySelector(".installed-part-choice").hidden = false;
+      overlay.querySelector("[data-part-details]").hidden = true;
+    });
+    overlay.querySelector("[data-part-cancel]")?.addEventListener("click", () => finish(null));
+    overlay.querySelector("[data-part-submit]")?.addEventListener("click", async event => {
+      const description = String(overlay.querySelector("[data-part-description]")?.value || "").trim();
+      const error = overlay.querySelector("[data-part-error]");
+      if (!description) { error.textContent = "Опишите установленную запчасть."; overlay.querySelector("[data-part-description]")?.focus(); return; }
+      setButtonBusy(event.currentTarget, true, "Обрабатываем фото...");
+      try {
+        const files = [...(overlay.querySelector("[data-part-photos]")?.files || [])].slice(0, 5);
+        const photos = [];
+        for (const file of files) photos.push(await readPhotoFile(file));
+        finish({ partInstalled: true, partDescription: description, partPhotos: photos });
+      } catch {
+        error.textContent = "Не удалось обработать фотографию. Попробуйте другое фото.";
+        setButtonBusy(event.currentTarget, false);
+      }
+    });
+  });
 }
 
 function canEditComment(item) {
@@ -9694,6 +9746,51 @@ function aggregateJournalCount(area, equipmentId = 0) {
   return aggregateJournalItems(area, equipmentId).length;
 }
 
+function installedPartJournalRows(equipmentId, month = selectedJournalMonth()) {
+  const rows = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
+    if (Number(rawEquipmentId) !== Number(equipmentId)) return;
+    const eq = equipmentById(Number(rawEquipmentId));
+    visibleCommentEntries(rec?.to || {}).forEach(entry => {
+      if (!entry?.resolved || entry.partInstalled !== true || !journalMonthMatches(entry.resolvedAt || date, month)) return;
+      rows.push({
+        id: entry.id || stableRemarkId(entry), date: entry.resolvedAt || date,
+        area: eq?.area || "", equipment: eq?.name || "", node: eq?.nodes?.[Number(rawNodeIndex)] || "",
+        remark: entry.text || "", work: entry.resolvedComment || "", description: entry.partDescription || "",
+        photos: Array.isArray(entry.partPhotos) ? entry.partPhotos : [],
+        performers: resolutionParticipantsText(entry, entry.resolvedByName || ""),
+        confirmedBy: entry.confirmedByName || "", confirmedAt: entry.confirmedAt || ""
+      });
+    });
+  });
+  return rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+function installedPartJournalHtml(eq, month, printable = false) {
+  const rows = installedPartJournalRows(eq.id, month);
+  return `<div class="installed-part-journal-head"><div><h2>Журнал установленных запчастей</h2><p>${escapeHtml(eq.name)} · ${escapeHtml(eq.area)} · ${escapeHtml(journalMonthLabel(month))}</p></div>${printable ? "" : `<label>Месяц <input type="month" data-parts-month value="${escapeHtml(month)}"></label><button type="button" data-print-parts>Печатать журнал</button><button type="button" class="secondary" data-close-parts>Закрыть</button>`}</div>
+    <div class="installed-part-journal-list">${rows.length ? rows.map((row, index) => `<article class="installed-part-entry"><header><strong>№ ${index + 1} · ${escapeHtml(dateTimeHuman(row.date))}</strong><span>${escapeHtml(row.node)}</span></header><p><b>Исходное замечание:</b> ${userTextWithRussianHtml(row.remark)}</p><p><b>Выполненная работа:</b> ${userTextWithRussianHtml(row.work)}</p><p><b>Установленная запчасть:</b> ${userTextWithRussianHtml(row.description)}</p><p><b>Установили:</b> ${escapeHtml(row.performers || "—")} · <b>Подтвердил:</b> ${escapeHtml(row.confirmedBy || "—")}${row.confirmedAt ? ` · ${escapeHtml(dateTimeHuman(row.confirmedAt))}` : ""}</p>${row.photos.length ? `<div class="installed-part-photos">${row.photos.map(photo => `<img src="${photo}" alt="Фото установленной запчасти">`).join("")}</div>` : ""}</article>`).join("") : `<div class="empty-state">За выбранный месяц установленных запчастей нет.</div>`}</div>`;
+}
+
+function openInstalledPartJournal(eq) {
+  let month = selectedJournalMonth();
+  const overlay = document.createElement("div");
+  overlay.className = "installed-part-journal-overlay";
+  const render = () => {
+    overlay.innerHTML = `<section class="installed-part-journal-dialog">${installedPartJournalHtml(eq, month)}</section>`;
+    overlay.querySelector("[data-close-parts]")?.addEventListener("click", () => overlay.remove());
+    overlay.querySelector("[data-parts-month]")?.addEventListener("change", event => { month = event.currentTarget.value || todayISO().slice(0, 7); render(); });
+    overlay.querySelector("[data-print-parts]")?.addEventListener("click", () => {
+      const popup = window.open("", "_blank", "width=1200,height=900");
+      if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
+      popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал установленных запчастей</title><style>@page{size:A4 portrait;margin:10mm}body{font-family:Arial;color:#111}.installed-part-journal-head h2{margin:0}.installed-part-entry{border:1px solid #222;padding:8px;margin:8px 0;break-inside:avoid}.installed-part-entry header{display:flex;justify-content:space-between;border-bottom:1px solid #999}.installed-part-entry p{font-size:11px}.installed-part-photos{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.installed-part-photos img{width:100%;max-height:95mm;object-fit:contain}</style></head><body>${installedPartJournalHtml(eq, month, true)}<script>addEventListener('load',()=>setTimeout(()=>print(),500))<\/script></body></html>`);
+      popup.document.close();
+    });
+  };
+  render(); document.body.append(overlay);
+}
+
 const COMPRESSOR_JOURNAL_AREA = "\u041a\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440\u043d\u0430\u044f";
 const COMPRESSOR_JOURNAL_COMPRESSORS = ["\u21161 EKOMAK 90", "\u21162 EKOMAK 90", "\u21163 EKOMAK 110"];
 const COMPRESSOR_JOURNAL_DAYS_PER_SHEET = 7;
@@ -10947,6 +11044,7 @@ function renderEquipment() {
               <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
+            <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
             ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : ""}
           </div>
           ${canEditEquipmentCatalog(eq) ? `
@@ -10977,6 +11075,7 @@ function renderEquipment() {
         current.selectedAggregateArea = eq.area || "";
         show("aggregateJournal");
       });
+      tr.querySelector("[data-installed-parts-equipment]")?.addEventListener("click", () => openInstalledPartJournal(eq));
       tr.querySelector("[data-gpm-equipment]")?.addEventListener("click", () => {
         if (purgeLegacyForkliftGpmJournal()) saveState();
         const linked = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
@@ -11756,9 +11855,11 @@ function renderNodeWalkthrough(eq) {
           textBox?.focus();
           return;
         }
+        const partDetails = await askInstalledPartDetails();
+        if (!partDetails) return;
         if (!window.confirm("Работа выполнена? Зафиксировать время устранения и передать на подтверждение?")) return;
         await ensureCurrentResolverJoined();
-        await publishRemarkCollaborationAction(eq.id, index, current.date, "resolve", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "" });
+        await publishRemarkCollaborationAction(eq.id, index, current.date, "resolve", { remarkId, text, photo: remarkResolutionPhotoDrafts.get(photoKey) || "", ...partDetails });
         remarkResolutionPhotoDrafts.delete(photoKey);
         if (current.returnToRemarkListAfterResolve) {
           returnToOpenRemarkCards();

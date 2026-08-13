@@ -16,7 +16,7 @@ test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
   assert.match(html, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(html, /modules\/work-permit\.js\?v=474-monthly-journals/);
+  assert.match(html, /modules\/work-permit\.js\?v=475-installed-parts-journal/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -248,10 +248,10 @@ test("permit completion fields are optional and official output is compact A4", 
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v474-monthly-journals/);
+  assert.match(serviceWorker, /ppr-v475-installed-parts-journal/);
   assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=474-monthly-journals/);
-  assert.match(serviceWorker, /styles\.css\?v=474-monthly-journals/);
-  assert.match(serviceWorker, /app\.js\?v=474-monthly-journals/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=475-installed-parts-journal/);
+  assert.match(serviceWorker, /styles\.css\?v=475-installed-parts-journal/);
+  assert.match(serviceWorker, /app\.js\?v=475-installed-parts-journal/);
 });

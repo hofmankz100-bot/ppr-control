@@ -2152,6 +2152,7 @@ function stableRemarkIdServer(entry = {}) {
 
 const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
+  "resolutionPartInstalled", "resolutionPartDescription", "resolutionPartPhotos", "partInstalled", "partDescription", "partPhotos",
   "resolutionLeadKey", "resolutionLeadName", "resolutionCompletedParticipants",
   "resolutionPendingConfirmation", "resolutionSubmittedAt", "resolutionSubmittedByKey",
   "resolutionSubmittedByName", "resolutionSubmittedByRole", "resolutionSubmittedComment",
@@ -7121,7 +7122,14 @@ async function handleApi(req, res, pathname, url) {
         }
         const text = String(body.text || "").trim().slice(0, 4000);
         const photo = String(body.photo || "");
+        const partInstalled = body.partInstalled === true;
+        const partDescription = String(body.partDescription || "").trim().slice(0, 4000);
+        const partPhotos = (Array.isArray(body.partPhotos) ? body.partPhotos : [])
+          .map(value => String(value || ""))
+          .filter(value => value.length <= 12000000)
+          .slice(0, 5);
         if (!text) return { error: "remark_resolution_text_required" };
+        if (partInstalled && !partDescription) return { error: "remark_part_description_required" };
         const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
         const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
         remark.resolved = false;
@@ -7133,6 +7141,9 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionSubmittedByRole = actor.role;
         remark.resolutionSubmittedComment = text;
         remark.resolutionSubmittedPhoto = photo.length <= 12000000 ? photo : "";
+        remark.resolutionPartInstalled = partInstalled;
+        remark.resolutionPartDescription = partInstalled ? partDescription : "";
+        remark.resolutionPartPhotos = partInstalled ? partPhotos : [];
         remark.confirmationArea = confirmationRule.area;
         remark.confirmationRequiredRole = confirmationRule.role;
         remark.confirmationRequiredKey = "";
@@ -7436,6 +7447,9 @@ async function handleApi(req, res, pathname, url) {
         remark.resolvedByRole = remark.resolutionSubmittedByRole || "";
         remark.resolvedComment = remark.resolutionSubmittedComment || "";
         remark.resolvedPhoto = remark.resolutionSubmittedPhoto || "";
+        remark.partInstalled = remark.resolutionPartInstalled === true;
+        remark.partDescription = remark.partInstalled ? String(remark.resolutionPartDescription || "") : "";
+        remark.partPhotos = remark.partInstalled && Array.isArray(remark.resolutionPartPhotos) ? remark.resolutionPartPhotos.slice(0, 5) : [];
         remark.resolutionPendingConfirmation = false;
         (db.downtimes || [])
           .filter(item => (remark.resolutionDowntimeIds || []).includes(item?.id))
