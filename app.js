@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v475-installed-parts-journal";
+const APP_VERSION = "v476-self-work-engineer-approval";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9103,6 +9103,22 @@ function isProductionWorkerProfile(user = profile || {}) {
   return isWelderUser(user) || isTurnerUser(user);
 }
 
+function isProductionEngineer(user = profile || authenticatedProfile || {}) {
+  const role = permissionBaseRole(user?.jobRole || user?.editorPreviewRole || user?.role || "");
+  return role === "engineer" || role === "editor";
+}
+
+function productionWorkWasSelfRequested(item, trade) {
+  return productionParticipants(item, trade).some(person => String(person.id || "") === String(item?.createdById || ""));
+}
+
+function canDecideProductionWork(item, trade, actor = weldingActor()) {
+  if (item?.status !== "awaitingAcceptance") return false;
+  return productionWorkWasSelfRequested(item, trade)
+    ? isProductionEngineer()
+    : String(item.createdById || "") === String(actor.id || "");
+}
+
 function applyProductionWorkerVisibility() {
   const limited = isProductionWorkerProfile();
   document.body.classList.toggle("production-worker-profile", limited);
@@ -9122,7 +9138,7 @@ function weldingPendingCount() {
   const actor = weldingActor();
   return weldingRecords().filter(item =>
     (isWelderUser() && ["new", "returned"].includes(item.status))
-    || (item.status === "awaitingAcceptance" && item.createdById === actor.id)
+    || (item.status === "awaitingAcceptance" && canDecideProductionWork(item, "welding", actor))
   ).length;
 }
 
@@ -9135,14 +9151,14 @@ function turningPendingCount() {
   const actor = weldingActor();
   return turningRecords().filter(item =>
     (isTurnerUser() && ["new", "returned"].includes(item.status))
-    || (item.status === "awaitingAcceptance" && item.createdById === actor.id)
+    || (item.status === "awaitingAcceptance" && canDecideProductionWork(item, "turning", actor))
   ).length;
 }
 
 function updateWeldingBadge() {
   const count = weldingPendingCount() + turningPendingCount();
   if (ui.weldingHomeBadge) ui.weldingHomeBadge.textContent = String(count);
-  ui.weldingHomeButton?.classList.toggle("has-pending", isProductionWorkerProfile() && count > 0);
+  ui.weldingHomeButton?.classList.toggle("has-pending", (isProductionWorkerProfile() || isProductionEngineer()) && count > 0);
 }
 
 function productionTabs(active) {
@@ -9308,19 +9324,20 @@ async function completeWeldingRequest(item, form) {
     participants,
     resultPhoto
   });
-  showAppToast("Работа отправлена заявителю на приёмку.");
+  showAppToast(productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
 }
 
 function acceptCompletedWeldingWork(item) {
   const actor = weldingActor();
-  if (item.status !== "awaitingAcceptance" || item.createdById !== actor.id) return window.alert("Принять работу может только её заявитель.");
-  saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: new Date().toISOString(), acceptedByRequesterId: actor.id, acceptedByRequesterName: actor.name });
+  if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку подтверждает инженер." : "Принять работу может только её заявитель.");
+  const engineerApproval = productionWorkWasSelfRequested(item, "welding");
+  saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: engineerApproval ? "" : new Date().toISOString(), acceptedByRequesterId: engineerApproval ? "" : actor.id, acceptedByRequesterName: engineerApproval ? "" : actor.name, acceptedByEngineerAt: engineerApproval ? new Date().toISOString() : "", acceptedByEngineerId: engineerApproval ? actor.id : "", acceptedByEngineerName: engineerApproval ? actor.name : "" });
   showAppToast("Работа принята и внесена в журнал.");
 }
 
 function returnWeldingWork(item) {
   const actor = weldingActor();
-  if (item.status !== "awaitingAcceptance" || item.createdById !== actor.id) return window.alert("Вернуть работу может только её заявитель.");
+  if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку может вернуть инженер." : "Вернуть работу может только её заявитель.");
   const reason = window.prompt("Укажите, что необходимо исправить:")?.trim();
   if (!reason) return;
   saveWeldingRecord({ ...item, status: "returned", returnedAt: new Date().toISOString(), returnedById: actor.id, returnedByName: actor.name, returnReason: reason.slice(0, 1000), completedAt: "" });
@@ -9332,17 +9349,18 @@ function weldingRecordCard(item) {
   const actor = weldingActor();
   const canComplete = ["accepted", "returned"].includes(item.status) && (isProductionParticipant(item, "welding", actor) || profile?.role === "editor");
   const canJoin = ["accepted", "returned"].includes(item.status) && isWelderUser() && !isProductionParticipant(item, "welding", actor);
-  const requesterCanDecide = item.status === "awaitingAcceptance" && item.createdById === actor.id;
+  const requesterCanDecide = canDecideProductionWork(item, "welding", actor);
+  const engineerDecision = requesterCanDecide && productionWorkWasSelfRequested(item, "welding");
   const currentWelder = productionParticipants(item, "welding").find(person => person.id === actor.id) || productionParticipant(actor);
   return `<article class="welding-card status-${escapeHtml(item.status)}" data-welding-id="${escapeHtml(item.id)}">
     <div class="welding-card-head"><div><strong>${escapeHtml(item.description)}</strong><small>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? ` · ${escapeHtml(item.drawingNumber)}` : ""}</small></div><span>${escapeHtml(weldingStatusLabel(item.status))}</span></div>
     <p>Заявитель: <b>${escapeHtml(item.createdByName || "—")}</b> · ${escapeHtml(dateTimeHuman(item.createdAt))}</p>
     ${productionParticipantNames(item, "welding") ? `<p><b>Ответственный:</b> ${escapeHtml(item.welderName || "—")}<br><b>Исполнители:</b> ${escapeHtml(productionParticipantNames(item, "welding"))}</p>` : ""}
     ${productionPhotosHtml(item)}
-    ${["awaitingAcceptance", "returned", "completed"].includes(item.status) ? `<div class="welding-result"><p><b>Материал:</b> ${escapeHtml(item.material || "—")}</p><p><b>Положение шва:</b> ${escapeHtml(weldingPositionLabel(item.jointPosition))}</p><p><b>Сварочные материалы:</b> ${escapeHtml(item.consumables || "—")}</p>${item.workComment ? `<p><b>Комментарий:</b> ${escapeHtml(item.workComment)}</p>` : ""}${item.returnReason ? `<p class="welding-return-reason"><b>Возвращено:</b> ${escapeHtml(item.returnReason)}</p>` : ""}${item.completedAt ? `<p><b>Завершено сварщиком:</b> ${escapeHtml(dateTimeHuman(item.completedAt))}</p>` : ""}${item.acceptedByRequesterAt ? `<p><b>Принял заявитель:</b> ${escapeHtml(item.acceptedByRequesterName || item.createdByName || "—")} · ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</p>` : ""}</div>` : ""}
+    ${["awaitingAcceptance", "returned", "completed"].includes(item.status) ? `<div class="welding-result"><p><b>Материал:</b> ${escapeHtml(item.material || "—")}</p><p><b>Положение шва:</b> ${escapeHtml(weldingPositionLabel(item.jointPosition))}</p><p><b>Сварочные материалы:</b> ${escapeHtml(item.consumables || "—")}</p>${item.workComment ? `<p><b>Комментарий:</b> ${escapeHtml(item.workComment)}</p>` : ""}${item.returnReason ? `<p class="welding-return-reason"><b>Возвращено:</b> ${escapeHtml(item.returnReason)}</p>` : ""}${item.completedAt ? `<p><b>Завершено сварщиком:</b> ${escapeHtml(dateTimeHuman(item.completedAt))}</p>` : ""}${item.acceptedByRequesterAt ? `<p><b>Принял заявитель:</b> ${escapeHtml(item.acceptedByRequesterName || item.createdByName || "—")} · ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</p>` : ""}${item.acceptedByEngineerAt ? `<p><b>Подтвердил инженер:</b> ${escapeHtml(item.acceptedByEngineerName || "—")} · ${escapeHtml(dateTimeHuman(item.acceptedByEngineerAt))}</p>` : ""}</div>` : ""}
     ${canAccept ? `<button type="button" class="primary-nav-button" data-welding-accept>Принять заявку</button>` : ""}
     ${canJoin ? `<button type="button" class="secondary production-join-button" data-welding-join>Присоединиться к работе</button>` : ""}
-    ${requesterCanDecide ? `<div class="welding-requester-decision"><strong>Личное сообщение: сварщик завершил вашу заявку</strong><div><button type="button" data-welding-requester-accept>Принять работу</button><button type="button" class="danger" data-welding-requester-return>Вернуть сварщику</button></div></div>` : ""}
+    ${requesterCanDecide ? `<div class="welding-requester-decision"><strong>${engineerDecision ? "Инженерное подтверждение: сварщик сам создал и выполнил заявку" : "Личное сообщение: сварщик завершил вашу заявку"}</strong><div><button type="button" data-welding-requester-accept>${engineerDecision ? "Подтвердить работу" : "Принять работу"}</button><button type="button" class="danger" data-welding-requester-return>Вернуть сварщику</button></div></div>` : ""}
     ${canComplete ? `<form class="welding-complete-form">
       <div class="welding-form-title"><strong>${item.status === "returned" ? "Доработка изделия" : "Заполнение выполненной работы"}</strong><span>Заполните обязательные поля по порядку</span></div>
       <label><span><b>1</b> Основной материал, марка / толщина / количество</span><textarea name="material" required inputmode="text" placeholder="Например: Сталь 09Г2С, 5 мм, 2 листа. Расход 1,5 м²">${escapeHtml(item.status === "returned" ? item.material || "" : "")}</textarea><small>Если материал не использовался — напишите «Не требуется»</small></label>
@@ -9435,18 +9453,19 @@ async function completeTurningRequest(item, form) {
   const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
   const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
   saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name, participants:productionParticipants(item,"turning"), resultPhoto });
-  showAppToast("Работа отправлена заявителю на приёмку.");
+  showAppToast(productionWorkWasSelfRequested(item,"turning")?"Работа отправлена инженерам на подтверждение.":"Работа отправлена заявителю на приёмку.");
 }
 
-function acceptTurningWork(item) { const actor=weldingActor(); if(item.status!=="awaitingAcceptance"||item.createdById!==actor.id)return window.alert("Принять работу может только её заявитель."); saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:new Date().toISOString(),acceptedByRequesterId:actor.id,acceptedByRequesterName:actor.name}); showAppToast("Токарная работа принята и внесена в журнал."); }
-function returnTurningWork(item) { const actor=weldingActor(); if(item.status!=="awaitingAcceptance"||item.createdById!==actor.id)return window.alert("Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}); showAppToast("Работа возвращена токарю на доработку."); }
+function acceptTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку подтверждает инженер.":"Принять работу может только её заявитель."); const engineerApproval=productionWorkWasSelfRequested(item,"turning"), now=new Date().toISOString(); saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:engineerApproval?"":now,acceptedByRequesterId:engineerApproval?"":actor.id,acceptedByRequesterName:engineerApproval?"":actor.name,acceptedByEngineerAt:engineerApproval?now:"",acceptedByEngineerId:engineerApproval?actor.id:"",acceptedByEngineerName:engineerApproval?actor.name:""}); showAppToast("Токарная работа принята и внесена в журнал."); }
+function returnTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку может вернуть инженер.":"Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}); showAppToast("Работа возвращена токарю на доработку."); }
 
 function turningCard(item) {
   const actor=weldingActor();
   const canAccept=item.status==="new"&&isTurnerUser();
   const canComplete=["accepted","returned"].includes(item.status)&&(isProductionParticipant(item,"turning",actor)||profile?.role==="editor");
   const canJoin=["accepted","returned"].includes(item.status)&&isTurnerUser()&&!isProductionParticipant(item,"turning",actor);
-  const requesterCanDecide=item.status==="awaitingAcceptance"&&item.createdById===actor.id;
+  const requesterCanDecide=canDecideProductionWork(item,"turning",actor);
+  const engineerDecision=requesterCanDecide&&productionWorkWasSelfRequested(item,"turning");
   return `<article class="welding-card turning-card status-${escapeHtml(item.status)}" data-turning-id="${escapeHtml(item.id)}">
     <div class="welding-card-head"><div><strong>${escapeHtml(item.description)}</strong><small>${escapeHtml(turningTypeLabel(item.requestType))}${item.drawingNumber?` · ${escapeHtml(item.drawingNumber)}`:""}${item.quantity?` · ${escapeHtml(item.quantity)} шт.`:""}</small></div><span>${escapeHtml(weldingStatusLabel(item.status))}</span></div>
     <p>Заявитель: <b>${escapeHtml(item.createdByName||"—")}</b> · ${escapeHtml(dateTimeHuman(item.createdAt))}</p>
@@ -9455,7 +9474,7 @@ function turningCard(item) {
     ${["awaitingAcceptance","returned","completed"].includes(item.status)?`<div class="welding-result"><p><b>Материал:</b> ${escapeHtml(item.material||"—")}</p><p><b>Заготовка / станок:</b> ${escapeHtml(item.blankSize||"—")} / ${escapeHtml(item.machine||"—")}</p><p><b>Операции:</b> ${escapeHtml(item.operations||"—")}</p><p><b>Изготовлено / годных / брак:</b> ${escapeHtml(item.madeQty||"0")} / ${escapeHtml(item.goodQty||"0")} / ${escapeHtml(item.rejectQty||"0")}</p>${item.measurements?`<p><b>Контрольные размеры:</b><br>${escapeHtml(item.measurements)}</p>`:""}${item.rejectReason?`<p><b>Причина брака:</b> ${escapeHtml(item.rejectReason)}</p>`:""}${item.returnReason?`<p class="welding-return-reason"><b>Возвращено:</b> ${escapeHtml(item.returnReason)}</p>`:""}</div>`:""}
     ${canAccept?`<button type="button" class="primary-nav-button" data-turning-accept>Принять заявку</button>`:""}
     ${canJoin?`<button type="button" class="secondary production-join-button" data-turning-join>Присоединиться к работе</button>`:""}
-    ${requesterCanDecide?`<div class="welding-requester-decision"><strong>Личное сообщение: токари завершили вашу заявку</strong><div><button type="button" data-turning-requester-accept>Принять работу</button><button type="button" class="danger" data-turning-requester-return>Вернуть токарям</button></div></div>`:""}
+    ${requesterCanDecide?`<div class="welding-requester-decision"><strong>${engineerDecision?"Инженерное подтверждение: токарь сам создал и выполнил заявку":"Личное сообщение: токари завершили вашу заявку"}</strong><div><button type="button" data-turning-requester-accept>${engineerDecision?"Подтвердить работу":"Принять работу"}</button><button type="button" class="danger" data-turning-requester-return>Вернуть токарям</button></div></div>`:""}
     ${canComplete?`<form class="welding-complete-form turning-complete-form"><div class="welding-form-title"><strong>${item.status==="returned"?"Доработка детали":"Заполнение токарной работы"}</strong><span>Заполните данные по выполненной детали</span></div><label><span><b>1</b> Материал и марка</span><textarea name="material" required>${escapeHtml(item.status==="returned"?item.material||"":"")}</textarea></label><label><span><b>2</b> Размер заготовки</span><input name="blankSize" value="${escapeHtml(item.status==="returned"?item.blankSize||"":"")}" placeholder="Диаметр, длина"></label><label><span><b>3</b> Станок</span><input name="machine" value="${escapeHtml(item.status==="returned"?item.machine||"":"")}" placeholder="Название или номер"></label><label><span><b>4</b> Выполненные операции</span><textarea name="operations" required>${escapeHtml(item.status==="returned"?item.operations||"":"")}</textarea></label><div class="turning-qty-grid"><label><span>Изготовлено</span><input name="madeQty" inputmode="numeric"></label><label><span>Годных</span><input name="goodQty" inputmode="numeric"></label><label><span>Брак</span><input name="rejectQty" inputmode="numeric"></label></div><label><span><b>5</b> Контрольные размеры</span><textarea name="measurements"></textarea></label><label><span><b>6</b> Причина брака</span><textarea name="rejectReason"></textarea></label><label><span><b>7</b> Комментарий</span><textarea name="workComment"></textarea></label><label><span><b>8</b> Фото выполненной работы</span><input name="resultPhoto" type="file" accept="image/*" capture="environment"></label><div class="welding-mobile-submit"><button type="submit">✓ Завершить и отправить заявителю</button></div></form>`:""}
   </article>`;
 }

@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v475-installed-parts-journal";
+const CACHE_NAME = "ppr-v476-self-work-engineer-approval";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=475-installed-parts-journal",
+  "./styles.css?v=476-self-work-engineer-approval",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -13,8 +13,8 @@ const ASSETS = [
   "./node_modules/jspdf/dist/jspdf.umd.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
-  "./modules/work-permit.js?v=475-installed-parts-journal",
-  "./app.js?v=475-installed-parts-journal",
+  "./modules/work-permit.js?v=476-self-work-engineer-approval",
+  "./app.js?v=476-self-work-engineer-approval",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
