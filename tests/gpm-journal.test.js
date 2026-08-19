@@ -16,6 +16,15 @@ test("GPM journal has assignments, inspections, PTO workflow and responsible app
   assert.match(app, /data-gpm-approve/);
 });
 
+test("the common phone scanner opens shift and monthly crane inspections for an authorized user", () => {
+  assert.match(app, /function parseGpmQrScanValue\(value = ""\)/);
+  assert.match(app, /new URL\(raw, location\.origin\)\.searchParams\.get\("gpmQr"\)/);
+  assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
+  assert.match(app, /if \(!gpmCanInspect\(item\)\)/);
+  assert.match(app, /if \(parsed\.kind === "gpm"\)/);
+  assert.match(app, /current\.gpmScanMode = parsed\.mode/);
+});
+
 test("GPM configuration rights are assigned separately from job role and approval rights", () => {
   assert.match(app, /function gpmCanManage\(\)/);
   assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v489-official-crane-shift-journal";
+const APP_VERSION = "v490-admin-gpm-qr-scanner";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4833,6 +4833,19 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const expected = { equipmentId: Number(expectedEquipmentId), nodeIndex: Number(expectedNodeIndex) };
   let overlay = null;
   const applyScannedValue = value => {
+    const gpmParsed = parseGpmQrScanValue(value);
+    if (gpmParsed) {
+      const item = gpmEquipmentList("gpm").find(entry => entry.id === gpmParsed.gpmId);
+      if (!item) {
+        if (statusEl) statusEl.textContent = "Кран по этому QR не найден";
+        return false;
+      }
+      if (!gpmCanInspect(item)) {
+        if (statusEl) statusEl.textContent = "Этот кран вам не назначен";
+        return false;
+      }
+      return { kind: "gpm", item, ...gpmParsed };
+    }
     const parsed = parseNodeQrPayload(value);
     if (!parsed) {
       if (statusEl) statusEl.textContent = "QR код не распознан";
@@ -14003,6 +14016,18 @@ function parseGpmQrValue(value = "") {
   return { mode: parts[1] === "MONTHLY" ? "monthly" : "shift", gpmId: parts[2] };
 }
 
+function parseGpmQrScanValue(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const direct = parseGpmQrValue(raw);
+  if (direct) return direct;
+  try {
+    return parseGpmQrValue(new URL(raw, location.origin).searchParams.get("gpmQr") || "");
+  } catch {
+    return null;
+  }
+}
+
 function incomingGpmQr() {
   try { return new URL(location.href).searchParams.get("gpmQr") || ""; } catch { return ""; }
 }
@@ -18397,6 +18422,13 @@ ui.qrWalkButton?.addEventListener("click", async () => {
     while (true) {
       const parsed = await scanNodeQrCode(null, null, null);
       if (!parsed) break;
+      if (parsed.kind === "gpm") {
+        current.selectedGpmId = parsed.gpmId;
+        current.gpmJournalKind = "gpm";
+        current.gpmScanMode = parsed.mode;
+        show("gpm", false);
+        break;
+      }
       const shift = currentWalkShift();
       await refreshQrWalkStatusFromServer(parsed.equipmentId, shift);
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
