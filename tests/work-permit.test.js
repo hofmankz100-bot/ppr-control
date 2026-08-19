@@ -248,10 +248,10 @@ test("permit completion fields are optional and official output is compact A4", 
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v487-crane-operator-access/);
+  assert.match(serviceWorker, /ppr-v488-crane-only-operator/);
   assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
   assert.match(serviceWorker, /styles\.css\?v=482-crane-journals-entry/);
-  assert.match(serviceWorker, /app\.js\?v=487-crane-operator-access/);
+  assert.match(serviceWorker, /app\.js\?v=488-crane-only-operator/);
 });

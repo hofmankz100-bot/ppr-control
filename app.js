@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v487-crane-operator-access";
+const APP_VERSION = "v488-crane-only-operator";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -654,6 +654,13 @@ function ensureGpmUi() {
   ui.gpmPanel = document.querySelector("#gpmPanel");
   ui.gpmAddButton = document.querySelector("[data-gpm-add]");
   ui.gpmPrintButton = document.querySelector("[data-gpm-print]");
+  if (!document.querySelector("#craneOperatorScreen")) {
+    const section = document.createElement("section");
+    section.id = "craneOperatorScreen";
+    section.className = "view gpm-screen";
+    section.innerHTML = `<div class="empty-state"><h1>Обход кран-балки</h1><p>Отсканируйте QR-код на назначенной кран-балке. Форма обхода откроется автоматически.</p><strong>Журналы заполняются автоматически и оператору не показываются.</strong></div>`;
+    document.querySelector(".screen")?.append(section);
+  }
 }
 
 ensureGpmUi();
@@ -3442,6 +3449,7 @@ function defaultRequestRole(role = profile?.role) {
 
 function homeViewForProfile(role = profile?.role) {
   if (role === "director") return "directorControl";
+  if (role === "operator" && profile?.craneOnly === true) return "craneOperator";
   return "equipment";
 }
 
@@ -3459,6 +3467,7 @@ function roleAccess() {
 }
 
 function canOpenView(view) {
+  if (profile?.role === "operator" && profile?.craneOnly === true) return ["craneOperator", "gpm"].includes(view);
   if (view === "welding") return isProfileReady();
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return isProfileReady();
@@ -17321,6 +17330,15 @@ async function renderAdminMaintenance() {
     const accessAreaOptions = selected => `<option value="">Без участка</option>${assignableEquipmentAreas().map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`).join("")}`;
     const roleOptions = Object.entries(ROLE_ACCESS).map(([value,item]) => `<option value="${escapeHtml(value)}">${escapeHtml(item.label || value)}</option>`).join("");
     if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Права и учётные записи</strong><span>Сотрудников: ${accessUsers.length}</span></div><div class="admin-access-tools no-print"><input type="search" data-access-search placeholder="Поиск по ФИО, табельному номеру или телефону"><select data-access-role-filter><option value="">Все роли</option>${roleOptions}</select></div><div class="admin-access-list">${accessUsers.map(user => `<article data-access-row data-search="${escapeHtml([user.name,user.employeeId,user.phone,user.area].join(" ").toLowerCase())}" data-role="${escapeHtml(user.role || "")}" class="${user.accessDisabled ? "disabled" : ""}"><div class="admin-access-person"><strong>${escapeHtml(user.name || "Без имени")}</strong><span>${escapeHtml(user.employeeId || "Без табельного")} · ${escapeHtml(user.phone || "Без телефона")}</span><small>${user.accessDisabled ? "Доступ отключён" : user.pendingApproval ? "Ожидает подтверждения" : user.loginDiagnostics?.locked ? "Вход временно заблокирован" : "Учётная запись активна"}</small></div><div class="admin-access-fields no-print"><select data-access-role>${roleOptions.replace(`value="${escapeHtml(user.role || "")}"`, `value="${escapeHtml(user.role || "")}" selected`)}</select><select data-access-area>${accessAreaOptions(user.area || "")}</select><button type="button" data-access-save-role="${escapeHtml(user.id || "")}">Сохранить должность и участок</button></div><div class="admin-access-rights"><span>Редактор инструкций: ${Number(user.instructionEditorCount || 0)}</span>${qrRoles.has(user.role) ? `<label class="no-print"><input type="checkbox" data-access-qr="${escapeHtml(user.id || "")}" ${user.qrWalkJournalAccess ? "checked" : ""}> Просмотр QR-журнала</label>` : ""}</div>${adminUserDetailsHtml(user)}<div class="admin-access-actions no-print">${user.loginDiagnostics?.locked ? `<button type="button" data-access-unlock="${escapeHtml(user.id || "")}">Разблокировать вход</button>` : ""}${user.role !== "editor" ? `<button type="button" class="${user.accessDisabled ? "" : "danger"}" data-access-toggle="${escapeHtml(user.id || "")}" data-disabled="${user.accessDisabled ? "false" : "true"}">${user.accessDisabled ? "Включить доступ" : "Отключить доступ"}</button>` : `<span>Защищённый администратор</span>`}</div></article>`).join("")}</div>`;
+    ui.adminMaintenancePanel.querySelectorAll("[data-access-row]").forEach((row, index) => {
+      const user = accessUsers[index];
+      const button = row.querySelector("[data-access-save-role]");
+      if (!user || !button) return;
+      const label = document.createElement("label");
+      label.className = "admin-crane-only-toggle no-print";
+      label.innerHTML = `<input type="checkbox" data-access-crane-only ${user.craneOnly === true ? "checked" : ""}> Только QR-обход назначенных кран-балок`;
+      button.before(label);
+    });
   }
   if (tab === "report") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
@@ -17404,6 +17422,19 @@ async function renderAdminMaintenance() {
   const filterAccessRows = () => { const query = String(ui.adminMaintenancePanel.querySelector("[data-access-search]")?.value || "").trim().toLowerCase(); const role = ui.adminMaintenancePanel.querySelector("[data-access-role-filter]")?.value || ""; ui.adminMaintenancePanel.querySelectorAll("[data-access-row]").forEach(row => { row.hidden = Boolean((query && !row.dataset.search.includes(query)) || (role && row.dataset.role !== role)); }); };
   ui.adminMaintenancePanel.querySelector("[data-access-search]")?.addEventListener("input", filterAccessRows);
   ui.adminMaintenancePanel.querySelector("[data-access-role-filter]")?.addEventListener("change", filterAccessRows);
+  ui.adminMaintenancePanel.querySelectorAll("[data-access-crane-only]").forEach(input => input.addEventListener("change", async () => {
+    const row = input.closest("[data-access-row]");
+    const button = row?.querySelector("[data-access-save-role]");
+    if (!row || !button) return;
+    try {
+      await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role: row.querySelector("[data-access-role]").value, area: row.querySelector("[data-access-area]").value.trim(), craneOnly: input.checked }) });
+      await loadRemoteUsers();
+      renderAdminMaintenance();
+    } catch (error) {
+      input.checked = !input.checked;
+      window.alert(error.message || "Не удалось изменить режим оператора кран-балки.");
+    }
+  }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-save-role]").forEach(button => button.addEventListener("click", async () => { const row = button.closest("[data-access-row]"); await runButtonOperation(button, async () => { await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role: row.querySelector("[data-access-role]").value, area: row.querySelector("[data-access-area]").value.trim() }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Сохраняем…"); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-qr]").forEach(input => input.addEventListener("change", async () => { try { await apiJson("/api/qr-walk/journal-access", { method: "POST", body: JSON.stringify({ userId: input.dataset.accessQr, enabled: input.checked }) }); } catch (error) { input.checked = !input.checked; window.alert(error.message || "Не удалось изменить доступ."); } }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-unlock]").forEach(button => button.addEventListener("click", async () => { await runButtonOperation(button, async () => { await apiJson("/api/users/unlock", { method: "POST", body: JSON.stringify({ id: button.dataset.accessUnlock }) }); renderAdminMaintenance(); }, "Разблокируем…"); }));
