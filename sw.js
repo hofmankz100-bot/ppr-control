@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v489-official-crane-shift-journal";
+const CACHE_NAME = "ppr-v490-admin-gpm-qr-scanner";
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=489-official-crane-shift-journal",
+  "./app.js?v=490-admin-gpm-qr-scanner",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
