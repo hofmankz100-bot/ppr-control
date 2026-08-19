@@ -24,6 +24,11 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /qrInspectionOpen && selected \? gpmQrInspectionScreenHtml\(selected\)/);
   assert.match(app, /assignedKeys\.includes\(key\)/);
   assert.match(app, /authorEmployeeId: profile\?\.employeeId/);
+  assert.match(app, /function gpmOfficialShiftJournalHtml/);
+  assert.match(app, /ФОРМА ВАХТЕННОГО ЖУРНАЛА/);
+  assert.match(app, /Приложение 14 к Правилам обеспечения промышленной безопасности/);
+  assert.match(app, /Смену принял \(Ф\.И\.О\., электронная подпись\)/);
+  assert.match(styles, /\.gpm-official-meta/);
   assert.match(app, /profile\?\.craneOnly === true/);
   assert.match(app, /return "craneOperator"/);
   assert.match(app, /Только QR-обход назначенных кран-балок/);

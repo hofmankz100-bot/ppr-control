@@ -4141,6 +4141,7 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
   const publicRequest = pathname === "/api/health"
+    || (pathname === "/api/qr" && req.method === "GET")
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
@@ -4721,7 +4722,8 @@ async function handleApi(req, res, pathname, url) {
       type: "svg",
       margin: 2,
       width: size,
-      errorCorrectionLevel: "M"
+      errorCorrectionLevel: "H",
+      color: { dark: "#000000", light: "#ffffff" }
     });
     res.writeHead(200, {
       "Content-Type": "image/svg+xml; charset=utf-8",
