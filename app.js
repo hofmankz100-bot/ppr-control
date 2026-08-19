@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v488-crane-only-operator";
+const APP_VERSION = "v489-official-crane-shift-journal";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9091,6 +9091,7 @@ function openAllRemarkCards() {
     entry.resolvedAt = now;
     entry.resolvedByKey = gpmUserKey();
     entry.resolvedByName = profile?.name || "";
+    entry.resolvedByRole = profile?.role || "";
     entry.partInstalled = Boolean(partDetails.partInstalled);
     entry.partDescription = String(partDetails.partDescription || "");
     entry.partPhotos = Array.isArray(partDetails.partPhotos) ? partDetails.partPhotos : [];
@@ -14210,6 +14211,53 @@ function gpmDocumentLink(event) {
   return `<a href="${escapeHtml(event.documentUrl)}" target="_blank" rel="noopener">${escapeHtml(event.documentName || "Открыть документ")}</a>`;
 }
 
+function gpmOfficialShiftJournalHtml(item, inspections = []) {
+  const rows = [
+    ["Металлоконструкция", [0]],
+    ["Тормоза: грузовой лебёдки; стреловой лебёдки; механизма передвижения тележки; поворота; механизма передвижения крана", [3]],
+    ["Приборы безопасности: ограничитель грузоподъёмности; концевые выключатели; блокировочные контакты; указатели; сигнализаторы. Электрооборудование. Заземление", [4, 5, 6]],
+    ["Канаты: грузовой; стреловой; оттяжки стрелы; тележечный", [2]],
+    ["Крюковая подвеска", [1]],
+    ["Крановый путь", [7]]
+  ];
+  const entries = inspections.length ? inspections : [null];
+  return `<section class="gpm-log-section gpm-official-shift-journal">
+    <h3>Вахтенный журнал машиниста крана</h3>
+    ${entries.map(entry => {
+      const relatedEvent = entry ? Object.values(gpmStore().events || {}).find(event => event?.inspectionId === entry.id && !event.deleted) : null;
+      const points = Array.isArray(entry?.points) ? entry.points : [];
+      const resultFor = indexes => !entry ? "" : indexes.every(index => points[index]) ? "Без нарушений" : escapeHtml(entry.defects || "Обнаружена неисправность");
+      const resolver = relatedEvent?.resolvedByName || "";
+      const inspector = entry?.authorName || "";
+      const employeeId = entry?.authorEmployeeId ? ` · таб. № ${escapeHtml(entry.authorEmployeeId)}` : "";
+      const shiftState = entry?.decision === "allowed" ? "Кран исправен и допущен к работе" : entry ? "Эксплуатация запрещена" : "";
+      return `<article class="gpm-official-sheet">
+        <div class="gpm-official-appendix">Приложение 14 к Правилам обеспечения промышленной безопасности<br>при эксплуатации грузоподъёмных механизмов</div>
+        <h4>ФОРМА ВАХТЕННОГО ЖУРНАЛА</h4>
+        <div class="gpm-official-meta">
+          <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
+          <span><b>Цех (участок):</b> ${escapeHtml(item.location || "—")}</span>
+          <span><b>Кран / кран-балка, рег. №:</b> ${escapeHtml(item.name)} · ${escapeHtml(item.registrationNumber || "—")}</span>
+          <span><b>Дата:</b> ${entry ? escapeHtml(dateHuman(entry.shiftDate || entry.createdAt)) : ""}</span>
+          <span><b>Смена:</b> ${escapeHtml(entry?.shiftLabel || "")}</span>
+          <span><b>Машинист (оператор):</b> ${escapeHtml(inspector)}${employeeId}</span>
+        </div>
+        <div class="gpm-table-wrap"><table class="gpm-official-checks"><thead><tr><th>№ п/п</th><th>Наименование механизма, узла, детали</th><th>Результаты проверки</th><th>Фамилия, инициалы и должность лица, устранившего нарушение</th></tr></thead><tbody>
+          ${rows.map(([label, indexes], index) => `<tr><td>${index + 1}</td><td>${escapeHtml(label)}</td><td>${resultFor(indexes)}</td><td>${indexes.some(point => points[point] === false) ? escapeHtml(resolver || "Ожидает устранения") : "—"}</td></tr>`).join("")}
+        </tbody></table></div>
+        <div class="gpm-official-signatures">
+          <div><b>Смену принял (Ф.И.О., электронная подпись)</b><span>${escapeHtml(inspector)}${employeeId}</span></div>
+          <div><b>Смену сдал (состояние крана, Ф.И.О.)</b><span>${escapeHtml(shiftState)} · ${escapeHtml(inspector)}</span></div>
+          <div><b>Результаты осмотра крана слесарем</b><span>${relatedEvent?.resolvedByName && relatedEvent?.resolvedByRole !== "electrician" ? escapeHtml(relatedEvent.resolvedByName) : "—"}</span></div>
+          <div><b>Результаты осмотра крана электромонтёром</b><span>${relatedEvent?.resolvedByRole === "electrician" ? escapeHtml(relatedEvent.resolvedByName || "") : "—"}</span></div>
+          <div><b>Ответственный за исправное состояние</b><span>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || relatedEvent?.approvedByName || "—")}</span></div>
+          <div><b>Отметка о допуске к работе / дополнительные указания</b><span>${escapeHtml(relatedEvent?.approvedAt ? `Допущен инженером: ${relatedEvent.approvedByName || ""}` : shiftState)}</span></div>
+        </div>
+      </article>`;
+    }).join("")}
+  </section>`;
+}
+
 function gpmDetailHtml(item) {
   const status = gpmStatus(item);
   const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.updatedAt || entry.createdAt));
@@ -14235,12 +14283,7 @@ function gpmDetailHtml(item) {
       <div class="gpm-work-grid no-print">
         ${current.gpmScanMode && gpmCanInspect(item) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
       </div>
-      <section class="gpm-log-section">
-        <h3>Вахтенный журнал · ежесменный QR</h3>
-        <div class="gpm-table-wrap"><table><thead><tr><th>Дата и время</th><th>Проверил</th><th>Результат</th><th>Замечания</th></tr></thead><tbody>
-          ${inspections.length ? inspections.map(entry => `<tr><td>${escapeHtml(dateTimeHuman(entry.updatedAt || entry.createdAt))}${entry.shiftLabel ? ` · ${escapeHtml(entry.shiftLabel)}` : ""}</td><td>${escapeHtml(entry.authorName || "")}</td><td>${entry.decision === "allowed" ? "Допущен" : "Запрещён"}</td><td>${escapeHtml(entry.defects || "Дефектов нет")}</td></tr>`).join("") : `<tr><td colspan="4">Записей пока нет</td></tr>`}
-        </tbody></table></div>
-      </section>
+      ${gpmOfficialShiftJournalHtml(item, inspections)}
       <section class="gpm-log-section">
         <h3>Ежемесячный журнал · верхний QR, ПТО и ремонты</h3>
         <div class="gpm-table-wrap"><table><thead><tr><th>Дата</th><th>Вид работы</th><th>Инженер</th><th>Результат</th><th>Документ</th><th>Допуск</th></tr></thead><tbody>
@@ -14459,6 +14502,7 @@ function renderGpmJournal() {
     entry.resolvedAt = now;
     entry.resolvedByKey = gpmUserKey();
     entry.resolvedByName = profile?.name || "";
+    entry.resolvedByRole = profile?.role || "";
     entry.status = "awaitingEngineer";
     entry.updatedAt = now;
     saveState();
