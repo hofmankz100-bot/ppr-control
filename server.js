@@ -3522,13 +3522,34 @@ function mergeCheckRecord(current = {}, incoming = {}) {
   const baseTo = incomingWins ? incomingTo : currentTo;
   next.to = {
     ...baseTo,
-    commentLog: mergeCommentLogs(currentTo.commentLog, incomingTo.commentLog)
+    commentLog: mergeCommentLogs(currentTo.commentLog, incomingTo.commentLog),
+    walkShifts: mergeWalkMarks(currentTo.walkShifts, incomingTo.walkShifts),
+    walkGroups: {
+      technical: mergeWalkMarks(currentTo.walkGroups?.technical, incomingTo.walkGroups?.technical),
+      operational: mergeWalkMarks(currentTo.walkGroups?.operational, incomingTo.walkGroups?.operational)
+    }
   };
   syncItemRemarkSummaryServer(next.to);
   const timestamps = [current.updatedAt, cleanIncoming.updatedAt, currentTo.updatedAt, incomingTo.updatedAt]
     .filter(Boolean)
     .sort();
   if (timestamps.length) next.updatedAt = timestamps.at(-1);
+  return next;
+}
+
+function mergeWalkMarks(current = {}, incoming = {}) {
+  const next = { ...(current || {}) };
+  for (const [shift, mark] of Object.entries(incoming || {})) {
+    const previous = next[shift];
+    if (!previous?.done) {
+      next[shift] = mark;
+      continue;
+    }
+    if (!mark?.done) continue;
+    const previousAt = Date.parse(previous.at || "");
+    const incomingAt = Date.parse(mark.at || "");
+    if (Number.isFinite(incomingAt) && (!Number.isFinite(previousAt) || incomingAt < previousAt)) next[shift] = mark;
+  }
   return next;
 }
 
@@ -4891,12 +4912,21 @@ async function handleApi(req, res, pathname, url) {
       db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
       const recordKey = `${equipmentId}:${nodeIndex}:${date}`;
       const now = new Date().toISOString();
+      const requestedCapturedAt = String(body.capturedAt || "");
+      const requestedCapturedMs = Date.parse(requestedCapturedAt);
+      const capturedAt = Number.isFinite(requestedCapturedMs) && requestedCapturedMs <= Date.now() + 5 * 60 * 1000
+        ? new Date(requestedCapturedMs).toISOString()
+        : now;
       const currentRecord = db.checks[recordKey] || {};
       const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
       const existing = currentItem.walkGroups?.[group]?.[shift]
         || (group === "technical" ? currentItem.walkShifts?.[shift] : null);
+      const existingAt = Date.parse(existing?.at || "");
+      const capturedMs = Date.parse(capturedAt);
       if (existing?.done) {
-        return { changed: false, recordKey, record: currentRecord, actionId: String(body.actionId || ""), origin: String(body.clientId || "api") };
+        if (Number.isFinite(existingAt) && existingAt <= capturedMs) {
+          return { changed: false, recordKey, record: currentRecord, actionId: String(body.actionId || ""), origin: String(body.clientId || "api") };
+        }
       }
       const nextItem = {
         tasks: Array.isArray(currentItem.tasks) ? currentItem.tasks.slice(0, 15) : Array(15).fill(false),
@@ -4918,7 +4948,7 @@ async function handleApi(req, res, pathname, url) {
             ...(currentItem.walkGroups?.[group] || {}),
             [shift]: {
             done: true,
-            at: now,
+            at: capturedAt,
             byRole: String(req.authUser?.role || ""),
             byName: String(req.authUser?.name || ""),
             shift,
@@ -4933,20 +4963,24 @@ async function handleApi(req, res, pathname, url) {
       nextItem.tasks[0] = false;
       const record = { ...currentRecord, createdAt: currentRecord.createdAt || now, updatedAt: now, to: nextItem };
       db.checks[recordKey] = record;
-      db.qrWalkJournal.push({
+      const journalEntry = {
         id: `${recordKey}:${group}:${shift}`,
         equipmentId,
         nodeIndex,
         date,
         shift,
         group,
-        at: now,
+        at: capturedAt,
+        receivedAt: now,
         byRole: role,
         byName: String(req.authUser?.name || "").slice(0, 200),
         area: String(body.area || "").slice(0, 200),
         equipment: String(body.equipment || "").slice(0, 200),
         node: String(body.node || "").slice(0, 300)
-      });
+      };
+      const journalIndex = db.qrWalkJournal.findIndex(item => item?.id === journalEntry.id);
+      if (journalIndex >= 0) db.qrWalkJournal[journalIndex] = journalEntry;
+      else db.qrWalkJournal.push(journalEntry);
       if (db.qrWalkJournal.length > 50000) db.qrWalkJournal = db.qrWalkJournal.slice(-50000);
       writeDb(db, {
         action: "qr_walk_mark",

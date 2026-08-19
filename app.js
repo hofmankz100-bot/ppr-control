@@ -1627,10 +1627,7 @@ function processAppNotificationChanges(beforeKeys = null) {
 }
 
 function showQrSavedNotice(message = "") {
-  const pending = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
-  showAppToast(pending || !navigator.onLine
-    ? "QR сохранён на телефоне. При появлении Wi‑Fi отправится автоматически."
-    : message || "QR отмечен и отправляется автоматически.");
+  showAppToast(message || "QR отмечен. Можно продолжать обход.");
 }
 
 async function runButtonOperation(button, handler, text = "В ожидании...") {
@@ -2328,19 +2325,10 @@ function mergeCheckRecordLocal(current = {}, incoming = {}) {
   next.to = {
     ...baseTo,
     commentLog: mergeCommentLogsLocal(currentTo.commentLog, incomingTo.commentLog),
-    walkShifts: {
-      ...(currentTo.walkShifts || {}),
-      ...(incomingTo.walkShifts || {})
-    },
+    walkShifts: mergeWalkMarksLocal(currentTo.walkShifts, incomingTo.walkShifts),
     walkGroups: {
-      technical: {
-        ...(currentTo.walkGroups?.technical || {}),
-        ...(incomingTo.walkGroups?.technical || {})
-      },
-      operational: {
-        ...(currentTo.walkGroups?.operational || {}),
-        ...(incomingTo.walkGroups?.operational || {})
-      }
+      technical: mergeWalkMarksLocal(currentTo.walkGroups?.technical, incomingTo.walkGroups?.technical),
+      operational: mergeWalkMarksLocal(currentTo.walkGroups?.operational, incomingTo.walkGroups?.operational)
     }
   };
   const hasLocalComposer = Boolean(String(currentTo.nodeDraftText || "").trim() || currentTo.commentPhoto);
@@ -2351,6 +2339,22 @@ function mergeCheckRecordLocal(current = {}, incoming = {}) {
     next.to.commentOwnerName = currentTo.commentOwnerName || "";
     next.to.commentUpdatedAt = currentTo.commentUpdatedAt || "";
   }
+  return next;
+}
+
+function mergeWalkMarksLocal(current = {}, incoming = {}) {
+  const next = { ...(current || {}) };
+  Object.entries(incoming || {}).forEach(([shift, mark]) => {
+    const previous = next[shift];
+    if (!previous?.done) {
+      next[shift] = mark;
+      return;
+    }
+    if (!mark?.done) return;
+    const previousAt = Date.parse(previous.at || "");
+    const incomingAt = Date.parse(mark.at || "");
+    if (Number.isFinite(incomingAt) && (!Number.isFinite(previousAt) || incomingAt < previousAt)) next[shift] = mark;
+  });
   return next;
 }
 
@@ -4293,8 +4297,11 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
 }
 
 async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "") {
-  try {
-    const result = await apiJson("/api/qr-walk/mark", {
+  const group = qrWalkGroup();
+  const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[shiftInfo?.key];
+  const publish = async () => {
+    try {
+      const result = await apiJson("/api/qr-walk/mark", {
       method: "POST",
       timeout: 12000,
       body: JSON.stringify({
@@ -4305,7 +4312,8 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
         qrToken,
         date,
         shift: shiftInfo?.key || "",
-        group: qrWalkGroup(),
+        group,
+        capturedAt: localMark?.at || new Date().toISOString(),
         equipment: equipmentById(equipmentId)?.name || "",
         area: equipmentById(equipmentId)?.area || "",
         node: equipmentById(equipmentId)?.nodes?.[nodeIndex] || "",
@@ -4313,16 +4321,22 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
         range: shiftInfo?.range || ""
       })
     });
-    if (result?.recordKey && result?.record) {
-      mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+      if (result?.recordKey && result?.record) {
+        mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+      }
+    } catch (error) {
+      console.warn("Fast QR save failed; using state retry", error);
+      saveState();
+      publishStateNow().catch(scheduleRemoteRetry);
     }
-    return true;
-  } catch (error) {
-    console.warn("Fast QR save failed; using state retry", error);
+  };
+  if (!navigator.onLine) {
     saveState();
-    publishStateNow().catch(scheduleRemoteRetry);
+    scheduleRemoteRetry();
     return false;
   }
+  publish();
+  return true;
 }
 
 function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
@@ -18644,6 +18658,11 @@ window.addEventListener("error", event => {
 });
 window.addEventListener("unhandledrejection", event => {
   reportClientError(event.reason?.message || String(event.reason || "Unhandled promise rejection"));
+});
+
+window.addEventListener("online", () => {
+  flushPendingWork();
+  syncRemoteChanges();
 });
 
 window.addEventListener("visibilitychange", () => {
