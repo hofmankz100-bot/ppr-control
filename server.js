@@ -7701,6 +7701,7 @@ async function handleApi(req, res, pathname, url) {
     const body = await readBody(req);
     const role = String(body.role || "").trim();
     const area = String(body.area || "").trim();
+    const craneOnly = role === "operator" && body.craneOnly === true;
     if (!role || role === "warehouse") {
       sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
       return true;
@@ -7716,6 +7717,7 @@ async function handleApi(req, res, pathname, url) {
       if (target.role === "editor" && role !== "editor") return { error: "editor_role_protected" };
       target.role = role;
       target.area = area;
+      target.craneOnly = craneOnly;
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
       syncPushProfilesForUser(db, target);
@@ -7723,7 +7725,7 @@ async function handleApi(req, res, pathname, url) {
         action: "user_role_update",
         actionId: String(body.actionId || ""),
         clientId: String(body.clientId || ""),
-        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area }
+        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area, craneOnly }
       });
       return { user: userPublic(target) };
     });

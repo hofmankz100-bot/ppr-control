@@ -20,7 +20,14 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /function gpmCanManage\(\)/);
   assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);
   assert.doesNotMatch(app, /gpmIsAdmin\(\) \|\| profile\?\.role === "mechanicalEngineer"/);
-  assert.match(app, /ui\.gpmAddButton\.hidden = !gpmCanManage\(\)/);
+  assert.match(app, /ui\.gpmAddButton\.hidden = qrInspectionOpen \|\| !gpmCanManage\(\)/);
+  assert.match(app, /qrInspectionOpen && selected \? gpmQrInspectionScreenHtml\(selected\)/);
+  assert.match(app, /assignedKeys\.includes\(key\)/);
+  assert.match(app, /authorEmployeeId: profile\?\.employeeId/);
+  assert.match(app, /profile\?\.craneOnly === true/);
+  assert.match(app, /return "craneOperator"/);
+  assert.match(app, /Только QR-обход назначенных кран-балок/);
+  assert.match(server, /target\.craneOnly = craneOnly/);
   assert.match(app, /function gpmIsResponsible\(item\)/);
 });
 
