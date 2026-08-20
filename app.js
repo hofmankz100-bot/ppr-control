@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v514-crane-short-qr-parser";
+const APP_VERSION = "v515-crane-qr-reporting";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14189,11 +14189,27 @@ function gpmDateDistance(date) {
   return Math.ceil((target - today) / 86400000);
 }
 
+function gpmDatePlusMonth(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return "";
+  const [year, month, day] = String(date).split("-").map(Number);
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return `${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+}
+
+function gpmMonthlyDueDate(item) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMonthlyInspectionDate || ""))) return item.nextMonthlyInspectionDate;
+  const latest = Object.values(gpmStore().inspections || {})
+    .filter(entry => entry?.gpmId === item?.id && entry.inspectionType === "monthly" && /^\d{4}-\d{2}-\d{2}$/.test(String(entry.shiftDate || "")))
+    .sort((a, b) => String(b.shiftDate).localeCompare(String(a.shiftDate)))[0];
+  return latest ? gpmDatePlusMonth(latest.shiftDate) : todayISO();
+}
+
 function gpmDueEntries() {
   return gpmEquipmentList().flatMap(item => [
     { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
     { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
-    { item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate }
+    { item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate },
+    ...(gpmItemKind(item) === "gpm" ? [{ item, type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR", date: gpmMonthlyDueDate(item) }] : [])
   ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
 }
 
@@ -14298,6 +14314,7 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
         <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
         <label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>
+        ${journalKind === "gpm" ? `<label><span>Следующий ежемесячный QR-осмотр</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>` : ""}
       </div>
       <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button></div>
     </form>`;
@@ -14444,6 +14461,7 @@ function gpmDetailHtml(item) {
         <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
         <div><span>Полное освидетельствование</span><strong>${item.nextFullDate ? dateHuman(item.nextFullDate) : "Не назначено"}</strong></div>
         <div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>
+        ${gpmItemKind(item) === "gpm" ? `<div><span>Ежемесячный QR-осмотр</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>` : ""}
       </div>
       <div class="gpm-work-grid no-print">
         ${current.gpmScanMode && gpmCanInspect(item) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
@@ -14496,6 +14514,10 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "") {
   const previous = gpmStore().inspections[id] || {};
   const decision = hasDefect ? "prohibited" : "allowed";
   gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
+  if (inspectionType === "monthly") {
+    item.lastMonthlyInspectionDate = shift.date;
+    item.nextMonthlyInspectionDate = gpmDatePlusMonth(shift.date);
+  }
   if (hasDefect) {
     const eventId = `gpm-event:${id}`;
     const oldEvent = gpmStore().events[eventId] || {};
@@ -14583,6 +14605,7 @@ function saveGpmEquipmentForm(form) {
     nextPartialDate: String(data.get("nextPartialDate") || ""),
     nextFullDate: String(data.get("nextFullDate") || ""),
     nextMaintenanceDate: String(data.get("nextMaintenanceDate") || ""),
+    nextMonthlyInspectionDate: String(data.get("nextMonthlyInspectionDate") || previous.nextMonthlyInspectionDate || ""),
     operationStatus: previous.operationStatus || "allowed",
     createdAt: previous.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -15099,7 +15122,11 @@ function directorAnnualEmptyMonths(year = directorAnnualYear()) {
     reliabilityDowntimeMs: 0,
     breakdowns: 0,
     qrDone: 0,
-    qrPlan: 0
+    qrPlan: 0,
+    craneShiftQrDone: 0,
+    craneShiftQrPlan: 0,
+    craneMonthlyQrDone: 0,
+    craneMonthlyQrPlan: 0
   }));
 }
 
@@ -15201,7 +15228,9 @@ function directorAnnualStats(year = directorAnnualYear()) {
     }
   });
   const today = todayISO();
-  const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв");
+  const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв" && !linkedCraneJournalForEquipment(eq));
+  const craneEquipment = gpmEquipmentList("gpm");
+  const craneInspections = Object.values(gpmStore().inspections || {}).filter(entry => entry && !entry.deleted);
   for (let month = 0; month < 12; month += 1) {
     const days = new Date(year, month + 1, 0).getDate();
     for (let day = 1; day <= days; day += 1) {
@@ -15216,7 +15245,20 @@ function directorAnnualStats(year = directorAnnualYear()) {
           months[month].qrDone += dueShiftKeys.filter(shiftKey => Boolean(nodeShiftRecord(rec?.to || {}, shiftKey, "technical")?.done)).length;
         });
       });
+      craneEquipment.forEach(item => {
+        months[month].craneShiftQrPlan += dueShiftKeys.length;
+        months[month].craneShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
+          && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
+      });
     }
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    if (monthKey <= today.slice(0, 7)) {
+      months[month].craneMonthlyQrPlan += craneEquipment.length;
+      months[month].craneMonthlyQrDone += craneEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
+        && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
+    }
+    months[month].qrPlan += months[month].craneShiftQrPlan + months[month].craneMonthlyQrPlan;
+    months[month].qrDone += months[month].craneShiftQrDone + months[month].craneMonthlyQrDone;
   }
   const workerMap = new Map();
   const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
@@ -15274,7 +15316,11 @@ function directorAnnualStats(year = directorAnnualYear()) {
     downtimeMs: months.reduce((sum, item) => sum + item.downtimeMs, 0),
     breakdowns: months.reduce((sum, item) => sum + item.breakdowns, 0),
     qrDone: months.reduce((sum, item) => sum + item.qrDone, 0),
-    qrPlan: months.reduce((sum, item) => sum + item.qrPlan, 0)
+    qrPlan: months.reduce((sum, item) => sum + item.qrPlan, 0),
+    craneShiftQrDone: months.reduce((sum, item) => sum + item.craneShiftQrDone, 0),
+    craneShiftQrPlan: months.reduce((sum, item) => sum + item.craneShiftQrPlan, 0),
+    craneMonthlyQrDone: months.reduce((sum, item) => sum + item.craneMonthlyQrDone, 0),
+    craneMonthlyQrPlan: months.reduce((sum, item) => sum + item.craneMonthlyQrPlan, 0)
   };
   return { year, months, workers, totals };
 }
@@ -15468,6 +15514,7 @@ function emptyWorkerRating(role, name) {
 const WORK_RATING_POINTS = Object.freeze({
   journal: 2,
   qrShift: 3,
+  qrMonthly: 5,
   ppr: 5,
   pprPress: 6,
   remark: 10,
@@ -15595,6 +15642,18 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
     });
   });
 
+  Object.values(gpmStore().inspections || {}).forEach(inspection => {
+    if (inspection?.inspectionType !== "monthly" || !inPeriod(inspection.updatedAt || inspection.createdAt || inspection.shiftDate)) return;
+    if (!isElectromechanicRole(inspection.authorRole)) return;
+    const item = gpmEquipmentList("gpm").find(candidate => candidate.id === inspection.gpmId);
+    add(inspection.authorRole, inspection.authorName, WORK_RATING_POINTS.qrMonthly, {
+      date: inspection.updatedAt || inspection.createdAt || `${inspection.shiftDate}T12:00:00`,
+      type: "qr-monthly",
+      title: "Ежемесячный QR-осмотр кран-балки",
+      equipment: item?.name || "Кран-балка"
+    });
+  });
+
   Object.values(state.pprSheets || {}).forEach(sheet => {
     if (!sheet?.approvedAt || !inPeriod(sheet.approvedAt)) return;
     (Array.isArray(sheet.rows) ? sheet.rows : []).forEach(row => {
@@ -15668,6 +15727,7 @@ function workerRatingLedgerTypeLabel(type = "") {
     remark: "Замечания",
     breakdown: "Аварийные простои",
     qr: "QR-обходы",
+    "qr-monthly": "Ежемесячные QR кран-балок",
     ppr: "ППР",
     journal: "Журналы",
     order: "Распоряжения",
@@ -16118,6 +16178,8 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         <div><strong>${stats.totals.repairsClosed}/${stats.totals.repairsCreated}</strong><span>закрыто / создано</span></div>
         <div><strong>${totalOpen}</strong><span>незакрытых работ</span></div>
         <div><strong>${totalQrPercent}%</strong><span>QR-обходы за год</span></div>
+        <div><strong>${stats.totals.craneShiftQrDone}/${stats.totals.craneShiftQrPlan}</strong><span>кран-балки: ежесменные QR</span></div>
+        <div><strong>${stats.totals.craneMonthlyQrDone}/${stats.totals.craneMonthlyQrPlan}</strong><span>кран-балки: ежемесячные QR</span></div>
       </div>
     </section>
   `;

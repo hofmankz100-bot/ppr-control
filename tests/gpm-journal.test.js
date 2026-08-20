@@ -225,6 +225,17 @@ test("GPM deadlines enter the common PPR reminders and open the separate journal
   assert.match(app, /show\("gpm"\)/);
 });
 
+test("crane QR inspections feed PPR deadlines, factory reporting and only monthly electromechanic points", () => {
+  assert.match(app, /type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR"/);
+  assert.match(app, /item\.nextMonthlyInspectionDate = gpmDatePlusMonth\(shift\.date\)/);
+  assert.match(app, /craneShiftQrDone/);
+  assert.match(app, /craneMonthlyQrDone/);
+  assert.match(app, /!linkedCraneJournalForEquipment\(eq\)/);
+  assert.match(app, /inspection\?\.inspectionType !== "monthly"/);
+  assert.match(app, /!isElectromechanicRole\(inspection\.authorRole\)/);
+  assert.doesNotMatch(app, /inspection\?\.inspectionType === "shift"[\s\S]{0,500}WORK_RATING_POINTS/);
+});
+
 test("GPM journal prints in landscape and supports image or PDF documents", () => {
   assert.match(styles, /body\.printing-gpm-journal/);
   assert.match(styles, /@page \{ size:A4 landscape/);
