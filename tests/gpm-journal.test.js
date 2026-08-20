@@ -131,6 +131,12 @@ test("the official crane shift journal prints the resolution comment and its aud
   assert.match(styles, /gpm-official-resolution\{grid-column:1\/-1/);
 });
 
+test("crane journal does not repeat the resolution comment inside every defect row", () => {
+  assert.doesNotMatch(app, /<span>Устранено: \$\{escapeHtml\(resolutionComment\)\}<\/span>/);
+  assert.match(app, /class="gpm-official-resolution"/);
+  assert.match(app, /Комментарий об устранении неисправности/);
+});
+
 test("the crane journal uses one electromechanic inspection field", () => {
   assert.match(app, /Результаты осмотра крана электромехаником/);
   assert.match(app, /gpm-official-electromechanic/);
