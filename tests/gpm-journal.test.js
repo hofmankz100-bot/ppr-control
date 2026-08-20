@@ -25,6 +25,14 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
 
+test("printed crane QR codes use a short redirect and a camera-friendly matrix", () => {
+  assert.match(app, /new URL\("\/api\/gpm-qr", location\.origin\)/);
+  assert.match(app, /size=640&ecc=M&margin=4/);
+  assert.match(server, /pathname === "\/api\/gpm-qr" && req\.method === "GET"/);
+  assert.match(server, /PPRGPM\|\$\{mode\}\|\$\{id\}/);
+  assert.match(server, /const errorCorrectionLevel = \["L", "M", "Q", "H"\]/);
+});
+
 test("both crane QR inspections print in the monthly shift journal without a separate PTO journal", () => {
   assert.match(app, /journalMonthMatches\(entry\.shiftDate \|\| entry\.createdAt, month\)/);
   assert.match(app, /function gpmResponsiblePrintSheetHtml\(item, month = selectedJournalMonth\(\)\)/);
