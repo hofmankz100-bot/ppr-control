@@ -78,8 +78,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v518-stagger-crane-maintenance";
-const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v1";
+const APP_VERSION = "v519-stagger-after-cranes-load";
+const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -985,6 +985,7 @@ function distributeGpmMonthlySchedule(targetState) {
   const cranes = Object.values(targetState.gpmJournal.equipment || {})
     .filter(item => item && !item.deleted && item.equipmentKind !== "forklift" && !/вилоч|погрузчик/i.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+  if (!cranes.length) return { changed: false };
   const base = new Date(`${todayISO()}T12:00:00`);
   const now = new Date().toISOString();
   cranes.forEach((item, index) => {
@@ -994,7 +995,7 @@ function distributeGpmMonthlySchedule(targetState) {
     item.updatedAt = now;
   });
   targetState.gpmJournal.monthlyScheduleVersion = GPM_MONTHLY_SCHEDULE_VERSION;
-  return { changed: cranes.length > 0 };
+  return { changed: true };
 }
 
 function loadState() {
