@@ -78,7 +78,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v517-crane-planned-maintenance-label";
+const APP_VERSION = "v518-stagger-crane-maintenance";
+const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v1";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -978,6 +979,24 @@ function removeWarehouseStateLocal(targetState) {
   return { changed };
 }
 
+function distributeGpmMonthlySchedule(targetState) {
+  targetState.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
+  if (targetState.gpmJournal.monthlyScheduleVersion === GPM_MONTHLY_SCHEDULE_VERSION) return { changed: false };
+  const cranes = Object.values(targetState.gpmJournal.equipment || {})
+    .filter(item => item && !item.deleted && item.equipmentKind !== "forklift" && !/вилоч|погрузчик/i.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+  const base = new Date(`${todayISO()}T12:00:00`);
+  const now = new Date().toISOString();
+  cranes.forEach((item, index) => {
+    const scheduled = new Date(base);
+    scheduled.setDate(scheduled.getDate() + index);
+    item.nextMonthlyInspectionDate = scheduled.toISOString().slice(0, 10);
+    item.updatedAt = now;
+  });
+  targetState.gpmJournal.monthlyScheduleVersion = GPM_MONTHLY_SCHEDULE_VERSION;
+  return { changed: cranes.length > 0 };
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1012,7 +1031,8 @@ function loadState() {
     const migration = mergeLegacyOpenJournalRequests(parsed);
     const journalCleanup = removeJournalRequestsLocal(parsed);
     const warehouseCleanup = removeWarehouseStateLocal(parsed);
-    const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed || warehouseCleanup.changed;
+    const gpmScheduleMigration = distributeGpmMonthlySchedule(parsed);
+    const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed || warehouseCleanup.changed || gpmScheduleMigration.changed;
     if (remoteMigrationChanged) {
       parsed.journalRequestCleanupVersion = APP_VERSION;
       persistStateLocally(parsed);
@@ -2431,7 +2451,8 @@ function mergeRemoteState(remote = {}, options = {}) {
     managers: preferRemote
       ? { ...(remote.gpmJournal?.managers || {}) }
       : mergeObjectByFreshnessLocal(state.gpmJournal?.managers || {}, remote.gpmJournal?.managers || {}),
-    managerMigrationVersion: remote.gpmJournal?.managerMigrationVersion || state.gpmJournal?.managerMigrationVersion || ""
+    managerMigrationVersion: remote.gpmJournal?.managerMigrationVersion || state.gpmJournal?.managerMigrationVersion || "",
+    monthlyScheduleVersion: remote.gpmJournal?.monthlyScheduleVersion || state.gpmJournal?.monthlyScheduleVersion || ""
   };
   state.weldingJournal = preferRemote
     ? { ...(remote.weldingJournal || {}) }
@@ -2451,6 +2472,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
   const migration = mergeLegacyOpenJournalRequests(state);
   const journalCleanup = removeJournalRequestsLocal(state);
+  const gpmScheduleMigration = distributeGpmMonthlySchedule(state);
   removeWarehouseStateLocal(state);
   if (migration.changed) {
     state.journalRequestCleanupVersion = APP_VERSION;
@@ -2460,6 +2482,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.journalRequestCleanupVersion = APP_VERSION;
     localStorage.setItem(`${STORE_KEY}-pending`, "1");
   }
+  if (gpmScheduleMigration.changed) localStorage.setItem(`${STORE_KEY}-pending`, "1");
   persistStateLocally(state);
 }
 
@@ -2485,6 +2508,8 @@ function mergeRealtimePatch(remote = {}) {
     state.gpmJournal.events = mergeObjectByFreshnessLocal(state.gpmJournal.events, remote.gpmJournal.events);
     state.gpmJournal.managers = mergeObjectByFreshnessLocal(state.gpmJournal.managers, remote.gpmJournal.managers);
     state.gpmJournal.managerMigrationVersion = remote.gpmJournal.managerMigrationVersion || state.gpmJournal.managerMigrationVersion || "";
+    state.gpmJournal.monthlyScheduleVersion = remote.gpmJournal.monthlyScheduleVersion || state.gpmJournal.monthlyScheduleVersion || "";
+    if (distributeGpmMonthlySchedule(state).changed) localStorage.setItem(`${STORE_KEY}-pending`, "1");
   }
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
   if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
