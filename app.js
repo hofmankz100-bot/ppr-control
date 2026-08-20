@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v524-crane-qr-role-access";
+const APP_VERSION = "v525-resolved-during-qr-inspection";
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -5426,6 +5426,8 @@ function promptQrWalkDecision(parsed) {
         </div>
         <div class="qr-remark-form" hidden>
           <label><span>Комментарий по узлу</span><textarea rows="4" data-qr-comment placeholder="Опишите замечание..."></textarea></label>
+          <label class="qr-resolved-during-inspection"><input type="checkbox" data-qr-resolved-now><span><strong>Устранено во время осмотра</strong><small>Не попадёт в общие предупреждения, но инженер должен подтвердить устранение.</small></span></label>
+          <label data-qr-resolution-wrap hidden><span>Что сделано для устранения</span><textarea rows="4" data-qr-resolution placeholder="Опишите выполненную работу..."></textarea></label>
           ${shgrpAKind === "shgrp" ? `<div class="qr-pressure-fields"><label><span>Давление входное, МПа</span><input type="number" step="0.1" min="0" data-qr-inlet-pressure></label><label><span>Давление выходное, МПа</span><input type="number" step="0.1" min="0" data-qr-outlet-pressure></label></div>` : ""}
           ${shgrpAKind ? "" : `<label><span>Фото (необязательно)</span><input type="file" accept="image/*" capture="environment" data-qr-photo-input></label>`}
           <div class="qr-remark-error" data-qr-error></div>
@@ -5469,6 +5471,11 @@ function promptQrWalkDecision(parsed) {
       if (form) form.hidden = true;
       if (actions) actions.hidden = false;
     });
+    overlay.querySelector("[data-qr-resolved-now]")?.addEventListener("change", event => {
+      const wrap = overlay.querySelector("[data-qr-resolution-wrap]");
+      if (wrap) wrap.hidden = !event.currentTarget.checked;
+      if (event.currentTarget.checked) overlay.querySelector("[data-qr-resolution]")?.focus();
+    });
     overlay.querySelector("[data-qr-save-remark]")?.addEventListener("click", async event => {
       if (submitting) return;
       const comment = String(overlay.querySelector("[data-qr-comment]")?.value || "").trim();
@@ -5477,6 +5484,15 @@ function promptQrWalkDecision(parsed) {
         if (errorEl) errorEl.textContent = "Напишите комментарий, чтобы сохранить замечание.";
         return;
       }
+      const resolvedDuringInspection = Boolean(overlay.querySelector("[data-qr-resolved-now]")?.checked);
+      const resolution = String(overlay.querySelector("[data-qr-resolution]")?.value || "").trim();
+      if (resolvedDuringInspection && !resolution) {
+        if (errorEl) errorEl.textContent = "Опишите, что было сделано для устранения.";
+        overlay.querySelector("[data-qr-resolution]")?.focus();
+        return;
+      }
+      const partDetails = resolvedDuringInspection ? await askInstalledPartDetails() : {};
+      if (resolvedDuringInspection && !partDetails) return;
       const inletMpa = Number(overlay.querySelector("[data-qr-inlet-pressure]")?.value);
       const outletMpa = Number(overlay.querySelector("[data-qr-outlet-pressure]")?.value);
       if (shgrpAKind === "shgrp" && (!Number.isFinite(inletMpa) || !Number.isFinite(outletMpa) || inletMpa <= outletMpa)) {
@@ -5492,14 +5508,22 @@ function promptQrWalkDecision(parsed) {
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
         await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
-        appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
+        const remarkEntry = appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
         item.updatedAt = new Date().toISOString();
         saveState();
         await publishStateNow().catch(scheduleRemoteRetry);
+        if (resolvedDuringInspection && remarkEntry) {
+          await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, shift.date, "resolve", {
+            remarkId: remarkEntry.id,
+            text: resolution,
+            photo: "",
+            ...partDetails
+          });
+        }
         await publishGrpShgrpResult(parsed, shift, true, comment);
         await publishShgrpSectionAResult(parsed, shift, true, comment, { inletMpa, outletMpa });
-        showQrSavedNotice("Обход сохранён с замечанием");
+        showQrSavedNotice(resolvedDuringInspection ? "Устранение отправлено инженеру на подтверждение" : "Обход сохранён с замечанием");
         finish("comment-saved");
       } catch {
         submitting = false;
@@ -14370,6 +14394,8 @@ function gpmInspectionForm(item) {
         `<label><input type="checkbox" name="point-${index}"><span>${escapeHtml(point)}<small>Отметьте, если исправно</small></span></label>`
       ).join("")}</div>
       <label><span>Комментарий о неисправности</span><textarea name="defects" rows="3" placeholder="Обязательно, если хотя бы один пункт не отмечен"></textarea></label>
+      <label class="qr-resolved-during-inspection"><input type="checkbox" name="resolvedDuringInspection"><span><strong>Устранено во время осмотра</strong><small>Запись сразу отправится инженеру на обязательное подтверждение.</small></span></label>
+      <label><span>Комментарий об устранении</span><textarea name="resolutionComment" rows="3" placeholder="Обязательно при устранении во время осмотра"></textarea></label>
       <button type="submit">Завершить ${monthly ? "ежемесячный" : "ежесменный"} осмотр</button>
     </form>`;
 }
@@ -14545,7 +14571,7 @@ function gpmQrInspectionScreenHtml(item) {
     </section>`;
 }
 
-function saveGpmInspectionResult(item, inspectionType, checked, defects = "") {
+function saveGpmInspectionResult(item, inspectionType, checked, defects = "", immediateResolution = {}) {
   const hasDefect = !checked.every(Boolean);
   if (hasDefect && !String(defects || "").trim()) return false;
   const now = new Date().toISOString();
@@ -14562,7 +14588,8 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "") {
   if (hasDefect) {
     const eventId = `gpm-event:${id}`;
     const oldEvent = gpmStore().events[eventId] || {};
-    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType, type: "defect", completedDate: shift.date, result: "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: "open", createdAt: oldEvent.createdAt || now, updatedAt: now };
+    const resolvedNow = immediateResolution.enabled === true && String(immediateResolution.comment || "").trim();
+    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType, type: "defect", completedDate: shift.date, result: resolvedNow ? "Устранено во время осмотра; ожидает подтверждения инженера" : "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: resolvedNow ? "awaitingEngineer" : "open", resolutionComment: resolvedNow ? String(immediateResolution.comment).trim() : "", resolvedAt: resolvedNow ? now : "", resolvedByKey: resolvedNow ? gpmUserKey() : "", resolvedByName: resolvedNow ? (profile?.name || "") : "", resolvedByRole: resolvedNow ? (profile?.role || "") : "", resolvedDuringInspection: Boolean(resolvedNow), createdAt: oldEvent.createdAt || now, updatedAt: now };
   }
   item.operationStatus = hasDefect || gpmOpenDefects(item).length ? "prohibited" : "allowed";
   item.updatedAt = now;
@@ -14764,10 +14791,14 @@ function renderGpmJournal() {
     const defects = form.elements.defects.value.trim();
     const hasDefect = !checked.every(Boolean);
     if (hasDefect && !defects) return window.alert("Опишите обнаруженную неисправность. Эксплуатация крана будет запрещена до подтверждения инженером.");
+    const resolvedDuringInspection = Boolean(form.elements.resolvedDuringInspection?.checked);
+    const resolutionComment = String(form.elements.resolutionComment?.value || "").trim();
+    if (resolvedDuringInspection && !hasDefect) return window.alert("Сначала отметьте неисправный пункт и опишите замечание.");
+    if (resolvedDuringInspection && !resolutionComment) return window.alert("Опишите, что было сделано для устранения.");
     const inspectionType = form.dataset.inspectionType === "monthly" ? "monthly" : "shift";
-    saveGpmInspectionResult(selected, inspectionType, checked, defects);
+    saveGpmInspectionResult(selected, inspectionType, checked, defects, { enabled: resolvedDuringInspection, comment: resolutionComment });
     show(homeViewForProfile(profile?.role));
-    showAppToast(hasDefect ? "Неисправность записана. Эксплуатация крана запрещена." : "Осмотр записан. Кран исправен.", hasDefect ? "error" : "ok");
+    showAppToast(resolvedDuringInspection ? "Устранение отправлено инженеру на обязательное подтверждение." : hasDefect ? "Неисправность записана. Эксплуатация крана запрещена." : "Осмотр записан. Кран исправен.", hasDefect && !resolvedDuringInspection ? "error" : "ok");
   });
   ui.gpmPanel.querySelectorAll("[data-gpm-resolve]").forEach(button => button.addEventListener("click", () => {
     const entry = gpmStore().events[button.dataset.gpmResolve];
