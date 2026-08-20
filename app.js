@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v490-admin-gpm-qr-scanner";
+const APP_VERSION = "v491-monthly-crane-shift-journal";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14283,10 +14283,30 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
   </section>`;
 }
 
+function gpmResponsiblePrintSheetHtml(item, month = selectedJournalMonth()) {
+  return `<section class="gpm-responsible-print-sheet">
+    <div class="gpm-official-appendix">ППР КОНТРОЛЬ · СВЕДЕНИЯ ОБ ОТВЕТСТВЕННЫХ</div>
+    <h4>ОТВЕТСТВЕННЫЕ ЛИЦА И ОПЕРАТОРЫ КРАН-БАЛКИ</h4>
+    <div class="gpm-responsible-print-meta">
+      <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
+      <span><b>Период:</b> ${escapeHtml(journalMonthLabel(month))}</span>
+      <span><b>Кран / кран-балка:</b> ${escapeHtml(item.name)}</span>
+      <span><b>Регистрационный №:</b> ${escapeHtml(item.registrationNumber || "—")}</span>
+      <span><b>Участок:</b> ${escapeHtml(item.location || "—")}</span>
+    </div>
+    <table class="gpm-responsible-print-table"><thead><tr><th>Назначение</th><th>Ф.И.О.</th><th>Подпись</th></tr></thead><tbody>
+      <tr><td>Ответственный за эксплуатацию</td><td>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</td><td></td></tr>
+      <tr><td>Ответственный за исправное состояние</td><td>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</td><td></td></tr>
+      <tr><td>Операторы кран-балки</td><td>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</td><td></td></tr>
+    </tbody></table>
+    <div class="gpm-responsible-print-footer"><span>Сведения актуальны на дату печати: ${escapeHtml(new Date().toLocaleDateString("ru-RU"))}</span><span>Проверил ____________________</span></div>
+  </section>`;
+}
+
 function gpmDetailHtml(item) {
   const status = gpmStatus(item);
-  const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.updatedAt || entry.createdAt));
-  const events = gpmEventRows(item).filter(entry => journalMonthMatches(entry.completedDate || entry.createdAt));
+  const month = selectedJournalMonth();
+  const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.shiftDate || entry.createdAt, month));
   return `
     <section class="gpm-detail" data-gpm-print-root>
       ${journalMonthControlHtml()}
@@ -14309,12 +14329,7 @@ function gpmDetailHtml(item) {
         ${current.gpmScanMode && gpmCanInspect(item) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
       </div>
       ${gpmOfficialShiftJournalHtml(item, inspections)}
-      <section class="gpm-log-section">
-        <h3>Ежемесячный журнал · верхний QR, ПТО и ремонты</h3>
-        <div class="gpm-table-wrap"><table><thead><tr><th>Дата</th><th>Вид работы</th><th>Инженер</th><th>Результат</th><th>Документ</th><th>Допуск</th></tr></thead><tbody>
-          ${events.length ? events.map(entry => `<tr><td>${escapeHtml(dateHuman(entry.completedDate || entry.createdAt))}</td><td>${escapeHtml(gpmEventTypeLabel(entry.type))}</td><td>${escapeHtml(entry.engineerName || entry.authorName || "Автоматически")}</td><td><strong>${escapeHtml(entry.result || "")}</strong>${entry.defects ? `<br><span>Обнаружено: ${escapeHtml(entry.defects)}</span>` : ""}${entry.resolutionComment ? `<br><span>Устранено: ${escapeHtml(entry.resolutionComment)} · ${escapeHtml(entry.resolvedByName || "")}</span>` : ""}${entry.partInstalled ? `<br><span>Установленная запчасть: ${escapeHtml(entry.partDescription || "")}</span>` : entry.resolutionComment ? `<br><span>Без замены запчасти</span>` : ""}</td><td>${gpmDocumentLink(entry) || "Автозапись"}</td><td>${entry.approvedAt ? `Инженер подтвердил: ${escapeHtml(entry.approvedByName || "")}` : entry.resolutionComment ? (gpmIsEngineer(item) ? `<button type="button" class="no-print" data-gpm-engineer-confirm="${escapeHtml(entry.id)}">Проверить и допустить</button>` : "Ожидает инженера") : entry.defects ? (gpmCanRepair() ? `<button type="button" class="no-print" data-gpm-resolve="${escapeHtml(entry.id)}">Записать устранение</button>` : "Ожидает устранения") : "Запись осмотра"}</td></tr>`).join("") : `<tr><td colspan="6">Записей пока нет</td></tr>`}
-        </tbody></table></div>
-      </section>
+      ${gpmResponsiblePrintSheetHtml(item, month)}
       ${gpmCanManage() ? `<div class="gpm-admin-actions no-print"><button type="button" data-gpm-edit="${escapeHtml(item.id)}">Настроить ГПМ и ответственных</button></div>` : ""}
     </section>`;
 }
@@ -14505,10 +14520,10 @@ function renderGpmJournal() {
     const previous = gpmStore().inspections[id] || {};
     const decision = hasDefect ? "prohibited" : "allowed";
     gpmStore().inspections[id] = { ...previous, id, gpmId: selected.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects, decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
-    if (inspectionType === "monthly" || hasDefect) {
+    if (hasDefect) {
       const eventId = `gpm-event:${id}`;
       const oldEvent = gpmStore().events[eventId] || {};
-      gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: selected.id, inspectionId: id, type: hasDefect ? "defect" : "monthlyInspection", completedDate: shift.date, result: hasDefect ? "Эксплуатация запрещена" : "Ежемесячный осмотр выполнен. Неисправностей не обнаружено.", defects, decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: hasDefect ? "open" : "recorded", createdAt: oldEvent.createdAt || now, updatedAt: now };
+      gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: selected.id, inspectionId: id, type: "defect", completedDate: shift.date, result: "Эксплуатация запрещена", defects, decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: "open", createdAt: oldEvent.createdAt || now, updatedAt: now };
     }
     selected.operationStatus = hasDefect || gpmOpenDefects(selected).length ? "prohibited" : "allowed";
     selected.updatedAt = now;

@@ -25,6 +25,15 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
 
+test("both crane QR inspections print in the monthly shift journal without a separate PTO journal", () => {
+  assert.match(app, /journalMonthMatches\(entry\.shiftDate \|\| entry\.createdAt, month\)/);
+  assert.match(app, /function gpmResponsiblePrintSheetHtml\(item, month = selectedJournalMonth\(\)\)/);
+  assert.match(styles, /gpm-responsible-print-sheet.*break-before:page/);
+  assert.match(app, /if \(hasDefect\) \{/);
+  assert.doesNotMatch(app, /if \(inspectionType === "monthly" \|\| hasDefect\)/);
+  assert.doesNotMatch(app, /Ежемесячный журнал · верхний QR, ПТО и ремонты/);
+});
+
 test("GPM configuration rights are assigned separately from job role and approval rights", () => {
   assert.match(app, /function gpmCanManage\(\)/);
   assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);
