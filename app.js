@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v513-live-qr-scanner-only";
+const APP_VERSION = "v514-crane-short-qr-parser";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14098,7 +14098,15 @@ function parseGpmQrScanValue(value = "") {
   const direct = parseGpmQrValue(raw);
   if (direct) return direct;
   try {
-    return parseGpmQrValue(new URL(raw, location.origin).searchParams.get("gpmQr") || "");
+    const url = new URL(raw, location.origin);
+    const redirected = parseGpmQrValue(url.searchParams.get("gpmQr") || "");
+    if (redirected) return redirected;
+    if (url.pathname === "/api/gpm-qr") {
+      const gpmId = String(url.searchParams.get("id") || "").trim();
+      const mode = String(url.searchParams.get("mode") || "").toLowerCase();
+      if (gpmId && ["shift", "monthly"].includes(mode)) return { mode, gpmId };
+    }
+    return null;
   } catch {
     return null;
   }
