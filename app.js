@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v495-clean-crane-workflow";
+const APP_VERSION = "v496-electromechanic-crane-field";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14316,8 +14316,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
         <div class="gpm-official-signatures">
           <div><b>Смену принял (Ф.И.О., электронная подпись)</b><span>${escapeHtml(inspector)}${employeeId}</span></div>
           <div><b>Смену сдал (состояние крана, Ф.И.О.)</b><span>${escapeHtml(shiftState)} · ${escapeHtml(inspector)}</span></div>
-          <div><b>Результаты осмотра крана слесарем</b><span>${relatedEvent?.resolvedByName && relatedEvent?.resolvedByRole !== "electrician" ? escapeHtml(relatedEvent.resolvedByName) : "—"}</span></div>
-          <div><b>Результаты осмотра крана электромонтёром</b><span>${relatedEvent?.resolvedByRole === "electrician" ? escapeHtml(relatedEvent.resolvedByName || "") : "—"}</span></div>
+          <div class="gpm-official-electromechanic"><b>Результаты осмотра крана электромехаником</b><span>${escapeHtml(relatedEvent?.resolvedByName || "—")}</span></div>
           <div class="gpm-official-resolution"><b>Комментарий об устранении неисправности</b><span>${entry?.defects ? (resolutionComment ? `${escapeHtml(resolutionComment)} · ${escapeHtml(resolver || "Исполнитель не указан")}${resolutionDate ? ` · ${escapeHtml(resolutionDate)}` : ""}` : "Ожидает устранения") : "Не требуется"}</span></div>
           <div><b>Ответственный за исправное состояние</b><span>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || relatedEvent?.approvedByName || "—")}</span></div>
           <div><b>Отметка о допуске к работе / дополнительные указания</b><span>${escapeHtml(relatedEvent?.approvedAt ? `Допущен инженером: ${relatedEvent.approvedByName || ""}` : shiftState)}</span></div>
