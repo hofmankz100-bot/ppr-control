@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v519-stagger-after-cranes-load";
+const APP_VERSION = "v520-mobile-camera-fallback";
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -4940,14 +4940,19 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     if (!hasQrReader) return false;
     let stream = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      });
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        });
+      } catch (primaryCameraError) {
+        if (["NotAllowedError", "SecurityError"].includes(primaryCameraError?.name)) throw primaryCameraError;
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
@@ -5014,12 +5019,14 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         };
         tick();
       });
-    } catch {
+    } catch (cameraError) {
       stream?.getTracks()?.forEach(track => track.stop());
       video.hidden = true;
       video.srcObject = null;
       activeVideoTrack = null;
-      if (messageEl) messageEl.textContent = "Камера не запустилась. Нажмите «Сканировать ещё раз» и сфотографируйте QR крупным планом.";
+      if (messageEl) messageEl.textContent = ["NotAllowedError", "SecurityError"].includes(cameraError?.name)
+        ? "Нет доступа к камере. Разрешите камеру для ППР Контроль в настройках браузера или приложения и повторите."
+        : "Камера не запустилась. Закройте другие приложения, использующие камеру, и нажмите «Перезапустить сканер».";
       return false;
     }
   };
@@ -5228,7 +5235,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (ok) complete(ok);
       else if (!stopped) {
         button.hidden = false;
-        if (messageEl) messageEl.textContent = "Камера не запустилась. Разрешите доступ к камере в настройках iPhone и повторите.";
+        if (messageEl) messageEl.textContent = "Камера не запустилась. Разрешите камеру для ППР Контроль в настройках телефона и повторите.";
       }
     });
     scanAutomatically();

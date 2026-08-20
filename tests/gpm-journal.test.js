@@ -34,6 +34,13 @@ test("iPhone QR camera waits for a real video frame instead of showing a blank p
   assert.match(styles, /\.qr-scan-panel video\[hidden\]\{display:none!important\}/);
 });
 
+test("mobile QR camera retries without strict rear-camera constraints and uses platform-neutral help", () => {
+  assert.match(app, /catch \(primaryCameraError\)/);
+  assert.match(app, /getUserMedia\(\{ video: true, audio: false \}\)/);
+  assert.match(app, /Разрешите камеру для ППР Контроль в настройках браузера или приложения/);
+  assert.doesNotMatch(app, /Разрешите доступ к камере в настройках iPhone/);
+});
+
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
   assert.doesNotMatch(app, /iosNativeCamera/);
   assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
