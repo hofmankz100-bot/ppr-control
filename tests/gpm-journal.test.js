@@ -33,6 +33,16 @@ test("printed crane QR codes use a short redirect and a camera-friendly matrix",
   assert.match(server, /const errorCorrectionLevel = \["L", "M", "Q", "H"\]/);
 });
 
+test("the equipment card and crane journal print the exact same two QR payloads", () => {
+  assert.match(app, /data-print-gpm-equipment-qr=/);
+  assert.match(app, /2 QR кран-балки/);
+  assert.match(app, /Те же, что в журнале/);
+  assert.match(app, /function gpmQrImageUrl\(item, mode = "shift"\)/);
+  assert.match(app, /function printGpmQrPair\(item\)/);
+  assert.match(app, /gpmQrImageUrl\(item, card\.mode\)/);
+  assert.match(app, /if \(linkedGpmEquipment\) printGpmQrPair\(linkedGpmEquipment\)/);
+});
+
 test("both crane QR inspections print in the monthly shift journal without a separate PTO journal", () => {
   assert.match(app, /journalMonthMatches\(entry\.shiftDate \|\| entry\.createdAt, month\)/);
   assert.match(app, /function gpmResponsiblePrintSheetHtml\(item, month = selectedJournalMonth\(\)\)/);
