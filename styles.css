@@ -5154,6 +5154,7 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
   background: #0f172a;
   object-fit: cover;
 }
+.qr-scan-panel video[hidden]{display:none!important}
 
 .qr-scan-panel span {
   color: var(--muted);

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v503-monthly-electromechanic-mark";
+const APP_VERSION = "v504-ios-qr-camera";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4922,12 +4922,30 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         },
         audio: false
       });
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "");
       video.srcObject = stream;
       activeVideoTrack = stream.getVideoTracks?.()[0] || null;
       const capabilities = activeVideoTrack?.getCapabilities?.() || {};
       setTorchAvailable(Boolean(capabilities.torch));
-      video.hidden = false;
+      if (video.readyState < 1) {
+        await new Promise((resolve, reject) => {
+          const timeout = window.setTimeout(() => reject(new Error("camera-metadata-timeout")), 6000);
+          video.addEventListener("loadedmetadata", () => {
+            window.clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+          video.addEventListener("error", () => {
+            window.clearTimeout(timeout);
+            reject(new Error("camera-video-error"));
+          }, { once: true });
+        });
+      }
       await video.play();
+      video.hidden = false;
       if (messageEl) messageEl.textContent = "Наведите камеру на QR. После считывания можно идти дальше.";
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -4972,6 +4990,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       });
     } catch {
       stream?.getTracks()?.forEach(track => track.stop());
+      video.hidden = true;
+      video.srcObject = null;
+      activeVideoTrack = null;
+      if (messageEl) messageEl.textContent = "Камера не запустилась. Нажмите «Сканировать ещё раз» и сфотографируйте QR крупным планом.";
       return false;
     }
   };
