@@ -78,7 +78,8 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v525-resolved-during-qr-inspection";
+const APP_VERSION = "v526-production-request-dedup";
+document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -9487,29 +9488,48 @@ function saveWeldingRecord(record) {
   renderWeldingJournal();
 }
 
+function lockProductionRequestForm(form) {
+  if (!form || form.dataset.submitting === "1") return null;
+  form.dataset.submitting = "1";
+  const button = form.querySelector('button[type="submit"]');
+  if (button) setButtonBusy(button, true, "Отправляем...");
+  return () => {
+    delete form.dataset.submitting;
+    if (button?.isConnected) setButtonBusy(button, false);
+  };
+}
+
 async function createWeldingRequest(form) {
   const data = new FormData(form);
   const actor = weldingActor();
   const now = new Date().toISOString();
   const description = String(data.get("description") || "").trim();
   if (!description) return window.alert("Опишите изделие, узел или требуемую сварочную работу.");
-  const id = `welding:${Date.now()}:${Math.random().toString(16).slice(2, 8)}`;
-  const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
-  const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-  saveWeldingRecord({
-    id,
-    status: "new",
-    requestType: String(data.get("requestType") || "order"),
-    description: description.slice(0, 2000),
-    drawingNumber: String(data.get("drawingNumber") || "").trim().slice(0, 300),
-    createdAt: now,
-    createdById: actor.id,
-    createdByName: actor.name,
-    createdByRole: actor.role,
-    createdByPosition: actor.position,
-    requestPhoto
-  });
-  showAppToast("Заявка на сварочные работы отправлена.");
+  const unlock = lockProductionRequestForm(form);
+  if (!unlock) return;
+  try {
+    const id = `welding:${Date.now()}:${Math.random().toString(16).slice(2, 8)}`;
+    const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
+    const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
+    saveWeldingRecord({
+      id,
+      status: "new",
+      requestType: String(data.get("requestType") || "order"),
+      description: description.slice(0, 2000),
+      drawingNumber: String(data.get("drawingNumber") || "").trim().slice(0, 300),
+      createdAt: now,
+      createdById: actor.id,
+      createdByName: actor.name,
+      createdByRole: actor.role,
+      createdByPosition: actor.position,
+      requestPhoto
+    });
+    showAppToast("Заявка на сварочные работы отправлена.");
+  } catch {
+    window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
+  } finally {
+    unlock();
+  }
 }
 
 function acceptWeldingRequest(item) {
@@ -9663,10 +9683,18 @@ async function createTurningRequest(form) {
   const data = new FormData(form), actor = weldingActor(), now = new Date().toISOString();
   const description = String(data.get("description") || "").trim();
   if (!description) return window.alert("Опишите деталь или требуемую токарную обработку.");
-  const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
-  const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-  saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto });
-  showAppToast("Заявка на токарные работы отправлена.");
+  const unlock = lockProductionRequestForm(form);
+  if (!unlock) return;
+  try {
+    const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
+    const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
+    saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto });
+    showAppToast("Заявка на токарные работы отправлена.");
+  } catch {
+    window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
+  } finally {
+    unlock();
+  }
 }
 
 function turningTypeLabel(value) { return ({ manufacture:"Изготовление", restore:"Восстановление", drawing:"По чертежу", emergency:"Аварийный ремонт" })[value] || value || "—"; }
