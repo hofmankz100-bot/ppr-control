@@ -41,6 +41,12 @@ test("mobile QR camera retries without strict rear-camera constraints and uses p
   assert.doesNotMatch(app, /Разрешите доступ к камере в настройках iPhone/);
 });
 
+test("mobile QR scanner requests the camera before awaiting the decoder", () => {
+  const scanner = app.slice(app.indexOf("const scanWithLiveCamera"), app.indexOf("const detectQrWithNativeDetector"));
+  assert.ok(scanner.indexOf("getUserMedia") < scanner.indexOf("await ensureJsQr()"));
+  assert.match(scanner, /if \(!hasQrReader\) throw new Error\("qr-decoder-unavailable"\)/);
+});
+
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
   assert.doesNotMatch(app, /iosNativeCamera/);
   assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
