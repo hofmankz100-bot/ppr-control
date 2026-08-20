@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v497-immediate-crane-resume";
+const CACHE_NAME = "ppr-v498-no-crane-pause-button";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=497-immediate-crane-resume",
+  "./styles.css?v=498-no-crane-pause-button",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=497-immediate-crane-resume",
+  "./app.js?v=498-no-crane-pause-button",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

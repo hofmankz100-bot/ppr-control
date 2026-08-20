@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v497-immediate-crane-resume";
+const APP_VERSION = "v498-no-crane-pause-button";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -11199,7 +11199,7 @@ function renderEquipment() {
       const linkedGpmEquipment = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
       const gpmEquipment = Boolean(linkedGpmEquipment) || isGpmEquipment(eq);
       const modernCraneEquipment = linkedCraneJournalForEquipment(eq);
-      const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
+      const equipmentOperationalPause = modernCraneEquipment ? null : activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
@@ -11217,7 +11217,7 @@ function renderEquipment() {
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
               <summary>Редактировать оборудование</summary>
-              ${catalogEditorRole() === "editor" ? (() => {
+              ${catalogEditorRole() === "editor" && !modernCraneEquipment ? (() => {
                 const pause = activeOperationalPause(eq);
                 return `<div class="operational-pause-control ${pause ? "paused" : ""}">
                   <strong>${pause ? "Оборудование временно не работает" : "Оборудование работает"}</strong>
