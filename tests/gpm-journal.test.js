@@ -122,6 +122,8 @@ test("monthly upper-QR entry is unmistakably marked as an electromechanic inspec
 });
 
 test("the official crane shift journal prints the resolution comment and its audit details", () => {
+  assert.match(app, /<h4>ВАХТЕННЫЙ ЖУРНАЛ<\/h4>/);
+  assert.doesNotMatch(app, /<h4>ФОРМА ВАХТЕННОГО ЖУРНАЛА<\/h4>/);
   assert.match(app, /const resolutionComment = relatedEvent\?\.resolutionComment \|\| ""/);
   assert.match(app, /Комментарий об устранении неисправности/);
   assert.match(app, /resolutionDate = relatedEvent\?\.resolvedAt \? dateTimeHuman/);
@@ -146,7 +148,7 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /assignedKeys\.includes\(key\)/);
   assert.match(app, /authorEmployeeId: profile\?\.employeeId/);
   assert.match(app, /function gpmOfficialShiftJournalHtml/);
-  assert.match(app, /ФОРМА ВАХТЕННОГО ЖУРНАЛА/);
+  assert.match(app, /ВАХТЕННЫЙ ЖУРНАЛ/);
   assert.match(app, /Приложение 14 к Правилам обеспечения промышленной безопасности/);
   assert.match(app, /Смену принял \(Ф\.И\.О\., электронная подпись\)/);
   assert.match(styles, /\.gpm-official-meta/);

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v505-one-page-crane-journal";
+const APP_VERSION = "v506-crane-journal-title";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14364,7 +14364,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
       const shiftState = entry?.decision === "allowed" ? "Кран исправен и допущен к работе" : entry ? "Эксплуатация запрещена" : "";
       return `<article class="gpm-official-sheet ${monthlyInspection ? "gpm-official-monthly" : "gpm-official-shift"}">
         <div class="gpm-official-appendix">Приложение 14 к Правилам обеспечения промышленной безопасности<br>при эксплуатации грузоподъёмных механизмов</div>
-        <h4>ФОРМА ВАХТЕННОГО ЖУРНАЛА</h4>
+        <h4>ВАХТЕННЫЙ ЖУРНАЛ</h4>
         ${monthlyInspection ? `<div class="gpm-monthly-inspection-banner">ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR</div>` : ""}
         <div class="gpm-official-meta">
           <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
