@@ -35,9 +35,17 @@ test("iPhone QR camera waits for a real video frame instead of showing a blank p
 
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
   assert.doesNotMatch(app, /iosNativeCamera/);
-  assert.match(app, /let ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
+  assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
   assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
   assert.match(app, /if \(!value\) \{\s+video\.hidden = true/);
+});
+
+test("QR dialog stays a live scanner and never switches itself to photo capture", () => {
+  assert.match(app, /data-qr-retry hidden>Перезапустить сканер/);
+  assert.doesNotMatch(app, /data-qr-photo(?:>|\])/);
+  assert.doesNotMatch(app, /Date\.now\(\) - started > 45000/);
+  assert.doesNotMatch(app, /ok = await scanFromPhoto\(messageEl\)/);
+  assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
 });
 
 test("printed crane QR codes use a short redirect and a camera-friendly matrix", () => {
