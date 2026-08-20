@@ -49,7 +49,7 @@ test("linked crane beams no longer expose or accept the legacy node workflow", (
   assert.match(app, /if \(linkedCraneJournalForEquipment\(eq\)\)/);
   assert.match(app, /Старый QR узла этой кран-балки отключён/);
   assert.match(app, /if \(modernCraneEquipment\) \{/);
-  assert.match(app, /Обход кран-балки выполняется только по двум QR/);
+  assert.match(app, /QR-обходы кран-балок: ежесменные/);
   assert.match(app, /2 QR · вахтенный журнал/);
   assert.match(styles, /\.modern-crane-workflow-cell/);
   assert.match(app, /const equipmentOperationalPause = modernCraneEquipment \? null : activeOperationalPause/);
@@ -67,9 +67,17 @@ test("crane QR opens a quick result screen and expands details only for a remark
 });
 
 test("disabled crane calendar cells preserve the normal day-column width", () => {
-  assert.match(app, /days\.forEach\(\(\) => \{/);
+  assert.match(app, /days\.forEach\(day => \{/);
   assert.doesNotMatch(app, /td\.colSpan = days\.length/);
   assert.doesNotMatch(styles, /modern-crane-workflow-cell\{min-width:420px/);
+});
+
+test("crane calendar cell shows separate shift and monthly QR inspection counters", () => {
+  assert.match(app, /function gpmQrInspectionCounters\(date, items = gpmEquipmentList\("gpm"\)\)/);
+  assert.match(app, /shiftTotal: items\.length \* 2/);
+  assert.match(app, /monthlyTotal: items\.length/);
+  assert.match(app, /Ежесменные <b>\$\{counters\.shiftDone\}\/\$\{counters\.shiftTotal\}<\/b>/);
+  assert.match(app, /Ежемесячные <b>\$\{counters\.monthlyDone\}\/\$\{counters\.monthlyTotal\}<\/b>/);
 });
 
 test("both crane QR inspections print in the monthly shift journal without a separate PTO journal", () => {

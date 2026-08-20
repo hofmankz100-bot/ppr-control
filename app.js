@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v500-all-crane-qr-codes";
+const APP_VERSION = "v501-crane-qr-counters";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -11274,11 +11274,13 @@ function renderEquipment() {
         }, "Сохраняется...");
       });
       if (modernCraneEquipment) {
-        days.forEach(() => {
+        days.forEach(day => {
+          const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const counters = gpmQrInspectionCounters(date);
           const td = document.createElement("td");
           td.className = "modern-crane-workflow-cell";
-          td.textContent = "QR";
-          td.title = "Обход кран-балки выполняется только по двум QR";
+          td.innerHTML = `<span>Ежесменные <b>${counters.shiftDone}/${counters.shiftTotal}</b></span><span>Ежемесячные <b>${counters.monthlyDone}/${counters.monthlyTotal}</b></span>`;
+          td.title = `QR-обходы кран-балок: ежесменные за ${dateHuman(date)} — ${counters.shiftDone} из ${counters.shiftTotal}; ежемесячные за месяц — ${counters.monthlyDone} из ${counters.monthlyTotal}`;
           tr.append(td);
         });
       } else for (const day of days) {
@@ -13985,6 +13987,21 @@ function gpmEquipmentList(kind = "") {
     .filter(item => item && !item.deleted)
     .filter(item => !kind || gpmItemKind(item) === kind)
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+}
+
+function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
+  const craneIds = new Set(items.map(item => String(item.id)));
+  const month = String(date || "").slice(0, 7);
+  const inspections = Object.values(gpmStore().inspections || {})
+    .filter(entry => entry && craneIds.has(String(entry.gpmId || "")));
+  const shiftDone = inspections.filter(entry => entry.inspectionType !== "monthly" && String(entry.shiftDate || "") === date).length;
+  const monthlyDone = inspections.filter(entry => entry.inspectionType === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
+  return {
+    shiftDone,
+    shiftTotal: items.length * 2,
+    monthlyDone,
+    monthlyTotal: items.length
+  };
 }
 
 function gpmIsAdmin() {
