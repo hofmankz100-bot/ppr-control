@@ -106,6 +106,13 @@ test("crane journal is compact and responsible persons print separately", () => 
   assert.match(styles, /printing-gpm-responsibles \.gpm-responsible-print-sheet \{ display:block/);
 });
 
+test("print keeps crane metadata and signatures in desktop columns on one sheet", () => {
+  assert.match(styles, /@media screen and \(max-width:760px\)/);
+  assert.match(styles, /printing-gpm-journal \.gpm-official-meta \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\) !important; \}/);
+  assert.match(styles, /printing-gpm-journal \.gpm-official-signatures \{ grid-template-columns:1fr 1fr !important;break-inside:avoid;page-break-inside:avoid; \}/);
+  assert.doesNotMatch(styles, /@media\(max-width:760px\)\{\.gpm-official-sheet/);
+});
+
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
   assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
   assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);
