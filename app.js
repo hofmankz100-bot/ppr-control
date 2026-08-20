@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v523-force-mobile-app-refresh";
+const APP_VERSION = "v524-crane-qr-role-access";
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -4875,7 +4875,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         if (statusEl) statusEl.textContent = "Кран по этому QR не найден";
         return false;
       }
-      if (!gpmCanInspect(item)) {
+      if (!gpmCanInspect(item, gpmParsed.mode)) {
         if (statusEl) statusEl.textContent = "Этот кран вам не назначен";
         return false;
       }
@@ -14094,9 +14094,10 @@ function gpmIsResponsible(item) {
   return gpmIsAdmin() || [item?.operationResponsibleKey, item?.conditionResponsibleKey].includes(key);
 }
 
-function gpmCanInspect(item) {
+function gpmCanInspect(item, mode = "") {
   const key = gpmUserKey();
-  if (gpmIsAdmin() || gpmIsResponsible(item)) return true;
+  if (gpmIsAdmin() || gpmIsEngineer(item) || gpmIsResponsible(item)) return true;
+  if (mode === "monthly" && isElectromechanicRole(profile?.role)) return true;
   const assignedKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
   if (profile?.role === "operator") return !assignedKeys.length || assignedKeys.includes(key);
   return assignedKeys.includes(key) || item?.inspectorKey === key;
@@ -14504,7 +14505,7 @@ function gpmDetailHtml(item) {
           : `<div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>`}
       </div>
       <div class="gpm-work-grid no-print">
-        ${current.gpmScanMode && gpmCanInspect(item) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
+        ${current.gpmScanMode && gpmCanInspect(item, current.gpmScanMode) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
       </div>
       ${gpmOfficialShiftJournalHtml(item, inspections)}
       ${gpmResponsiblePrintSheetHtml(item, month)}
@@ -14514,7 +14515,7 @@ function gpmDetailHtml(item) {
 
 function gpmQrInspectionScreenHtml(item) {
   const status = gpmStatus(item);
-  if (!gpmCanInspect(item)) return `
+  if (!gpmCanInspect(item, current.gpmScanMode)) return `
     <section class="gpm-detail gpm-scan-only">
       <div class="gpm-detail-head">
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2></div>
