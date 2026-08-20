@@ -98,6 +98,14 @@ test("crane journal is compact and responsible persons print separately", () => 
   assert.match(styles, /printing-gpm-responsibles \.gpm-responsible-print-sheet \{ display:block/);
 });
 
+test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
+  assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
+  assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);
+  assert.match(app, /gpm-official-monthly/);
+  assert.match(styles, /\.gpm-monthly-inspection-banner/);
+  assert.match(styles, /printing-gpm-journal \.gpm-monthly-inspection-banner/);
+});
+
 test("the official crane shift journal prints the resolution comment and its audit details", () => {
   assert.match(app, /const resolutionComment = relatedEvent\?\.resolutionComment \|\| ""/);
   assert.match(app, /Комментарий об устранении неисправности/);

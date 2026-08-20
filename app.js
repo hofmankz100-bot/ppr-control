@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v502-compact-crane-print";
+const APP_VERSION = "v503-monthly-electromechanic-mark";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14330,6 +14330,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
   return `<section class="gpm-log-section gpm-official-shift-journal">
     <h3>Вахтенный журнал машиниста крана</h3>
     ${entries.map(entry => {
+      const monthlyInspection = entry?.inspectionType === "monthly";
       const relatedEvent = entry ? Object.values(gpmStore().events || {}).find(event => event?.inspectionId === entry.id && !event.deleted) : null;
       const points = Array.isArray(entry?.points) ? entry.points : [];
       const resultFor = indexes => !entry ? "" : indexes.every(index => points[index]) ? "Без нарушений" : escapeHtml(entry.defects || "Обнаружена неисправность");
@@ -14339,9 +14340,10 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
       const inspector = entry?.authorName || "";
       const employeeId = entry?.authorEmployeeId ? ` · таб. № ${escapeHtml(entry.authorEmployeeId)}` : "";
       const shiftState = entry?.decision === "allowed" ? "Кран исправен и допущен к работе" : entry ? "Эксплуатация запрещена" : "";
-      return `<article class="gpm-official-sheet">
+      return `<article class="gpm-official-sheet ${monthlyInspection ? "gpm-official-monthly" : "gpm-official-shift"}">
         <div class="gpm-official-appendix">Приложение 14 к Правилам обеспечения промышленной безопасности<br>при эксплуатации грузоподъёмных механизмов</div>
         <h4>ФОРМА ВАХТЕННОГО ЖУРНАЛА</h4>
+        ${monthlyInspection ? `<div class="gpm-monthly-inspection-banner">ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR</div>` : ""}
         <div class="gpm-official-meta">
           <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
           <span><b>Цех (участок):</b> ${escapeHtml(item.location || "—")}</span>
