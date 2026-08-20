@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v521-camera-before-decoder";
+const APP_VERSION = "v522-crane-qr-apply-result";
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -4870,7 +4870,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const applyScannedValue = value => {
     const gpmParsed = parseGpmQrScanValue(value);
     if (gpmParsed) {
-      const item = gpmEquipmentList("gpm").find(entry => entry.id === gpmParsed.gpmId);
+      const item = gpmEquipmentList("gpm").find(entry => String(entry.id) === String(gpmParsed.gpmId));
       if (!item) {
         if (statusEl) statusEl.textContent = "Кран по этому QR не найден";
         return false;
@@ -5007,8 +5007,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               const value = await detectQrOnCanvas(canvas, scanPass++);
               if (value) {
-                confirmQrScanFeedback();
-                return finish(applyValue(value));
+                const applied = applyValue(value);
+                if (applied) {
+                  confirmQrScanFeedback();
+                  return finish(applied);
+                }
+                if (messageEl) messageEl.textContent = statusEl?.textContent || "Этот QR не подходит. Наведите камеру на нужный код.";
               }
             } catch {
             } finally {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v521-camera-before-decoder";
+const CACHE_NAME = "ppr-v522-crane-qr-apply-result";
 const ASSETS = [
   "./",
   "./index.html",
@@ -15,7 +15,7 @@ const ASSETS = [
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
   "./app.js?v=514-crane-short-qr-parser",
-  "./node_modules/jsqr/dist/jsQR.js?v=v521-camera-before-decoder",
+  "./node_modules/jsqr/dist/jsQR.js?v=v522-crane-qr-apply-result",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
