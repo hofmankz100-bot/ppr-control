@@ -226,7 +226,7 @@ test("GPM deadlines enter the common PPR reminders and open the separate journal
 });
 
 test("crane QR inspections feed PPR deadlines, factory reporting and only monthly electromechanic points", () => {
-  assert.match(app, /type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR"/);
+  assert.match(app, /type: "monthlyQr", label: "Плановое ТО"/);
   assert.match(app, /item\.nextMonthlyInspectionDate = gpmDatePlusMonth\(shift\.date\)/);
   assert.match(app, /craneShiftQrDone/);
   assert.match(app, /craneMonthlyQrDone/);
@@ -239,7 +239,7 @@ test("crane QR inspections feed PPR deadlines, factory reporting and only monthl
 test("monthly upper QR replaces rather than duplicates planned maintenance for cranes", () => {
   assert.match(app, /gpmItemKind\(item\) === "gpm"[\s\S]{0,180}\? \[\{ item, type: "monthlyQr"/);
   assert.match(app, /: \[\{ item, type: "maintenance", label: "Плановое техническое обслуживание"/);
-  assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующий ежемесячный QR-осмотр[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
+  assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующее Плановое ТО[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
 });
 
 test("GPM journal prints in landscape and supports image or PDF documents", () => {

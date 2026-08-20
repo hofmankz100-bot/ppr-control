@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v516-crane-monthly-replaces-maintenance";
+const APP_VERSION = "v517-crane-planned-maintenance-label";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -9033,7 +9033,7 @@ function allOpenCommentTargets() {
         author: entry.authorName || "Автоматическая запись QR",
         areaName: item.location || "ГПМ",
         equipmentName: item.name || "Кран",
-        nodeName: entry.inspectionType === "monthly" ? "Ежемесячный QR-осмотр" : "Ежесменный QR-осмотр",
+        nodeName: entry.inspectionType === "monthly" ? "Плановое ТО" : "Ежесменный QR-осмотр",
         at: entry.createdAt || entry.updatedAt || "",
         pendingConfirmation: Boolean(entry.resolutionComment && !entry.approvedAt),
         submittedAt: entry.resolvedAt || "",
@@ -13707,7 +13707,7 @@ function personalRemarkMessages() {
         gpmEventId: entry.id,
         equipment: item.name || "Кран",
         area: item.location || "ГПМ",
-        node: entry.inspectionType === "monthly" ? "Ежемесячный QR-осмотр" : "Ежесменный QR-осмотр",
+        node: entry.inspectionType === "monthly" ? "Плановое ТО" : "Ежесменный QR-осмотр",
         originalText: entry.defects || "Неисправность ГПМ",
         submittedBy: entry.resolvedByName || "Сотрудник",
         submittedComment: entry.resolutionComment,
@@ -14209,7 +14209,7 @@ function gpmDueEntries() {
     { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
     { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
     ...(gpmItemKind(item) === "gpm"
-      ? [{ item, type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR", date: gpmMonthlyDueDate(item) }]
+      ? [{ item, type: "monthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }]
       : [{ item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate }])
   ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
 }
@@ -14315,7 +14315,7 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
         <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
         ${journalKind === "gpm"
-          ? `<label><span>Следующий ежемесячный QR-осмотр</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
+          ? `<label><span>Следующее Плановое ТО</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
           : `<label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>`}
       </div>
       <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button></div>
@@ -14326,7 +14326,7 @@ function gpmInspectionForm(item) {
   const monthly = current.gpmScanMode === "monthly";
   return `
     <form class="gpm-entry-form gpm-qr-inspection" data-gpm-inspection-form data-inspection-type="${monthly ? "monthly" : "shift"}">
-      <div class="gpm-qr-mode ${monthly ? "monthly" : "shift"}"><strong>${monthly ? "Ежемесячный осмотр" : "Ежесменный осмотр"}</strong><span>${monthly ? "Открыт верхним QR-кодом" : "Открыт QR-кодом на кране"}</span></div>
+      <div class="gpm-qr-mode ${monthly ? "monthly" : "shift"}"><strong>${monthly ? "Плановое ТО" : "Ежесменный осмотр"}</strong><span>${monthly ? "Открыто верхним QR-кодом" : "Открыт QR-кодом на кране"}</span></div>
       <p>Проверьте каждый пункт. Любая неисправность автоматически запрещает эксплуатацию до подтверждения инженером.</p>
       <div class="gpm-check-grid">${GPM_INSPECTION_POINTS.map((point, index) =>
         `<label><input type="checkbox" name="point-${index}"><span>${escapeHtml(point)}<small>Отметьте, если исправно</small></span></label>`
@@ -14453,7 +14453,7 @@ function gpmDetailHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Зав. № ${escapeHtml(item.serialNumber || "—")} · Рег. № ${escapeHtml(item.registrationNumber || "—")} · ${escapeHtml(item.capacity || "грузоподъёмность не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift">Печатать ежесменный QR</button><button type="button" class="secondary" data-gpm-print-qr="monthly">Печатать верхний ежемесячный QR</button></div>` : ""}
+      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift">Печатать ежесменный QR</button><button type="button" class="secondary" data-gpm-print-qr="monthly">Печатать верхний QR Планового ТО</button></div>` : ""}
       <div class="gpm-responsibles">
         <div><span>Эксплуатация</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
         <div><span>Исправное состояние</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>
@@ -14463,7 +14463,7 @@ function gpmDetailHtml(item) {
         <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
         <div><span>Полное освидетельствование</span><strong>${item.nextFullDate ? dateHuman(item.nextFullDate) : "Не назначено"}</strong></div>
         ${gpmItemKind(item) === "gpm"
-          ? `<div><span>Ежемесячный QR-осмотр</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>`
+          ? `<div><span>Плановое ТО</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>`
           : `<div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>`}
       </div>
       <div class="gpm-work-grid no-print">
@@ -14536,7 +14536,7 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "") {
 
 function gpmEventTypeLabel(type) {
   return ({
-    monthlyInspection: "Ежемесячный QR-осмотр",
+    monthlyInspection: "Плановое ТО",
     defect: "Неисправность по QR-осмотру",
     partial: "Частичное освидетельствование",
     full: "Полное освидетельствование",
@@ -15652,7 +15652,7 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
     add(inspection.authorRole, inspection.authorName, WORK_RATING_POINTS.qrMonthly, {
       date: inspection.updatedAt || inspection.createdAt || `${inspection.shiftDate}T12:00:00`,
       type: "qr-monthly",
-      title: "Ежемесячный QR-осмотр кран-балки",
+      title: "Плановое ТО кран-балки",
       equipment: item?.name || "Кран-балка"
     });
   });
@@ -15730,7 +15730,7 @@ function workerRatingLedgerTypeLabel(type = "") {
     remark: "Замечания",
     breakdown: "Аварийные простои",
     qr: "QR-обходы",
-    "qr-monthly": "Ежемесячные QR кран-балок",
+    "qr-monthly": "Плановое ТО кран-балок",
     ppr: "ППР",
     journal: "Журналы",
     order: "Распоряжения",
@@ -16182,7 +16182,7 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         <div><strong>${totalOpen}</strong><span>незакрытых работ</span></div>
         <div><strong>${totalQrPercent}%</strong><span>QR-обходы за год</span></div>
         <div><strong>${stats.totals.craneShiftQrDone}/${stats.totals.craneShiftQrPlan}</strong><span>кран-балки: ежесменные QR</span></div>
-        <div><strong>${stats.totals.craneMonthlyQrDone}/${stats.totals.craneMonthlyQrPlan}</strong><span>кран-балки: ежемесячные QR</span></div>
+        <div><strong>${stats.totals.craneMonthlyQrDone}/${stats.totals.craneMonthlyQrPlan}</strong><span>кран-балки: Плановое ТО</span></div>
       </div>
     </section>
   `;
