@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v515-crane-qr-reporting";
+const APP_VERSION = "v516-crane-monthly-replaces-maintenance";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14208,8 +14208,9 @@ function gpmDueEntries() {
   return gpmEquipmentList().flatMap(item => [
     { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
     { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
-    { item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate },
-    ...(gpmItemKind(item) === "gpm" ? [{ item, type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR", date: gpmMonthlyDueDate(item) }] : [])
+    ...(gpmItemKind(item) === "gpm"
+      ? [{ item, type: "monthlyQr", label: "Ежемесячный осмотр электромехаником по верхнему QR", date: gpmMonthlyDueDate(item) }]
+      : [{ item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate }])
   ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
 }
 
@@ -14313,8 +14314,9 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Инженеры с доступом</span><input name="engineerNames" value="${escapeHtml(gpmEngineerDisplayNames(item))}" placeholder="Введите Ф.И.О. через запятую"></label>
         <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
         <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
-        <label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>
-        ${journalKind === "gpm" ? `<label><span>Следующий ежемесячный QR-осмотр</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>` : ""}
+        ${journalKind === "gpm"
+          ? `<label><span>Следующий ежемесячный QR-осмотр</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
+          : `<label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>`}
       </div>
       <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button></div>
     </form>`;
@@ -14460,8 +14462,9 @@ function gpmDetailHtml(item) {
       <div class="gpm-dates">
         <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
         <div><span>Полное освидетельствование</span><strong>${item.nextFullDate ? dateHuman(item.nextFullDate) : "Не назначено"}</strong></div>
-        <div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>
-        ${gpmItemKind(item) === "gpm" ? `<div><span>Ежемесячный QR-осмотр</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>` : ""}
+        ${gpmItemKind(item) === "gpm"
+          ? `<div><span>Ежемесячный QR-осмотр</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>`
+          : `<div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>`}
       </div>
       <div class="gpm-work-grid no-print">
         ${current.gpmScanMode && gpmCanInspect(item) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}

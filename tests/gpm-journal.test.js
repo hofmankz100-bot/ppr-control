@@ -236,6 +236,12 @@ test("crane QR inspections feed PPR deadlines, factory reporting and only monthl
   assert.doesNotMatch(app, /inspection\?\.inspectionType === "shift"[\s\S]{0,500}WORK_RATING_POINTS/);
 });
 
+test("monthly upper QR replaces rather than duplicates planned maintenance for cranes", () => {
+  assert.match(app, /gpmItemKind\(item\) === "gpm"[\s\S]{0,180}\? \[\{ item, type: "monthlyQr"/);
+  assert.match(app, /: \[\{ item, type: "maintenance", label: "Плановое техническое обслуживание"/);
+  assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующий ежемесячный QR-осмотр[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
+});
+
 test("GPM journal prints in landscape and supports image or PDF documents", () => {
   assert.match(styles, /body\.printing-gpm-journal/);
   assert.match(styles, /@page \{ size:A4 landscape/);
