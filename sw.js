@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v514-crane-short-qr-parser";
+const CACHE_NAME = "ppr-v515-crane-qr-reporting";
 const ASSETS = [
   "./",
   "./index.html",
@@ -15,7 +15,7 @@ const ASSETS = [
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
   "./app.js?v=514-crane-short-qr-parser",
-  "./node_modules/jsqr/dist/jsQR.js?v=v514-crane-short-qr-parser",
+  "./node_modules/jsqr/dist/jsQR.js?v=v515-crane-qr-reporting",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
