@@ -34,6 +34,14 @@ test("both crane QR inspections print in the monthly shift journal without a sep
   assert.doesNotMatch(app, /Ежемесячный журнал · верхний QR, ПТО и ремонты/);
 });
 
+test("the official crane shift journal prints the resolution comment and its audit details", () => {
+  assert.match(app, /const resolutionComment = relatedEvent\?\.resolutionComment \|\| ""/);
+  assert.match(app, /Комментарий об устранении неисправности/);
+  assert.match(app, /resolutionDate = relatedEvent\?\.resolvedAt \? dateTimeHuman/);
+  assert.match(app, /Исполнитель не указан/);
+  assert.match(styles, /gpm-official-resolution\{grid-column:1\/-1/);
+});
+
 test("GPM configuration rights are assigned separately from job role and approval rights", () => {
   assert.match(app, /function gpmCanManage\(\)/);
   assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v491-monthly-crane-shift-journal";
+const APP_VERSION = "v492-crane-resolution-comment";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14253,6 +14253,8 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
       const points = Array.isArray(entry?.points) ? entry.points : [];
       const resultFor = indexes => !entry ? "" : indexes.every(index => points[index]) ? "Без нарушений" : escapeHtml(entry.defects || "Обнаружена неисправность");
       const resolver = relatedEvent?.resolvedByName || "";
+      const resolutionComment = relatedEvent?.resolutionComment || "";
+      const resolutionDate = relatedEvent?.resolvedAt ? dateTimeHuman(relatedEvent.resolvedAt) : "";
       const inspector = entry?.authorName || "";
       const employeeId = entry?.authorEmployeeId ? ` · таб. № ${escapeHtml(entry.authorEmployeeId)}` : "";
       const shiftState = entry?.decision === "allowed" ? "Кран исправен и допущен к работе" : entry ? "Эксплуатация запрещена" : "";
@@ -14268,13 +14270,14 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
           <span><b>Машинист (оператор):</b> ${escapeHtml(inspector)}${employeeId}</span>
         </div>
         <div class="gpm-table-wrap"><table class="gpm-official-checks"><thead><tr><th>№ п/п</th><th>Наименование механизма, узла, детали</th><th>Результаты проверки</th><th>Фамилия, инициалы и должность лица, устранившего нарушение</th></tr></thead><tbody>
-          ${rows.map(([label, indexes], index) => `<tr><td>${index + 1}</td><td>${escapeHtml(label)}</td><td>${resultFor(indexes)}</td><td>${indexes.some(point => points[point] === false) ? escapeHtml(resolver || "Ожидает устранения") : "—"}</td></tr>`).join("")}
+          ${rows.map(([label, indexes], index) => `<tr><td>${index + 1}</td><td>${escapeHtml(label)}</td><td>${resultFor(indexes)}</td><td>${indexes.some(point => points[point] === false) ? (resolutionComment ? `<b>${escapeHtml(resolver || "Исполнитель не указан")}</b><br><span>Устранено: ${escapeHtml(resolutionComment)}</span>${resolutionDate ? `<br><small>${escapeHtml(resolutionDate)}</small>` : ""}` : "Ожидает устранения") : "—"}</td></tr>`).join("")}
         </tbody></table></div>
         <div class="gpm-official-signatures">
           <div><b>Смену принял (Ф.И.О., электронная подпись)</b><span>${escapeHtml(inspector)}${employeeId}</span></div>
           <div><b>Смену сдал (состояние крана, Ф.И.О.)</b><span>${escapeHtml(shiftState)} · ${escapeHtml(inspector)}</span></div>
           <div><b>Результаты осмотра крана слесарем</b><span>${relatedEvent?.resolvedByName && relatedEvent?.resolvedByRole !== "electrician" ? escapeHtml(relatedEvent.resolvedByName) : "—"}</span></div>
           <div><b>Результаты осмотра крана электромонтёром</b><span>${relatedEvent?.resolvedByRole === "electrician" ? escapeHtml(relatedEvent.resolvedByName || "") : "—"}</span></div>
+          <div class="gpm-official-resolution"><b>Комментарий об устранении неисправности</b><span>${entry?.defects ? (resolutionComment ? `${escapeHtml(resolutionComment)} · ${escapeHtml(resolver || "Исполнитель не указан")}${resolutionDate ? ` · ${escapeHtml(resolutionDate)}` : ""}` : "Ожидает устранения") : "Не требуется"}</span></div>
           <div><b>Ответственный за исправное состояние</b><span>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || relatedEvent?.approvedByName || "—")}</span></div>
           <div><b>Отметка о допуске к работе / дополнительные указания</b><span>${escapeHtml(relatedEvent?.approvedAt ? `Допущен инженером: ${relatedEvent.approvedByName || ""}` : shiftState)}</span></div>
         </div>
