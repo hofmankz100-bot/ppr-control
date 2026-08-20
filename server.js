@@ -4126,6 +4126,7 @@ async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
+    || pathname === "/api/gpm-qr"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -4142,6 +4143,7 @@ async function handleApi(req, res, pathname, url) {
   }
   const publicRequest = pathname === "/api/health"
     || (pathname === "/api/qr" && req.method === "GET")
+    || (pathname === "/api/gpm-qr" && req.method === "GET")
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
@@ -4718,11 +4720,14 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: "QR data is empty or too long." });
       return true;
     }
+    const requestedEcc = String(url.searchParams.get("ecc") || "H").toUpperCase();
+    const errorCorrectionLevel = ["L", "M", "Q", "H"].includes(requestedEcc) ? requestedEcc : "H";
+    const margin = Math.min(Math.max(Number(url.searchParams.get("margin") || 2), 2), 8);
     const svg = await QRCode.toString(data, {
       type: "svg",
-      margin: 2,
+      margin,
       width: size,
-      errorCorrectionLevel: "H",
+      errorCorrectionLevel,
       color: { dark: "#000000", light: "#ffffff" }
     });
     res.writeHead(200, {
@@ -4730,6 +4735,19 @@ async function handleApi(req, res, pathname, url) {
       "Cache-Control": "no-store"
     });
     res.end(svg);
+    return true;
+  }
+
+  if (pathname === "/api/gpm-qr" && req.method === "GET") {
+    const mode = url.searchParams.get("mode") === "monthly" ? "MONTHLY" : "SHIFT";
+    const id = String(url.searchParams.get("id") || "").trim();
+    if (!id || id.length > 120 || !/^[\p{L}\p{N}:._-]+$/u.test(id)) {
+      sendJson(res, 400, { ok: false, error: "Некорректный QR кран-балки." });
+      return true;
+    }
+    const target = `/?gpmQr=${encodeURIComponent(`PPRGPM|${mode}|${id}`)}`;
+    res.writeHead(302, { Location: target, "Cache-Control": "no-store" });
+    res.end();
     return true;
   }
 

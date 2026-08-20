@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v492-crane-resolution-comment";
+const APP_VERSION = "v493-readable-crane-qr";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14003,10 +14003,9 @@ function gpmQrValue(item, mode = "shift") {
 }
 
 function gpmQrUrl(item, mode = "shift") {
-  const url = new URL(location.href);
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set("gpmQr", gpmQrValue(item, mode));
+  const url = new URL("/api/gpm-qr", location.origin);
+  url.searchParams.set("mode", mode === "monthly" ? "monthly" : "shift");
+  url.searchParams.set("id", item.id);
   return url.toString();
 }
 
@@ -14062,7 +14061,7 @@ function printGpmQr(item, mode = "shift") {
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
   const link = gpmQrUrl(item, mode);
-  const qr = `/api/qr?size=720&data=${encodeURIComponent(link)}`;
+  const qr = `/api/qr?size=640&ecc=M&margin=4&data=${encodeURIComponent(link)}`;
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:125mm;height:125mm}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}@media print{.actions{display:none}}</style></head><body><main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. Журнал откроется автоматически.</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   win.document.close();
 }
