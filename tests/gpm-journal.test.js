@@ -137,6 +137,13 @@ test("crane journal does not repeat the resolution comment inside every defect r
   assert.match(app, /Комментарий об устранении неисправности/);
 });
 
+test("assigned crane operators are printed directly in the shift journal", () => {
+  assert.match(app, /Назначенные операторы кран-балки:/);
+  assert.match(app, /gpmInspectorDisplayNames\(item\)/);
+  assert.match(app, /gpm-official-assigned-operators/);
+  assert.match(styles, /gpm-official-assigned-operators\{grid-column:1\/-1/);
+});
+
 test("the crane journal uses one electromechanic inspection field", () => {
   assert.match(app, /Результаты осмотра крана электромехаником/);
   assert.match(app, /gpm-official-electromechanic/);
