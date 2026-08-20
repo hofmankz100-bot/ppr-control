@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v518-stagger-crane-maintenance";
+const CACHE_NAME = "ppr-v519-stagger-after-cranes-load";
 const ASSETS = [
   "./",
   "./index.html",
@@ -15,7 +15,7 @@ const ASSETS = [
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
   "./app.js?v=514-crane-short-qr-parser",
-  "./node_modules/jsqr/dist/jsQR.js?v=v518-stagger-crane-maintenance",
+  "./node_modules/jsqr/dist/jsQR.js?v=v519-stagger-after-cranes-load",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

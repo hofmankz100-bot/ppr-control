@@ -243,10 +243,11 @@ test("monthly upper QR replaces rather than duplicates planned maintenance for c
 });
 
 test("existing crane planned maintenance is staggered one crane per day", () => {
-  assert.match(app, /GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v1"/);
+  assert.match(app, /GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2"/);
   assert.match(app, /function distributeGpmMonthlySchedule\(targetState\)/);
   assert.match(app, /scheduled\.setDate\(scheduled\.getDate\(\) \+ index\)/);
   assert.match(app, /item\.nextMonthlyInspectionDate = scheduled\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(app, /if \(!cranes\.length\) return \{ changed: false \}/);
   assert.match(app, /const gpmScheduleMigration = distributeGpmMonthlySchedule\(state\)/);
 });
 
