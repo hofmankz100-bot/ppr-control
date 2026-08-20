@@ -47,6 +47,13 @@ test("mobile QR scanner requests the camera before awaiting the decoder", () => 
   assert.match(scanner, /if \(!hasQrReader\) throw new Error\("qr-decoder-unavailable"\)/);
 });
 
+test("a decoded crane QR is matched safely and an invalid result does not stop the camera", () => {
+  assert.match(app, /String\(entry\.id\) === String\(gpmParsed\.gpmId\)/);
+  assert.match(app, /const applied = applyValue\(value\)/);
+  assert.match(app, /if \(applied\) \{[\s\S]{0,180}return finish\(applied\)/);
+  assert.doesNotMatch(app, /return finish\(applyValue\(value\)\)/);
+});
+
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
   assert.doesNotMatch(app, /iosNativeCamera/);
   assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
