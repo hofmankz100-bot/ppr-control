@@ -747,6 +747,7 @@ test("admin can temporarily pause equipment or one node without creating PPR ove
   assert.match(source, /if \(activeOperationalPause\(eq, planNodeIndex >= 0 \? planNodeIndex : null, plan\.dueDate\)\) return/);
   assert.match(source, /recordAudit\("Временно остановил"/);
   assert.match(source, /recordAudit\("Возобновил работу"/);
+  assert.match(source, /if \(endDate && targetDate === todayISO\(\)\) return false/);
   assert.match(styles, /\.operational-paused-day/);
 });
 
@@ -842,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=496-electromechanic-crane-field/);
-  assert.match(html, /styles\.css\?v=496-electromechanic-crane-field/);
-  assert.match(serviceWorker, /app\.js\?v=496-electromechanic-crane-field/);
+  assert.match(html, /app\.js\?v=497-immediate-crane-resume/);
+  assert.match(html, /styles\.css\?v=497-immediate-crane-resume/);
+  assert.match(serviceWorker, /app\.js\?v=497-immediate-crane-resume/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
