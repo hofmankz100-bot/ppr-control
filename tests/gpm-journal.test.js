@@ -70,6 +70,14 @@ test("the official crane shift journal prints the resolution comment and its aud
   assert.match(styles, /gpm-official-resolution\{grid-column:1\/-1/);
 });
 
+test("the crane journal uses one electromechanic inspection field", () => {
+  assert.match(app, /Результаты осмотра крана электромехаником/);
+  assert.match(app, /gpm-official-electromechanic/);
+  assert.doesNotMatch(app, /Результаты осмотра крана слесарем/);
+  assert.doesNotMatch(app, /Результаты осмотра крана электромонтёром/);
+  assert.match(styles, /gpm-official-electromechanic\{grid-column:1\/-1/);
+});
+
 test("GPM configuration rights are assigned separately from job role and approval rights", () => {
   assert.match(app, /function gpmCanManage\(\)/);
   assert.match(app, /gpmManagerKeys\(\)\.has\(gpmUserKey\(\)\)/);
