@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v498-no-crane-pause-button";
+const APP_VERSION = "v499-crane-qr-quick-result";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -568,6 +568,7 @@ let current = {
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
   gpmJournalKind: "gpm",
+  gpmInspectionStep: "decision",
   gpmAdminEditorOpen: false,
   directorControlEquipmentId: null,
   directorProgressOpen: false,
@@ -11272,11 +11273,13 @@ function renderEquipment() {
         }, "Сохраняется...");
       });
       if (modernCraneEquipment) {
-        const td = document.createElement("td");
-        td.colSpan = days.length;
-        td.className = "modern-crane-workflow-cell";
-        td.innerHTML = `<strong>Старый обход по узлам отключён</strong><span>Используйте ежесменный или верхний ежемесячный QR кран-балки.</span>`;
-        tr.append(td);
+        days.forEach(() => {
+          const td = document.createElement("td");
+          td.className = "modern-crane-workflow-cell";
+          td.textContent = "QR";
+          td.title = "Обход кран-балки выполняется только по двум QR";
+          tr.append(td);
+        });
       } else for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date, activeWalkGroup);
@@ -14079,6 +14082,7 @@ async function handleIncomingGpmQr() {
   current.selectedGpmId = item.id;
   current.gpmJournalKind = "gpm";
   current.gpmScanMode = parsed.mode;
+  current.gpmInspectionStep = "decision";
   clearIncomingGpmQr();
   show("gpm", false);
   return true;
@@ -14388,14 +14392,49 @@ function gpmQrInspectionScreenHtml(item) {
       </div>
       <div class="empty-state"><strong>Вы не назначены оператором этой кран-балки.</strong><br>Обратитесь к администратору для назначения доступа.</div>
     </section>`;
+  const monthly = current.gpmScanMode === "monthly";
   return `
     <section class="gpm-detail gpm-scan-only">
       <div class="gpm-detail-head">
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Грузоподъёмность: ${escapeHtml(item.capacity || "не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${gpmInspectionForm(item)}
+      ${current.gpmInspectionStep === "remark" ? gpmInspectionForm(item) : `
+        <section class="gpm-quick-result">
+          <div class="qr-result-progress">${monthly ? "Верхний QR · ежемесячный обход" : `Ежесменный обход · ${escapeHtml(currentWalkShift().label)}`}</div>
+          <h2>${escapeHtml(item.name)}</h2>
+          <p class="qr-result-node">Проверка состояния кран-балки</p>
+          <div class="qr-result-actions">
+            <button type="button" class="qr-good-button" data-gpm-all-good>✓ Всё хорошо</button>
+            <button type="button" class="qr-remark-button" data-gpm-open-remark>! Есть замечание</button>
+            <button type="button" class="qr-rescan-button" data-gpm-rescan>Сканировать заново</button>
+            <button type="button" class="qr-finish-button" data-gpm-finish>Завершить обход</button>
+          </div>
+        </section>`}
     </section>`;
+}
+
+function saveGpmInspectionResult(item, inspectionType, checked, defects = "") {
+  const hasDefect = !checked.every(Boolean);
+  if (hasDefect && !String(defects || "").trim()) return false;
+  const now = new Date().toISOString();
+  const shift = currentWalkShift();
+  const monthKey = shift.date.slice(0, 7);
+  const id = inspectionType === "monthly" ? `gpm-inspection:${item.id}:monthly:${monthKey}` : `gpm-inspection:${item.id}:${shift.date}:${shift.key}`;
+  const previous = gpmStore().inspections[id] || {};
+  const decision = hasDefect ? "prohibited" : "allowed";
+  gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
+  if (hasDefect) {
+    const eventId = `gpm-event:${id}`;
+    const oldEvent = gpmStore().events[eventId] || {};
+    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType, type: "defect", completedDate: shift.date, result: "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: "open", createdAt: oldEvent.createdAt || now, updatedAt: now };
+  }
+  item.operationStatus = hasDefect || gpmOpenDefects(item).length ? "prohibited" : "allowed";
+  item.updatedAt = now;
+  current.gpmScanMode = "";
+  current.gpmInspectionStep = "decision";
+  saveState();
+  return true;
 }
 
 function gpmEventTypeLabel(type) {
@@ -14549,6 +14588,27 @@ function renderGpmJournal() {
   ui.gpmPanel.querySelectorAll("[data-gpm-print-qr]").forEach(button => button.addEventListener("click", () => {
     printGpmQr(selected, button.dataset.gpmPrintQr);
   }));
+  ui.gpmPanel.querySelector("[data-gpm-all-good]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+    const inspectionType = current.gpmScanMode === "monthly" ? "monthly" : "shift";
+    saveGpmInspectionResult(selected, inspectionType, GPM_INSPECTION_POINTS.map(() => true), "");
+    show(homeViewForProfile(profile?.role));
+    showAppToast("Все пункты отмечены исправными. Вахтенный журнал заполнен автоматически.", "ok");
+  }, "Заполняем журнал..."));
+  ui.gpmPanel.querySelector("[data-gpm-open-remark]")?.addEventListener("click", () => {
+    current.gpmInspectionStep = "remark";
+    renderGpmJournal();
+  });
+  ui.gpmPanel.querySelector("[data-gpm-rescan]")?.addEventListener("click", () => {
+    current.gpmScanMode = "";
+    current.gpmInspectionStep = "decision";
+    show(homeViewForProfile(profile?.role));
+    window.setTimeout(() => ui.qrWalkButton?.click(), 100);
+  });
+  ui.gpmPanel.querySelector("[data-gpm-finish]")?.addEventListener("click", () => {
+    current.gpmScanMode = "";
+    current.gpmInspectionStep = "decision";
+    show(homeViewForProfile(profile?.role));
+  });
   ui.gpmPanel.querySelector("[data-gpm-inspection-form]")?.addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -14556,23 +14616,8 @@ function renderGpmJournal() {
     const defects = form.elements.defects.value.trim();
     const hasDefect = !checked.every(Boolean);
     if (hasDefect && !defects) return window.alert("Опишите обнаруженную неисправность. Эксплуатация крана будет запрещена до подтверждения инженером.");
-    const now = new Date().toISOString();
-    const shift = currentWalkShift();
     const inspectionType = form.dataset.inspectionType === "monthly" ? "monthly" : "shift";
-    const monthKey = shift.date.slice(0, 7);
-    const id = inspectionType === "monthly" ? `gpm-inspection:${selected.id}:monthly:${monthKey}` : `gpm-inspection:${selected.id}:${shift.date}:${shift.key}`;
-    const previous = gpmStore().inspections[id] || {};
-    const decision = hasDefect ? "prohibited" : "allowed";
-    gpmStore().inspections[id] = { ...previous, id, gpmId: selected.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects, decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
-    if (hasDefect) {
-      const eventId = `gpm-event:${id}`;
-      const oldEvent = gpmStore().events[eventId] || {};
-      gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: selected.id, inspectionId: id, type: "defect", completedDate: shift.date, result: "Эксплуатация запрещена", defects, decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: "open", createdAt: oldEvent.createdAt || now, updatedAt: now };
-    }
-    selected.operationStatus = hasDefect || gpmOpenDefects(selected).length ? "prohibited" : "allowed";
-    selected.updatedAt = now;
-    current.gpmScanMode = "";
-    saveState();
+    saveGpmInspectionResult(selected, inspectionType, checked, defects);
     show(homeViewForProfile(profile?.role));
     showAppToast(hasDefect ? "Неисправность записана. Эксплуатация крана запрещена." : "Осмотр записан. Кран исправен.", hasDefect ? "error" : "ok");
   });
@@ -18485,6 +18530,7 @@ ui.qrWalkButton?.addEventListener("click", async () => {
         current.selectedGpmId = parsed.gpmId;
         current.gpmJournalKind = "gpm";
         current.gpmScanMode = parsed.mode;
+        current.gpmInspectionStep = "decision";
         show("gpm", false);
         break;
       }

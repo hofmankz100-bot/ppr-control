@@ -843,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=498-no-crane-pause-button/);
-  assert.match(html, /styles\.css\?v=498-no-crane-pause-button/);
-  assert.match(serviceWorker, /app\.js\?v=498-no-crane-pause-button/);
+  assert.match(html, /app\.js\?v=499-crane-qr-quick-result/);
+  assert.match(html, /styles\.css\?v=499-crane-qr-quick-result/);
+  assert.match(serviceWorker, /app\.js\?v=499-crane-qr-quick-result/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
