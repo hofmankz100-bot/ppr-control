@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v509-no-empty-print-page";
+const CACHE_NAME = "ppr-v510-isolated-crane-print";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=509-no-empty-print-page",
+  "./styles.css?v=510-isolated-crane-print",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=421-annual-ppr-equipment-acts",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=509-no-empty-print-page",
+  "./app.js?v=510-isolated-crane-print",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

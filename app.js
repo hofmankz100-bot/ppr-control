@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v509-no-empty-print-page";
+const APP_VERSION = "v510-isolated-crane-print";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14584,14 +14584,14 @@ function saveGpmEquipmentForm(form) {
 
 function printGpmJournal() {
   if (!current.selectedGpmId) return window.alert("Сначала выберите ГПМ.");
-  document.body.classList.add("printing-gpm-journal");
-  const cleanup = () => {
-    document.body.classList.remove("printing-gpm-journal");
-    window.removeEventListener("afterprint", cleanup);
-  };
-  window.addEventListener("afterprint", cleanup);
-  window.print();
-  window.setTimeout(cleanup, 1500);
+  const item = gpmEquipmentList().find(entry => entry.id === current.selectedGpmId);
+  if (!item) return window.alert("Выбранная кран-балка не найдена.");
+  const month = selectedJournalMonth();
+  const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.shiftDate || entry.createdAt, month));
+  const popup = window.open("", "_blank", "width=1200,height=900");
+  if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Вахтенный журнал — ${escapeHtml(item.name)}</title><link rel="stylesheet" href="${location.origin}/styles.css?v=${APP_VERSION}"><style>html,body{margin:0!important;padding:0!important;min-height:0!important;height:auto!important;background:#fff!important}body.printing-gpm-journal [data-gpm-print-root]{position:static!important;inset:auto!important;width:auto!important;min-height:0!important;height:auto!important}.gpm-official-shift-journal{margin:0!important;padding:0!important}</style></head><body class="printing-gpm-journal"><main data-gpm-print-root>${gpmOfficialShiftJournalHtml(item, inspections)}</main><script>addEventListener('load',()=>setTimeout(()=>print(),500))<\/script></body></html>`);
+  popup.document.close();
 }
 
 function printGpmResponsibles() {

@@ -121,6 +121,14 @@ test("crane journal print never adds a trailing empty page", () => {
   assert.match(styles, /\.gpm-equipment-list \{ display:none !important; \}/);
 });
 
+test("crane journal prints from an isolated document without application layout", () => {
+  assert.match(app, /const popup = window\.open\("", "_blank", "width=1200,height=900"\)/);
+  assert.match(app, /<body class="printing-gpm-journal"><main data-gpm-print-root>/);
+  assert.match(app, /gpmOfficialShiftJournalHtml\(item, inspections\)/);
+  assert.match(app, /position:static!important;inset:auto!important/);
+  assert.doesNotMatch(app, /function printGpmJournal\(\) \{[\s\S]*?document\.body\.classList\.add\("printing-gpm-journal"\)/);
+});
+
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
   assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
   assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);
