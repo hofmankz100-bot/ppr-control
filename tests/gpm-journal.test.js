@@ -43,6 +43,16 @@ test("the equipment card and crane journal print the exact same two QR payloads"
   assert.match(app, /if \(linkedGpmEquipment\) printGpmQrPair\(linkedGpmEquipment\)/);
 });
 
+test("linked crane beams no longer expose or accept the legacy node workflow", () => {
+  assert.match(app, /function linkedCraneJournalForEquipment\(equipmentOrId\)/);
+  assert.match(app, /if \(linkedCraneJournalForEquipment\(eq\)\)/);
+  assert.match(app, /Старый QR узла этой кран-балки отключён/);
+  assert.match(app, /if \(modernCraneEquipment\) \{/);
+  assert.match(app, /Старый обход по узлам отключён/);
+  assert.match(app, /2 QR · вахтенный журнал/);
+  assert.match(styles, /\.modern-crane-workflow-cell/);
+});
+
 test("both crane QR inspections print in the monthly shift journal without a separate PTO journal", () => {
   assert.match(app, /journalMonthMatches\(entry\.shiftDate \|\| entry\.createdAt, month\)/);
   assert.match(app, /function gpmResponsiblePrintSheetHtml\(item, month = selectedJournalMonth\(\)\)/);

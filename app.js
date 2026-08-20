@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v494-matching-crane-qr";
+const APP_VERSION = "v495-clean-crane-workflow";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4521,6 +4521,11 @@ async function handleIncomingNodeQrFromUrl() {
     clearIncomingNodeQrFromUrl();
     return false;
   }
+  if (linkedCraneJournalForEquipment(eq)) {
+    window.alert("Старый QR узла этой кран-балки отключён. Используйте один из двух QR вахтенного журнала.");
+    clearIncomingNodeQrFromUrl();
+    return true;
+  }
   if (!currentNodeQrMatches(parsed)) {
     window.alert("Этот QR-код заменён. Отсканируйте новый код данного узла.");
     clearIncomingNodeQrFromUrl();
@@ -4858,6 +4863,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     const eq = equipmentById(parsed.equipmentId);
     if (!eq?.nodes?.[parsed.nodeIndex]) {
       if (statusEl) statusEl.textContent = "Не удалось отметить узел";
+      return false;
+    }
+    if (linkedCraneJournalForEquipment(eq)) {
+      if (statusEl) statusEl.textContent = "Старый QR узла отключён. Используйте один из двух QR кран-балки";
       return false;
     }
     if (!currentNodeQrMatches(parsed)) {
@@ -8083,6 +8092,11 @@ function isGpmEquipment(eq) {
   return text.includes("гпм") || text.includes("грузопод") || isForkliftEquipment(eq);
 }
 
+function linkedCraneJournalForEquipment(equipmentOrId) {
+  const equipmentId = Number(typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId);
+  return gpmEquipmentList("gpm").find(item => Number(item.sourceEquipmentId || 0) === equipmentId) || null;
+}
+
 function downtimePieSlicePath(cx, cy, radius, startAngle, endAngle) {
   const start = polarPoint(cx, cy, radius, endAngle);
   const end = polarPoint(cx, cy, radius, startAngle);
@@ -11183,6 +11197,7 @@ function renderEquipment() {
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
       const linkedGpmEquipment = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
       const gpmEquipment = Boolean(linkedGpmEquipment) || isGpmEquipment(eq);
+      const modernCraneEquipment = linkedCraneJournalForEquipment(eq);
       const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
@@ -11190,8 +11205,8 @@ function renderEquipment() {
             <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">${gpmEquipment ? isForkliftEquipment(eq) ? "Журнал погрузчика" : "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(linkedGpmEquipment?.sourceEquipmentName || eq.name)}</strong>
-              <span>${eq.nodes.length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : gpmEquipment ? "Осмотры, ПТО и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <span>${modernCraneEquipment ? "2 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : modernCraneEquipment ? "Только новая схема QR-обходов" : gpmEquipment ? "Осмотры и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
             ${isEditorSession() ? linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "gpm"
@@ -11255,7 +11270,13 @@ function renderEquipment() {
           if (setOperationalPause(eq.id, null, !pause, reason)) renderEquipment();
         }, "Сохраняется...");
       });
-      for (const day of days) {
+      if (modernCraneEquipment) {
+        const td = document.createElement("td");
+        td.colSpan = days.length;
+        td.className = "modern-crane-workflow-cell";
+        td.innerHTML = `<strong>Старый обход по узлам отключён</strong><span>Используйте ежесменный или верхний ежемесячный QR кран-балки.</span>`;
+        tr.append(td);
+      } else for (const day of days) {
         const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const summary = equipmentDaySummary(eq, date, activeWalkGroup);
         const operationalPause = activeOperationalPause(eq, null, date);
