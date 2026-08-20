@@ -34,13 +34,14 @@ test("printed crane QR codes use a short redirect and a camera-friendly matrix",
 });
 
 test("the equipment card and crane journal print the exact same two QR payloads", () => {
-  assert.match(app, /data-print-gpm-equipment-qr=/);
-  assert.match(app, /2 QR кран-балки/);
-  assert.match(app, /Те же, что в журнале/);
+  assert.match(app, /data-print-all-gpm-qr/);
+  assert.match(app, /allCraneQrCount = modernCraneEquipment \? gpmEquipmentList\("gpm"\)\.length \* 2 : 0/);
+  assert.match(app, /По 2 на каждый кран/);
   assert.match(app, /function gpmQrImageUrl\(item, mode = "shift"\)/);
   assert.match(app, /function printGpmQrPair\(item\)/);
-  assert.match(app, /gpmQrImageUrl\(item, card\.mode\)/);
-  assert.match(app, /if \(linkedGpmEquipment\) printGpmQrPair\(linkedGpmEquipment\)/);
+  assert.match(app, /function printAllGpmQrCodes\(items = gpmEquipmentList\("gpm"\)\)/);
+  assert.match(app, /gpmQrImageUrl\(card\.item, card\.mode\)/);
+  assert.match(app, /printAllGpmQrCodes\(\)/);
 });
 
 test("linked crane beams no longer expose or accept the legacy node workflow", () => {
