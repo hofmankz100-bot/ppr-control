@@ -64,3 +64,26 @@ test("welding and turning work support teams and request/result photos", () => {
   assert.match(app, /name="welderCertificate" required/);
   assert.match(app, /person\.id === actor\.id[\s\S]*?stamp: welderStamp, certificate: welderCertificate/);
 });
+
+test("welding and turning request forms ignore repeated submissions", () => {
+  assert.match(app, /function lockProductionRequestForm\(form\)/);
+  assert.match(app, /form\.dataset\.submitting === "1"/);
+  assert.match(app, /form\.dataset\.submitting = "1"/);
+  assert.match(app, /async function createWeldingRequest[\s\S]*?const unlock = lockProductionRequestForm\(form\)/);
+  assert.match(app, /async function createTurningRequest[\s\S]*?const unlock = lockProductionRequestForm\(form\)/);
+});
+
+test("login footer shows the deployed application version", () => {
+  assert.match(html, /id="loginVersion"/);
+  assert.doesNotMatch(html, />v188</);
+  assert.match(app, /document\.querySelector\("#loginVersion"\)\?\.replaceChildren\(APP_VERSION\)/);
+});
+
+test("startup hides only exact production request duplicates created within two minutes", () => {
+  assert.match(server, /function removeDuplicateProductionRequests\(db\)/);
+  assert.match(server, /productionRequestDedup20260820/);
+  assert.match(server, /itemMs - previousMs > 120000/);
+  assert.match(server, /item\.duplicateOf = keeper\.id/);
+  assert.match(server, /Системная проверка: повторная отправка одной заявки/);
+  assert.match(server, /removeDuplicateProductionRequests\(postgresState\)/);
+});

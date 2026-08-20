@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v421-annual-ppr-equipment-acts";
+const SERVER_VERSION = "v526-production-request-dedup";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -472,6 +472,58 @@ function normalizeDb(db) {
   return db;
 }
 
+function removeDuplicateProductionRequests(db) {
+  db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
+  if (db.targetedCleanupVersions.productionRequestDedup20260820) return 0;
+  const statusRank = { new: 0, accepted: 1, returned: 2, awaitingAcceptance: 3, completed: 4 };
+  const normalized = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+  const now = new Date().toISOString();
+  let removed = 0;
+  const cleanJournal = (journal = {}, trade = "welding") => {
+    const groups = new Map();
+    Object.values(journal).filter(item => item && !item.deletedAt).forEach(item => {
+      const author = String(item.createdById || "").trim() || normalized(item.createdByName);
+      const fields = [author, item.requestType, item.description, item.drawingNumber];
+      if (trade === "turning") fields.push(item.quantity, item.dueDate);
+      const fingerprint = fields.map(normalized).join("\u0001");
+      if (!fingerprint || !normalized(item.description)) return;
+      const list = groups.get(fingerprint) || [];
+      list.push(item);
+      groups.set(fingerprint, list);
+    });
+    groups.forEach(items => {
+      items.sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
+      let cluster = [];
+      const flush = () => {
+        if (cluster.length < 2) { cluster = []; return; }
+        const keeper = cluster.slice().sort((a, b) =>
+          (statusRank[b.status] ?? 0) - (statusRank[a.status] ?? 0)
+          || Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || "")
+        )[0];
+        cluster.filter(item => item.id !== keeper.id).forEach(item => {
+          item.deletedAt = now;
+          item.duplicateOf = keeper.id;
+          item.deletionReason = "Системная проверка: повторная отправка одной заявки";
+          item.updatedAt = now;
+          removed += 1;
+        });
+        cluster = [];
+      };
+      items.forEach(item => {
+        const itemMs = Date.parse(item.createdAt || "");
+        const previousMs = Date.parse(cluster.at(-1)?.createdAt || "");
+        if (cluster.length && (!Number.isFinite(itemMs) || !Number.isFinite(previousMs) || itemMs - previousMs > 120000)) flush();
+        cluster.push(item);
+      });
+      flush();
+    });
+  };
+  cleanJournal(db.weldingJournal, "welding");
+  cleanJournal(db.turningJournal, "turning");
+  db.targetedCleanupVersions.productionRequestDedup20260820 = { at: now, removed };
+  return removed;
+}
+
 function resetMonthClosePermissionsOnce(db) {
   if (!db || db.monthClosePermissionResetVersion === "all-users-v1") return false;
   let changed = false;
@@ -620,6 +672,7 @@ async function initializeStorage() {
   const connectionString = String(process.env.DATABASE_URL || "").trim();
   if (!connectionString) {
     const db = readDbFile();
+    removeDuplicateProductionRequests(db);
     migrateLegacyDirectorApprovals(db);
     resetMonthClosePermissionsOnce(db);
     removeObsoletePressNoMaterialNodes(db);
@@ -685,6 +738,7 @@ async function initializeStorage() {
     );
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
+      removeDuplicateProductionRequests(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
@@ -702,6 +756,7 @@ async function initializeStorage() {
       writeDbFile(postgresState);
     } else {
       postgresState = readDbFile();
+      removeDuplicateProductionRequests(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
       resetMonthClosePermissionsOnce(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
@@ -4670,7 +4725,8 @@ async function handleApi(req, res, pathname, url) {
       stateVersion: realtimeStateVersion(),
       websocket: Boolean(wss),
       websocketClients: wss ? wss.clients.size : 0,
-      eventClients: sseClients.size
+      eventClients: sseClients.size,
+      productionRequestDuplicatesRemoved: Number(readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed || 0)
     });
     return true;
   }
