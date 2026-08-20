@@ -242,6 +242,14 @@ test("monthly upper QR replaces rather than duplicates planned maintenance for c
   assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующее Плановое ТО[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
 });
 
+test("existing crane planned maintenance is staggered one crane per day", () => {
+  assert.match(app, /GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v1"/);
+  assert.match(app, /function distributeGpmMonthlySchedule\(targetState\)/);
+  assert.match(app, /scheduled\.setDate\(scheduled\.getDate\(\) \+ index\)/);
+  assert.match(app, /item\.nextMonthlyInspectionDate = scheduled\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(app, /const gpmScheduleMigration = distributeGpmMonthlySchedule\(state\)/);
+});
+
 test("GPM journal prints in landscape and supports image or PDF documents", () => {
   assert.match(styles, /body\.printing-gpm-journal/);
   assert.match(styles, /@page \{ size:A4 landscape/);
