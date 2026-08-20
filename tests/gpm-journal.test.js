@@ -25,6 +25,14 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
 
+test("iPhone QR camera waits for a real video frame instead of showing a blank panel", () => {
+  assert.match(app, /video\.setAttribute\("webkit-playsinline", ""\)/);
+  assert.match(app, /camera-metadata-timeout/);
+  assert.match(app, /await video\.play\(\);\s+video\.hidden = false/);
+  assert.match(app, /video\.hidden = true;\s+video\.srcObject = null/);
+  assert.match(styles, /\.qr-scan-panel video\[hidden\]\{display:none!important\}/);
+});
+
 test("printed crane QR codes use a short redirect and a camera-friendly matrix", () => {
   assert.match(app, /new URL\("\/api\/gpm-qr", location\.origin\)/);
   assert.match(app, /size=640&ecc=M&margin=4/);
