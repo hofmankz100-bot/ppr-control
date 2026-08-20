@@ -113,6 +113,14 @@ test("print keeps crane metadata and signatures in desktop columns on one sheet"
   assert.doesNotMatch(styles, /@media\(max-width:760px\)\{\.gpm-official-sheet/);
 });
 
+test("crane journal print never adds a trailing empty page", () => {
+  assert.match(styles, /gpm-official-sheet:not\(:last-child\) \{ break-after:page;page-break-after:always; \}/);
+  assert.match(styles, /gpm-official-sheet \{ break-after:auto;page-break-after:auto/);
+  assert.doesNotMatch(styles, /gpm-official-sheet \{ break-after:page;page-break-after:always/);
+  assert.match(styles, /#gpmPanel > :not\(\.gpm-layout\)/);
+  assert.match(styles, /\.gpm-equipment-list \{ display:none !important; \}/);
+});
+
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
   assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
   assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);
