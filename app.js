@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v507-deduplicate-crane-journal";
+const APP_VERSION = "v508-operators-in-crane-journal";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -14373,6 +14373,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
           <span><b>Дата:</b> ${entry ? escapeHtml(dateHuman(entry.shiftDate || entry.createdAt)) : ""}</span>
           <span><b>Смена:</b> ${escapeHtml(entry?.shiftLabel || "")}</span>
           <span><b>Машинист (оператор):</b> ${escapeHtml(inspector)}${employeeId}</span>
+          <span class="gpm-official-assigned-operators"><b>Назначенные операторы кран-балки:</b> ${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</span>
         </div>
         <div class="gpm-table-wrap"><table class="gpm-official-checks"><thead><tr><th>№ п/п</th><th>Наименование механизма, узла, детали</th><th>Результаты проверки</th><th>Фамилия, инициалы и должность лица, устранившего нарушение</th></tr></thead><tbody>
           ${rows.map(([label, indexes], index) => `<tr><td>${index + 1}</td><td>${escapeHtml(label)}</td><td>${resultFor(indexes)}</td><td>${indexes.some(point => points[point] === false) ? (resolutionComment ? `<b>${escapeHtml(resolver || "Исполнитель не указан")}</b>` : "Ожидает устранения") : "—"}</td></tr>`).join("")}
