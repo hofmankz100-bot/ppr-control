@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v520-mobile-camera-fallback";
+const APP_VERSION = "v521-camera-before-decoder";
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -4936,8 +4936,6 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   };
   const scanWithLiveCamera = async (video, messageEl, applyValue, shouldStop) => {
     if (!navigator.mediaDevices?.getUserMedia || !video) return false;
-    const hasQrReader = await ensureJsQr();
-    if (!hasQrReader) return false;
     let stream = null;
     try {
       try {
@@ -4953,6 +4951,8 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         if (["NotAllowedError", "SecurityError"].includes(primaryCameraError?.name)) throw primaryCameraError;
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
+      const hasQrReader = await ensureJsQr();
+      if (!hasQrReader) throw new Error("qr-decoder-unavailable");
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
