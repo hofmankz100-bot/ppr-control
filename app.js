@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v496-electromechanic-crane-field";
+const APP_VERSION = "v497-immediate-crane-resume";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -3633,6 +3633,7 @@ function operationalPauseApplies(pause, date = todayISO()) {
   const targetDate = String(date || todayISO()).slice(0, 10);
   const startDate = String(pause.startedAt).slice(0, 10);
   const endDate = pause.endedAt ? String(pause.endedAt).slice(0, 10) : "";
+  if (endDate && targetDate === todayISO()) return false;
   return targetDate >= startDate && (!endDate || targetDate <= endDate);
 }
 
