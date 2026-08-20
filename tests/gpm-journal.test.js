@@ -21,7 +21,7 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /const url = new URL\(raw, location\.origin\)/);
   assert.match(app, /parseGpmQrValue\(url\.searchParams\.get\("gpmQr"\) \|\| ""\)/);
   assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
-  assert.match(app, /if \(!gpmCanInspect\(item\)\)/);
+  assert.match(app, /if \(!gpmCanInspect\(item, gpmParsed\.mode\)\)/);
   assert.match(app, /if \(parsed\.kind === "gpm"\)/);
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
@@ -52,6 +52,13 @@ test("a decoded crane QR is matched safely and an invalid result does not stop t
   assert.match(app, /const applied = applyValue\(value\)/);
   assert.match(app, /if \(applied\) \{[\s\S]{0,180}return finish\(applied\)/);
   assert.doesNotMatch(app, /return finish\(applyValue\(value\)\)/);
+});
+
+test("engineers can scan both crane QR modes while electromechanics can scan monthly", () => {
+  assert.match(app, /function gpmCanInspect\(item, mode = ""\)/);
+  assert.match(app, /gpmIsAdmin\(\) \|\| gpmIsEngineer\(item\) \|\| gpmIsResponsible\(item\)/);
+  assert.match(app, /mode === "monthly" && isElectromechanicRole\(profile\?\.role\)/);
+  assert.match(app, /gpmCanInspect\(item, gpmParsed\.mode\)/);
 });
 
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
