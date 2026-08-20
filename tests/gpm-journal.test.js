@@ -61,6 +61,21 @@ test("engineers can scan both crane QR modes while electromechanics can scan mon
   assert.match(app, /gpmCanInspect\(item, gpmParsed\.mode\)/);
 });
 
+test("crane QR defects can be resolved during inspection but still require engineer confirmation", () => {
+  assert.match(app, /name="resolvedDuringInspection"/);
+  assert.match(app, /name="resolutionComment"/);
+  assert.match(app, /status: resolvedNow \? "awaitingEngineer" : "open"/);
+  assert.match(app, /resolvedDuringInspection: Boolean\(resolvedNow\)/);
+  assert.match(app, /Устранение отправлено инженеру на обязательное подтверждение/);
+});
+
+test("ordinary QR remarks support immediate resolution through the existing confirmation workflow", () => {
+  assert.match(app, /data-qr-resolved-now/);
+  assert.match(app, /data-qr-resolution/);
+  assert.match(app, /publishRemarkCollaborationAction\(parsed\.equipmentId, parsed\.nodeIndex, shift\.date, "resolve"/);
+  assert.match(app, /Устранение отправлено инженеру на подтверждение/);
+});
+
 test("crane QR uses the same live scanner as all other equipment nodes", () => {
   assert.doesNotMatch(app, /iosNativeCamera/);
   assert.match(app, /const ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
@@ -118,7 +133,7 @@ test("crane QR opens a quick result screen and expands details only for a remark
   assert.match(app, /data-gpm-all-good/);
   assert.match(app, /data-gpm-open-remark/);
   assert.match(app, /current\.gpmInspectionStep === "remark" \? gpmInspectionForm\(item\)/);
-  assert.match(app, /function saveGpmInspectionResult\(item, inspectionType, checked, defects = ""\)/);
+  assert.match(app, /function saveGpmInspectionResult\(item, inspectionType, checked, defects = "", immediateResolution = \{\}\)/);
   assert.match(app, /GPM_INSPECTION_POINTS\.map\(\(\) => true\)/);
   assert.match(app, /Вахтенный журнал заполнен автоматически/);
   assert.match(styles, /\.gpm-quick-result/);
