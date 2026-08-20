@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v511-ios-native-qr-camera";
+const APP_VERSION = "v512-standard-crane-qr";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -5180,14 +5180,6 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       resolve(value);
     };
     const scanAutomatically = async () => {
-      const iosNativeCamera = /iPhone|iPad|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      if (iosNativeCamera) {
-        if (messageEl) messageEl.textContent = "Откройте камеру iPhone и сфотографируйте QR крупным планом.";
-        const nativeResult = await scanFromPhoto(messageEl);
-        if (stopped || nativeResult) return complete(nativeResult || null);
-        if (messageEl) messageEl.textContent = "QR не найден. Нажмите «Сканировать ещё раз» и сфотографируйте код ближе.";
-        return;
-      }
       let ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
       if (stopped || ok) return complete(ok || null);
       if (messageEl) messageEl.textContent = "Откройте камеру и наведите на QR узла.";
@@ -14154,7 +14146,7 @@ function printGpmQr(item, mode = "shift") {
 }
 
 function gpmQrImageUrl(item, mode = "shift") {
-  return `/api/qr?size=640&ecc=M&margin=4&data=${encodeURIComponent(gpmQrUrl(item, mode))}`;
+  return `/api/qr?size=720&data=${encodeURIComponent(gpmQrUrl(item, mode))}`;
 }
 
 function printGpmQrPair(item) {

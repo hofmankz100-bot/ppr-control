@@ -33,17 +33,16 @@ test("iPhone QR camera waits for a real video frame instead of showing a blank p
   assert.match(styles, /\.qr-scan-panel video\[hidden\]\{display:none!important\}/);
 });
 
-test("iPhone uses its native camera capture instead of a black live-video preview", () => {
-  assert.match(app, /const iosNativeCamera = \/iPhone\|iPad\|iPod\/i\.test/);
-  assert.match(app, /if \(iosNativeCamera\) \{/);
-  assert.match(app, /const nativeResult = await scanFromPhoto\(messageEl\)/);
-  assert.match(app, /Откройте камеру iPhone и сфотографируйте QR крупным планом/);
+test("crane QR uses the same live scanner as all other equipment nodes", () => {
+  assert.doesNotMatch(app, /iosNativeCamera/);
+  assert.match(app, /let ok = await scanWithLiveCamera\(video, messageEl, applyScannedValue/);
+  assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
   assert.match(app, /if \(!value\) \{\s+video\.hidden = true/);
 });
 
 test("printed crane QR codes use a short redirect and a camera-friendly matrix", () => {
   assert.match(app, /new URL\("\/api\/gpm-qr", location\.origin\)/);
-  assert.match(app, /size=640&ecc=M&margin=4/);
+  assert.match(app, /size=720&data=/);
   assert.match(server, /pathname === "\/api\/gpm-qr" && req\.method === "GET"/);
   assert.match(server, /PPRGPM\|\$\{mode\}\|\$\{id\}/);
   assert.match(server, /const errorCorrectionLevel = \["L", "M", "Q", "H"\]/);
