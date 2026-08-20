@@ -18,7 +18,8 @@ test("GPM journal has assignments, inspections, PTO workflow and responsible app
 
 test("the common phone scanner opens shift and monthly crane inspections for an authorized user", () => {
   assert.match(app, /function parseGpmQrScanValue\(value = ""\)/);
-  assert.match(app, /new URL\(raw, location\.origin\)\.searchParams\.get\("gpmQr"\)/);
+  assert.match(app, /const url = new URL\(raw, location\.origin\)/);
+  assert.match(app, /parseGpmQrValue\(url\.searchParams\.get\("gpmQr"\) \|\| ""\)/);
   assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
   assert.match(app, /if \(!gpmCanInspect\(item\)\)/);
   assert.match(app, /if \(parsed\.kind === "gpm"\)/);
@@ -54,6 +55,13 @@ test("printed crane QR codes use a short redirect and a camera-friendly matrix",
   assert.match(server, /pathname === "\/api\/gpm-qr" && req\.method === "GET"/);
   assert.match(server, /PPRGPM\|\$\{mode\}\|\$\{id\}/);
   assert.match(server, /const errorCorrectionLevel = \["L", "M", "Q", "H"\]/);
+});
+
+test("live scanner recognizes the short URL actually encoded in crane QR images", () => {
+  assert.match(app, /if \(url\.pathname === "\/api\/gpm-qr"\)/);
+  assert.match(app, /url\.searchParams\.get\("id"\)/);
+  assert.match(app, /url\.searchParams\.get\("mode"\)/);
+  assert.match(app, /if \(gpmId && \["shift", "monthly"\]\.includes\(mode\)\) return \{ mode, gpmId \}/);
 });
 
 test("the equipment card and crane journal print the exact same two QR payloads", () => {
