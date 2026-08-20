@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v501-crane-qr-counters";
+const APP_VERSION = "v502-compact-crane-print";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -644,6 +644,7 @@ function ensureGpmUi() {
         <div><h1>Журналы кранов и кран-балок</h1><p>Для каждого крана отдельно: вахтенный и ежемесячный журнал</p></div>
         <div class="gpm-head-actions">
           <button type="button" data-gpm-print>Печать журнала</button>
+          <button type="button" class="secondary" data-gpm-print-responsibles>Печать ответственных</button>
           <button type="button" data-gpm-add hidden>Добавить карточку</button>
         </div>
       </div>
@@ -655,6 +656,7 @@ function ensureGpmUi() {
   ui.gpmPanel = document.querySelector("#gpmPanel");
   ui.gpmAddButton = document.querySelector("[data-gpm-add]");
   ui.gpmPrintButton = document.querySelector("[data-gpm-print]");
+  ui.gpmPrintResponsiblesButton = document.querySelector("[data-gpm-print-responsibles]");
   if (!document.querySelector("#craneOperatorScreen")) {
     const section = document.createElement("section");
     section.id = "craneOperatorScreen";
@@ -14567,6 +14569,18 @@ function printGpmJournal() {
   window.setTimeout(cleanup, 1500);
 }
 
+function printGpmResponsibles() {
+  if (!current.selectedGpmId) return window.alert("Сначала выберите кран-балку.");
+  document.body.classList.add("printing-gpm-responsibles");
+  const cleanup = () => {
+    document.body.classList.remove("printing-gpm-responsibles");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1500);
+}
+
 function renderGpmJournal() {
   if (!ui.gpmPanel) return;
   const forkliftJournal = current.gpmJournalKind === "forklift";
@@ -18597,6 +18611,7 @@ ui.gpmAddButton?.addEventListener("click", () => {
   show("gpm");
 });
 ui.gpmPrintButton?.addEventListener("click", printGpmJournal);
+ui.gpmPrintResponsiblesButton?.addEventListener("click", printGpmResponsibles);
 
 function closeGlobalReminderPanel() {
   if (!ui.globalReminderOverlay) return;
