@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v526-production-request-dedup";
+const APP_VERSION = "v527-admin-navigation";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
@@ -4014,14 +4014,11 @@ function renderProfile() {
     : "";
   ui.profileBar.innerHTML = `
     <div><strong class="manual-text">${escapeHtml(profile.name || "")}</strong><span>${escapeHtml(displayRoleLabel)}${area}${employeeId}${phone}</span>${previewNote}${attendanceBadge}</div>
-    ${editorRoleSwitcher}
-    ${editorAreaSwitcher}
-    ${languageSwitcher}
+    ${profile.role === "editor" ? "" : editorRoleSwitcher}
+    ${profile.role === "editor" ? "" : editorAreaSwitcher}
+    ${profile.role === "editor" ? "" : languageSwitcher}
     ${appNotificationPermissionButton()}
-    ${profile.role === "editor" ? `<button type="button" id="pushDiagnosticsButton">Push-устройства</button>` : ""}
-    ${profile.role === "editor" && current.view === "equipment" ? `<button type="button" id="storageDiagnosticsButton">Проверить мусор</button>` : ""}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
-    ${profile.role === "editor" ? `<button type="button" id="clearRecordedDataButton">${escapeHtml(t("clearRecords"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
   `;
   ui.profileBar.querySelector("#editorPreviewRoleSelect")?.addEventListener("change", event => {
@@ -4036,24 +4033,7 @@ function renderProfile() {
   ui.profileBar.querySelector("#enableAppNotificationsButton")?.addEventListener("click", event => {
     requestAppNotificationPermission(event.currentTarget);
   });
-  ui.profileBar.querySelector("#pushDiagnosticsButton")?.addEventListener("click", openPushDiagnostics);
-  ui.profileBar.querySelector("#storageDiagnosticsButton")?.addEventListener("click", openStorageDiagnostics);
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
-  ui.profileBar.querySelector("#clearRecordedDataButton")?.addEventListener("click", event => {
-    if (!window.confirm("Очистить рабочие записи: комментарии, заявки, простои, журналы и отчёты?")) return;
-    const confirmation = window.prompt("Для подтверждения введите слово ОЧИСТИТЬ:");
-    if (String(confirmation || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
-      window.alert("Очистка отменена.");
-      return;
-    }
-    const reason = window.prompt("Укажите причину очистки записей:")?.trim();
-    if (!reason) return;
-    runButtonOperation(event.currentTarget, async () => {
-      recordAudit("Очистил рабочие записи", "Все разделы", reason);
-      await clearRecordedDataEverywhere();
-      render();
-    }, "Очищается...");
-  });
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
     await removePushSubscriptionForLogout();
@@ -4064,6 +4044,22 @@ function renderProfile() {
   });
   syncNotificationSetupPrompt();
   syncPushSubscriptionProfile();
+}
+
+async function confirmClearRecordedData(button) {
+  if (!window.confirm("Очистить рабочие записи: комментарии, заявки, простои, журналы и отчёты?")) return;
+  const confirmation = window.prompt("Для подтверждения введите слово ОЧИСТИТЬ:");
+  if (String(confirmation || "").trim().toUpperCase() !== "ОЧИСТИТЬ") {
+    window.alert("Очистка отменена.");
+    return;
+  }
+  const reason = window.prompt("Укажите причину очистки записей:")?.trim();
+  if (!reason) return;
+  await runButtonOperation(button, async () => {
+    recordAudit("Очистил рабочие записи", "Все разделы", reason);
+    await clearRecordedDataEverywhere();
+    render();
+  }, "Очищается...");
 }
 
 
@@ -11255,7 +11251,7 @@ function renderEquipment() {
     <div class="segmented">
       ${canEditAnnualPpr() ? `<button type="button" class="desktop-annual-ppr-button" data-open-annual-ppr>Годовой график ППР</button>` : ""}
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
-      ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Данные и корзина</button>` : ""}
+      ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Корзина и восстановление</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
@@ -17613,7 +17609,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
 
 async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
-  ui.subtitle.textContent = "Данные и корзина";
+  ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
   const requestedTab = current.adminMaintenanceTab || "audit";
   let result;
@@ -17647,17 +17643,39 @@ async function renderAdminMaintenance() {
   const integrityCount = integrityIssues.reduce((sum, item) => sum + Number(item.count || 0), 0);
   const size = Number(pg.sizeBytes || 0);
   const sizeText = size ? `${(size / 1024 / 1024).toFixed(1)} МБ` : "нет данных";
+  const primaryAdminTabs = new Set(["trash", "backups", "audit", "report"]);
+  const technicalAdminTabOpen = !primaryAdminTabs.has(tab);
   ui.adminMaintenancePanel.innerHTML = `
     <div class="admin-maintenance-status">
       <div class="${pg.connected ? "ok" : "warning"}"><strong>${pg.connected ? "PostgreSQL работает" : "PostgreSQL недоступен или используется JSON"}</strong><span>Режим: ${escapeHtml(pg.mode || "-")} · размер ${escapeHtml(sizeText)}</span></div>
       <div><strong>${audit.length}</strong><span>действий загружено</span></div><div><strong>${trash.filter(item => item.canRestore).length}</strong><span>записей в корзине</span></div>
     </div>
-    <div class="segmented admin-maintenance-tabs no-print"><button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "forms" ? "active" : ""}" data-admin-maintenance-tab="forms">Формы</button><button type="button" class="${tab === "report" ? "active" : ""}" data-admin-maintenance-tab="report">Контроль · ${Number(systemReport.summary?.critical || 0) + Number(systemReport.summary?.warnings || 0)}</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация</button><button type="button" class="${tab === "activity" ? "active" : ""}" data-admin-maintenance-tab="activity">События · ${Number(activity.unreadCount || 0)}</button><button type="button" class="${tab === "backups" ? "active" : ""}" data-admin-maintenance-tab="backups">Копии · ${backups.length}</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика · ${integrityCount}</button><button type="button" class="${tab === "monitoring" ? "active" : ""}" data-admin-maintenance-tab="monitoring">Уведомления · ${activeAlerts.length}</button><button type="button" class="${tab === "audit" ? "active" : ""}" data-admin-maintenance-tab="audit">Журнал действий</button><button type="button" class="${tab === "trash" ? "active" : ""}" data-admin-maintenance-tab="trash">Корзина · ${trash.filter(item => item.canRestore).length}</button><button type="button" data-print-admin-maintenance>Печать / PDF</button></div>
+    <div class="segmented admin-maintenance-tabs no-print">
+      <button type="button" class="${tab === "trash" ? "active" : ""}" data-admin-maintenance-tab="trash">Корзина · ${trash.filter(item => item.canRestore).length}</button>
+      <button type="button" class="${tab === "backups" ? "active" : ""}" data-admin-maintenance-tab="backups">Резервные копии · ${backups.length}</button>
+      <button type="button" class="${tab === "audit" ? "active" : ""}" data-admin-maintenance-tab="audit">История действий</button>
+      <button type="button" class="${tab === "report" ? "active" : ""}" data-admin-maintenance-tab="report">Состояние данных · ${Number(systemReport.summary?.critical || 0) + Number(systemReport.summary?.warnings || 0)}</button>
+      <details class="admin-technical-tools" ${technicalAdminTabOpen ? "open" : ""}>
+        <summary>Технические настройки${technicalAdminTabOpen ? " · открыт служебный раздел" : ""}</summary>
+        <div class="admin-technical-tools-grid">
+          <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
+          <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
+          <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
+          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "forms" ? "active" : ""}" data-admin-maintenance-tab="forms">Формы</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "activity" ? "active" : ""}" data-admin-maintenance-tab="activity">Системные события · ${Number(activity.unreadCount || 0)}</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" class="${tab === "monitoring" ? "active" : ""}" data-admin-maintenance-tab="monitoring">Система и сервер · ${activeAlerts.length}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button><button type="button" data-print-admin-maintenance>Печать / PDF</button>
+        </div>
+      </details>
+    </div>
     <section class="admin-maintenance-sheet">
       <div class="aggregate-sheet-head"><strong>${tab === "settings" ? "Административный редактор" : tab === "backups" ? "Резервные копии и восстановление" : tab === "monitoring" ? "Состояние системы и уведомления" : tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"}</strong><span>${dateTimeHuman(new Date().toISOString())}</span></div>
       ${tab === "settings" ? `<div class="admin-settings-shortcuts no-print"><button type="button" data-admin-open-equipment>Оборудование и QR</button><button type="button" data-admin-open-instructions>Инструкции наряда</button><button type="button" data-admin-open-users>Сотрудники и роли</button></div><form class="admin-settings-form" data-admin-settings-form><label><span>Название организации</span><input name="companyName" maxlength="200" value="${escapeHtml(config.companyName || "ТОО «Aluminium of Kazakhstan»")}" required><small>Автоматически подставляется в новые наряды-допуски.</small></label><div class="admin-settings-columns"><label><span>Подразделения — по одному в строке</span><textarea name="departments" rows="7">${escapeHtml((config.departments || []).join("\n"))}</textarea></label><label><span>Должности — по одной в строке</span><textarea name="positions" rows="7">${escapeHtml((config.positions || []).join("\n"))}</textarea></label></div><div class="admin-settings-numbers"><label><span>Хранить корзину, дней</span><input name="trashRetentionDays" type="number" min="1" max="365" value="${Number(config.trashRetentionDays || 30)}"></label><label><span>Порог памяти, МБ</span><input name="memoryAlertMb" type="number" min="128" value="${Number(config.monitoring?.memoryAlertMb || 512)}"></label><label><span>Лимит базы, МБ</span><input name="databaseSizeLimitMb" type="number" min="100" value="${Number(config.monitoring?.databaseSizeLimitMb || 1024)}"></label><label><span>Копия не старше, часов</span><input name="backupMaxAgeHours" type="number" min="12" max="168" value="${Number(config.monitoring?.backupMaxAgeHours || 36)}"></label><label><span>Ошибок за 10 минут</span><input name="clientErrorThreshold" type="number" min="1" max="100" value="${Number(config.monitoring?.clientErrorThreshold || 5)}"></label></div><button type="submit">Сохранить настройки</button></form><div class="admin-config-history"><h3>История настроек</h3>${configHistory.length ? configHistory.map(item => `<article><div><strong>${escapeHtml(dateTimeHuman(item.at))}</strong><span>${escapeHtml(item.actorName || "Администратор")} · ${escapeHtml(item.reason || "Изменение настроек")}</span></div><button type="button" class="secondary no-print" data-admin-config-rollback="${escapeHtml(item.id)}">Вернуть эту версию</button></article>`).join("") : `<div class="empty-state">Сохранённых версий пока нет.</div>`}</div>` : tab === "monitoring" ? `<div class="system-monitor-grid"><article><strong>Node.js</strong><b>${Number(monitor.node?.uptimeSeconds || 0) ? `${Math.floor(Number(monitor.node.uptimeSeconds) / 3600)} ч` : "работает"}</b><span>Память ${Number(monitor.node?.memoryMb || 0)} МБ</span></article><article><strong>PostgreSQL</strong><b>${monitor.postgres?.connected ? "Подключён" : "Недоступен"}</b><span>${Number(monitor.postgres?.usagePercent || 0)}% · ${Number(monitor.postgres?.activeConnections || 0)} подключений</span></article><article><strong>Резервная копия</strong><b>${monitor.postgres?.lastBackupAt ? dateTimeHuman(monitor.postgres.lastBackupAt) : "Не найдена"}</b><span>Последняя запись: ${monitor.postgres?.lastWriteAt ? dateTimeHuman(monitor.postgres.lastWriteAt) : "—"}</span></article><article><strong>Ошибки</strong><b>${Number(monitor.api?.clientErrors10m || 0)}</b><span>за 10 минут · HTTP 5xx: ${Number(monitor.api?.errors5xx || 0)}</span></article></div><div class="admin-alert-list">${alerts.length ? alerts.map(item => `<article class="${escapeHtml(item.severity || "warning")} ${item.status === "resolved" ? "resolved" : ""}"><div><strong>${escapeHtml(item.title || "Системное уведомление")}</strong><span>${escapeHtml(item.message || "")}</span><small>${item.status === "active" ? `Обнаружено ${escapeHtml(dateTimeHuman(item.createdAt))}` : `Проверено ${escapeHtml(dateTimeHuman(item.resolvedAt))} · ${escapeHtml(item.resolvedByName || "Система")}`}</small></div>${item.status === "active" ? `<button type="button" class="no-print" data-resolve-system-alert="${escapeHtml(item.id)}">Проверено</button>` : ""}</article>`).join("") : `<div class="empty-state ok">Система работает нормально, активных предупреждений нет.</div>`}</div>` : tab === "audit" ? `<div class="admin-audit-list">${audit.length ? audit.map(item => `<article><time>${escapeHtml(dateTimeHuman(item.at))}</time><div><strong>${escapeHtml(item.actorName || "Система")}</strong><span>${escapeHtml(adminAuditActionLabel(item.action))}</span><small>${escapeHtml([item.targetLabel || item.targetId, item.reason].filter(Boolean).join(" · "))}</small></div></article>`).join("") : `<div class="empty-state">Действий пока нет</div>`}</div>` : `<div class="admin-trash-list">${trash.length ? trash.map(item => `<article class="${item.canRestore ? "" : "restored"}"><div><strong>${escapeHtml(item.label || item.targetId || "Запись")}</strong><span>${escapeHtml(item.type === "user" ? "Сотрудник" : item.type || "Данные")} · удалено ${escapeHtml(dateTimeHuman(item.deletedAt))}</span><small>Причина: ${escapeHtml(item.reason || "не указана")} · удалил: ${escapeHtml(item.deletedByName || "Администратор")}</small><small>${item.canRestore ? `Хранить до ${escapeHtml(dateTimeHuman(item.expiresAt))}` : `Восстановлено ${escapeHtml(dateTimeHuman(item.restoredAt))}`}</small></div>${item.canRestore ? `<div class="no-print"><button type="button" data-trash-restore="${escapeHtml(item.id)}">Восстановить</button><button type="button" class="danger" data-trash-purge="${escapeHtml(item.id)}">Удалить навсегда</button></div>` : ""}</article>`).join("") : `<div class="empty-state">Корзина пуста</div>`}</div>`}
     </section>`;
   const maintenanceTabs = ui.adminMaintenancePanel.querySelector(".admin-maintenance-tabs");
+  maintenanceTabs?.querySelector("[data-admin-preview-role]")?.addEventListener("change", event => setEditorPreviewRole(event.currentTarget.value));
+  maintenanceTabs?.querySelector("[data-admin-preview-area]")?.addEventListener("change", event => setEditorPreviewArea(event.currentTarget.value));
+  maintenanceTabs?.querySelector("[data-admin-language]")?.addEventListener("change", event => saveProfileLanguage(event.currentTarget.value));
+  maintenanceTabs?.querySelector("[data-open-push-diagnostics]")?.addEventListener("click", openPushDiagnostics);
+  maintenanceTabs?.querySelector("[data-open-storage-diagnostics]")?.addEventListener("click", openStorageDiagnostics);
+  maintenanceTabs?.querySelector("[data-clear-recorded-data]")?.addEventListener("click", event => confirmClearRecordedData(event.currentTarget));
   const formsTabButton = maintenanceTabs?.querySelector('[data-admin-maintenance-tab="forms"]');
   if (formsTabButton && !maintenanceTabs.querySelector('[data-admin-maintenance-tab="instructionLog"]')) {
     formsTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "corrections" ? "active" : ""}" data-admin-maintenance-tab="corrections">Исправления</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);

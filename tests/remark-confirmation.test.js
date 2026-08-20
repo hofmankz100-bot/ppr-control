@@ -1274,7 +1274,8 @@ test("admin garbage check is read-only and Back skips invalid history entries", 
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(app, /id="storageDiagnosticsButton">Проверить мусор/);
+  assert.match(app, /data-open-storage-diagnostics>Проверить мусор/);
+  assert.match(app, /admin-technical-tools-grid[\s\S]*data-open-storage-diagnostics/);
   assert.match(app, /apiJson\("\/api\/admin\/storage-status"/);
   assert.match(app, /Только проверка — ничего не удалено/);
   assert.match(server, /pathname === "\/api\/admin\/storage-status" && req\.method === "GET"/);
@@ -1726,11 +1727,16 @@ test("only admin or an explicitly permitted engineer can edit annual PPR", () =>
   assert.match(serverSource, /annual_ppr_permission_denied/);
 });
 
-test("administration tabs form an ordered responsive grid", () => {
+test("administration keeps four primary tabs and all technical tools in a responsive disclosure", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(5/);
-  assert.match(stylesSource, /data-admin-maintenance-tab="access"\]\s*\{ order: 3; \}/);
-  assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(3/);
+  assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(4/);
+  assert.match(appSource, /primaryAdminTabs = new Set\(\["trash", "backups", "audit", "report"\]\)/);
+  assert.match(appSource, /class="admin-technical-tools"/);
+  for (const tab of ["guide", "forms", "broadcasts", "settings", "transfer", "access", "automation", "activity", "archives", "integrity", "monitoring"]) {
+    assert.match(appSource, new RegExp(`data-admin-maintenance-tab="${tab}"`));
+  }
+  assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(2/);
   assert.match(stylesSource, /@media \(max-width: 760px\)[\s\S]*repeat\(2/);
 });
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v526-production-request-dedup";
+const CACHE_NAME = "ppr-v527-admin-navigation";
 const ASSETS = [
   "./",
   "./index.html",
@@ -15,7 +15,7 @@ const ASSETS = [
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
   "./app.js?v=526-production-request-dedup",
-  "./node_modules/jsqr/dist/jsQR.js?v=v526-production-request-dedup",
+  "./node_modules/jsqr/dist/jsQR.js?v=v527-admin-navigation",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",
