@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v512-standard-crane-qr";
+const APP_VERSION = "v513-live-qr-scanner-only";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -4949,7 +4949,6 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       if (messageEl) messageEl.textContent = "Наведите камеру на QR. После считывания можно идти дальше.";
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      const started = Date.now();
       return await new Promise(resolve => {
         const finish = value => {
           stream?.getTracks()?.forEach(track => track.stop());
@@ -4965,10 +4964,6 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         let scanPass = 0;
         const tick = async () => {
           if (shouldStop()) return finish(false);
-          if (Date.now() - started > 45000) {
-            if (messageEl) messageEl.textContent = "QR не найден. Поднесите ближе или нажмите «Сканировать ещё раз».";
-            return finish(false);
-          }
           const now = performance.now();
           if (!scanning && now - lastScanAt >= 220 && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
             scanning = true;
@@ -5155,7 +5150,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       <span class="qr-scan-message">Открываем камеру. Наведите на QR узла.</span>
       <div class="qr-scan-actions">
         <button type="button" data-qr-torch hidden>Включить фонарик</button>
-        <button type="button" data-qr-photo>Сканировать ещё раз</button>
+        <button type="button" data-qr-retry hidden>Перезапустить сканер</button>
         <button type="button" data-qr-cancel>Отмена</button>
       </div>
     </div>
@@ -5180,12 +5175,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       resolve(value);
     };
     const scanAutomatically = async () => {
-      let ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
+      const retryButton = overlay.querySelector("[data-qr-retry]");
+      if (retryButton) retryButton.hidden = true;
+      const ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
       if (stopped || ok) return complete(ok || null);
-      if (messageEl) messageEl.textContent = "Откройте камеру и наведите на QR узла.";
-      ok = await scanFromPhoto(messageEl);
-      if (stopped || ok) return complete(ok || null);
-      if (messageEl) messageEl.textContent = "QR не найден. Нажмите «Сканировать ещё раз» и наведите ближе.";
+      if (messageEl) messageEl.textContent = "Не удалось запустить живой сканер. Проверьте разрешение камеры и нажмите «Перезапустить сканер».";
+      if (retryButton) retryButton.hidden = false;
     };
     overlay.querySelector("[data-qr-cancel]")?.addEventListener("click", () => complete(false));
     overlay.querySelector("[data-qr-torch]")?.addEventListener("click", async event => {
@@ -5198,13 +5193,17 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         event.currentTarget.hidden = true;
       }
     });
-    overlay.querySelector("[data-qr-photo]")?.addEventListener("click", async event => {
+    overlay.querySelector("[data-qr-retry]")?.addEventListener("click", async event => {
       const button = event.currentTarget;
-      setButtonBusy(button, true, "Чтение...");
-      if (messageEl) messageEl.textContent = "Откройте камеру и сфотографируйте QR узла.";
-      const ok = await scanFromPhoto(messageEl);
+      setButtonBusy(button, true, "Запускаем...");
+      if (messageEl) messageEl.textContent = "Перезапускаем живой QR-сканер...";
+      const ok = await scanWithLiveCamera(video, messageEl, applyScannedValue, () => stopped);
       setButtonBusy(button, false);
       if (ok) complete(ok);
+      else if (!stopped) {
+        button.hidden = false;
+        if (messageEl) messageEl.textContent = "Камера не запустилась. Разрешите доступ к камере в настройках iPhone и повторите.";
+      }
     });
     scanAutomatically();
   });
