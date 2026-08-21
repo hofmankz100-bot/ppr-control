@@ -268,7 +268,7 @@ test("GPM deadlines enter the common PPR reminders and open the separate journal
 });
 
 test("crane QR inspections feed PPR deadlines, factory reporting and only monthly electromechanic points", () => {
-  assert.match(app, /type: gpmItemKind\(item\) === "gpm" \? "monthlyQr"/);
+  assert.match(app, /type: "monthlyQr", label: "Плановое ТО"/);
   assert.match(app, /item\.nextMonthlyInspectionDate = gpmDatePlusMonth\(shift\.date\)/);
   assert.match(app, /craneShiftQrDone/);
   assert.match(app, /craneMonthlyQrDone/);
@@ -279,7 +279,8 @@ test("crane QR inspections feed PPR deadlines, factory reporting and only monthl
 });
 
 test("monthly upper QR replaces rather than duplicates planned maintenance for cranes", () => {
-  assert.match(app, /type: gpmItemKind\(item\) === "gpm" \? "monthlyQr" : "forkliftMonthlyQr"/);
+  assert.match(app, /type: "forkliftMonthlyQr", label: "Плановое ТО"/);
+  assert.match(app, /type: "monthlyQr", label: "Плановое ТО"/);
   assert.match(app, /label: "Плановое ТО", date: gpmMonthlyDueDate\(item\)/);
   assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующее Плановое ТО[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
 });
@@ -341,4 +342,7 @@ test("forklifts use one QR for shift inspection and monthly maintenance", () => 
   assert.match(app, /forkliftMonthlyQrDone/);
   assert.match(app, /погрузчики: Плановое ТО/);
   assert.match(app, /!linkedForkliftJournalForEquipment\(eq\)/);
+  assert.match(app, /gpmItemKind\(item\) === "forklift"\s*\? \[\{ item, type: "forkliftMonthlyQr", label: "Плановое ТО"/);
+  assert.match(app, /journalKind === "gpm" \? `[\s\S]{0,180}Следующее частичное освидетельствование/);
+  assert.match(app, /\$\{forklift \? "" : `[\s\S]{0,180}Частичное освидетельствование/);
 });

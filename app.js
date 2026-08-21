@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v529-forklift-shift-journal";
+const APP_VERSION = "v530-forklift-clean-form";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
@@ -14337,11 +14337,13 @@ function gpmMonthlyDueDate(item) {
 }
 
 function gpmDueEntries() {
-  return gpmEquipmentList().flatMap(item => [
-    { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
-    { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
-    { item, type: gpmItemKind(item) === "gpm" ? "monthlyQr" : "forkliftMonthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }
-  ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
+  return gpmEquipmentList().flatMap(item => gpmItemKind(item) === "forklift"
+    ? [{ item, type: "forkliftMonthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }]
+    : [
+        { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
+        { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
+        { item, type: "monthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }
+      ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
 }
 
 function gpmAlertCount() {
@@ -14442,8 +14444,9 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Ответственный за исправное состояние</span><input name="conditionResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>${journalKind === "forklift" ? "Водители погрузчика" : "Операторы кран-балки"}</span><input name="inspectorNames" value="${escapeHtml(gpmInspectorDisplayNames(item))}" placeholder="Ф.И.О. зарегистрированных ${journalKind === "forklift" ? "водителей" : "операторов"} через запятую"><small>После назначения обход доступен только указанным сотрудникам.</small></label>
         <label><span>Инженеры с доступом</span><input name="engineerNames" value="${escapeHtml(gpmEngineerDisplayNames(item))}" placeholder="Введите Ф.И.О. через запятую"></label>
-        <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
-        <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
+        ${journalKind === "gpm" ? `
+          <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
+          <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>` : ""}
         ${journalKind === "gpm"
           ? `<label><span>Следующее Плановое ТО</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
           : `<label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>`}
@@ -14597,8 +14600,9 @@ function gpmDetailHtml(item) {
         <div><span>${forklift ? "Водители погрузчика" : "Операторы кран-балки"}</span><strong>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</strong></div>
       </div>
       <div class="gpm-dates">
-        <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
-        <div><span>Полное освидетельствование</span><strong>${item.nextFullDate ? dateHuman(item.nextFullDate) : "Не назначено"}</strong></div>
+        ${forklift ? "" : `
+          <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
+          <div><span>Полное освидетельствование</span><strong>${item.nextFullDate ? dateHuman(item.nextFullDate) : "Не назначено"}</strong></div>`}
         ${gpmItemKind(item) === "gpm"
           ? `<div><span>Плановое ТО</span><strong>${dateHuman(gpmMonthlyDueDate(item))}</strong></div>`
           : `<div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>`}
