@@ -100,6 +100,7 @@ let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
 let postgresClusterStatus = { active: "", nodes: [] };
+let postgresRecoveryTimer = null;
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -712,6 +713,58 @@ async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
       }
     }
   }
+}
+
+async function recoverPostgresReplicas() {
+  if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2) return;
+  const sourceIndex = postgresPool.activeIndex;
+  const source = postgresPool.nodes[sourceIndex];
+  if (!source) return;
+  for (let index = 0; index < postgresPool.nodes.length; index += 1) {
+    if (index === sourceIndex) continue;
+    const target = postgresPool.nodes[index];
+    const wasHealthy = Boolean(target.healthy);
+    try {
+      await target.pool.query("SELECT 1");
+      target.healthy = true;
+      target.error = "";
+      target.lastSuccessAt = new Date().toISOString();
+      if (!wasHealthy) {
+        const current = await source.pool.query("SELECT payload,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+        if (current.rows[0]?.payload) {
+          await target.pool.query(
+            `INSERT INTO ppr_settings(setting_key,payload,updated_at) VALUES('full_state',$1::jsonb,$2)
+             ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
+             WHERE ppr_settings.updated_at < EXCLUDED.updated_at`,
+            [JSON.stringify(current.rows[0].payload), current.rows[0].updated_at]
+          );
+        }
+        const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos");
+        for (const row of photos.rows) {
+          await target.pool.query(
+            `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
+             ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
+             WHERE ppr_photos.updated_at < EXCLUDED.updated_at`,
+            [row.file_name, row.mime_type, row.payload, row.updated_at]
+          );
+        }
+      }
+    } catch (error) {
+      target.healthy = false;
+      target.error = String(error.message || error);
+      target.lastErrorAt = new Date().toISOString();
+    }
+  }
+  postgresClusterStatus = postgresPool.status();
+  storageStatus.cluster = postgresClusterStatus;
+}
+
+function startPostgresRecoveryMonitor() {
+  if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2 || postgresRecoveryTimer) return;
+  postgresRecoveryTimer = setInterval(() => {
+    recoverPostgresReplicas().catch(error => console.warn(`PostgreSQL recovery check failed: ${error.message}`));
+  }, Math.max(15000, Number(process.env.PG_RECOVERY_INTERVAL_MS || 30000)));
+  postgresRecoveryTimer.unref?.();
 }
 
 async function initializeStorage() {
@@ -8282,6 +8335,7 @@ async function shutdown() {
   clearInterval(heartbeatTimer);
   clearInterval(systemMonitorTimer);
   clearInterval(automaticBackupTimer);
+  if (postgresRecoveryTimer) clearInterval(postgresRecoveryTimer);
   try {
     flushLocalBackup();
     await flushPostgresWrites();
@@ -8298,6 +8352,7 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(storage => {
+    startPostgresRecoveryMonitor();
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
     server.listen(port, "0.0.0.0", () => {
