@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v530-forklift-clean-form";
+const SERVER_VERSION = "v531-automatic-database-failover";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -57,6 +57,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v302-shgrp-mobile-day-swipe",
   "v303-director-personal-messages",
   "v304-role-sync-director-clean",
+  "v530-forklift-clean-form",
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -98,6 +99,7 @@ let postgresPhotoWriteQueue = Promise.resolve();
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
+let postgresClusterStatus = { active: "", nodes: [] };
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -668,9 +670,54 @@ function externalizePhotosInValue(value, seen = new WeakSet()) {
   return changed;
 }
 
+async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
+  const source = nodes[sourceIndex];
+  if (!source) return;
+  const tableSpecs = [
+    {
+      table: "ppr_photos",
+      select: "SELECT file_name, mime_type, payload, updated_at FROM ppr_photos",
+      insert: `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
+        ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
+      values: row => [row.file_name, row.mime_type, row.payload, row.updated_at]
+    },
+    {
+      table: "ppr_admin_backups",
+      select: "SELECT backup_id,label,payload,checksum,created_by,created_at FROM ppr_admin_backups",
+      insert: `INSERT INTO ppr_admin_backups(backup_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)
+        ON CONFLICT(backup_id) DO NOTHING`,
+      values: row => [row.backup_id, row.label, JSON.stringify(row.payload), row.checksum, row.created_by, row.created_at]
+    },
+    {
+      table: "ppr_admin_archives",
+      select: "SELECT archive_id,label,payload,checksum,created_by,created_at FROM ppr_admin_archives",
+      insert: `INSERT INTO ppr_admin_archives(archive_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)
+        ON CONFLICT(archive_id) DO NOTHING`,
+      values: row => [row.archive_id, row.label, JSON.stringify(row.payload), row.checksum, row.created_by, row.created_at]
+    }
+  ];
+  for (const target of nodes) {
+    if (target === source || !target.healthy) continue;
+    for (const spec of tableSpecs) {
+      try {
+        const count = await target.pool.query(`SELECT count(*)::int AS count FROM ${spec.table}`);
+        if (Number(count.rows[0]?.count || 0) > 0) continue;
+        const rows = await source.pool.query(spec.select);
+        for (const row of rows.rows) await target.pool.query(spec.insert, spec.values(row));
+      } catch (error) {
+        target.healthy = false;
+        target.error = String(error.message || error);
+        target.lastErrorAt = new Date().toISOString();
+        break;
+      }
+    }
+  }
+}
+
 async function initializeStorage() {
-  const connectionString = String(process.env.DATABASE_URL || "").trim();
-  if (!connectionString) {
+  const { configuredDatabases, MultiPostgres } = require("./multi-postgres");
+  const configured = configuredDatabases(process.env);
+  if (!configured.length) {
     const db = readDbFile();
     removeDuplicateProductionRequests(db);
     migrateLegacyDirectorApprovals(db);
@@ -686,11 +733,36 @@ async function initializeStorage() {
     const { Pool } = require("pg");
     const sslMode = String(process.env.PGSSL || process.env.PGSSLMODE || "").trim().toLowerCase();
     const useSsl = ["1", "true", "require", "verify-ca", "verify-full"].includes(sslMode);
-    const pool = new Pool({
-      connectionString,
-      ssl: useSsl ? { rejectUnauthorized: false } : false,
-      max: Number(process.env.PG_POOL_SIZE || 5)
-    });
+    const nodes = configured.map(item => ({
+      ...item,
+      healthy: false,
+      error: "",
+      pool: new Pool({
+        connectionString: item.connectionString,
+        ssl: useSsl || /(?:neon\.tech|supabase\.(?:co|com)|pooler\.supabase\.com)/i.test(item.connectionString)
+          ? { rejectUnauthorized: false }
+          : false,
+        max: Number(process.env.PG_POOL_SIZE || 5),
+        connectionTimeoutMillis: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
+        idleTimeoutMillis: 30000
+      })
+    }));
+    await Promise.allSettled(nodes.map(async node => {
+      try {
+        await node.pool.query("SELECT now()");
+        node.healthy = true;
+        node.lastSuccessAt = new Date().toISOString();
+      } catch (error) {
+        node.error = String(error.message || error);
+        node.lastErrorAt = new Date().toISOString();
+      }
+    }));
+    if (!nodes.some(node => node.healthy)) {
+      await Promise.allSettled(nodes.map(node => node.pool.end()));
+      throw new Error("All configured PostgreSQL databases are unavailable");
+    }
+    const pool = new MultiPostgres(nodes, { onStatus: status => { postgresClusterStatus = status; } });
+    postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (
         setting_key text PRIMARY KEY,
@@ -733,9 +805,25 @@ async function initializeStorage() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    const result = await pool.query(
-      "SELECT payload FROM ppr_settings WHERE setting_key = 'full_state' LIMIT 1"
-    );
+    let freshest = null;
+    for (let index = 0; index < nodes.length; index += 1) {
+      try {
+        const candidate = await nodes[index].pool.query(
+          "SELECT payload, updated_at FROM ppr_settings WHERE setting_key = 'full_state' LIMIT 1"
+        );
+        const row = candidate.rows[0];
+        if (row?.payload && (!freshest || new Date(row.updated_at).getTime() > freshest.updatedAt)) {
+          freshest = { index, payload: row.payload, updatedAt: new Date(row.updated_at).getTime() };
+        }
+      } catch (error) {
+        nodes[index].healthy = false;
+        nodes[index].error = String(error.message || error);
+      }
+    }
+    if (freshest) pool.activeIndex = freshest.index;
+    if (freshest) await seedEmptyPostgresReplicas(nodes, freshest.index);
+    postgresClusterStatus = pool.status();
+    const result = freshest ? { rows: [{ payload: freshest.payload }] } : { rows: [] };
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
       removeDuplicateProductionRequests(postgresState);
@@ -773,10 +861,10 @@ async function initializeStorage() {
       );
     }
     postgresPool = pool;
-    storageStatus = { mode: "postgres", table: "ppr_settings", key: "full_state" };
+    storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", cluster: postgresClusterStatus };
     return storageStatus;
   } catch (error) {
-    console.error(`PostgreSQL unavailable, JSON fallback enabled: ${error.message}`);
+    console.error(`PostgreSQL cluster unavailable, JSON fallback enabled: ${error.message}`);
     if (process.env.REQUIRE_POSTGRES === "true") throw error;
     postgresPool = null;
     postgresState = null;
@@ -1018,7 +1106,7 @@ async function systemMonitoringSnapshot() {
       (SELECT max(backup_date) FROM ppr_state_backups) AS last_backup`);
     const row = result.rows[0] || {};
     const sizeBytes = Number(row.size || 0);
-    snapshot.postgres = { connected: true, mode: "postgres", checkedAt: row.now, sizeBytes, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: Math.round(sizeBytes / (databaseLimitMb * 1024 * 1024) * 1000) / 10, activeConnections: Number(row.connections || 0), lastBackupAt: row.last_backup || "", lastWriteAt: storageStatus.lastWriteAt || "", error: "" };
+    snapshot.postgres = { connected: true, mode: "postgres-cluster", checkedAt: row.now, sizeBytes, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: Math.round(sizeBytes / (databaseLimitMb * 1024 * 1024) * 1000) / 10, activeConnections: Number(row.connections || 0), lastBackupAt: row.last_backup || "", lastWriteAt: storageStatus.lastWriteAt || "", error: "", cluster: postgresClusterStatus };
   } catch (error) {
     snapshot.postgres = { ...snapshot.postgres, mode: "postgres-degraded", error: String(error.message || error) };
   }
@@ -1630,10 +1718,11 @@ function schedulePostgresWrite(db) {
           lastPostgresBackupDate = backupDate;
         }
         storageStatus = {
-          mode: "postgres",
+          mode: "postgres-cluster",
           table: "ppr_settings",
           key: "full_state",
-          lastWriteAt: new Date().toISOString()
+          lastWriteAt: new Date().toISOString(),
+          cluster: postgresClusterStatus
         };
       } catch (error) {
         console.error(`PostgreSQL write failed; retry scheduled and JSON backup preserved: ${error.message}`);
