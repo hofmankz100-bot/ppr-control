@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v528-security-audit";
+const APP_VERSION = "v529-forklift-shift-journal";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
@@ -4553,6 +4553,11 @@ async function handleIncomingNodeQrFromUrl() {
     clearIncomingNodeQrFromUrl();
     return true;
   }
+  if (linkedForkliftJournalForEquipment(eq)) {
+    window.alert("Старые QR узлов погрузчиков отключены. Используйте единый QR вахтенного журнала погрузчика.");
+    clearIncomingNodeQrFromUrl();
+    return true;
+  }
   if (!currentNodeQrMatches(parsed)) {
     window.alert("Этот QR-код заменён. Отсканируйте новый код данного узла.");
     clearIncomingNodeQrFromUrl();
@@ -4867,16 +4872,17 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const applyScannedValue = value => {
     const gpmParsed = parseGpmQrScanValue(value);
     if (gpmParsed) {
-      const item = gpmEquipmentList("gpm").find(entry => String(entry.id) === String(gpmParsed.gpmId));
+      const item = gpmEquipmentList().find(entry => String(entry.id) === String(gpmParsed.gpmId));
       if (!item) {
-        if (statusEl) statusEl.textContent = "Кран по этому QR не найден";
+        if (statusEl) statusEl.textContent = "Оборудование по этому QR не найдено";
         return false;
       }
-      if (!gpmCanInspect(item, gpmParsed.mode)) {
-        if (statusEl) statusEl.textContent = "Этот кран вам не назначен";
+      const scanMode = gpmItemKind(item) === "forklift" ? "forklift" : gpmParsed.mode;
+      if (!gpmCanInspect(item, scanMode)) {
+        if (statusEl) statusEl.textContent = gpmItemKind(item) === "forklift" ? "Этот погрузчик вам не назначен" : "Этот кран вам не назначен";
         return false;
       }
-      return { kind: "gpm", item, ...gpmParsed };
+      return { kind: "gpm", item, ...gpmParsed, mode: scanMode };
     }
     const parsed = parseNodeQrPayload(value);
     if (!parsed) {
@@ -4894,6 +4900,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     }
     if (linkedCraneJournalForEquipment(eq)) {
       if (statusEl) statusEl.textContent = "Старый QR узла отключён. Используйте один из двух QR кран-балки";
+      return false;
+    }
+    if (linkedForkliftJournalForEquipment(eq)) {
+      if (statusEl) statusEl.textContent = "Старый QR узла отключён. Используйте единый QR погрузчика";
       return false;
     }
     if (!currentNodeQrMatches(parsed)) {
@@ -8185,6 +8195,11 @@ function linkedCraneJournalForEquipment(equipmentOrId) {
   return gpmEquipmentList("gpm").find(item => Number(item.sourceEquipmentId || 0) === equipmentId) || null;
 }
 
+function linkedForkliftJournalForEquipment(equipmentOrId) {
+  const equipmentId = Number(typeof equipmentOrId === "object" ? equipmentOrId?.id : equipmentOrId);
+  return gpmEquipmentList("forklift").find(item => Number(item.sourceEquipmentId || 0) === equipmentId) || null;
+}
+
 function downtimePieSlicePath(cx, cy, radius, startAngle, endAngle) {
   const start = polarPoint(cx, cy, radius, endAngle);
   const end = polarPoint(cx, cy, radius, startAngle);
@@ -11313,16 +11328,18 @@ function renderEquipment() {
       const linkedGpmEquipment = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
       const gpmEquipment = Boolean(linkedGpmEquipment) || isGpmEquipment(eq);
       const modernCraneEquipment = linkedCraneJournalForEquipment(eq);
+      const modernForkliftEquipment = linkedForkliftJournalForEquipment(eq);
+      const modernShiftJournal = Boolean(modernCraneEquipment || modernForkliftEquipment);
       const allCraneQrCount = modernCraneEquipment ? gpmEquipmentList("gpm").length * 2 : 0;
-      const equipmentOperationalPause = modernCraneEquipment ? null : activeOperationalPause(eq, null, todayISO());
+      const equipmentOperationalPause = modernShiftJournal ? null : activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">${gpmEquipment ? isForkliftEquipment(eq) ? "Журнал погрузчика" : "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(linkedGpmEquipment?.sourceEquipmentName || eq.name)}</strong>
-              <span>${modernCraneEquipment ? "2 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
-              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : modernCraneEquipment ? "Только новая схема QR-обходов" : gpmEquipment ? "Осмотры и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <span>${modernCraneEquipment ? "2 QR · вахтенный журнал" : modernForkliftEquipment ? "1 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : modernCraneEquipment ? "Только новая схема QR-обходов" : modernForkliftEquipment ? "Ежесменный обход и Плановое ТО через один QR" : gpmEquipment ? "Осмотры и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
             ${isEditorSession() ? linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "gpm"
@@ -11332,7 +11349,7 @@ function renderEquipment() {
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
               <summary>Редактировать оборудование</summary>
-              ${catalogEditorRole() === "editor" && !modernCraneEquipment ? (() => {
+              ${catalogEditorRole() === "editor" && !modernShiftJournal ? (() => {
                 const pause = activeOperationalPause(eq);
                 return `<div class="operational-pause-control ${pause ? "paused" : ""}">
                   <strong>${pause ? "Оборудование временно не работает" : "Оборудование работает"}</strong>
@@ -11386,14 +11403,18 @@ function renderEquipment() {
           if (setOperationalPause(eq.id, null, !pause, reason)) renderEquipment();
         }, "Сохраняется...");
       });
-      if (modernCraneEquipment) {
+      if (modernCraneEquipment || modernForkliftEquipment) {
         days.forEach(day => {
           const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          const counters = gpmQrInspectionCounters(date);
+          const counters = gpmQrInspectionCounters(date, modernForkliftEquipment ? gpmEquipmentList("forklift") : gpmEquipmentList("gpm"));
           const td = document.createElement("td");
           td.className = "modern-crane-workflow-cell";
-          td.innerHTML = `<span>Ежесменные <b>${counters.shiftDone}/${counters.shiftTotal}</b></span><span>Ежемесячные <b>${counters.monthlyDone}/${counters.monthlyTotal}</b></span>`;
-          td.title = `QR-обходы кран-балок: ежесменные за ${dateHuman(date)} — ${counters.shiftDone} из ${counters.shiftTotal}; ежемесячные за месяц — ${counters.monthlyDone} из ${counters.monthlyTotal}`;
+          td.innerHTML = modernForkliftEquipment
+            ? `<span>Ежесменные <b>${counters.shiftDone}/${counters.shiftTotal}</b></span><span>Плановое ТО <b>${counters.monthlyDone}/${counters.monthlyTotal}</b></span>`
+            : `<span>Ежесменные <b>${counters.shiftDone}/${counters.shiftTotal}</b></span><span>Ежемесячные <b>${counters.monthlyDone}/${counters.monthlyTotal}</b></span>`;
+          td.title = modernForkliftEquipment
+            ? `Погрузчики: ежесменные обходы за ${dateHuman(date)} — ${counters.shiftDone} из ${counters.shiftTotal}; Плановое ТО за месяц — ${counters.monthlyDone} из ${counters.monthlyTotal}`
+            : `QR-обходы кран-балок: ежесменные за ${dateHuman(date)} — ${counters.shiftDone} из ${counters.shiftTotal}; ежемесячные за месяц — ${counters.monthlyDone} из ${counters.monthlyTotal}`;
           tr.append(td);
         });
       } else for (const day of days) {
@@ -14044,6 +14065,25 @@ const GPM_INSPECTION_POINTS = [
   "Крановый путь и рабочая зона"
 ];
 
+const FORKLIFT_INSPECTION_POINTS = [
+  "Вилы, каретка и фиксаторы вил",
+  "Мачта, грузовые цепи и ролики",
+  "Механизм подъёма и наклона",
+  "Рабочая и стояночная тормозные системы",
+  "Рулевое управление",
+  "Колёса, шины и крепление колёс",
+  "Гидросистема, цилиндры, рукава и отсутствие утечек",
+  "Двигатель, аккумулятор или газовая система",
+  "Освещение, звуковой сигнал, маяк и сигнал заднего хода",
+  "Ремень безопасности, сиденье и защитная крыша",
+  "Приборы, индикаторы и аварийная остановка",
+  "Огнетушитель, таблички и общее состояние погрузчика"
+];
+
+function gpmInspectionPoints(item = {}) {
+  return gpmItemKind(item) === "forklift" ? FORKLIFT_INSPECTION_POINTS : GPM_INSPECTION_POINTS;
+}
+
 function gpmStore() {
   state.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
   state.gpmJournal.equipment ||= {};
@@ -14145,8 +14185,13 @@ function gpmIsResponsible(item) {
 function gpmCanInspect(item, mode = "") {
   const key = gpmUserKey();
   if (gpmIsAdmin() || gpmIsEngineer(item) || gpmIsResponsible(item)) return true;
+  if (gpmItemKind(item) === "forklift" && ["forklift", "shift", "monthly"].includes(mode)) {
+    const forkliftKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
+    return [profile?.role, profile?.jobRole].includes("forkliftDriver") && (!forkliftKeys.length || forkliftKeys.includes(key));
+  }
   if (mode === "monthly" && isElectromechanicRole(profile?.role)) return true;
   const assignedKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
+  if (gpmItemKind(item) === "forklift" && [profile?.role, profile?.jobRole].includes("forkliftDriver")) return !assignedKeys.length || assignedKeys.includes(key);
   if (profile?.role === "operator") return !assignedKeys.length || assignedKeys.includes(key);
   return assignedKeys.includes(key) || item?.inspectorKey === key;
 }
@@ -14213,28 +14258,28 @@ function clearIncomingGpmQr() {
 async function handleIncomingGpmQr() {
   const parsed = parseGpmQrValue(incomingGpmQr());
   if (!parsed || !isProfileReady()) return false;
-  const item = gpmEquipmentList("gpm").find(entry => entry.id === parsed.gpmId);
+  const item = gpmEquipmentList().find(entry => entry.id === parsed.gpmId);
   if (!item) {
     clearIncomingGpmQr();
     window.alert("Кран по этому QR не найден. Обратитесь к ответственному за журнал ГПМ.");
     return true;
   }
   current.selectedGpmId = item.id;
-  current.gpmJournalKind = "gpm";
-  current.gpmScanMode = parsed.mode;
-  current.gpmInspectionStep = "decision";
+  current.gpmJournalKind = gpmItemKind(item);
+  current.gpmScanMode = gpmItemKind(item) === "forklift" ? "forklift" : parsed.mode;
+  current.gpmInspectionStep = gpmItemKind(item) === "forklift" ? "mode" : "decision";
   clearIncomingGpmQr();
   show("gpm", false);
   return true;
 }
 
 function printGpmQr(item, mode = "shift") {
-  const monthly = mode === "monthly";
+  const forklift = gpmItemKind(item) === "forklift";
+  const monthly = !forklift && mode === "monthly";
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
-  const link = gpmQrUrl(item, mode);
-  const qr = gpmQrImageUrl(item, mode);
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:125mm;height:125mm}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}@media print{.actions{display:none}}</style></head><body><main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. Журнал откроется автоматически.</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
+  const qr = gpmQrImageUrl(item, monthly ? "monthly" : "shift");
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:125mm;height:125mm}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}@media print{.actions{display:none}}</style></head><body><main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. ${forklift ? "Откроется вахтенный журнал погрузчика." : "Журнал откроется автоматически."}</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   win.document.close();
 }
 
@@ -14283,6 +14328,7 @@ function gpmDatePlusMonth(date) {
 }
 
 function gpmMonthlyDueDate(item) {
+  if (gpmItemKind(item) === "forklift" && /^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMaintenanceDate || ""))) return item.nextMaintenanceDate;
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMonthlyInspectionDate || ""))) return item.nextMonthlyInspectionDate;
   const latest = Object.values(gpmStore().inspections || {})
     .filter(entry => entry?.gpmId === item?.id && entry.inspectionType === "monthly" && /^\d{4}-\d{2}-\d{2}$/.test(String(entry.shiftDate || "")))
@@ -14294,9 +14340,7 @@ function gpmDueEntries() {
   return gpmEquipmentList().flatMap(item => [
     { item, type: "partial", label: "Частичное техническое освидетельствование", date: item.nextPartialDate },
     { item, type: "full", label: "Полное техническое освидетельствование", date: item.nextFullDate },
-    ...(gpmItemKind(item) === "gpm"
-      ? [{ item, type: "monthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }]
-      : [{ item, type: "maintenance", label: "Плановое техническое обслуживание", date: item.nextMaintenanceDate }])
+    { item, type: gpmItemKind(item) === "gpm" ? "monthlyQr" : "forkliftMonthlyQr", label: "Плановое ТО", date: gpmMonthlyDueDate(item) }
   ]).filter(entry => Number.isFinite(gpmDateDistance(entry.date)));
 }
 
@@ -14387,8 +14431,8 @@ function gpmEquipmentForm(item = {}) {
     <form class="gpm-admin-form" data-gpm-equipment-form data-gpm-id="${escapeHtml(item.id || "")}">
       <h3>${item.id ? `Настройка: ${journalName}` : `Добавить: ${journalName}`}</h3>
       <div class="gpm-form-grid">
-        <label><span>Карточка ГПМ на главном экране</span><input name="sourceEquipmentName" value="${escapeHtml(gpmSourceEquipmentDisplayName(item, sourceEquipmentId))}" placeholder="Введите название карточки вручную"></label>
-        <label><span>Наименование</span><input name="name" required value="${escapeHtml(item.name || "")}" placeholder="Кран-балка №1"></label>
+        <label><span>${journalKind === "forklift" ? "Карточка погрузчиков" : "Карточка ГПМ"} на главном экране</span><input name="sourceEquipmentName" value="${escapeHtml(gpmSourceEquipmentDisplayName(item, sourceEquipmentId))}" placeholder="Введите название карточки вручную"></label>
+        <label><span>Наименование</span><input name="name" required value="${escapeHtml(item.name || "")}" placeholder="${journalKind === "forklift" ? "Вилочный погрузчик №1" : "Кран-балка №1"}"></label>
         <label><span>Место установки</span><input name="location" required value="${escapeHtml(item.location || "")}" placeholder="Прессовый участок"></label>
         <label><span>Заводской номер</span><input name="serialNumber" value="${escapeHtml(item.serialNumber || "")}"></label>
         <label><span>Регистрационный номер</span><input name="registrationNumber" value="${escapeHtml(item.registrationNumber || "")}"></label>
@@ -14396,7 +14440,7 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Год изготовления</span><input name="manufactureYear" inputmode="numeric" value="${escapeHtml(item.manufactureYear || "")}"></label>
         <label><span>Ответственный за эксплуатацию</span><input name="operationResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>Ответственный за исправное состояние</span><input name="conditionResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
-        <label><span>Операторы кран-балки</span><input name="inspectorNames" value="${escapeHtml(gpmInspectorDisplayNames(item))}" placeholder="Ф.И.О. зарегистрированных операторов через запятую"><small>После назначения обход этого крана доступен только указанным операторам.</small></label>
+        <label><span>${journalKind === "forklift" ? "Водители погрузчика" : "Операторы кран-балки"}</span><input name="inspectorNames" value="${escapeHtml(gpmInspectorDisplayNames(item))}" placeholder="Ф.И.О. зарегистрированных ${journalKind === "forklift" ? "водителей" : "операторов"} через запятую"><small>После назначения обход доступен только указанным сотрудникам.</small></label>
         <label><span>Инженеры с доступом</span><input name="engineerNames" value="${escapeHtml(gpmEngineerDisplayNames(item))}" placeholder="Введите Ф.И.О. через запятую"></label>
         <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
         <label><span>Следующее полное освидетельствование</span><input name="nextFullDate" type="date" value="${escapeHtml(item.nextFullDate || "")}"></label>
@@ -14410,11 +14454,13 @@ function gpmEquipmentForm(item = {}) {
 
 function gpmInspectionForm(item) {
   const monthly = current.gpmScanMode === "monthly";
+  const forklift = gpmItemKind(item) === "forklift";
+  const inspectionPoints = gpmInspectionPoints(item);
   return `
     <form class="gpm-entry-form gpm-qr-inspection" data-gpm-inspection-form data-inspection-type="${monthly ? "monthly" : "shift"}">
-      <div class="gpm-qr-mode ${monthly ? "monthly" : "shift"}"><strong>${monthly ? "Плановое ТО" : "Ежесменный осмотр"}</strong><span>${monthly ? "Открыто верхним QR-кодом" : "Открыт QR-кодом на кране"}</span></div>
+      <div class="gpm-qr-mode ${monthly ? "monthly" : "shift"}"><strong>${monthly ? "Плановое ТО" : "Ежесменный осмотр"}</strong><span>${monthly ? (forklift ? "Открыто единым QR-кодом погрузчика" : "Открыто верхним QR-кодом") : forklift ? "Открыт единственным QR-кодом на погрузчике" : "Открыт QR-кодом на кране"}</span></div>
       <p>Проверьте каждый пункт. Любая неисправность автоматически запрещает эксплуатацию до подтверждения инженером.</p>
-      <div class="gpm-check-grid">${GPM_INSPECTION_POINTS.map((point, index) =>
+      <div class="gpm-check-grid">${inspectionPoints.map((point, index) =>
         `<label><input type="checkbox" name="point-${index}"><span>${escapeHtml(point)}<small>Отметьте, если исправно</small></span></label>`
       ).join("")}</div>
       <label><span>Комментарий о неисправности</span><textarea name="defects" rows="3" placeholder="Обязательно, если хотя бы один пункт не отмечен"></textarea></label>
@@ -14459,7 +14505,8 @@ function gpmDocumentLink(event) {
 }
 
 function gpmOfficialShiftJournalHtml(item, inspections = []) {
-  const rows = [
+  const forklift = gpmItemKind(item) === "forklift";
+  const rows = forklift ? FORKLIFT_INSPECTION_POINTS.map((label, index) => [label, [index]]) : [
     ["Металлоконструкция", [0]],
     ["Тормоза: грузовой лебёдки; стреловой лебёдки; механизма передвижения тележки; поворота; механизма передвижения крана", [3]],
     ["Приборы безопасности: ограничитель грузоподъёмности; концевые выключатели; блокировочные контакты; указатели; сигнализаторы. Электрооборудование. Заземление", [4, 5, 6]],
@@ -14469,7 +14516,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
   ];
   const entries = inspections.length ? inspections : [null];
   return `<section class="gpm-log-section gpm-official-shift-journal">
-    <h3>Вахтенный журнал машиниста крана</h3>
+    <h3>${forklift ? "Вахтенный журнал водителя вилочного погрузчика" : "Вахтенный журнал машиниста крана"}</h3>
     ${entries.map(entry => {
       const monthlyInspection = entry?.inspectionType === "monthly";
       const relatedEvent = entry ? Object.values(gpmStore().events || {}).find(event => event?.inspectionId === entry.id && !event.deleted) : null;
@@ -14484,15 +14531,15 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
       return `<article class="gpm-official-sheet ${monthlyInspection ? "gpm-official-monthly" : "gpm-official-shift"}">
         <div class="gpm-official-appendix">Приложение 14 к Правилам обеспечения промышленной безопасности<br>при эксплуатации грузоподъёмных механизмов</div>
         <h4>ВАХТЕННЫЙ ЖУРНАЛ</h4>
-        ${monthlyInspection ? `<div class="gpm-monthly-inspection-banner">ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR</div>` : ""}
+        ${monthlyInspection ? `<div class="gpm-monthly-inspection-banner">${forklift ? "ПЛАНОВОЕ ТО ПОГРУЗЧИКА · КАРЩИК / ИНЖЕНЕР · ЕДИНЫЙ QR" : "ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR"}</div>` : ""}
         <div class="gpm-official-meta">
           <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
           <span><b>Цех (участок):</b> ${escapeHtml(item.location || "—")}</span>
-          <span><b>Кран / кран-балка, рег. №:</b> ${escapeHtml(item.name)} · ${escapeHtml(item.registrationNumber || "—")}</span>
+          <span><b>${forklift ? "Вилочный погрузчик, рег. №" : "Кран / кран-балка, рег. №"}:</b> ${escapeHtml(item.name)} · ${escapeHtml(item.registrationNumber || "—")}</span>
           <span><b>Дата:</b> ${entry ? escapeHtml(dateHuman(entry.shiftDate || entry.createdAt)) : ""}</span>
           <span><b>Смена:</b> ${escapeHtml(entry?.shiftLabel || "")}</span>
-          <span><b>Машинист (оператор):</b> ${escapeHtml(inspector)}${employeeId}</span>
-          <span class="gpm-official-assigned-operators"><b>Назначенные операторы кран-балки:</b> ${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</span>
+          <span><b>${forklift ? "Водитель погрузчика" : "Машинист (оператор)"}:</b> ${escapeHtml(inspector)}${employeeId}</span>
+          <span class="gpm-official-assigned-operators"><b>${forklift ? "Назначенные водители погрузчика" : "Назначенные операторы кран-балки"}:</b> ${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</span>
         </div>
         <div class="gpm-table-wrap"><table class="gpm-official-checks"><thead><tr><th>№ п/п</th><th>Наименование механизма, узла, детали</th><th>Результаты проверки</th><th>Фамилия, инициалы и должность лица, устранившего нарушение</th></tr></thead><tbody>
           ${rows.map(([label, indexes], index) => `<tr><td>${index + 1}</td><td>${escapeHtml(label)}</td><td>${resultFor(indexes)}</td><td>${indexes.some(point => points[point] === false) ? (resolutionComment ? `<b>${escapeHtml(resolver || "Исполнитель не указан")}</b>` : "Ожидает устранения") : "—"}</td></tr>`).join("")}
@@ -14500,7 +14547,7 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
         <div class="gpm-official-signatures">
           <div><b>Смену принял (Ф.И.О., электронная подпись)</b><span>${escapeHtml(inspector)}${employeeId}</span></div>
           <div><b>Смену сдал (состояние крана, Ф.И.О.)</b><span>${escapeHtml(shiftState)} · ${escapeHtml(inspector)}</span></div>
-          <div class="gpm-official-electromechanic"><b>Результаты осмотра крана электромехаником</b><span>${escapeHtml(relatedEvent?.resolvedByName || "—")}</span></div>
+          <div class="gpm-official-electromechanic"><b>${forklift ? "Результаты осмотра погрузчика карщиком / инженером" : "Результаты осмотра крана электромехаником"}</b><span>${escapeHtml(monthlyInspection ? inspector : (relatedEvent?.resolvedByName || "—"))}</span></div>
           <div class="gpm-official-resolution"><b>Комментарий об устранении неисправности</b><span>${entry?.defects ? (resolutionComment ? `${escapeHtml(resolutionComment)} · ${escapeHtml(resolver || "Исполнитель не указан")}${resolutionDate ? ` · ${escapeHtml(resolutionDate)}` : ""}` : "Ожидает устранения") : "Не требуется"}</span></div>
           <div><b>Ответственный за исправное состояние</b><span>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || relatedEvent?.approvedByName || "—")}</span></div>
           <div><b>Отметка о допуске к работе / дополнительные указания</b><span>${escapeHtml(relatedEvent?.approvedAt ? `Допущен инженером: ${relatedEvent.approvedByName || ""}` : shiftState)}</span></div>
@@ -14511,26 +14558,28 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
 }
 
 function gpmResponsiblePrintSheetHtml(item, month = selectedJournalMonth()) {
+  const forklift = gpmItemKind(item) === "forklift";
   return `<section class="gpm-responsible-print-sheet">
     <div class="gpm-official-appendix">ППР КОНТРОЛЬ · СВЕДЕНИЯ ОБ ОТВЕТСТВЕННЫХ</div>
-    <h4>ОТВЕТСТВЕННЫЕ ЛИЦА И ОПЕРАТОРЫ КРАН-БАЛКИ</h4>
+    <h4>${forklift ? "ОТВЕТСТВЕННЫЕ ЛИЦА И ВОДИТЕЛИ ВИЛОЧНОГО ПОГРУЗЧИКА" : "ОТВЕТСТВЕННЫЕ ЛИЦА И ОПЕРАТОРЫ КРАН-БАЛКИ"}</h4>
     <div class="gpm-responsible-print-meta">
       <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
       <span><b>Период:</b> ${escapeHtml(journalMonthLabel(month))}</span>
-      <span><b>Кран / кран-балка:</b> ${escapeHtml(item.name)}</span>
+      <span><b>${forklift ? "Вилочный погрузчик" : "Кран / кран-балка"}:</b> ${escapeHtml(item.name)}</span>
       <span><b>Регистрационный №:</b> ${escapeHtml(item.registrationNumber || "—")}</span>
       <span><b>Участок:</b> ${escapeHtml(item.location || "—")}</span>
     </div>
     <table class="gpm-responsible-print-table"><thead><tr><th>Назначение</th><th>Ф.И.О.</th><th>Подпись</th></tr></thead><tbody>
       <tr><td>Ответственный за эксплуатацию</td><td>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</td><td></td></tr>
       <tr><td>Ответственный за исправное состояние</td><td>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</td><td></td></tr>
-      <tr><td>Операторы кран-балки</td><td>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</td><td></td></tr>
+      <tr><td>${forklift ? "Водители погрузчика" : "Операторы кран-балки"}</td><td>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</td><td></td></tr>
     </tbody></table>
     <div class="gpm-responsible-print-footer"><span>Сведения актуальны на дату печати: ${escapeHtml(new Date().toLocaleDateString("ru-RU"))}</span><span>Проверил ____________________</span></div>
   </section>`;
 }
 
 function gpmDetailHtml(item) {
+  const forklift = gpmItemKind(item) === "forklift";
   const status = gpmStatus(item);
   const month = selectedJournalMonth();
   const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.shiftDate || entry.createdAt, month));
@@ -14541,11 +14590,11 @@ function gpmDetailHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Зав. № ${escapeHtml(item.serialNumber || "—")} · Рег. № ${escapeHtml(item.registrationNumber || "—")} · ${escapeHtml(item.capacity || "грузоподъёмность не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift">Печатать ежесменный QR</button><button type="button" class="secondary" data-gpm-print-qr="monthly">Печатать верхний QR Планового ТО</button></div>` : ""}
+      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift">Печатать ежесменный QR</button>${forklift ? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly">Печатать верхний QR Планового ТО</button>`}</div>` : ""}
       <div class="gpm-responsibles">
         <div><span>Эксплуатация</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
         <div><span>Исправное состояние</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>
-        <div><span>Операторы кран-балки</span><strong>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</strong></div>
+        <div><span>${forklift ? "Водители погрузчика" : "Операторы кран-балки"}</span><strong>${escapeHtml(gpmInspectorDisplayNames(item) || "Не назначены")}</strong></div>
       </div>
       <div class="gpm-dates">
         <div><span>Частичное освидетельствование</span><strong>${item.nextPartialDate ? dateHuman(item.nextPartialDate) : "Не назначено"}</strong></div>
@@ -14555,7 +14604,7 @@ function gpmDetailHtml(item) {
           : `<div><span>Плановое ТО</span><strong>${item.nextMaintenanceDate ? dateHuman(item.nextMaintenanceDate) : "Не назначено"}</strong></div>`}
       </div>
       <div class="gpm-work-grid no-print">
-        ${current.gpmScanMode && gpmCanInspect(item, current.gpmScanMode) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране.</span></div>`}
+        ${current.gpmScanMode && gpmCanInspect(item, current.gpmScanMode) ? gpmInspectionForm(item) : `<div class="gpm-qr-only"><strong>Осмотр открывается только QR-кодом</strong><span>${forklift ? "Водителю не нужно искать журнал: отсканируйте QR непосредственно на погрузчике." : "Машинисту не нужно искать журнал: отсканируйте QR непосредственно на кране."}</span></div>`}
       </div>
       ${gpmOfficialShiftJournalHtml(item, inspections)}
       ${gpmResponsiblePrintSheetHtml(item, month)}
@@ -14564,6 +14613,7 @@ function gpmDetailHtml(item) {
 }
 
 function gpmQrInspectionScreenHtml(item) {
+  const forklift = gpmItemKind(item) === "forklift";
   const status = gpmStatus(item);
   if (!gpmCanInspect(item, current.gpmScanMode)) return `
     <section class="gpm-detail gpm-scan-only">
@@ -14571,7 +14621,7 @@ function gpmQrInspectionScreenHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2></div>
         <strong class="gpm-status prohibited">Нет доступа</strong>
       </div>
-      <div class="empty-state"><strong>Вы не назначены оператором этой кран-балки.</strong><br>Обратитесь к администратору для назначения доступа.</div>
+      <div class="empty-state"><strong>${forklift ? "Вы не назначены водителем этого погрузчика." : "Вы не назначены оператором этой кран-балки."}</strong><br>Обратитесь к администратору для назначения доступа.</div>
     </section>`;
   const monthly = current.gpmScanMode === "monthly";
   return `
@@ -14580,11 +14630,22 @@ function gpmQrInspectionScreenHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Грузоподъёмность: ${escapeHtml(item.capacity || "не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${current.gpmInspectionStep === "remark" ? gpmInspectionForm(item) : `
-        <section class="gpm-quick-result">
-          <div class="qr-result-progress">${monthly ? "Верхний QR · ежемесячный обход" : `Ежесменный обход · ${escapeHtml(currentWalkShift().label)}`}</div>
+      ${forklift && current.gpmInspectionStep === "mode" ? `
+        <section class="gpm-quick-result forklift-inspection-mode">
+          <div class="qr-result-progress">Один QR · выберите вид осмотра</div>
           <h2>${escapeHtml(item.name)}</h2>
-          <p class="qr-result-node">Проверка состояния кран-балки</p>
+          <p class="qr-result-node">Карщик или инженер выполняет ежесменный обход и Плановое ТО через этот же QR.</p>
+          <div class="qr-result-actions">
+            ${gpmCanInspect(item, "shift") ? `<button type="button" class="qr-good-button" data-forklift-shift-inspection>Ежесменный обход</button>` : ""}
+            ${gpmCanInspect(item, "monthly") ? `<button type="button" class="qr-remark-button" data-forklift-monthly-inspection>Плановое ТО</button>` : ""}
+            <button type="button" class="qr-rescan-button" data-gpm-rescan>Сканировать заново</button>
+            <button type="button" class="qr-finish-button" data-gpm-finish>Отмена</button>
+          </div>
+        </section>` : current.gpmInspectionStep === "remark" ? gpmInspectionForm(item) : `
+        <section class="gpm-quick-result">
+          <div class="qr-result-progress">${monthly ? (forklift ? "Единый QR · Плановое ТО" : "Верхний QR · ежемесячный обход") : `Ежесменный обход · ${escapeHtml(currentWalkShift().label)}`}</div>
+          <h2>${escapeHtml(item.name)}</h2>
+          <p class="qr-result-node">${forklift ? "Проверка состояния вилочного погрузчика" : "Проверка состояния кран-балки"}</p>
           <div class="qr-result-actions">
             <button type="button" class="qr-good-button" data-gpm-all-good>✓ Всё хорошо</button>
             <button type="button" class="qr-remark-button" data-gpm-open-remark>! Есть замечание</button>
@@ -14608,6 +14669,7 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "", im
   if (inspectionType === "monthly") {
     item.lastMonthlyInspectionDate = shift.date;
     item.nextMonthlyInspectionDate = gpmDatePlusMonth(shift.date);
+    if (gpmItemKind(item) === "forklift") item.nextMaintenanceDate = item.nextMonthlyInspectionDate;
   }
   if (hasDefect) {
     const eventId = `gpm-event:${id}`;
@@ -14665,7 +14727,7 @@ function saveGpmEquipmentForm(form) {
   const inspectorNames = String(data.get("inspectorNames") || "").trim();
   const enteredInspectorNames = inspectorNames.split(/[,;\n]+/).map(value => value.trim()).filter(Boolean);
   const inspectorKeys = enteredInspectorNames.map(name => {
-    const user = gpmUsers().find(entry => String(entry.name || "").trim().localeCompare(name, undefined, { sensitivity: "accent" }) === 0 && entry.role === "operator");
+    const user = gpmUsers().find(entry => String(entry.name || "").trim().localeCompare(name, undefined, { sensitivity: "accent" }) === 0 && (current.gpmJournalKind === "forklift" ? [entry.role, entry.jobRole].includes("forkliftDriver") : entry.role === "operator"));
     return user ? gpmUserKey(user) : "";
   }).filter(Boolean);
   if (sourceEquipmentId) {
@@ -14710,9 +14772,9 @@ function saveGpmEquipmentForm(form) {
 }
 
 function printGpmJournal() {
-  if (!current.selectedGpmId) return window.alert("Сначала выберите ГПМ.");
+  if (!current.selectedGpmId) return window.alert(current.gpmJournalKind === "forklift" ? "Сначала выберите вилочный погрузчик." : "Сначала выберите ГПМ.");
   const item = gpmEquipmentList().find(entry => entry.id === current.selectedGpmId);
-  if (!item) return window.alert("Выбранная кран-балка не найдена.");
+  if (!item) return window.alert(current.gpmJournalKind === "forklift" ? "Выбранный погрузчик не найден." : "Выбранная кран-балка не найдена.");
   const month = selectedJournalMonth();
   const inspections = gpmInspectionRows(item).filter(entry => journalMonthMatches(entry.shiftDate || entry.createdAt, month));
   const popup = window.open("", "_blank", "width=1200,height=900");
@@ -14738,7 +14800,7 @@ function renderGpmJournal() {
   const forkliftJournal = current.gpmJournalKind === "forklift";
   const qrInspectionOpen = Boolean(current.gpmScanMode);
   if (purgeLegacyForkliftGpmJournal()) saveState();
-  ui.subtitle.textContent = qrInspectionOpen ? "Обход крана" : forkliftJournal ? "Журнал вилочных погрузчиков" : "Журнал ГПМ";
+  ui.subtitle.textContent = qrInspectionOpen ? (forkliftJournal ? "Обход вилочного погрузчика" : "Обход крана") : forkliftJournal ? "Журнал вилочных погрузчиков" : "Журнал ГПМ";
   updateGpmBadge();
   const equipment = gpmEquipmentList(forkliftJournal ? "forklift" : "gpm");
   if ((!current.selectedGpmId || !equipment.some(item => item.id === current.selectedGpmId)) && !current.gpmAdminEditorOpen) current.selectedGpmId = equipment[0]?.id || "";
@@ -14789,12 +14851,22 @@ function renderGpmJournal() {
   }));
   ui.gpmPanel.querySelector("[data-gpm-all-good]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
     const inspectionType = current.gpmScanMode === "monthly" ? "monthly" : "shift";
-    saveGpmInspectionResult(selected, inspectionType, GPM_INSPECTION_POINTS.map(() => true), "");
+    saveGpmInspectionResult(selected, inspectionType, gpmInspectionPoints(selected).map(() => true), "");
     show(homeViewForProfile(profile?.role));
     showAppToast("Все пункты отмечены исправными. Вахтенный журнал заполнен автоматически.", "ok");
   }, "Заполняем журнал..."));
   ui.gpmPanel.querySelector("[data-gpm-open-remark]")?.addEventListener("click", () => {
     current.gpmInspectionStep = "remark";
+    renderGpmJournal();
+  });
+  ui.gpmPanel.querySelector("[data-forklift-shift-inspection]")?.addEventListener("click", () => {
+    current.gpmScanMode = "shift";
+    current.gpmInspectionStep = "decision";
+    renderGpmJournal();
+  });
+  ui.gpmPanel.querySelector("[data-forklift-monthly-inspection]")?.addEventListener("click", () => {
+    current.gpmScanMode = "monthly";
+    current.gpmInspectionStep = "decision";
     renderGpmJournal();
   });
   ui.gpmPanel.querySelector("[data-gpm-rescan]")?.addEventListener("click", () => {
@@ -14811,10 +14883,10 @@ function renderGpmJournal() {
   ui.gpmPanel.querySelector("[data-gpm-inspection-form]")?.addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
-    const checked = GPM_INSPECTION_POINTS.map((_, index) => Boolean(form.elements[`point-${index}`]?.checked));
+    const checked = gpmInspectionPoints(selected).map((_, index) => Boolean(form.elements[`point-${index}`]?.checked));
     const defects = form.elements.defects.value.trim();
     const hasDefect = !checked.every(Boolean);
-    if (hasDefect && !defects) return window.alert("Опишите обнаруженную неисправность. Эксплуатация крана будет запрещена до подтверждения инженером.");
+    if (hasDefect && !defects) return window.alert(`Опишите обнаруженную неисправность. Эксплуатация ${gpmItemKind(selected) === "forklift" ? "погрузчика" : "крана"} будет запрещена до подтверждения инженером.`);
     const resolvedDuringInspection = Boolean(form.elements.resolvedDuringInspection?.checked);
     const resolutionComment = String(form.elements.resolutionComment?.value || "").trim();
     if (resolvedDuringInspection && !hasDefect) return window.alert("Сначала отметьте неисправный пункт и опишите замечание.");
@@ -14822,7 +14894,8 @@ function renderGpmJournal() {
     const inspectionType = form.dataset.inspectionType === "monthly" ? "monthly" : "shift";
     saveGpmInspectionResult(selected, inspectionType, checked, defects, { enabled: resolvedDuringInspection, comment: resolutionComment });
     show(homeViewForProfile(profile?.role));
-    showAppToast(resolvedDuringInspection ? "Устранение отправлено инженеру на обязательное подтверждение." : hasDefect ? "Неисправность записана. Эксплуатация крана запрещена." : "Осмотр записан. Кран исправен.", hasDefect && !resolvedDuringInspection ? "error" : "ok");
+    const equipmentLabel = gpmItemKind(selected) === "forklift" ? "Погрузчик" : "Кран";
+    showAppToast(resolvedDuringInspection ? "Устранение отправлено инженеру на обязательное подтверждение." : hasDefect ? `Неисправность записана. Эксплуатация ${equipmentLabel.toLocaleLowerCase("ru-RU")} запрещена.` : `Осмотр записан. ${equipmentLabel} исправен.`, hasDefect && !resolvedDuringInspection ? "error" : "ok");
   });
   ui.gpmPanel.querySelectorAll("[data-gpm-resolve]").forEach(button => button.addEventListener("click", () => {
     const entry = gpmStore().events[button.dataset.gpmResolve];
@@ -14843,7 +14916,7 @@ function renderGpmJournal() {
   ui.gpmPanel.querySelectorAll("[data-gpm-engineer-confirm]").forEach(button => button.addEventListener("click", () => {
     const entry = gpmStore().events[button.dataset.gpmEngineerConfirm];
     if (!entry || !entry.resolutionComment || entry.approvedAt) return;
-    if (!window.confirm("Подтвердить устранение и допустить кран к эксплуатации?")) return;
+    if (!window.confirm(`Подтвердить устранение и допустить ${gpmItemKind(selected) === "forklift" ? "погрузчик" : "кран"} к эксплуатации?`)) return;
     const now = new Date().toISOString();
     entry.approvedAt = now;
     entry.approvedByKey = gpmUserKey();
@@ -15222,7 +15295,11 @@ function directorAnnualEmptyMonths(year = directorAnnualYear()) {
     craneShiftQrDone: 0,
     craneShiftQrPlan: 0,
     craneMonthlyQrDone: 0,
-    craneMonthlyQrPlan: 0
+    craneMonthlyQrPlan: 0,
+    forkliftShiftQrDone: 0,
+    forkliftShiftQrPlan: 0,
+    forkliftMonthlyQrDone: 0,
+    forkliftMonthlyQrPlan: 0
   }));
 }
 
@@ -15324,8 +15401,9 @@ function directorAnnualStats(year = directorAnnualYear()) {
     }
   });
   const today = todayISO();
-  const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв" && !linkedCraneJournalForEquipment(eq));
+  const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв" && !linkedCraneJournalForEquipment(eq) && !linkedForkliftJournalForEquipment(eq));
   const craneEquipment = gpmEquipmentList("gpm");
+  const forkliftEquipment = gpmEquipmentList("forklift");
   const craneInspections = Object.values(gpmStore().inspections || {}).filter(entry => entry && !entry.deleted);
   for (let month = 0; month < 12; month += 1) {
     const days = new Date(year, month + 1, 0).getDate();
@@ -15346,15 +15424,23 @@ function directorAnnualStats(year = directorAnnualYear()) {
         months[month].craneShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
           && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
       });
+      forkliftEquipment.forEach(item => {
+        months[month].forkliftShiftQrPlan += dueShiftKeys.length;
+        months[month].forkliftShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
+          && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
+      });
     }
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     if (monthKey <= today.slice(0, 7)) {
       months[month].craneMonthlyQrPlan += craneEquipment.length;
       months[month].craneMonthlyQrDone += craneEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
         && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
+      months[month].forkliftMonthlyQrPlan += forkliftEquipment.length;
+      months[month].forkliftMonthlyQrDone += forkliftEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
+        && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
     }
-    months[month].qrPlan += months[month].craneShiftQrPlan + months[month].craneMonthlyQrPlan;
-    months[month].qrDone += months[month].craneShiftQrDone + months[month].craneMonthlyQrDone;
+    months[month].qrPlan += months[month].craneShiftQrPlan + months[month].craneMonthlyQrPlan + months[month].forkliftShiftQrPlan + months[month].forkliftMonthlyQrPlan;
+    months[month].qrDone += months[month].craneShiftQrDone + months[month].craneMonthlyQrDone + months[month].forkliftShiftQrDone + months[month].forkliftMonthlyQrDone;
   }
   const workerMap = new Map();
   const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
@@ -15416,7 +15502,11 @@ function directorAnnualStats(year = directorAnnualYear()) {
     craneShiftQrDone: months.reduce((sum, item) => sum + item.craneShiftQrDone, 0),
     craneShiftQrPlan: months.reduce((sum, item) => sum + item.craneShiftQrPlan, 0),
     craneMonthlyQrDone: months.reduce((sum, item) => sum + item.craneMonthlyQrDone, 0),
-    craneMonthlyQrPlan: months.reduce((sum, item) => sum + item.craneMonthlyQrPlan, 0)
+    craneMonthlyQrPlan: months.reduce((sum, item) => sum + item.craneMonthlyQrPlan, 0),
+    forkliftShiftQrDone: months.reduce((sum, item) => sum + item.forkliftShiftQrDone, 0),
+    forkliftShiftQrPlan: months.reduce((sum, item) => sum + item.forkliftShiftQrPlan, 0),
+    forkliftMonthlyQrDone: months.reduce((sum, item) => sum + item.forkliftMonthlyQrDone, 0),
+    forkliftMonthlyQrPlan: months.reduce((sum, item) => sum + item.forkliftMonthlyQrPlan, 0)
   };
   return { year, months, workers, totals };
 }
@@ -16276,6 +16366,8 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         <div><strong>${totalQrPercent}%</strong><span>QR-обходы за год</span></div>
         <div><strong>${stats.totals.craneShiftQrDone}/${stats.totals.craneShiftQrPlan}</strong><span>кран-балки: ежесменные QR</span></div>
         <div><strong>${stats.totals.craneMonthlyQrDone}/${stats.totals.craneMonthlyQrPlan}</strong><span>кран-балки: Плановое ТО</span></div>
+        <div><strong>${stats.totals.forkliftShiftQrDone}/${stats.totals.forkliftShiftQrPlan}</strong><span>погрузчики: ежесменные QR</span></div>
+        <div><strong>${stats.totals.forkliftMonthlyQrDone}/${stats.totals.forkliftMonthlyQrPlan}</strong><span>погрузчики: Плановое ТО</span></div>
       </div>
     </section>
   `;
@@ -18792,9 +18884,9 @@ ui.qrWalkButton?.addEventListener("click", async () => {
       if (!parsed) break;
       if (parsed.kind === "gpm") {
         current.selectedGpmId = parsed.gpmId;
-        current.gpmJournalKind = "gpm";
+        current.gpmJournalKind = gpmItemKind(parsed.item);
         current.gpmScanMode = parsed.mode;
-        current.gpmInspectionStep = "decision";
+        current.gpmInspectionStep = parsed.mode === "forklift" ? "mode" : "decision";
         show("gpm", false);
         break;
       }

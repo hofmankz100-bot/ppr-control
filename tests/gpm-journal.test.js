@@ -21,7 +21,7 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /const url = new URL\(raw, location\.origin\)/);
   assert.match(app, /parseGpmQrValue\(url\.searchParams\.get\("gpmQr"\) \|\| ""\)/);
   assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
-  assert.match(app, /if \(!gpmCanInspect\(item, gpmParsed\.mode\)\)/);
+  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\)\)/);
   assert.match(app, /if \(parsed\.kind === "gpm"\)/);
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
@@ -58,7 +58,7 @@ test("engineers can scan both crane QR modes while electromechanics can scan mon
   assert.match(app, /function gpmCanInspect\(item, mode = ""\)/);
   assert.match(app, /gpmIsAdmin\(\) \|\| gpmIsEngineer\(item\) \|\| gpmIsResponsible\(item\)/);
   assert.match(app, /mode === "monthly" && isElectromechanicRole\(profile\?\.role\)/);
-  assert.match(app, /gpmCanInspect\(item, gpmParsed\.mode\)/);
+  assert.match(app, /gpmCanInspect\(item, scanMode\)/);
 });
 
 test("crane QR defects can be resolved during inspection but still require engineer confirmation", () => {
@@ -121,12 +121,12 @@ test("linked crane beams no longer expose or accept the legacy node workflow", (
   assert.match(app, /function linkedCraneJournalForEquipment\(equipmentOrId\)/);
   assert.match(app, /if \(linkedCraneJournalForEquipment\(eq\)\)/);
   assert.match(app, /Старый QR узла этой кран-балки отключён/);
-  assert.match(app, /if \(modernCraneEquipment\) \{/);
+  assert.match(app, /if \(modernCraneEquipment \|\| modernForkliftEquipment\) \{/);
   assert.match(app, /QR-обходы кран-балок: ежесменные/);
   assert.match(app, /2 QR · вахтенный журнал/);
   assert.match(styles, /\.modern-crane-workflow-cell/);
-  assert.match(app, /const equipmentOperationalPause = modernCraneEquipment \? null : activeOperationalPause/);
-  assert.match(app, /catalogEditorRole\(\) === "editor" && !modernCraneEquipment/);
+  assert.match(app, /const equipmentOperationalPause = modernShiftJournal \? null : activeOperationalPause/);
+  assert.match(app, /catalogEditorRole\(\) === "editor" && !modernShiftJournal/);
 });
 
 test("crane QR opens a quick result screen and expands details only for a remark", () => {
@@ -134,7 +134,7 @@ test("crane QR opens a quick result screen and expands details only for a remark
   assert.match(app, /data-gpm-open-remark/);
   assert.match(app, /current\.gpmInspectionStep === "remark" \? gpmInspectionForm\(item\)/);
   assert.match(app, /function saveGpmInspectionResult\(item, inspectionType, checked, defects = "", immediateResolution = \{\}\)/);
-  assert.match(app, /GPM_INSPECTION_POINTS\.map\(\(\) => true\)/);
+  assert.match(app, /gpmInspectionPoints\(selected\)\.map\(\(\) => true\)/);
   assert.match(app, /Вахтенный журнал заполнен автоматически/);
   assert.match(styles, /\.gpm-quick-result/);
 });
@@ -219,7 +219,7 @@ test("crane journal does not repeat the resolution comment inside every defect r
 });
 
 test("assigned crane operators are printed directly in the shift journal", () => {
-  assert.match(app, /Назначенные операторы кран-балки:/);
+  assert.match(app, /Назначенные операторы кран-балки/);
   assert.match(app, /gpmInspectorDisplayNames\(item\)/);
   assert.match(app, /gpm-official-assigned-operators/);
   assert.match(styles, /gpm-official-assigned-operators\{grid-column:1\/-1/);
@@ -268,7 +268,7 @@ test("GPM deadlines enter the common PPR reminders and open the separate journal
 });
 
 test("crane QR inspections feed PPR deadlines, factory reporting and only monthly electromechanic points", () => {
-  assert.match(app, /type: "monthlyQr", label: "Плановое ТО"/);
+  assert.match(app, /type: gpmItemKind\(item\) === "gpm" \? "monthlyQr"/);
   assert.match(app, /item\.nextMonthlyInspectionDate = gpmDatePlusMonth\(shift\.date\)/);
   assert.match(app, /craneShiftQrDone/);
   assert.match(app, /craneMonthlyQrDone/);
@@ -279,8 +279,8 @@ test("crane QR inspections feed PPR deadlines, factory reporting and only monthl
 });
 
 test("monthly upper QR replaces rather than duplicates planned maintenance for cranes", () => {
-  assert.match(app, /gpmItemKind\(item\) === "gpm"[\s\S]{0,180}\? \[\{ item, type: "monthlyQr"/);
-  assert.match(app, /: \[\{ item, type: "maintenance", label: "Плановое техническое обслуживание"/);
+  assert.match(app, /type: gpmItemKind\(item\) === "gpm" \? "monthlyQr" : "forkliftMonthlyQr"/);
+  assert.match(app, /label: "Плановое ТО", date: gpmMonthlyDueDate\(item\)/);
   assert.match(app, /journalKind === "gpm"[\s\S]{0,220}Следующее Плановое ТО[\s\S]{0,220}: `<label><span>Следующее плановое ТО/);
 });
 
@@ -319,4 +319,26 @@ test("forklifts use a separate clean journal and legacy GPM records are removed"
   assert.match(app, /delete store\.inspections\[id\]/);
   assert.match(app, /delete store\.events\[id\]/);
   assert.match(app, /equipmentKind: current\.gpmJournalKind === "forklift"/);
+});
+
+test("forklifts use one QR for shift inspection and monthly maintenance", () => {
+  assert.match(app, /const FORKLIFT_INSPECTION_POINTS = \[/);
+  for (const point of ["Вилы, каретка", "Мачта, грузовые цепи", "Рабочая и стояночная тормозные системы", "Гидросистема", "Ремень безопасности", "Огнетушитель"]) {
+    assert.match(app, new RegExp(point));
+  }
+  assert.match(app, /gpmItemKind\(item\) === "forklift" \? FORKLIFT_INSPECTION_POINTS/);
+  assert.match(app, /Один QR · выберите вид осмотра/);
+  assert.match(app, /data-forklift-shift-inspection/);
+  assert.match(app, /data-forklift-monthly-inspection/);
+  assert.match(app, /ПЛАНОВОЕ ТО ПОГРУЗЧИКА · КАРЩИК \/ ИНЖЕНЕР · ЕДИНЫЙ QR/);
+  assert.match(app, /\["forklift", "shift", "monthly"\]\.includes\(mode\)/);
+  assert.match(app, /Карщик или инженер выполняет ежесменный обход и Плановое ТО через этот же QR/);
+  assert.match(app, /forklift \? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly"/);
+  assert.match(app, /if \(gpmItemKind\(item\) === "forklift"\) item\.nextMaintenanceDate = item\.nextMonthlyInspectionDate/);
+  assert.match(app, /linkedForkliftJournalForEquipment/);
+  assert.match(app, /1 QR · вахтенный журнал/);
+  assert.match(app, /forkliftShiftQrDone/);
+  assert.match(app, /forkliftMonthlyQrDone/);
+  assert.match(app, /погрузчики: Плановое ТО/);
+  assert.match(app, /!linkedForkliftJournalForEquipment\(eq\)/);
 });
