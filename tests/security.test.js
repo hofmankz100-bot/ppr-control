@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v558-ios-whatsapp-pdf";
+const APP_VERSION = "v559-clean-journal-output";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v558-ios-whatsapp-pdf";
+const APP_VERSION = "v559-clean-journal-output";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18816,7 +18816,9 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
   }
   let pages = "";
   if (Number.isInteger(selectedSheetIndex)) {
-    pages = `<section class="print-sheet">${sheets[0].innerHTML}</section>`;
+    const selected = sheets[0].cloneNode(true);
+    selected.querySelectorAll(".no-print, .aggregate-sheet-print").forEach(node => node.remove());
+    pages = `<section class="print-sheet">${selected.innerHTML}</section>`;
   } else {
     const continuous = allSheets[0].cloneNode(true);
     const continuousBody = continuous.querySelector("tbody");
@@ -18825,6 +18827,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
     });
     const sheetNumber = continuous.querySelector(".aggregate-sheet-head span");
     if (sheetNumber) sheetNumber.textContent = "Автоматическая разбивка по заполнению страниц";
+    continuous.querySelectorAll(".no-print, .aggregate-sheet-print").forEach(node => node.remove());
     pages = `<section class="print-sheet continuous">${continuous.innerHTML}</section>`;
   }
   popup.document.write(`<!doctype html>
@@ -18841,7 +18844,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
           .print-sheet:last-of-type { break-after: auto; page-break-after: auto; }
           .print-sheet.continuous { min-height: 0; break-after: auto; page-break-after: auto; }
           .aggregate-sheet-head { display: flex; justify-content: space-between; gap: 8mm; margin: 0 0 3mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; font-size: 10pt; }
-          .aggregate-sheet-print { display: none !important; }
+          .aggregate-sheet-print, .no-print, .aggregate-correction { display: none !important; }
           .aggregate-journal-table-wrap { width: 100%; overflow: visible; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           thead { display: table-header-group; }
