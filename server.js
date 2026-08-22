@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v559-clean-journal-output";
+const SERVER_VERSION = "v560-restore-press-2400-nodes";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -86,6 +86,23 @@ const GAS_QR_NODES = Object.freeze([
   "Газорегуляторный пункт (ГРП) №10",
   "Газорегуляторный пункт (ГРП) №11",
   "ПСК"
+]);
+const PRESS_2400_EQUIPMENT_ID = "1";
+// Exact production order recovered from the 2026-08-10 database backup.
+// The order is significant because existing checks and printed QR codes use node indexes.
+const PRESS_2400_HISTORICAL_NODES = Object.freeze([
+  "Пресс гидравлический станция и цилиндры",
+  "Печь загатовка и Робот",
+  "Контейнер и Прессштемпель (магнит размер,темп контейнера,латун центровка))",
+  "Кассета матрицы и Конвейнер , Нож",
+  "Пульт управление кнопки (пила,пресс,печь заг)",
+  "Печь матрица ,Толкатель матрицы, Кран-балка матрицы",
+  "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)",
+  "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)",
+  "Горячий пила и Пуллер A.B",
+  "Термичка 1",
+  "Термичка 2",
+  "Финишный пила (экран управление,лапа,размер проф)"
 ]);
 const loginAttempts = new Map();
 const contractorAttendanceAttempts = new Map();
@@ -374,6 +391,32 @@ function restoreGasQrCatalog(db) {
   item.updatedAt = now;
 }
 
+function restorePress2400Catalog(db) {
+  const item = db?.catalog?.equipment?.[PRESS_2400_EQUIPMENT_ID];
+  if (!item || !Array.isArray(item.nodes)) return false;
+  if (item.press2400RestoreVersion === "production-backup-20260810-v1") return false;
+
+  const currentNames = item.nodes.map(normalizedCatalogNodeName);
+  const historicalNames = PRESS_2400_HISTORICAL_NODES.map(normalizedCatalogNodeName);
+  const completeAndOrdered = currentNames.length === historicalNames.length
+    && currentNames.every((name, index) => name === historicalNames[index]);
+  if (completeAndOrdered) {
+    item.press2400RestoreVersion = "production-backup-20260810-v1";
+    return false;
+  }
+
+  const now = new Date().toISOString();
+  item.nodes = [...PRESS_2400_HISTORICAL_NODES];
+  item.removedNodes = (Array.isArray(item.removedNodes) ? item.removedNodes : [])
+    .filter(entry => !PRESS_2400_HISTORICAL_NODES.some(name => (
+      normalizedCatalogNodeName(name) === normalizedCatalogNodeName(entry?.name)
+    )));
+  item.nodeHistoryRestoredAt = now;
+  item.press2400RestoreVersion = "production-backup-20260810-v1";
+  item.updatedAt = now;
+  return true;
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -430,6 +473,7 @@ function normalizeDb(db) {
   db.auditHistory ||= [];
   repairCatalogNodeHistory(db);
   restoreGasQrCatalog(db);
+  restorePress2400Catalog(db);
   db.systemBroadcasts ||= [];
   if (!db.systemBroadcasts.some(item => item.id === "admin-stages-18-25-complete-v1")) {
     db.systemBroadcasts.unshift({

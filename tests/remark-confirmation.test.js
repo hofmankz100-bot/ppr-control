@@ -722,6 +722,9 @@ test("SHGRP QR nodes are restored in their historical index order", () => {
   assert.match(serverSource, /"Газорегуляторный пункт \(ГРП\) №11"/);
   assert.match(serverSource, /"ПСК"/);
   assert.match(serverSource, /restoreGasQrCatalog\(db\)/);
+  assert.match(serverSource, /function restorePress2400Catalog\(db\)/);
+  assert.match(serverSource, /restorePress2400Catalog\(db\)/);
+  assert.match(serverSource, /production-backup-20260810-v1/);
 });
 
 test("admin can rotate one node QR without changing other node indexes", () => {
