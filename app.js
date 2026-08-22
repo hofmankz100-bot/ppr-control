@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v532-monthly-rating";
+const APP_VERSION = "v533-rating-without-forklift-drivers";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
@@ -15643,6 +15643,10 @@ function workerRatingKey(role, name) {
   return `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
 }
 
+function isWorkerRatingRole(role) {
+  return isResolutionExecutorRole(role) && canonicalWorkerRole(role) !== "forkliftDriver";
+}
+
 function workerRatingExcluded(role, name) {
   const key = workerRatingKey(role, name);
   return (state.adminConfig?.excludedRatingWorkers || []).some(item => String(item?.key || "") === key);
@@ -15724,7 +15728,7 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
     return parsed?.year === year && (monthIndex === null || parsed.month === monthIndex);
   };
   const add = (role, name, value, details = {}) => {
-    if (!isResolutionExecutorRole(role)) return;
+    if (!isWorkerRatingRole(role)) return;
     const cleanName = String(name || "").trim();
     if (!cleanName || workerRatingExcluded(role, cleanName)) return;
     const key = workerRatingKey(role, cleanName);
@@ -15750,7 +15754,7 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
         const registered = usersByResolutionKey.get(participant.key || resolutionUserKey(participant));
         return registered || participant;
       })
-      .filter(participant => isResolutionExecutorRole(participant?.role) && String(participant?.name || "").trim());
+      .filter(participant => isWorkerRatingRole(participant?.role) && String(participant?.name || "").trim());
     if (normalized.length) return [...new Map(normalized.map(participant => [workerRatingKey(participant.role, participant.name), participant])).values()];
     return [{ role: event.resolvedByRole, name: event.resolvedByName }];
   };
@@ -15993,7 +15997,7 @@ function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7
   };
   const workers = new Map();
   const ensureWorker = (role, name) => {
-    if (!isResolutionExecutorRole(role)) return null;
+    if (!isWorkerRatingRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
     if (workerRatingExcluded(role, cleanName)) return null;
     const key = workerRatingKey(role, cleanName);
@@ -16002,7 +16006,7 @@ function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7
   };
 
   loadUsers()
-    .filter(user => isResolutionExecutorRole(user.role))
+    .filter(user => isWorkerRatingRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
 
   const resolvedRemarkKeys = new Set();
@@ -16033,7 +16037,7 @@ function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7
         if (event.type !== "install") worker.repairDurations.push(event.durationMs);
       }
     }
-    if (event.open && inSelectedMonth(event.createdAt) && isResolutionExecutorRole(event.authorRole)) {
+    if (event.open && inSelectedMonth(event.createdAt) && isWorkerRatingRole(event.authorRole)) {
       if (event.type === "remark" && event.resolutionKey) {
         if (overdueRemarkKeys.has(event.resolutionKey)) return;
         overdueRemarkKeys.add(event.resolutionKey);

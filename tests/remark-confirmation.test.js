@@ -843,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v532-monthly-rating/);
-  assert.match(html, /styles\.css\?v=v532-monthly-rating/);
-  assert.match(serviceWorker, /app\.js\?v=v532-monthly-rating/);
+  assert.match(html, /app\.js\?v=v533-rating-without-forklift-drivers/);
+  assert.match(html, /styles\.css\?v=v533-rating-without-forklift-drivers/);
+  assert.match(serviceWorker, /app\.js\?v=v533-rating-without-forklift-drivers/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1750,6 +1750,14 @@ test("worker rating is calculated and displayed separately for each calendar mon
   assert.match(appSource, /workerRatingPointMap\(year, monthIndex\)/);
   assert.match(appSource, /at\.month !== monthIndex/);
   assert.match(appSource, /current\.ratingMonth = ui\.workerRatingMonth\.value/);
+});
+
+test("forklift drivers never participate in the employee rating", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /function isWorkerRatingRole\(role\)/);
+  assert.match(appSource, /canonicalWorkerRole\(role\) !== "forkliftDriver"/);
+  assert.match(appSource, /\.filter\(user => isWorkerRatingRole\(user\.role\)\)/);
+  assert.match(appSource, /if \(!isWorkerRatingRole\(role\)\) return/);
 });
 
 test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
