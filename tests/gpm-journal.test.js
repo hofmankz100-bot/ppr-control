@@ -267,7 +267,7 @@ test("GPM deadlines enter the common PPR reminders and open the separate journal
   assert.match(app, /show\("gpm"\)/);
 });
 
-test("crane QR inspections feed PPR deadlines, factory reporting and only monthly electromechanic points", () => {
+test("crane shift QR stays in control reporting but only monthly QR affects the factory index and points", () => {
   assert.match(app, /type: "monthlyQr", label: "Плановое ТО"/);
   assert.match(app, /item\.nextMonthlyInspectionDate = gpmDatePlusMonth\(shift\.date\)/);
   assert.match(app, /craneShiftQrDone/);
@@ -276,6 +276,9 @@ test("crane QR inspections feed PPR deadlines, factory reporting and only monthl
   assert.match(app, /inspection\?\.inspectionType !== "monthly"/);
   assert.match(app, /!isElectromechanicRole\(inspection\.authorRole\)/);
   assert.doesNotMatch(app, /inspection\?\.inspectionType === "shift"[\s\S]{0,500}WORK_RATING_POINTS/);
+  assert.match(app, /qrPlan \+= months\[month\]\.craneMonthlyQrPlan \+ months\[month\]\.forkliftShiftQrPlan/);
+  assert.match(app, /ежесменные QR · контроль, без индекса/);
+  assert.doesNotMatch(app, /qrPlan \+= months\[month\]\.craneShiftQrPlan/);
 });
 
 test("monthly upper QR replaces rather than duplicates planned maintenance for cranes", () => {

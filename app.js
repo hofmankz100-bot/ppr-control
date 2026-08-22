@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v566-installed-parts-mobile-swipes";
+const APP_VERSION = "v567-crane-shift-qr-outside-index";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15906,8 +15906,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
       months[month].forkliftMonthlyQrDone += forkliftEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
         && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
     }
-    months[month].qrPlan += months[month].craneShiftQrPlan + months[month].craneMonthlyQrPlan + months[month].forkliftShiftQrPlan + months[month].forkliftMonthlyQrPlan;
-    months[month].qrDone += months[month].craneShiftQrDone + months[month].craneMonthlyQrDone + months[month].forkliftShiftQrDone + months[month].forkliftMonthlyQrDone;
+    // Ежесменный QR кран-балки контролируется и хранится в журнале,
+    // но операторский обход не влияет на индекс состояния завода.
+    months[month].qrPlan += months[month].craneMonthlyQrPlan + months[month].forkliftShiftQrPlan + months[month].forkliftMonthlyQrPlan;
+    months[month].qrDone += months[month].craneMonthlyQrDone + months[month].forkliftShiftQrDone + months[month].forkliftMonthlyQrDone;
   }
   const workerMap = new Map();
   const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
@@ -16795,7 +16797,7 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         <div><strong>${stats.totals.repairsClosed}/${stats.totals.repairsCreated}</strong><span>закрыто / создано</span></div>
         <div><strong>${totalOpen}</strong><span>незакрытых работ</span></div>
         <div><strong>${totalQrPercent}%</strong><span>QR-обходы за год</span></div>
-        <div><strong>${stats.totals.craneShiftQrDone}/${stats.totals.craneShiftQrPlan}</strong><span>кран-балки: ежесменные QR</span></div>
+        <div><strong>${stats.totals.craneShiftQrDone}/${stats.totals.craneShiftQrPlan}</strong><span>кран-балки: ежесменные QR · контроль, без индекса</span></div>
         <div><strong>${stats.totals.craneMonthlyQrDone}/${stats.totals.craneMonthlyQrPlan}</strong><span>кран-балки: Плановое ТО</span></div>
         <div><strong>${stats.totals.forkliftShiftQrDone}/${stats.totals.forkliftShiftQrPlan}</strong><span>погрузчики: ежесменные QR</span></div>
         <div><strong>${stats.totals.forkliftMonthlyQrDone}/${stats.totals.forkliftMonthlyQrPlan}</strong><span>погрузчики: Плановое ТО</span></div>
