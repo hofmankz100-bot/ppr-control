@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v555-safe-pdf-filenames";
+const APP_VERSION = "v556-named-journal-pdfs";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4368,7 +4368,10 @@ function finalizeJournalPopup(popup, requestedTitle = "") {
     return;
   }
   const doc = popup.document;
-  const title = requestedTitle || doc.title || "Журнал ППР Контроль";
+  const printedHeading = String(doc.querySelector("h1, h2, .aggregate-sheet-head strong")?.textContent || "").replace(/\s+/g, " ").trim();
+  const baseTitle = requestedTitle || printedHeading || doc.title || "Журнал ППР Контроль";
+  const month = typeof selectedJournalMonth === "function" ? selectedJournalMonth() : todayISO().slice(0, 7);
+  const title = baseTitle.includes(month) ? baseTitle : `${baseTitle} ${month}`;
   doc.querySelectorAll("script").forEach(script => {
     if (/\bprint\s*\(/.test(script.textContent || "")) script.remove();
   });
