@@ -9996,7 +9996,6 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     if (!item) return;
     visibleCommentEntries(item).forEach((entry, entryIndex) => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
-      if (entry.closedWithoutScore) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
         recordKey,
@@ -10018,6 +10017,10 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         resolutionParticipants: resolutionParticipants(entry),
         resolutionCompletedParticipants: completedResolutionParticipants(entry),
         resolvedComment: entry.resolvedComment || "",
+        closedWithoutScore: Boolean(entry.closedWithoutScore),
+        closedWithoutScoreAt: entry.closedWithoutScoreAt || entry.resolvedAt || "",
+        closedWithoutScoreByName: entry.closedWithoutScoreByName || entry.confirmedByName || "",
+        closedWithoutScoreByRole: entry.closedWithoutScoreByRole || entry.confirmedByRole || "",
         correctedDefectText: entry.correctedDefectText || "",
         correctedResolvedComment: entry.correctedResolvedComment || "",
         correctionReason: entry.correctionReason || "",
@@ -18360,6 +18363,10 @@ function renderAggregateJournal() {
             const resolver = resolutionParticipantsText(item, resolverFallback);
             const confirmerRole = ROLE_ACCESS[item.confirmedByRole]?.label || item.confirmedByRole || "";
             const confirmer = item.confirmedByName ? `${item.confirmedByName}${confirmerRole ? ` (${confirmerRole})` : ""}` : confirmerRole;
+            const noScoreCloserRole = ROLE_ACCESS[item.closedWithoutScoreByRole]?.label || item.closedWithoutScoreByRole || "";
+            const noScoreCloser = item.closedWithoutScoreByName
+              ? `${item.closedWithoutScoreByName}${noScoreCloserRole ? ` (${noScoreCloserRole})` : ""}`
+              : noScoreCloserRole;
             const parts = item.kind === "Замечание" ? installedPartsForRemark(remarkLinkKey(item.equipmentId, item.nodeIndex, item.date)) : [];
             const partNames = parts.map(part => part.name).join("\n");
             const partQty = parts.map(part => `${part.qty}`).join("\n");
@@ -18372,14 +18379,18 @@ function renderAggregateJournal() {
                 <td>${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
                 <td>${escapeHtml(author)}</td>
                 <td>${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
-                <td>${escapeHtml(partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
+                <td>${escapeHtml(item.closedWithoutScore
+                  ? `Закрыто без баллов. Причина: ${item.resolvedComment || "не указана"}`
+                  : partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
                 <td>${escapeHtml(partNames || "")}</td>
                 <td>${escapeHtml(partQty || "")}</td>
                 <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td>
-                  ${escapeHtml(resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
+                  ${escapeHtml(item.closedWithoutScore
+                    ? `Закрыл без баллов: ${noScoreCloser || "ответственный"}${item.closedWithoutScoreAt ? ` · ${dateTimeHuman(item.closedWithoutScoreAt)}` : ""}`
+                    : resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
                   ${item.commentEditedByName ? `<small class="aggregate-comment-editor">Комментарий исправил: ${escapeHtml(item.commentEditedByName)} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}</small>` : ""}
-                  ${canCorrectAggregateJournal() && item.kind === "Замечание" && item.resolved ? `
+                  ${canCorrectAggregateJournal() && item.kind === "Замечание" && item.resolved && !item.closedWithoutScore ? `
                     <details class="aggregate-correction no-print">
                       <summary>Исправить запись</summary>
                       <label>Исправленный комментарий замечания<textarea data-correction-defect>${escapeHtml(item.correctedDefectText || item.text || "")}</textarea></label>

@@ -7637,6 +7637,7 @@ async function handleApi(req, res, pathname, url) {
         remark.closedWithoutScoreAt = now;
         remark.closedWithoutScoreByKey = actor.key;
         remark.closedWithoutScoreByName = actor.name;
+        remark.closedWithoutScoreByRole = actor.role;
         remark.resolutionPendingConfirmation = false;
         remark.resolutionParticipants = [];
         remark.resolutionCompletedParticipants = [];

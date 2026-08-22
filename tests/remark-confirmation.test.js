@@ -1971,10 +1971,15 @@ test("order journal is separate, permission controlled, and scores every selecte
   assert.doesNotMatch(clientSource, /window\.open\("", "_blank", "noopener,noreferrer"\)/);
 });
 
-test("aggregate journal corrections reassign the scorer and exclude no-score closures", () => {
+test("aggregate journal corrections reassign the scorer and preserve no-score closures", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(clientSource, /if \(entry\.closedWithoutScore\) return/);
+  assert.doesNotMatch(clientSource, /if \(entry\.closedWithoutScore\) return/);
+  assert.match(clientSource, /closedWithoutScore: Boolean\(entry\.closedWithoutScore\)/);
+  assert.match(clientSource, /Закрыто без баллов\. Причина:/);
+  assert.match(clientSource, /Закрыл без баллов:/);
+  assert.match(clientSource, /item\.resolved && !item\.closedWithoutScore/);
+  assert.match(serverSource, /remark\.closedWithoutScoreByRole = actor\.role/);
   assert.match(clientSource, /data-correct-resolved-remark/);
   assert.match(clientSource, /Комментарий исправил/);
   assert.match(serverSource, /action === "admin-edit-resolved"/);
