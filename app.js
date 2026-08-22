@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v536-weekday-crane-maintenance";
+const APP_VERSION = "v537-single-node-qr-print";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11928,7 +11928,7 @@ function renderNodeWalkthrough(eq) {
             <input class="node-name-editor" data-node-name-list="${index}" type="text" value="${escapeHtml(nodeName)}">
             <button type="button" data-save-node-name="${index}">Сохранить</button>
             <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
-            ${catalogEditorRole() === "editor" ? `<button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button>` : ""}
+            ${catalogEditorRole() === "editor" ? `<button type="button" class="secondary" data-print-node-qr="${index}">Печатать этот QR</button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button>` : ""}
             ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
             ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `
               <button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">
@@ -11958,6 +11958,7 @@ function renderNodeWalkthrough(eq) {
         await rotateAndPrintNodeQr(eq.id, index);
         renderNodeWalkthrough(equipmentById(eq.id));
       }, "Обновляем..."));
+      row.querySelector("[data-print-node-qr]")?.addEventListener("click", () => printNodeQrCode(eq, index));
       row.querySelector("[data-delete-node]")?.addEventListener("click", async event => {
         if (!canManageCatalogStructure(eq)) return;
         if (!window.confirm(`Точно удалить узел "${nodeName}"? После удаления QR-коды следующих узлов нужно распечатать заново.`)) return;

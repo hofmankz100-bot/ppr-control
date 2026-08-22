@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v536-weekday-crane-maintenance";
+const APP_VERSION = "v537-single-node-qr-print";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

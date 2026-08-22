@@ -735,6 +735,14 @@ test("admin can rotate one node QR without changing other node indexes", () => {
   assert.match(serverSource, /error: "node_qr_replaced"/);
 });
 
+test("admin can print one existing node QR without rotating it", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /data-print-node-qr=/);
+  assert.match(client, /Печатать этот QR/);
+  assert.match(client, /querySelector\("\[data-print-node-qr\]"\)/);
+  assert.match(client, /printNodeQrCode\(eq, index\)/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -843,9 +851,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v536-weekday-crane-maintenance/);
-  assert.match(html, /styles\.css\?v=v536-weekday-crane-maintenance/);
-  assert.match(serviceWorker, /app\.js\?v=v536-weekday-crane-maintenance/);
+  assert.match(html, /app\.js\?v=v537-single-node-qr-print/);
+  assert.match(html, /styles\.css\?v=v537-single-node-qr-print/);
+  assert.match(serviceWorker, /app\.js\?v=v537-single-node-qr-print/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
