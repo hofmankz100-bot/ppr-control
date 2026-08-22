@@ -748,6 +748,16 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /\.actions\{display:none\}/);
 });
 
+test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /function finalizeJournalPopup\(popup, requestedTitle = ""\)/);
+  assert.match(client, /data-mobile-journal-share>Отправить PDF/);
+  assert.match(client, /popup\.navigator\.share/);
+  assert.match(client, /popup\.document\.close\(\);/);
+  assert.match(client, /finalizeJournalPopup\(popup\)/);
+  assert.match(client, /finalizeJournalPopup\(win\)/);
+});
+
 test("new catalog nodes are registered atomically with a permanent QR identity", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
@@ -903,9 +913,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v553-mobile-qr-view/);
-  assert.match(html, /styles\.css\?v=v553-mobile-qr-view/);
-  assert.match(serviceWorker, /app\.js\?v=v553-mobile-qr-view/);
+  assert.match(html, /app\.js\?v=v554-mobile-journal-share/);
+  assert.match(html, /styles\.css\?v=v554-mobile-journal-share/);
+  assert.match(serviceWorker, /app\.js\?v=v554-mobile-journal-share/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

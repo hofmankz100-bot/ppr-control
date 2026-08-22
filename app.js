@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v553-mobile-qr-view";
+const APP_VERSION = "v554-mobile-journal-share";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4347,6 +4347,102 @@ function printCurrentDocument(title = "ППР Контроль") {
   window.setTimeout(cleanup, 1500);
 }
 
+function journalPdfFileName(title = "Журнал") {
+  const safe = String(title || "Журнал").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  return `${safe || "Журнал"}.pdf`;
+}
+
+function finalizeJournalPopup(popup, requestedTitle = "") {
+  if (!popup) return;
+  if (!mobilePdfMode()) {
+    popup.document.close();
+    return;
+  }
+  const doc = popup.document;
+  const title = requestedTitle || doc.title || "Журнал ППР Контроль";
+  doc.querySelectorAll("script").forEach(script => {
+    if (/\bprint\s*\(/.test(script.textContent || "")) script.remove();
+  });
+  if (!doc.querySelector('meta[name="viewport"]')) {
+    const viewport = doc.createElement("meta");
+    viewport.name = "viewport";
+    viewport.content = "width=device-width,initial-scale=1";
+    doc.head.append(viewport);
+  }
+  const style = doc.createElement("style");
+  style.textContent = `.mobile-journal-actions{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));display:grid;grid-template-columns:56px 1fr;gap:10px;z-index:99999}.mobile-journal-actions button{min-height:54px;border:0;border-radius:16px;background:#14324a;color:#fff;font:800 17px Arial;box-shadow:0 6px 22px rgba(15,35,50,.3)}.mobile-journal-actions [data-mobile-journal-back]{border-radius:50%;font-size:28px}.mobile-journal-actions [data-mobile-journal-share]{background:#14833b}.mobile-journal-pdf-capture .mobile-journal-actions,.mobile-journal-pdf-capture .actions,.mobile-journal-pdf-capture .no-print{display:none!important}@media print{.mobile-journal-actions{display:none!important}}body{padding-bottom:86px!important}`;
+  doc.head.append(style);
+  const actions = doc.createElement("div");
+  actions.className = "mobile-journal-actions";
+  actions.innerHTML = `<button type="button" data-mobile-journal-back aria-label="Назад">‹</button><button type="button" data-mobile-journal-share>Отправить PDF</button>`;
+  doc.body.prepend(actions);
+  actions.querySelector("[data-mobile-journal-back]").addEventListener("click", () => popup.close());
+  const library = doc.createElement("script");
+  library.src = `${location.origin}/node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=${APP_VERSION}`;
+  doc.head.append(library);
+  actions.querySelector("[data-mobile-journal-share]").addEventListener("click", async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Готовим PDF…";
+    try {
+      for (let attempt = 0; attempt < 40 && typeof popup.html2pdf !== "function"; attempt += 1) await new Promise(resolve => setTimeout(resolve, 100));
+      if (typeof popup.html2pdf !== "function") throw new Error("pdf_library_unavailable");
+      doc.body.classList.add("mobile-journal-pdf-capture");
+      const landscape = [...doc.styleSheets].some(sheet => {
+        try { return [...sheet.cssRules].some(rule => /landscape/i.test(rule.cssText || "")); } catch { return false; }
+      });
+      const blob = await popup.html2pdf().set({
+        margin: 5,
+        image: { type: "jpeg", quality: 0.96 },
+        html2canvas: { scale: 1.7, useCORS: true, logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: landscape ? "landscape" : "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
+      }).from(doc.body).outputPdf("blob");
+      const file = new File([blob], journalPdfFileName(title), { type: "application/pdf" });
+      if (popup.navigator.share && popup.navigator.canShare?.({ files: [file] })) {
+        await popup.navigator.share({ title, text: title, files: [file] });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = doc.createElement("a");
+        link.href = url;
+        link.download = file.name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        popup.alert("PDF сохранён. Теперь прикрепите его в WhatsApp как документ.");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") popup.alert("Не удалось подготовить PDF. Повторите ещё раз.");
+    } finally {
+      doc.body.classList.remove("mobile-journal-pdf-capture");
+      button.disabled = false;
+      button.textContent = "Отправить PDF";
+    }
+  });
+  doc.close();
+}
+
+function refreshMobileJournalActionLabels(root = document) {
+  if (!mobilePdfMode()) return;
+  root.querySelectorAll?.("button").forEach(button => {
+    const label = String(button.textContent || "").replace(/\s+/g, " ").trim();
+    if (!/^(Печатать|Печать)/i.test(label) || /\bQR\b/i.test(label)) return;
+    if (!button.dataset.desktopPrintLabel) button.dataset.desktopPrintLabel = label;
+    button.textContent = "Отправить PDF";
+  });
+}
+
+let mobileJournalLabelRefreshPending = false;
+const mobileJournalLabelObserver = new MutationObserver(() => {
+  if (!mobilePdfMode() || mobileJournalLabelRefreshPending) return;
+  mobileJournalLabelRefreshPending = true;
+  requestAnimationFrame(() => {
+    mobileJournalLabelRefreshPending = false;
+    refreshMobileJournalActionLabels();
+  });
+});
+mobileJournalLabelObserver.observe(document.body, { childList: true, subtree: true });
+refreshMobileJournalActionLabels();
+
 function nodeQrPayload(equipmentId, nodeIndex) {
   const token = String(equipmentById(Number(equipmentId))?.qrTokens?.[Number(nodeIndex)] || "").trim();
   return `PPRQR|NODE|${Number(equipmentId)}|${Number(nodeIndex)}${token ? `|${token}` : ""}`;
@@ -7353,7 +7449,7 @@ function printTmcArchiveSheet(requests = []) {
       </body>
     </html>
   `);
-  win.document.close();
+  finalizeJournalPopup(win);
   win.focus();
   win.print();
 }
@@ -8578,7 +8674,7 @@ function printDowntimeJournal(area, pageNumbers = []) {
     </head><body>${pages}<div class="actions"><button onclick="window.print()">Печатать выбранные листы</button></div>
       <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script>
     </body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function openDowntimePrintDialog(area, currentPage = 1) {
@@ -9863,7 +9959,7 @@ function printWeldingJournal(month = todayISO().slice(0, 7)) {
   const company = state.adminConfig?.companyName || "Организация";
   const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Все исполнители</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(productionParticipants(item,"welding").map(person => `${person.name}${person.stamp ? ` · клеймо ${person.stamp}` : ""}${person.certificate ? ` · уд. ${person.certificate}` : ""}`).join("\n") || "—")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
-  win.document.close();
+  finalizeJournalPopup(win);
 }
 
 function saveTurningRecord(record) {
@@ -9941,7 +10037,7 @@ function renderTurningJournal() {
   bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||todayISO().slice(0,7);renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
 }
 
-function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); win.document.close(); }
+function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);
@@ -10262,7 +10358,7 @@ function openInstalledPartJournal(eq) {
       const popup = window.open("", "_blank", "width=1200,height=900");
       if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
       popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал установленных запчастей</title><style>@page{size:A4 portrait;margin:10mm}body{font-family:Arial;color:#111}.installed-part-journal-head h2{margin:0}.installed-part-entry{border:1px solid #222;padding:8px;margin:8px 0;break-inside:avoid}.installed-part-entry header{display:flex;justify-content:space-between;border-bottom:1px solid #999}.installed-part-entry p{font-size:11px}.installed-part-photos{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.installed-part-photos img{width:100%;max-height:95mm;object-fit:contain}</style></head><body>${installedPartJournalHtml(eq, month, true)}<script>addEventListener('load',()=>setTimeout(()=>print(),500))<\/script></body></html>`);
-      popup.document.close();
+  finalizeJournalPopup(popup);
     });
   };
   render(); document.body.append(overlay);
@@ -10904,7 +11000,7 @@ function printFilledJournalDocument(title, tableHtml) {
     button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:11px 22px;font-weight:800}
     @media print{.actions{display:none}}
   </style></head><body><h1>${escapeHtml(title)}</h1>${tableHtml}<div class="actions"><button onclick="window.print()">Печатать</button></div><script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function gasSectionBDisplayLines(value, stripShift = false) {
@@ -11023,7 +11119,7 @@ function printGasJournalSections(sections = ["A", "B"], includeBlank = false) {
   const popup = window.open("", "_blank");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Агрегатный журнал ШГРП</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{min-height:194mm;display:flex;flex-direction:column;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}.official-head{border:2px solid #000;border-bottom:0;padding:3mm}.official-head>div{display:flex;justify-content:space-between;font-size:9pt}.official-head h1{text-align:center;margin:2mm 0 0;font-size:14pt}.official-head p{text-align:center;margin:1mm 0 0;font-size:9pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7pt;vertical-align:top;overflow-wrap:anywhere}th{background:#eee;text-align:center}.sheet[data-section="A"] td{height:11mm;vertical-align:middle}.sheet[data-section="B"] td{height:25mm}.gas-print-lines{display:grid;gap:.8mm}.signature{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:3mm;margin-top:auto;font-size:8pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${printable.map((item,index)=>`<section class="sheet" data-section="${item.section}"><header class="official-head"><div><strong>ППР КОНТРОЛЬ · ШГРП / ГРП / ГРУ</strong><span>Лист ${index+1} из ${printable.length}</span></div><h1>${escapeHtml(item.title)}</h1><p>Период: ${escapeHtml(item.period)} · Агрегатный журнал эксплуатации, технического обслуживания и обходов</p></header>${item.table}<footer class="signature"><span>Ответственный: ${escapeHtml(item.responsible || "____________________")}</span><span>Проверил ____________________</span><span>Дата ____________________</span></footer></section>`).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function printGasJournalSheet(section) {
@@ -12882,7 +12978,7 @@ function printOrderJournal(orders = []) {
   const popup = window.open("", "_blank");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал распоряжений</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.order-print-sheet{min-height:190mm;display:flex;flex-direction:column;break-after:page;page-break-after:always}.order-print-sheet:last-child{break-after:auto;page-break-after:auto}.order-print-sheet header{border:2px solid #000;border-bottom:0;padding:4mm}.order-print-sheet header>div{display:flex;justify-content:space-between;font-size:10pt}.order-print-sheet h1{margin:3mm 0 0;text-align:center;font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:2.2mm;vertical-align:top;font-size:9pt;overflow-wrap:anywhere}th{width:17%;background:#eee;text-align:left}.order-print-text{font-size:11pt;font-weight:700;line-height:1.4}.order-print-history{border:1px solid #000;border-top:0;padding:3mm;flex:1}.order-print-history>strong{display:block;margin-bottom:2mm}.order-print-history>div{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:3mm;border-top:1px solid #bbb;padding:1.5mm 0;font-size:8pt}.order-print-history time{text-align:right}.order-print-sheet footer{display:flex;justify-content:space-between;border:1px solid #000;border-top:0;padding:4mm;font-size:9pt}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${rows.map((order, index) => orderPrintSheetHtml(order, index + 1, rows.length)).join("")}<script>addEventListener('load',()=>setTimeout(()=>print(),350))<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function orderCardHtml(order) {
@@ -13115,7 +13211,7 @@ function annualPprWorkDocumentDialog(year, work, kind, rerender) {
     const popup = window.open("", "_blank", "width=900,height=800");
     if (!popup) return window.alert("Разрешите всплывающие окна для открытия акта.");
     popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(documentRecord.title)}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial,sans-serif;color:#111}h1{text-align:center;margin:18mm 0 12mm}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #222;padding:12px;margin-top:-1px;min-height:55px}.sign{margin-top:30px;border-bottom:1px solid #222;padding:10px 0}.no-print{position:fixed;right:15px;top:15px}@media print{.no-print{display:none}}</style></head><body><button class="no-print" onclick="print()">Печать</button><h1>${escapeHtml(documentRecord.title)}</h1><div class="meta"><p><b>№:</b> ${escapeHtml(documentRecord.number)}</p><p><b>Дата:</b> ${escapeHtml(dateHuman(work.date))}</p></div><div class="box"><b>Оборудование:</b><br>${escapeHtml(work.equipmentName || "")}</div><div class="box"><b>Узел:</b><br>${escapeHtml(work.node || "")}</div><div class="box"><b>Привязанная работа ${escapeHtml(work.type)}:</b><br>${escapeHtml(work.description || "")}</div><div class="box"><b>Основание / содержание:</b><br>${escapeHtml(documentRecord.comment || "")}</div><div class="sign">Зафиксировал: ${escapeHtml(documentRecord.fixedByName || "")} ____________________</div><script>addEventListener('load',()=>setTimeout(()=>print(),250))<\/script></body></html>`);
-    popup.document.close();
+  finalizeJournalPopup(popup);
     return;
   }
   const number = window.prompt(`${labels[kind]}\nВведите номер акта:`, work.documents?.[kind]?.number || "")?.trim();
@@ -13225,7 +13321,7 @@ function annualPprActPrint(event, kind) {
   const popup = window.open("", "_blank", "width=1000,height=850");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати акта.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4 portrait;margin:15mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12pt}h1{text-align:center;font-size:16pt;margin:18mm 0 8mm}.meta{display:flex;justify-content:space-between;margin-bottom:8mm}.row{border:1px solid #222;padding:4mm;margin-top:-1px;min-height:18mm}.row b{display:block;margin-bottom:3mm}.sign{margin-top:14mm}.sign div{border-bottom:1px solid #222;padding:4mm 0}.actions{position:fixed;right:12px;top:12px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Печать</button><h1>${title}</h1><div class="meta"><span>№ ${escapeHtml(number || "____")}</span><span>${escapeHtml(dateHuman(event.date))}</span></div><p><b>Организация:</b> ТОО «Aluminium of Kazakhstan»</p><p><b>Участок:</b> ${escapeHtml(event.area || "")}</p><p><b>Оборудование:</b> ${escapeHtml(event.equipmentName || "")}</p><p><b>Узел:</b> ${escapeHtml(event.node || "")}</p>${details.map(([label, value]) => `<div class="row"><b>${label}</b>${escapeHtml(value || "")}</div>`).join("")}<div class="sign"><b>Члены комиссии:</b>${String(members || "").split(/\r?\n/).filter(Boolean).map(member => `<div>${escapeHtml(member)} ____________________</div>`).join("") || "<div>____________________ ____________________</div>"}</div><script>addEventListener('load',()=>setTimeout(()=>print(),250))<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function annualPprActSectionHtml(event, kind) {
@@ -13247,7 +13343,7 @@ function printAnnualPprActsTogether(event) {
   const popup = window.open("", "_blank", "width=1000,height=850");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати актов.");
   popup.document.write(annualPprActsDocumentHtml(event, true));
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function downloadAnnualPprActsWord(event) {
@@ -13354,7 +13450,7 @@ function printAnnualPprSchedule(overlay, year) {
   const popup = window.open("", "_blank", "width=1500,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A3 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0}.annual-ppr-print-title{text-align:center;margin:0 0 4mm}.annual-ppr-print-title h1{font-size:14pt;margin:0 0 2mm}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:3mm;font-size:8pt;line-height:1.5}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:7pt;margin-bottom:2mm}.annual-ppr-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:5.7pt}.annual-ppr-table th,.annual-ppr-table td{border:.25mm solid #222;padding:.7mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{background:#dde7ef}.annual-ppr-table th:nth-child(4),.annual-ppr-table td:nth-child(4){text-align:left}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:12mm;margin-top:4mm;font-size:8pt}.annual-ppr-note{font-size:6.5pt;margin-top:2mm}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function annualPprOutputClone(overlay) {
@@ -15138,7 +15234,7 @@ function printGpmJournal() {
   const popup = window.open("", "_blank", "width=1200,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Вахтенный журнал — ${escapeHtml(item.name)}</title><link rel="stylesheet" href="${location.origin}/styles.css?v=${APP_VERSION}"><style>html,body{margin:0!important;padding:0!important;min-height:0!important;height:auto!important;background:#fff!important}body.printing-gpm-journal [data-gpm-print-root]{position:static!important;inset:auto!important;width:auto!important;min-height:0!important;height:auto!important}.gpm-official-shift-journal{margin:0!important;padding:0!important}</style></head><body class="printing-gpm-journal"><main data-gpm-print-root>${gpmOfficialShiftJournalHtml(item, inspections)}</main><script>addEventListener('load',()=>setTimeout(()=>print(),500))<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function printGpmResponsibles() {
@@ -17424,7 +17520,7 @@ function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
     .engineer-report-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px;font-weight:700}.engineer-report-block{page-break-inside:auto}
     @media print{body{margin:10mm}.engineer-report-block{break-inside:auto}.engineer-report-summary{grid-template-columns:repeat(3,1fr)}.engineer-report-year-strip{grid-template-columns:repeat(3,1fr)}}
   </style></head><body>${html}<script>window.onload=()=>{window.print();};<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function directorDowntimeDetail(stats) {
@@ -18447,7 +18543,7 @@ function printQrWalkJournal() {
   const popup = window.open("", "_blank", "width=1400,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
   popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал QR-обходов</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000}.aggregate-sheet-head{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding:0 0 3mm;margin-bottom:3mm}.qr-walk-journal-summary{display:flex;gap:4mm;margin-bottom:3mm}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:1.4mm;font-size:7.5pt;overflow-wrap:anywhere}th{background:#eee}.qr-missing td{background:#fff1f1}.qr-fixed td{background:#f2fff4}@media print{button{display:none}}</style></head><body>${sheet.outerHTML}<script>addEventListener('load',()=>setTimeout(()=>print(),400))<\/script></body></html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function customJournalRows(equipmentId) {
@@ -18766,7 +18862,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
         <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),500));<\/script>
       </body>
     </html>`);
-  popup.document.close();
+  finalizeJournalPopup(popup);
 }
 
 function systemLoadMetrics() {
@@ -18820,7 +18916,7 @@ function printSystemArchiveReport() {
     <h2>Заявки (${allRequests().length})</h2><table><thead><tr><th>Номер</th><th>Цех</th><th>Состояние</th><th>Содержание</th></tr></thead><tbody>${rows(allRequests(), [x => x.requestNumber || x.id || "", x => x.area || "", x => x.done ? "Выполнена" : "Активна", x => x.text || requestItemsText(requestItems(x))]) || '<tr><td colspan="4">Нет</td></tr>'}</tbody></table>
     <h2>Сотрудники (${loadUsers().length})</h2><table><thead><tr><th>ФИО</th><th>Должность</th><th>Цех</th></tr></thead><tbody>${rows(loadUsers(), [x => x.name || "", x => ROLE_ACCESS[x.role]?.label || x.role || "", x => x.area || ""])}</tbody></table>
     <p style="margin-top:18px">Подпись ответственного: ____________________</p></body></html>`);
-  win.document.close();
+  finalizeJournalPopup(win);
   win.focus();
   win.print();
 }
@@ -19138,7 +19234,7 @@ function printRequestSheet(req, options = {}) {
         <div class="actions"><button onclick="${printToken ? `window.opener?.postMessage({type:'ppr-request-print-start',token:${JSON.stringify(printToken)}},location.origin);` : ""}window.print()">Печатать / сохранить PDF</button></div>
       </body>
     </html>`);
-  win.document.close();
+  finalizeJournalPopup(win);
   if (options.asFile) {
     const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
     return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
