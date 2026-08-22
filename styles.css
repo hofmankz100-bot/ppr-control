@@ -13261,3 +13261,8 @@ body.editor-profile #createTmcRequestButton.request-alert,
 .custom-journal-overlay{overflow-x:hidden}.custom-journal-panel{box-sizing:border-box;overflow-x:hidden}@media(max-width:620px){.custom-journal-panel{width:100%;max-width:100%}}
 .admin-role-label-editor{margin:16px 0;padding:16px;border:1px solid #c9dce3;border-radius:15px;background:#f7fbfc}.admin-role-label-editor h3,.admin-role-label-editor p{margin:0}.admin-role-label-editor p{margin-top:4px;color:#647985}.admin-role-label-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;margin:14px 0}.admin-role-label-grid label{margin:0}.admin-role-label-grid input{min-height:42px;border:1px solid #b8ccd5;border-radius:10px;padding:8px 10px}@media(max-width:900px){.admin-role-label-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.admin-role-label-grid{grid-template-columns:1fr}}
 .custom-journal-workflow{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;padding-top:12px;border-top:1px dashed #cddce2}@media(max-width:620px){.custom-journal-workflow{grid-template-columns:1fr}}
+.qr-action-mobile{display:none}
+@media(max-width:700px){
+  .qr-action-desktop{display:none}
+  .qr-action-mobile{display:inline}
+}

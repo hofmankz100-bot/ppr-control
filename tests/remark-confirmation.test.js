@@ -743,6 +743,9 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /equipment-secondary-tools/);
   assert.match(client, /querySelector\("\[data-print-node-qr\]"\)/);
   assert.match(client, /printNodeQrCode\(eq, index\)/);
+  assert.match(client, /class="qr-back"/);
+  assert.match(client, /@media\(max-width:700px\)/);
+  assert.match(client, /\.actions\{display:none\}/);
 });
 
 test("new catalog nodes are registered atomically with a permanent QR identity", () => {
@@ -900,9 +903,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v552-fast-admin-trash/);
-  assert.match(html, /styles\.css\?v=v552-fast-admin-trash/);
-  assert.match(serviceWorker, /app\.js\?v=v552-fast-admin-trash/);
+  assert.match(html, /app\.js\?v=v553-mobile-qr-view/);
+  assert.match(html, /styles\.css\?v=v553-mobile-qr-view/);
+  assert.match(serviceWorker, /app\.js\?v=v553-mobile-qr-view/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

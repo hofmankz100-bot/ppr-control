@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v552-fast-admin-trash";
+const APP_VERSION = "v553-mobile-qr-view";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4867,8 +4867,17 @@ function printNodeQrCode(eq, nodeIndex) {
       .link{font-size:9px;color:#6b7d86;word-break:break-all;margin-top:8px}
       .actions{position:sticky;bottom:0;background:#eef3f6;padding:10px;text-align:center}
       button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:800}
-      @media print{body{background:#fff}.sheet{margin:0;border:0}.actions{display:none}}
+      .qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border-radius:50%;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:10}
+      @media(max-width:700px){
+        body{padding-top:72px}
+        .sheet{width:min(120mm,calc(100vw - 24px));min-height:0;margin:0 auto 24px;padding:8mm}
+        .qr img{width:min(92mm,100%);height:auto;aspect-ratio:1}
+        .actions{display:none}
+        .qr-back{display:block}
+      }
+      @media print{body{background:#fff;padding-top:0}.sheet{margin:0;border:0}.actions,.qr-back{display:none!important}}
     </style></head><body>
+      <button type="button" class="qr-back" aria-label="Назад" title="Назад" onclick="if(window.opener&&!window.opener.closed){window.close()}else if(history.length>1){history.back()}else{location.href='/' }">‹</button>
       <div class="sheet">
         <div class="top"><span>${escapeHtml(new Date().toLocaleString("ru-RU"))}</span><span>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</span></div>
         <div class="head">
@@ -4885,6 +4894,14 @@ function printNodeQrCode(eq, nodeIndex) {
       <div class="actions"><button onclick="window.print()">Печатать QR</button></div>
     </body></html>`);
   win.document.close();
+}
+
+function qrPopupBackButtonHtml() {
+  return `<button type="button" class="qr-back" aria-label="Назад" title="Назад" onclick="if(window.opener&&!window.opener.closed){window.close()}else if(history.length>1){history.back()}else{location.href='/'}">‹</button>`;
+}
+
+function qrPopupMobileCss() {
+  return `.qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border:0;border-radius:50%;background:#14324a;color:#fff;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:20}@media(max-width:700px){body{padding-top:72px!important}.actions{display:none!important}.qr-back{display:block}}@media print{.qr-back{display:none!important}}`;
 }
 
 async function rotateAndPrintNodeQr(equipmentId, nodeIndex) {
@@ -4952,10 +4969,12 @@ function printEquipmentQrCodes(eq) {
       .qr-hint{font-size:8pt;color:#4b5563;font-weight:700}
       .actions{position:fixed;left:0;right:0;bottom:0;background:#eef3f6;padding:10px;text-align:center;box-shadow:0 -6px 20px rgba(0,0,0,.12)}
       .actions button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:900}
+      ${qrPopupMobileCss()}
       @media print{body{background:#fff}.qr-page{margin:0}.actions{display:none}}
     </style>
     <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),700));</script>
     </head><body>
+      ${qrPopupBackButtonHtml()}
       ${pages.join("")}
       <div class="actions"><button onclick="window.print()">Печатать QR всех узлов</button></div>
     </body></html>`);
@@ -12235,7 +12254,7 @@ function renderNodeWalkthrough(eq) {
                 <button type="button" data-save-node-name="${index}">Сохранить</button>
                 <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
               </div>
-              ${catalogEditorRole() === "editor" ? `<div class="node-admin-action-group node-admin-action-qr"><button type="button" class="secondary" data-print-node-qr="${index}">Печатать QR</button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button></div>` : ""}
+              ${catalogEditorRole() === "editor" ? `<div class="node-admin-action-group node-admin-action-qr"><button type="button" class="secondary" data-print-node-qr="${index}"><span class="qr-action-desktop">Печатать QR</span><span class="qr-action-mobile">Показать QR</span></button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button></div>` : ""}
               ${(canManageCatalogStructure(eq) || (catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date))) ? `<div class="node-admin-action-group node-admin-action-danger">
                 ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
                 ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `<button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">${operationalPause ? "Возобновить узел" : "Временно остановить узел"}</button>` : ""}
@@ -14614,7 +14633,7 @@ function printGpmQr(item, mode = "shift") {
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
   const qr = gpmQrImageUrl(item, monthly ? "monthly" : "shift");
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:125mm;height:125mm}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}@media print{.actions{display:none}}</style></head><body><main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. ${forklift ? "Откроется вахтенный журнал погрузчика." : "Журнал откроется автоматически."}</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:min(125mm,100%);height:auto;aspect-ratio:1}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}${qrPopupMobileCss()}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}<main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. ${forklift ? "Откроется вахтенный журнал погрузчика." : "Журнал откроется автоматически."}</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   win.document.close();
 }
 
@@ -14629,7 +14648,7 @@ function printGpmQrPair(item) {
     { mode: "shift", title: "ЕЖЕСМЕННЫЙ ОСМОТР", note: "Нижний QR" },
     { mode: "monthly", title: "ЕЖЕМЕСЯЧНЫЙ ОСМОТР", note: "Верхний QR" }
   ];
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Два QR ${escapeHtml(item.name)}</title><style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.card{height:136mm;border:3px solid #176b78;border-radius:14px;padding:7mm;text-align:center;break-after:page;page-break-after:always}.card.monthly{border-color:#b45309}.card:last-of-type{break-after:auto;page-break-after:auto}h1{margin:0 0 2mm;font-size:20pt}.meta{margin:0;font-size:12pt;font-weight:700}.kind{margin:3mm 0 0;font-size:16pt;font-weight:900}.monthly .kind{color:#b45309}.shift .kind{color:#176b78}img{display:block;width:91mm;height:91mm;margin:2mm auto}.note{margin:0;font-size:12pt;font-weight:800}.actions{text-align:center;margin:8px}@media print{.actions{display:none}}</style></head><body>${cards.map(card => `<section class="card ${card.mode}"><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${card.title}</p><img src="${gpmQrImageUrl(item, card.mode)}" alt="${card.title}"><p class="note">${card.note}</p></section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать два QR</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Два QR ${escapeHtml(item.name)}</title><style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.card{height:136mm;border:3px solid #176b78;border-radius:14px;padding:7mm;text-align:center;break-after:page;page-break-after:always}.card.monthly{border-color:#b45309}.card:last-of-type{break-after:auto;page-break-after:auto}h1{margin:0 0 2mm;font-size:20pt}.meta{margin:0;font-size:12pt;font-weight:700}.kind{margin:3mm 0 0;font-size:16pt;font-weight:900}.monthly .kind{color:#b45309}.shift .kind{color:#176b78}img{display:block;width:min(91mm,100%);height:auto;aspect-ratio:1;margin:2mm auto}.note{margin:0;font-size:12pt;font-weight:800}.actions{text-align:center;margin:8px}${qrPopupMobileCss()}@media(max-width:700px){.card{height:auto;margin:0 10px 14px;break-after:auto;page-break-after:auto}}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}${cards.map(card => `<section class="card ${card.mode}"><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${card.title}</p><img src="${gpmQrImageUrl(item, card.mode)}" alt="${card.title}"><p class="note">${card.note}</p></section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать два QR</button></div></body></html>`);
   win.document.close();
 }
 
@@ -14644,7 +14663,7 @@ function printAllGpmQrCodes(items = gpmEquipmentList("gpm")) {
   for (let index = 0; index < cards.length; index += 4) pages.push(cards.slice(index, index + 4));
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${cards.length} QR кран-балок</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.page{height:281mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;break-after:page;page-break-after:always}.page:last-of-type{break-after:auto;page-break-after:auto}.card{border:2px solid #176b78;border-radius:10px;padding:4mm;text-align:center;overflow:hidden}.card.monthly{border-color:#b45309}.card h2{margin:0;font-size:13pt}.meta{min-height:9mm;margin:1mm 0;font-size:8.5pt;font-weight:700}.kind{margin:1mm 0;font-size:10pt;font-weight:900}.monthly .kind{color:#b45309}.shift .kind{color:#176b78}.card img{display:block;width:88mm;height:88mm;margin:1mm auto}.note{margin:0;font-size:9pt;font-weight:800}.actions{text-align:center;padding:8px}@media print{.actions{display:none}}</style></head><body>${pages.map(page => `<section class="page">${page.map(card => `<article class="card ${card.mode}"><h2>${escapeHtml(card.item.name)}</h2><p class="meta">${escapeHtml(card.item.location || "")} · ${escapeHtml(card.item.capacity || "")}</p><p class="kind">${card.title}</p><img src="${gpmQrImageUrl(card.item, card.mode)}" alt="${card.title}"><p class="note">${card.note}</p></article>`).join("")}</section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать ${cards.length} QR</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${cards.length} QR кран-балок</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.page{height:281mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;break-after:page;page-break-after:always}.page:last-of-type{break-after:auto;page-break-after:auto}.card{border:2px solid #176b78;border-radius:10px;padding:4mm;text-align:center;overflow:hidden}.card.monthly{border-color:#b45309}.card h2{margin:0;font-size:13pt}.meta{min-height:9mm;margin:1mm 0;font-size:8.5pt;font-weight:700}.kind{margin:1mm 0;font-size:10pt;font-weight:900}.monthly .kind{color:#b45309}.shift .kind{color:#176b78}.card img{display:block;width:min(88mm,100%);height:auto;aspect-ratio:1;margin:1mm auto}.note{margin:0;font-size:9pt;font-weight:800}.actions{text-align:center;padding:8px}${qrPopupMobileCss()}@media(max-width:700px){.page{width:auto;height:auto;margin:0 10px;display:block}.card{margin-bottom:12px}}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}${pages.map(page => `<section class="page">${page.map(card => `<article class="card ${card.mode}"><h2>${escapeHtml(card.item.name)}</h2><p class="meta">${escapeHtml(card.item.location || "")} · ${escapeHtml(card.item.capacity || "")}</p><p class="kind">${card.title}</p><img src="${gpmQrImageUrl(card.item, card.mode)}" alt="${card.title}"><p class="note">${card.note}</p></article>`).join("")}</section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать ${cards.length} QR</button></div></body></html>`);
   win.document.close();
 }
 
@@ -14928,7 +14947,7 @@ function gpmDetailHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Зав. № ${escapeHtml(item.serialNumber || "—")} · Рег. № ${escapeHtml(item.registrationNumber || "—")} · ${escapeHtml(item.capacity || "грузоподъёмность не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift">Печатать ежесменный QR</button>${forklift ? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly">Печатать верхний QR Планового ТО</button>`}</div>` : ""}
+      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift"><span class="qr-action-desktop">Печатать ежесменный QR</span><span class="qr-action-mobile">Показать ежесменный QR</span></button>${forklift ? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly"><span class="qr-action-desktop">Печатать верхний QR Планового ТО</span><span class="qr-action-mobile">Показать верхний QR Планового ТО</span></button>`}</div>` : ""}
       <div class="gpm-responsibles">
         <div><span>Эксплуатация</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
         <div><span>Исправное состояние</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>
