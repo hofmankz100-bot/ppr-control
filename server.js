@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v538-ordered-node-actions";
+const SERVER_VERSION = "v539-catalog-entity-sync";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5330,6 +5330,42 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/equipment/node-add" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const equipmentId = Number(body.equipmentId);
+    const node = String(body.node || "").trim().slice(0, 200);
+    const requestedNodes = Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [];
+    if (!Number.isSafeInteger(equipmentId) || !node || requestedNodes.length >= 200) {
+      sendJson(res, 400, { ok: false, error: "node_add_invalid" }); return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.catalog ||= { equipment: {} };
+      db.catalog.equipment ||= {};
+      const catalogItem = db.catalog.equipment[equipmentId] || {};
+      const storedNodes = Array.isArray(catalogItem.nodes) ? catalogItem.nodes.map(value => String(value || "").trim()).filter(Boolean) : [];
+      const nodes = storedNodes.length >= requestedNodes.length ? storedNodes : requestedNodes;
+      const normalized = normalizedCatalogNodeName(node);
+      if (nodes.some(value => normalizedCatalogNodeName(value) === normalized)) return { error: "node_already_exists" };
+      const nodeIndex = nodes.length;
+      catalogItem.nodes = [...nodes, node];
+      catalogItem.nodeCreatedAt = catalogItem.nodeCreatedAt && typeof catalogItem.nodeCreatedAt === "object" ? catalogItem.nodeCreatedAt : {};
+      catalogItem.nodeCreatedAt[nodeIndex] = new Date().toISOString();
+      catalogItem.qrTokens = catalogItem.qrTokens && typeof catalogItem.qrTokens === "object" ? catalogItem.qrTokens : {};
+      catalogItem.qrTokens[nodeIndex] = crypto.randomBytes(12).toString("hex");
+      catalogItem.area ||= String(body.area || "").trim().slice(0, 200);
+      catalogItem.updatedAt = new Date().toISOString();
+      db.catalog.equipment[equipmentId] = catalogItem;
+      writeDb(db, { action: "equipment_node_added", user: req.authUser, targetId: `${equipmentId}:${nodeIndex}`, targetLabel: `${String(body.equipment || "")} · ${node}` });
+      return { state: publicState(db), nodeIndex };
+    });
+    if (result.error) { sendJson(res, 409, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("equipment-node-added", "", result.state, true);
+    sendJson(res, 200, { ok: true, nodeIndex: result.nodeIndex, state: result.state, stateVersion });
+    return true;
+  }
+
   if (pathname === "/api/admin/equipment/node-delete" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     const body = await readBody(req).catch(() => ({}));
@@ -5402,6 +5438,9 @@ async function handleApi(req, res, pathname, url) {
       catalogItem.reminders = shiftIndexedMap(catalogItem.reminders);
       catalogItem.reminderMeta = shiftIndexedMap(catalogItem.reminderMeta);
       catalogItem.nodeOperationalPauses = shiftIndexedMap(catalogItem.nodeOperationalPauses);
+      catalogItem.nodeCreatedAt = shiftIndexedMap(catalogItem.nodeCreatedAt);
+      catalogItem.qrTokens = shiftIndexedMap(catalogItem.qrTokens);
+      catalogItem.qrUpdatedAt = shiftIndexedMap(catalogItem.qrUpdatedAt);
       catalogItem.updatedAt = new Date().toISOString();
       db.catalog.equipment[equipmentId] = catalogItem;
       writeDb(db, { action: "equipment_node_deleted", user: req.authUser, targetId: `${equipmentId}:${nodeIndex}`, targetLabel: nodes[nodeIndex] });

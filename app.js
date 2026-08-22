@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v538-ordered-node-actions";
+const APP_VERSION = "v539-catalog-entity-sync";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3661,6 +3661,8 @@ function allEquipment() {
     const override = state.catalog.equipment[eq.id] || {};
     return {
       ...eq,
+      ...override,
+      id: eq.id,
       name: override.name || eq.name,
       area: override.area || eq.area,
       nodes: Array.isArray(override.nodes) ? override.nodes : eq.nodes,
@@ -3755,6 +3757,32 @@ function equipmentEmployeeArea(eq = {}) {
   return area;
 }
 
+function syncOpenEquipmentLabels(equipmentId, name, area, nodeIndex = null, nodeName = "") {
+  const targetId = Number(equipmentId);
+  const update = item => {
+    if (!item || Number(item.equipmentId) !== targetId) return;
+    if (item.completedAt || item.closedAt || item.archivedAt || item.deletedAt || item.fixed === true) return;
+    if (name) {
+      if (Object.prototype.hasOwnProperty.call(item, "equipment")) item.equipment = name;
+      if (Object.prototype.hasOwnProperty.call(item, "equipmentName")) item.equipmentName = name;
+    }
+    if (area && Object.prototype.hasOwnProperty.call(item, "area")) item.area = area;
+    if (Number.isInteger(nodeIndex) && Number(item.nodeIndex) === nodeIndex && nodeName) item.node = nodeName;
+  };
+  Object.values(state.requests || {}).forEach(update);
+  (state.downtimes || []).forEach(update);
+  Object.values(state.pprSheets || {}).forEach(sheet => {
+    update(sheet);
+    (sheet?.works || []).forEach(update);
+  });
+  Object.values(state.annualPpr || {}).forEach(record => (record?.works || []).forEach(update));
+  Object.values(state.gpmJournal?.equipment || {}).forEach(item => {
+    if (Number(item?.sourceEquipmentId || 0) !== targetId) return;
+    item.sourceEquipmentName = name || item.sourceEquipmentName;
+    if (area && !item.location) item.location = area;
+  });
+}
+
 function saveEquipmentCatalog(equipmentId, patch) {
   const eq = equipmentById(equipmentId);
   if (!eq || !canEditEquipmentCatalog(eq)) return false;
@@ -3763,6 +3791,7 @@ function saveEquipmentCatalog(equipmentId, patch) {
   const nextArea = String(patch?.area || eq.area).trim() || eq.area;
   item.name = nextName;
   item.area = nextArea;
+  syncOpenEquipmentLabels(equipmentId, nextName, nextArea);
   if (nextName !== eq.name && item.reminderMeta) {
     Object.values(item.reminderMeta).forEach(meta => {
       if (meta?.mode === "auto") meta.stale = true;
@@ -3785,6 +3814,7 @@ function saveNodeName(equipmentId, nodeIndex, value) {
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes];
   item.nodes[nodeIndex] = nextName;
+  syncOpenEquipmentLabels(equipmentId, eq.name, eq.area, nodeIndex, nextName);
   if (item.reminderMeta?.[nodeIndex]?.mode === "auto") item.reminderMeta[nodeIndex].stale = true;
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
@@ -3793,13 +3823,28 @@ function saveNodeName(equipmentId, nodeIndex, value) {
   return true;
 }
 
-function addNodeName(equipmentId, value) {
+async function addNodeName(equipmentId, value) {
   if (!canManageCatalogStructure(equipmentId)) return false;
   const clean = String(value || "").trim();
   if (!clean) return false;
   const eq = equipmentById(equipmentId);
+  if (!eq || eq.nodes.some(node => String(node || "").trim().localeCompare(clean, "ru", { sensitivity: "accent" }) === 0)) return false;
+  if (authenticatedProfile?.role === "editor" && navigator.onLine) {
+    const result = await apiJson("/api/admin/equipment/node-add", {
+      method: "POST",
+      timeout: 60000,
+      body: JSON.stringify({ equipmentId, equipment: eq.name, nodes: eq.nodes, node: clean })
+    });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    return result?.ok === true;
+  }
   const item = equipmentOverride(equipmentId);
   item.nodes = [...eq.nodes, clean];
+  const nodeIndex = item.nodes.length - 1;
+  item.nodeCreatedAt ||= {};
+  item.nodeCreatedAt[nodeIndex] = new Date().toISOString();
+  item.qrTokens ||= {};
+  item.qrTokens[nodeIndex] = globalThis.crypto?.randomUUID?.().replaceAll("-", "") || nextActionId().replaceAll(":", "");
   item.area ||= eq.area;
   item.updatedAt = new Date().toISOString();
   recordAudit("Добавил узел", eq.name, "", clean);
@@ -3852,6 +3897,16 @@ async function deleteNodeName(equipmentId, nodeIndex) {
     });
     item.reminders = nextReminders;
   }
+  ["reminderMeta", "nodeOperationalPauses", "nodeCreatedAt", "qrTokens", "qrUpdatedAt"].forEach(field => {
+    if (!item[field] || typeof item[field] !== "object") return;
+    const shifted = {};
+    Object.entries(item[field]).forEach(([key, value]) => {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index === nodeIndex) return;
+      shifted[index > nodeIndex ? index - 1 : index] = value;
+    });
+    item[field] = shifted;
+  });
   recordAudit("Удалил узел", eq.name, "", eq.nodes[nodeIndex]);
   saveState();
   return true;
@@ -11893,12 +11948,15 @@ function renderNodeWalkthrough(eq) {
     adminPanel.addEventListener("submit", event => {
       event.preventDefault();
       const input = adminPanel.querySelector("[data-add-node-name]");
-      if (addNodeName(eq.id, input?.value || "")) {
-        current.nodeDetailIndex = null;
-        renderNodeWalkthrough(equipmentById(eq.id));
-      } else {
-        input?.focus();
-      }
+      const button = adminPanel.querySelector("button[type=submit]");
+      runButtonOperation(button, async () => {
+        if (await addNodeName(eq.id, input?.value || "")) {
+          current.nodeDetailIndex = null;
+          renderNodeWalkthrough(equipmentById(eq.id));
+        } else {
+          input?.focus();
+        }
+      }, "Добавляется в систему...");
     });
     list.append(adminPanel);
   }

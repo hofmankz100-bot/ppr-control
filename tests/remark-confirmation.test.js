@@ -745,6 +745,22 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /printNodeQrCode\(eq, index\)/);
 });
 
+test("new catalog nodes are registered atomically with a permanent QR identity", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /async function addNodeName\(equipmentId, value\)/);
+  assert.match(client, /\/api\/admin\/equipment\/node-add/);
+  assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true \}\)/);
+  assert.match(client, /\.\.\.override,[\s\S]*id: eq\.id,[\s\S]*name: override\.name \|\| eq\.name/);
+  assert.match(server, /pathname === "\/api\/admin\/equipment\/node-add"/);
+  assert.match(server, /catalogItem\.nodeCreatedAt\[nodeIndex\]/);
+  assert.match(server, /catalogItem\.qrTokens\[nodeIndex\] = crypto\.randomBytes\(12\)/);
+  assert.match(server, /broadcastState\("equipment-node-added"/);
+  assert.match(client, /function syncOpenEquipmentLabels\(equipmentId, name, area, nodeIndex = null, nodeName = ""\)/);
+  assert.match(client, /syncOpenEquipmentLabels\(equipmentId, nextName, nextArea\)/);
+  assert.match(client, /syncOpenEquipmentLabels\(equipmentId, eq\.name, eq\.area, nodeIndex, nextName\)/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -853,9 +869,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v538-ordered-node-actions/);
-  assert.match(html, /styles\.css\?v=v538-ordered-node-actions/);
-  assert.match(serviceWorker, /app\.js\?v=v538-ordered-node-actions/);
+  assert.match(html, /app\.js\?v=v539-catalog-entity-sync/);
+  assert.match(html, /styles\.css\?v=v539-catalog-entity-sync/);
+  assert.match(serviceWorker, /app\.js\?v=v539-catalog-entity-sync/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
