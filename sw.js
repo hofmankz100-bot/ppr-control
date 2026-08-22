@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v557-qr-mobile-viewport";
+const CACHE_NAME = "ppr-v558-ios-whatsapp-pdf";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=v557-qr-mobile-viewport",
+  "./styles.css?v=v558-ios-whatsapp-pdf",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -10,12 +10,12 @@ const ASSETS = [
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
   "./node_modules/html2canvas/dist/html2canvas.min.js?v=421-annual-ppr-equipment-acts",
-  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v557-qr-mobile-viewport",
-  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v557-qr-mobile-viewport",
+  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v558-ios-whatsapp-pdf",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v558-ios-whatsapp-pdf",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=v557-qr-mobile-viewport",
-  "./node_modules/jsqr/dist/jsQR.js?v=v557-qr-mobile-viewport",
+  "./app.js?v=v558-ios-whatsapp-pdf",
+  "./node_modules/jsqr/dist/jsQR.js?v=v558-ios-whatsapp-pdf",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

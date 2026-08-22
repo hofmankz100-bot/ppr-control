@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v557-qr-mobile-viewport";
+const APP_VERSION = "v558-ios-whatsapp-pdf";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4405,14 +4405,14 @@ function finalizeJournalPopup(popup, requestedTitle = "") {
       });
       const blob = await popup.html2pdf().set({
         margin: 5,
-        image: { type: "jpeg", quality: 0.96 },
-        html2canvas: { scale: 1.7, useCORS: true, logging: false },
+        image: { type: "jpeg", quality: 0.88 },
+        html2canvas: { scale: 1.35, useCORS: true, logging: false },
         jsPDF: { unit: "mm", format: "a4", orientation: landscape ? "landscape" : "portrait" },
         pagebreak: { mode: ["css", "legacy"] }
       }).from(doc.body).outputPdf("blob");
       const file = new File([blob], journalPdfFileName(title), { type: "application/pdf" });
       if (popup.navigator.share && popup.navigator.canShare?.({ files: [file] })) {
-        await popup.navigator.share({ title, text: title, files: [file] });
+        await popup.navigator.share({ files: [file] });
       } else {
         const url = URL.createObjectURL(blob);
         const link = doc.createElement("a");

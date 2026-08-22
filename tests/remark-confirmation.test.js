@@ -754,6 +754,7 @@ test("mobile journal print windows create a shareable PDF while desktop keeps pr
   assert.match(client, /function finalizeJournalPopup\(popup, requestedTitle = ""\)/);
   assert.match(client, /data-mobile-journal-share>Отправить PDF/);
   assert.match(client, /popup\.navigator\.share/);
+  assert.match(client, /popup\.navigator\.share\(\{ files: \[file\] \}\)/);
   assert.match(client, /popup\.document\.close\(\);/);
   assert.match(client, /finalizeJournalPopup\(popup\)/);
   assert.match(client, /finalizeJournalPopup\(win\)/);
@@ -914,9 +915,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v557-qr-mobile-viewport/);
-  assert.match(html, /styles\.css\?v=v557-qr-mobile-viewport/);
-  assert.match(serviceWorker, /app\.js\?v=v557-qr-mobile-viewport/);
+  assert.match(html, /app\.js\?v=v558-ios-whatsapp-pdf/);
+  assert.match(html, /styles\.css\?v=v558-ios-whatsapp-pdf/);
+  assert.match(serviceWorker, /app\.js\?v=v558-ios-whatsapp-pdf/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
