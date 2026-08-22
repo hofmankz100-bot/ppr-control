@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v544-custom-journal-editor";
+const APP_VERSION = "v545-journal-editor-ui";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11423,11 +11423,11 @@ function openCustomJournalEditor(eq) {
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay custom-journal-overlay";
   overlay.innerHTML = `<section class="qr-result-panel custom-journal-panel" role="dialog" aria-modal="true" aria-label="Настроить журнал">
-    <header><div><h2>Настроить журнал</h2><p>${escapeHtml(eq.name)} · поля будут открываться после сканирования QR.</p></div><button type="button" class="secondary" data-journal-close>Закрыть</button></header>
-    <label><span>Название журнала</span><input type="text" maxlength="200" data-journal-title value="${escapeHtml(draft.title)}"></label>
-    <div class="custom-journal-binding"><label><span>Привязать журнал</span><select data-journal-scope><option value="equipment" ${draft.scope === "equipment" ? "selected" : ""}>Ко всему оборудованию</option><option value="node" ${draft.scope === "node" ? "selected" : ""}>К конкретному узлу</option></select></label><label data-journal-node-wrap ${draft.scope === "node" ? "" : "hidden"}><span>Узел / QR</span><select data-journal-node>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${draft.nodeIndex === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label></div>
+    <header class="custom-journal-head"><div class="custom-journal-head-icon">▤</div><div class="custom-journal-head-copy"><span>Редактор печатной формы</span><h2>Настроить журнал</h2><p>${escapeHtml(eq.name)}</p></div><button type="button" class="custom-journal-close" data-journal-close aria-label="Закрыть">×</button></header>
+    <section class="custom-journal-main-settings"><div class="custom-journal-section-title"><span>1</span><div><strong>Основные настройки</strong><small>Название будет показано на экране и при печати</small></div></div><div class="custom-journal-setting-grid"><label><span>Название журнала</span><input type="text" maxlength="200" data-journal-title value="${escapeHtml(draft.title)}"></label><label><span>Привязать журнал</span><select data-journal-scope><option value="equipment" ${draft.scope === "equipment" ? "selected" : ""}>Ко всему оборудованию</option><option value="node" ${draft.scope === "node" ? "selected" : ""}>К конкретному узлу</option></select></label><label data-journal-node-wrap ${draft.scope === "node" ? "" : "hidden"}><span>Узел / QR</span><select data-journal-node>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${draft.nodeIndex === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label></div></section>
+    <div class="custom-journal-columns-heading"><div class="custom-journal-section-title"><span>2</span><div><strong>Столбцы журнала</strong><small>Настройте порядок и данные, которые попадут из QR</small></div></div><button type="button" class="custom-journal-add-top" data-journal-add>＋ Добавить столбец</button></div>
     <div class="custom-journal-columns" data-journal-columns></div>
-    <div class="custom-journal-footer"><button type="button" class="secondary" data-journal-add>+ Добавить столбец</button><button type="button" data-journal-save>Сохранить журнал</button></div>
+    <div class="custom-journal-footer"><div><strong data-journal-column-count>${draft.columns.length} столбцов</strong><small>Изменения применятся только после сохранения</small></div><div><button type="button" class="secondary" data-journal-close>Отмена</button><button type="button" data-journal-save>✓ Сохранить журнал</button></div></div>
   </section>`;
   document.body.append(overlay);
   const list = overlay.querySelector("[data-journal-columns]");
@@ -11438,17 +11438,19 @@ function openCustomJournalEditor(eq) {
     draft.columns[index].required = card.querySelector("[data-column-required]").checked;
     draft.columns[index].options = card.querySelector("[data-column-options]").value;
     card.querySelector("[data-column-options-wrap]").hidden = draft.columns[index].type !== "select";
+    card.querySelector("header>div:nth-child(2)>strong").textContent = draft.columns[index].label || `Столбец ${index + 1}`;
+    card.querySelector("header>div:nth-child(2)>small").textContent = CUSTOM_JOURNAL_COLUMN_TYPES.find(([value]) => value === draft.columns[index].type)?.[1] || "Поле журнала";
   };
   const renderColumns = () => {
     list.innerHTML = draft.columns.map((column, index) => `<article class="custom-journal-column" data-journal-column="${index}">
-      <strong>Столбец ${index + 1}</strong>
-      <label><span>Название столбца</span><input type="text" maxlength="120" data-column-label value="${escapeHtml(column.label || "")}"></label>
+      <header><div class="custom-journal-column-number">${index + 1}</div><div><strong>${escapeHtml(column.label || `Столбец ${index + 1}`)}</strong><small>${escapeHtml(CUSTOM_JOURNAL_COLUMN_TYPES.find(([value]) => value === column.type)?.[1] || "Поле журнала")}</small></div><div class="custom-journal-column-actions"><button type="button" class="secondary" title="Поднять выше" data-column-up ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="secondary" title="Опустить ниже" data-column-down ${index === draft.columns.length - 1 ? "disabled" : ""}>↓</button><button type="button" class="custom-journal-delete" title="Удалить столбец" data-column-delete>×</button></div></header>
+      <div class="custom-journal-column-fields"><label><span>Название столбца</span><input type="text" maxlength="120" data-column-label value="${escapeHtml(column.label || "")}"></label>
       <label><span>Что записывать</span><select data-column-type>${CUSTOM_JOURNAL_COLUMN_TYPES.map(([value, label]) => `<option value="${value}" ${column.type === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-      <label><span>Привязать к QR узла</span><select data-column-node><option value="all">Все узлы</option>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${Number(column.nodeIndex) === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label>
-      <label data-column-options-wrap ${column.type === "select" ? "" : "hidden"}><span>Варианты через запятую</span><input type="text" data-column-options value="${escapeHtml(column.options || "")}"></label>
-      <label class="custom-journal-required"><input type="checkbox" data-column-required ${column.required ? "checked" : ""}> Обязательное поле</label>
-      <div class="custom-journal-column-actions"><button type="button" class="secondary" data-column-up ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="secondary" data-column-down ${index === draft.columns.length - 1 ? "disabled" : ""}>↓</button><button type="button" class="danger" data-column-delete>Удалить</button></div>
+      <label><span>QR-привязка</span><select data-column-node><option value="all">Все узлы оборудования</option>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${Number(column.nodeIndex) === nodeIndex ? "selected" : ""}>Только: ${escapeHtml(node)}</option>`).join("")}</select></label>
+      <label data-column-options-wrap ${column.type === "select" ? "" : "hidden"}><span>Варианты через запятую</span><input type="text" data-column-options value="${escapeHtml(column.options || "")}"></label></div>
+      <label class="custom-journal-required"><input type="checkbox" data-column-required ${column.required ? "checked" : ""}><span><strong>Обязательное поле</strong><small>Без заполнения QR-осмотр не сохранится</small></span></label>
     </article>`).join("");
+    overlay.querySelector("[data-journal-column-count]").textContent = `${draft.columns.length} столбцов`;
     list.querySelectorAll("[data-journal-column]").forEach(card => {
       const index = Number(card.dataset.journalColumn);
       card.querySelectorAll("input,select").forEach(input => input.addEventListener("input", () => syncCard(card, index)));
@@ -11460,7 +11462,7 @@ function openCustomJournalEditor(eq) {
   renderColumns();
   overlay.querySelector("[data-journal-scope]").addEventListener("change", event => { overlay.querySelector("[data-journal-node-wrap]").hidden = event.currentTarget.value !== "node"; });
   const close = () => overlay.remove();
-  overlay.querySelector("[data-journal-close]").addEventListener("click", close);
+  overlay.querySelectorAll("[data-journal-close]").forEach(button => button.addEventListener("click", close));
   overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
   overlay.querySelector("[data-journal-add]").addEventListener("click", () => { draft.columns.push({ id: `column-${Date.now()}`, label: "Новый столбец", type: "text", required: false, nodeIndex: "all", options: "" }); renderColumns(); });
   overlay.querySelector("[data-journal-save]").addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
