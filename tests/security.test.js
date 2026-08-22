@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v547-custom-role-labels";
+const APP_VERSION = "v548-journal-workflow-settings";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

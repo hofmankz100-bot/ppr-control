@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v547-custom-role-labels";
+const APP_VERSION = "v548-journal-workflow-settings";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -5504,15 +5504,20 @@ function promptQrWalkDecision(parsed) {
   }
   const eq = equipmentById(parsed.equipmentId);
   const nodeName = eq?.nodes?.[parsed.nodeIndex] || "Узел";
-  const shift = currentWalkShift();
-  const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
-  const progress = qrWalkProgress(parsed.equipmentId, shift);
+  const baseShift = currentWalkShift();
   const shgrpAKind = shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex);
   const customSchema = eq?.created === true && eq?.journalSchema?.columns?.length
     && (eq.journalSchema.scope !== "node" || Number(eq.journalSchema.nodeIndex) === Number(parsed.nodeIndex)) ? eq.journalSchema : null;
+  const shift = customSchema?.frequency === "daily" ? { ...baseShift, key: "day", label: "Суточный обход" } : baseShift;
+  const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
+  const progress = qrWalkProgress(parsed.equipmentId, shift);
   const customColumns = customSchema ? customSchema.columns.filter(column => column.nodeIndex === "all" || Number(column.nodeIndex) === Number(parsed.nodeIndex)) : [];
   const customManualColumns = customColumns.filter(column => ["text", "number", "checkbox", "select", "signature"].includes(column.type));
-  const customFieldsHtml = customManualColumns.length ? `<section class="qr-custom-journal-fields"><strong>${escapeHtml(customSchema.title)}</strong>${customManualColumns.map(column => {
+  const customResultMode = ["both", "goodOnly", "remarkOnly", "none"].includes(customSchema?.resultMode) ? customSchema.resultMode : "both";
+  const customFieldsAfterChoice = Boolean(customManualColumns.length && customSchema?.fieldsTiming === "afterChoice" && customResultMode !== "none");
+  const showGoodButton = !customSchema || ["both", "goodOnly", "none"].includes(customResultMode);
+  const showRemarkButton = !customSchema || ["both", "remarkOnly"].includes(customResultMode);
+  const customFieldsHtml = customManualColumns.length ? `<section class="qr-custom-journal-fields" data-custom-journal-fields ${customFieldsAfterChoice ? "hidden" : ""}><strong>${escapeHtml(customSchema.title)}</strong>${customManualColumns.map(column => {
     const id = escapeHtml(column.id);
     if (column.type === "checkbox") return `<label class="qr-custom-check"><input type="checkbox" data-custom-column="${id}" data-custom-type="checkbox"><span>${escapeHtml(column.label)}${column.required ? " *" : ""}</span></label>`;
     if (column.type === "select") return `<label><span>${escapeHtml(column.label)}${column.required ? " *" : ""}</span><select data-custom-column="${id}" data-custom-type="select"><option value="">Выберите</option>${(column.options || []).map(option => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></label>`;
@@ -5534,8 +5539,8 @@ function promptQrWalkDecision(parsed) {
         </div>
       ` : `
         <div class="qr-result-actions">
-          <button type="button" class="qr-good-button" data-qr-good>✓ Всё хорошо</button>
-          <button type="button" class="qr-remark-button" data-qr-remark>! Есть замечание</button>
+          ${showGoodButton ? `<button type="button" class="qr-good-button" data-qr-good>${customResultMode === "none" ? "Сохранить обход" : "✓ Всё хорошо"}</button>` : ""}
+          ${showRemarkButton ? `<button type="button" class="qr-remark-button" data-qr-remark>! Есть замечание</button>` : ""}
           <button type="button" class="qr-rescan-button" data-qr-next>Сканировать заново</button>
           <button type="button" class="qr-finish-button" data-qr-finish>Завершить обход</button>
         </div>
@@ -5557,6 +5562,7 @@ function promptQrWalkDecision(parsed) {
   document.body.append(overlay);
   return new Promise(resolve => {
     let submitting = false;
+    let goodChoiceSelected = false;
     const finish = result => {
       overlay.remove();
       resolve(result);
@@ -5582,7 +5588,28 @@ function promptQrWalkDecision(parsed) {
     };
     overlay.querySelector("[data-qr-good]")?.addEventListener("click", async event => {
       if (submitting) return;
-      const customJournal = collectCustomJournal("Исправно");
+      const customFields = overlay.querySelector("[data-custom-journal-fields]");
+      if (customFieldsAfterChoice && !goodChoiceSelected) {
+        goodChoiceSelected = true;
+        customFields.hidden = false;
+        event.currentTarget.textContent = "Сохранить — всё хорошо";
+        overlay.querySelector("[data-qr-remark]")?.setAttribute("hidden", "");
+        overlay.querySelector("[data-qr-next]")?.setAttribute("hidden", "");
+        overlay.querySelector("[data-qr-finish]")?.setAttribute("hidden", "");
+        customFields.querySelector("input, select")?.focus();
+        return;
+      }
+      if (customResultMode === "none") {
+        const commentColumn = customManualColumns.find(column => /коммент|замечан|неисправ/i.test(String(column.label || "")));
+        const commentValue = commentColumn ? String(overlay.querySelector(`[data-custom-column="${CSS.escape(commentColumn.id)}"]`)?.value || "").trim() : "";
+        if (commentValue) {
+          const comment = overlay.querySelector("[data-qr-comment]");
+          if (comment) comment.value = commentValue;
+          overlay.querySelector("[data-qr-save-remark]")?.click();
+          return;
+        }
+      }
+      const customJournal = collectCustomJournal(customResultMode === "none" ? "Без замечаний" : "Исправно");
       if (customJournal === false) return;
       submitting = true;
       const button = event.currentTarget;
@@ -5597,6 +5624,8 @@ function promptQrWalkDecision(parsed) {
     const form = overlay.querySelector(".qr-remark-form");
     const actions = overlay.querySelector(":scope .qr-result-panel > .qr-result-actions");
     overlay.querySelector("[data-qr-remark]")?.addEventListener("click", () => {
+      const customFields = overlay.querySelector("[data-custom-journal-fields]");
+      if (customFields) customFields.hidden = false;
       if (actions) actions.hidden = true;
       if (form) form.hidden = false;
       overlay.querySelector("[data-qr-comment]")?.focus();
@@ -5604,6 +5633,8 @@ function promptQrWalkDecision(parsed) {
     overlay.querySelector("[data-qr-back]")?.addEventListener("click", () => {
       if (form) form.hidden = true;
       if (actions) actions.hidden = false;
+      const customFields = overlay.querySelector("[data-custom-journal-fields]");
+      if (customFieldsAfterChoice && customFields) customFields.hidden = true;
     });
     overlay.querySelector("[data-qr-resolved-now]")?.addEventListener("change", event => {
       const wrap = overlay.querySelector("[data-qr-resolution-wrap]");
@@ -11417,7 +11448,7 @@ const CUSTOM_JOURNAL_COLUMN_TYPES = [
 ];
 
 function defaultCustomJournalSchema(eq) {
-  return { title: `Журнал ${eq?.name || "оборудования"}`, scope: "equipment", nodeIndex: null, columns: [
+  return { title: `Журнал ${eq?.name || "оборудования"}`, scope: "equipment", nodeIndex: null, fieldsTiming: "immediate", resultMode: "both", frequency: "twoShifts", columns: [
     { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all" },
     { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all" },
     { id: "employee", label: "Ф.И.О.", type: "autoEmployee", required: true, nodeIndex: "all" },
@@ -11429,12 +11460,12 @@ function defaultCustomJournalSchema(eq) {
 function openCustomJournalEditor(eq) {
   if (profile?.role !== "editor" || eq?.created !== true || String(eq?.equipmentKind || "ordinary") !== "ordinary") return;
   const source = eq.journalSchema?.columns?.length ? eq.journalSchema : defaultCustomJournalSchema(eq);
-  const draft = { title: source.title, scope: source.scope === "node" ? "node" : "equipment", nodeIndex: Number.isInteger(source.nodeIndex) ? source.nodeIndex : 0, columns: source.columns.map(column => ({ ...column, options: Array.isArray(column.options) ? column.options.join(", ") : column.options || "" })) };
+  const draft = { title: source.title, scope: source.scope === "node" ? "node" : "equipment", nodeIndex: Number.isInteger(source.nodeIndex) ? source.nodeIndex : 0, fieldsTiming: source.fieldsTiming === "afterChoice" ? "afterChoice" : "immediate", resultMode: ["both", "goodOnly", "remarkOnly", "none"].includes(source.resultMode) ? source.resultMode : "both", frequency: source.frequency === "daily" ? "daily" : "twoShifts", columns: source.columns.map(column => ({ ...column, options: Array.isArray(column.options) ? column.options.join(", ") : column.options || "" })) };
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay custom-journal-overlay";
   overlay.innerHTML = `<section class="qr-result-panel custom-journal-panel" role="dialog" aria-modal="true" aria-label="Настроить журнал">
     <header class="custom-journal-head"><div class="custom-journal-head-icon">▤</div><div class="custom-journal-head-copy"><span>Редактор печатной формы</span><h2>Настроить журнал</h2><p>${escapeHtml(eq.name)}</p></div><button type="button" class="custom-journal-close" data-journal-close aria-label="Закрыть">×</button></header>
-    <section class="custom-journal-main-settings"><div class="custom-journal-section-title"><span>1</span><div><strong>Основные настройки</strong><small>Название будет показано на экране и при печати</small></div></div><div class="custom-journal-setting-grid"><label><span>Название журнала</span><input type="text" maxlength="200" data-journal-title value="${escapeHtml(draft.title)}"></label><label><span>Привязать журнал</span><select data-journal-scope><option value="equipment" ${draft.scope === "equipment" ? "selected" : ""}>Ко всему оборудованию</option><option value="node" ${draft.scope === "node" ? "selected" : ""}>К конкретному узлу</option></select></label><label data-journal-node-wrap ${draft.scope === "node" ? "" : "hidden"}><span>Узел / QR</span><select data-journal-node>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${draft.nodeIndex === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label></div></section>
+    <section class="custom-journal-main-settings"><div class="custom-journal-section-title"><span>1</span><div><strong>Основные настройки</strong><small>Название будет показано на экране и при печати</small></div></div><div class="custom-journal-setting-grid"><label><span>Название журнала</span><input type="text" maxlength="200" data-journal-title value="${escapeHtml(draft.title)}"></label><label><span>Привязать журнал</span><select data-journal-scope><option value="equipment" ${draft.scope === "equipment" ? "selected" : ""}>Ко всему оборудованию</option><option value="node" ${draft.scope === "node" ? "selected" : ""}>К конкретному узлу</option></select></label><label data-journal-node-wrap ${draft.scope === "node" ? "" : "hidden"}><span>Узел / QR</span><select data-journal-node>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${draft.nodeIndex === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label></div><div class="custom-journal-workflow"><label><span>Периодичность обхода</span><select data-journal-frequency><option value="twoShifts" ${draft.frequency === "twoShifts" ? "selected" : ""}>2 раза: дневная и ночная смена</option><option value="daily" ${draft.frequency === "daily" ? "selected" : ""}>1 раз в сутки</option></select></label><label><span>Когда показывать поля</span><select data-journal-fields-timing><option value="immediate" ${draft.fieldsTiming === "immediate" ? "selected" : ""}>Сразу после сканирования QR</option><option value="afterChoice" ${draft.fieldsTiming === "afterChoice" ? "selected" : ""}>После выбора результата</option></select></label><label><span>Кнопки результата</span><select data-journal-result-mode><option value="both" ${draft.resultMode === "both" ? "selected" : ""}>«Всё хорошо» и «Есть замечание»</option><option value="goodOnly" ${draft.resultMode === "goodOnly" ? "selected" : ""}>Только «Всё хорошо»</option><option value="remarkOnly" ${draft.resultMode === "remarkOnly" ? "selected" : ""}>Только «Есть замечание»</option><option value="none" ${draft.resultMode === "none" ? "selected" : ""}>Убрать обе — только «Сохранить обход»</option></select></label></div></section>
     <div class="custom-journal-columns-heading"><div class="custom-journal-section-title"><span>2</span><div><strong>Столбцы журнала</strong><small>Настройте порядок и данные, которые попадут из QR</small></div></div><button type="button" class="custom-journal-add-top" data-journal-add>＋ Добавить столбец</button></div>
     <div class="custom-journal-columns" data-journal-columns></div>
     <div class="custom-journal-footer"><div><strong data-journal-column-count>${draft.columns.length} столбцов</strong><small>Изменения применятся только после сохранения</small></div><div><button type="button" class="secondary" data-journal-close>Отмена</button><button type="button" data-journal-save>✓ Сохранить журнал</button></div></div>
@@ -11471,6 +11502,8 @@ function openCustomJournalEditor(eq) {
   };
   renderColumns();
   overlay.querySelector("[data-journal-scope]").addEventListener("change", event => { overlay.querySelector("[data-journal-node-wrap]").hidden = event.currentTarget.value !== "node"; });
+  overlay.querySelector("[data-journal-result-mode]").addEventListener("change", event => { const timing = overlay.querySelector("[data-journal-fields-timing]"); if (event.currentTarget.value === "none") { timing.value = "immediate"; timing.disabled = true; } else timing.disabled = false; });
+  if (draft.resultMode === "none") overlay.querySelector("[data-journal-fields-timing]").disabled = true;
   const close = () => overlay.remove();
   overlay.querySelectorAll("[data-journal-close]").forEach(button => button.addEventListener("click", close));
   overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
@@ -11481,7 +11514,10 @@ function openCustomJournalEditor(eq) {
     if (!title || !draft.columns.length || draft.columns.some(column => !String(column.label || "").trim())) throw new Error("Заполните название журнала и всех столбцов");
     const scope = overlay.querySelector("[data-journal-scope]").value;
     const journalNodeIndex = Number(overlay.querySelector("[data-journal-node]").value);
-    const result = await apiJson("/api/admin/equipment/journal-schema", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, title, scope, journalNodeIndex, columns: draft.columns }) });
+    const fieldsTiming = overlay.querySelector("[data-journal-fields-timing]").value;
+    const resultMode = overlay.querySelector("[data-journal-result-mode]").value;
+    const frequency = overlay.querySelector("[data-journal-frequency]").value;
+    const result = await apiJson("/api/admin/equipment/journal-schema", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, title, scope, journalNodeIndex, fieldsTiming, resultMode, frequency, columns: draft.columns }) });
     if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
     if (!result?.ok) throw new Error(result?.error || "journal_schema_failed");
     close(); renderEquipment(); showAppToast("Структура журнала сохранена", "ok");
@@ -13637,12 +13673,15 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       <td class="ppr-sheet-work">
         <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
+      <td class="ppr-sheet-resolution">
+        <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" placeholder="Что выполнено или почему не требуется" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
+        ${row.markedByName ? `<small><strong>${escapeHtml(row.markedByName)}</strong> · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")} · ${dateTimeHuman(row.markedAt)}</small>` : ""}
+      </td>
       <td class="ppr-sheet-mark">
         <div class="ppr-sheet-mark-buttons" role="group" aria-label="Отметка по строке ${index + 1}">
           <button type="button" class="done ${row.mark === "done" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="done" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Выполнено">✓</button>
           <button type="button" class="na ${row.mark === "na" ? "active" : ""}" data-ppr-row-mark="${escapeHtml(row.id)}" data-ppr-mark-value="na" ${canMark && String(row.work || "").trim() ? "" : "disabled"} aria-label="Не требуется">−</button>
         </div>
-        ${row.markedByName ? `<small class="ppr-row-author">${escapeHtml(row.markedByName)} · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")}</small>` : ""}
         <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
       </td>
     </tr>
@@ -13661,7 +13700,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       <div class="ppr-sheet-table-wrap">
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th>План обслуживания</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th rowspan="2">Исполнитель и комментарий об устранении</th><th>План обслуживания</th></tr>
             <tr><th>A</th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
@@ -13905,11 +13944,19 @@ function bindPprCalendarControls(container, rerender) {
       const row = sheet.rows.find(item => item.id === button.dataset.pprRowMark);
       if (!row) return;
       const workInput = button.closest("tr")?.querySelector("[data-ppr-work-input]");
+      const resolutionInput = button.closest("tr")?.querySelector("[data-ppr-resolution-input]");
+      const nextMark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
+      if (nextMark && !String(resolutionInput?.value || "").trim()) {
+        showAppToast(nextMark === "done" ? "Напишите комментарий о выполненной работе" : "Напишите причину отметки «Не требуется»", "error");
+        resolutionInput?.focus();
+        return;
+      }
       row.equipmentId = workInput?.dataset.pprEquipmentId || row.equipmentId || "";
       row.equipment = workInput?.dataset.pprEquipment || row.equipment || "";
       row.node = workInput?.dataset.pprNode || row.node || "";
       row.area = workInput?.dataset.pprArea || row.area || "";
-      row.mark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
+      row.mark = nextMark;
+      row.resolutionComment = row.mark ? String(resolutionInput?.value || "").trim() : "";
       row.markedByName = row.mark ? profile?.name || "" : "";
       row.markedByRole = row.mark ? profile?.role || "" : "";
       row.markedAt = row.mark ? new Date().toISOString() : "";
@@ -13921,7 +13968,8 @@ function bindPprCalendarControls(container, rerender) {
           equipmentId: row.equipmentId,
           equipment: row.equipment,
           node: row.node,
-          area: row.area
+          area: row.area,
+          resolutionComment: row.resolutionComment
         });
       } catch {
         saveState();

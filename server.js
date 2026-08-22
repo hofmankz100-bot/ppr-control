@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v547-custom-role-labels";
+const SERVER_VERSION = "v548-journal-workflow-settings";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5418,6 +5418,9 @@ async function handleApi(req, res, pathname, url) {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     const body = await readBody(req).catch(() => ({}));
     const equipmentId = Number(body.equipmentId);
+    const fieldsTiming = String(body.fieldsTiming || "immediate") === "afterChoice" ? "afterChoice" : "immediate";
+    const resultMode = ["both", "goodOnly", "remarkOnly", "none"].includes(String(body.resultMode || "")) ? String(body.resultMode) : "both";
+    const frequency = String(body.frequency || "twoShifts") === "daily" ? "daily" : "twoShifts";
     const title = String(body.title || "").trim().slice(0, 200);
     const scope = String(body.scope || "equipment") === "node" ? "node" : "equipment";
     const journalNodeIndex = Number(body.journalNodeIndex);
@@ -5445,6 +5448,9 @@ async function handleApi(req, res, pathname, url) {
         title,
         scope,
         nodeIndex: scope === "node" && Number.isSafeInteger(journalNodeIndex) && journalNodeIndex >= 0 && journalNodeIndex < (item.nodes?.length || 0) ? journalNodeIndex : null,
+        fieldsTiming: resultMode === "none" ? "immediate" : fieldsTiming,
+        resultMode,
+        frequency,
         columns,
         updatedAt: new Date().toISOString(),
         updatedByName: String(req.authUser?.name || "Администратор").slice(0, 200)
@@ -7241,10 +7247,13 @@ async function handleApi(req, res, pathname, url) {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         const mark = String(body.mark || "");
         if (!row || !String(row.work || "").trim() || !["", "done", "na"].includes(mark)) return { error: "ppr_row_invalid" };
+        const resolutionComment = String(body.resolutionComment || row.resolutionComment || "").trim().slice(0, 2000);
+        if (mark && !resolutionComment) return { error: "ppr_resolution_comment_required" };
         row.mark = mark;
         row.markedByName = mark ? name : "";
         row.markedByRole = mark ? role : "";
         row.markedAt = mark ? now : "";
+        row.resolutionComment = mark ? resolutionComment : "";
         row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
         row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
         row.node = String(body.node || row.node || "").slice(0, 300);
@@ -8623,6 +8632,3 @@ initializeStorage()
     console.error(`Server startup failed: ${error.stack || error.message}`);
     process.exit(1);
   });
-
-
-

@@ -900,9 +900,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v547-custom-role-labels/);
-  assert.match(html, /styles\.css\?v=v547-custom-role-labels/);
-  assert.match(serviceWorker, /app\.js\?v=v547-custom-role-labels/);
+  assert.match(html, /app\.js\?v=v548-journal-workflow-settings/);
+  assert.match(html, /styles\.css\?v=v548-journal-workflow-settings/);
+  assert.match(serviceWorker, /app\.js\?v=v548-journal-workflow-settings/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -2013,12 +2013,30 @@ test("admin can build a QR-linked journal for created equipment without changing
   assert.match(clientSource, /data-edit-journal/);
   assert.match(clientSource, /Ко всему оборудованию/);
   assert.match(clientSource, /К конкретному узлу/);
+  assert.match(clientSource, /Периодичность обхода/);
+  assert.match(clientSource, /2 раза: дневная и ночная смена/);
+  assert.match(clientSource, /data-journal-fields-timing/);
+  assert.match(clientSource, /data-journal-result-mode/);
+  assert.match(clientSource, /Сохранить обход/);
+  assert.match(clientSource, /customSchema\?\.frequency === "daily"/);
   assert.match(clientSource, /customJournal: options\.customJournal \|\| null/);
   assert.match(clientSource, /function renderCustomEquipmentJournal\(eq\)/);
   assert.match(serverSource, /\/api\/admin\/equipment\/journal-schema/);
   assert.match(serverSource, /item\.created !== true/);
   assert.match(serverSource, /journal_schema_protected/);
   assert.match(serverSource, /equipment_journal_schema_updated/);
+  assert.match(serverSource, /frequency: resultMode|frequency,/);
+});
+
+test("PPR completion records the actual performer and resolution comment", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(clientSource, /Исполнитель и комментарий об устранении/);
+  assert.match(clientSource, /data-ppr-resolution-input/);
+  assert.match(clientSource, /Напишите комментарий о выполненной работе/);
+  assert.match(clientSource, /Напишите причину отметки «Не требуется»/);
+  assert.match(serverSource, /row\.resolutionComment = mark \?/);
+  assert.match(serverSource, /row\.markedByRole = mark \? role/);
 });
 
 test("primary admin can rename displayed roles without changing permission keys", () => {
