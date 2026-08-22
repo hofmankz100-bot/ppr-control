@@ -843,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v533-rating-without-forklift-drivers/);
-  assert.match(html, /styles\.css\?v=v533-rating-without-forklift-drivers/);
-  assert.match(serviceWorker, /app\.js\?v=v533-rating-without-forklift-drivers/);
+  assert.match(html, /app\.js\?v=v534-technical-rating-only/);
+  assert.match(html, /styles\.css\?v=v534-technical-rating-only/);
+  assert.match(serviceWorker, /app\.js\?v=v534-technical-rating-only/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1752,10 +1752,10 @@ test("worker rating is calculated and displayed separately for each calendar mon
   assert.match(appSource, /current\.ratingMonth = ui\.workerRatingMonth\.value/);
 });
 
-test("forklift drivers never participate in the employee rating", () => {
+test("forklift drivers, welders and turners never participate in the employee rating", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /function isWorkerRatingRole\(role\)/);
-  assert.match(appSource, /canonicalWorkerRole\(role\) !== "forkliftDriver"/);
+  assert.match(appSource, /\["forkliftDriver", "welder", "turner"\]/);
   assert.match(appSource, /\.filter\(user => isWorkerRatingRole\(user\.role\)\)/);
   assert.match(appSource, /if \(!isWorkerRatingRole\(role\)\) return/);
 });
