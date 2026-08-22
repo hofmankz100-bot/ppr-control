@@ -3976,7 +3976,7 @@ body.editor-profile .director-card.request-alert{
   .qr-journal-area-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: calc(100% - 22px);
+    grid-auto-columns: 100%;
     gap: 10px;
     overflow-x: auto;
     padding: 2px 2px 10px;
@@ -4001,6 +4001,7 @@ body.editor-profile .director-card.request-alert{
     text-align: left;
     box-shadow: 0 5px 16px rgba(20, 50, 74, .08);
     scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .qr-journal-area-card.has-missing { border-left-color: #d51f2a; }
@@ -4033,9 +4034,10 @@ body.editor-profile .director-card.request-alert{
   }
 
   .qr-walk-journal-table tbody tr {
-    flex: 0 0 calc(100% - 14px);
+    flex: 0 0 100%;
     margin: 0;
     scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 }
 
@@ -4077,8 +4079,8 @@ body.editor-profile .director-card.request-alert{
 
   .aggregate-mobile-record-carousel > .aggregate-mobile-record-card {
     display: block;
-    flex: 0 0 calc(100% - 16px);
-    width: auto;
+    flex: 0 0 100%;
+    width: 100%;
     min-width: 0;
     border: 1px solid #cbd9df;
     border-radius: 13px;
@@ -4086,6 +4088,7 @@ body.editor-profile .director-card.request-alert{
     background: #fff;
     box-shadow: 0 5px 16px rgba(20, 50, 74, .08);
     scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .aggregate-mobile-record-carousel > .aggregate-mobile-record-card > td {
