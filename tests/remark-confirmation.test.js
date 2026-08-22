@@ -920,9 +920,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v559-clean-journal-output/);
-  assert.match(html, /styles\.css\?v=v559-clean-journal-output/);
-  assert.match(serviceWorker, /app\.js\?v=v559-clean-journal-output/);
+  assert.match(html, /app\.js\?v=v561-mobile-node-actions/);
+  assert.match(html, /styles\.css\?v=v561-mobile-node-actions/);
+  assert.match(serviceWorker, /app\.js\?v=v561-mobile-node-actions/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
