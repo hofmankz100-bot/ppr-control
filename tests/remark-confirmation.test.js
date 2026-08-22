@@ -925,9 +925,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v562-mobile-journals/);
-  assert.match(html, /styles\.css\?v=v562-mobile-journals/);
-  assert.match(serviceWorker, /app\.js\?v=v562-mobile-journals/);
+  assert.match(html, /app\.js\?v=v563-mobile-qr-journal-shops/);
+  assert.match(html, /styles\.css\?v=v563-mobile-qr-journal-shops/);
+  assert.match(serviceWorker, /app\.js\?v=v563-mobile-qr-journal-shops/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -987,6 +987,7 @@ test("test and duplicate worker identities are excluded without hiding the valid
 test("QR walks are separated into technical and operational journals", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /const QR_WALK_GROUPS/);
   assert.match(client, /function qrWalkGroup\(role = profile\?\.role\)/);
   assert.match(client, /\["operator", "shop"\]\.includes\(String\(role \|\| ""\)\)/);
@@ -1001,6 +1002,10 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(client, /Операторы и начальники цехов/);
   assert.match(client, /Не зафиксирован/);
   assert.match(client, /Печать \/ PDF/);
+  assert.match(client, /qr-journal-area-overview/);
+  assert.match(client, /data-qr-journal-area-back/);
+  assert.match(client, /current\.qrWalkJournalArea/);
+  assert.match(styles, /\.qr-journal-area-card\.has-missing/);
   assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
   assert.match(server, /pathname === "\/api\/qr-walk\/status"/);
   assert.match(client, /await refreshQrWalkStatusFromServer\(parsed\.equipmentId, shift\)/);

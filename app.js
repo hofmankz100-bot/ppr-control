@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v562-mobile-journals";
+const APP_VERSION = "v563-mobile-qr-journal-shops";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18504,6 +18504,26 @@ async function renderQrWalkJournal() {
     return { eq, node, nodeIndex, entry };
   }));
   const completed = rows.filter(row => row.entry).length;
+  const mobileMode = window.matchMedia?.("(max-width: 680px)")?.matches === true;
+  const areaGroups = [...rows.reduce((map, row) => {
+    const area = String(row.eq.area || "Без цеха").trim() || "Без цеха";
+    if (!map.has(area)) map.set(area, []);
+    map.get(area).push(row);
+    return map;
+  }, new Map()).entries()].map(([area, areaRows]) => ({
+    area,
+    rows: areaRows,
+    completed: areaRows.filter(row => row.entry).length
+  }));
+  let selectedArea = mobileMode ? String(current.qrWalkJournalArea || "") : "";
+  if (selectedArea && !areaGroups.some(item => item.area === selectedArea)) {
+    selectedArea = "";
+    current.qrWalkJournalArea = "";
+  }
+  const displayRows = selectedArea
+    ? areaGroups.find(item => item.area === selectedArea)?.rows || []
+    : rows;
+  const displayCompleted = displayRows.filter(row => row.entry).length;
   const groupCounts = {
     technical: entries.filter(item => item.group === "technical" && item.shift === shift).length,
     operational: entries.filter(item => item.group === "operational" && item.shift === shift).length
@@ -18521,21 +18541,33 @@ async function renderQrWalkJournal() {
         <button type="button" class="${shift === "day" ? "active" : ""}" data-qr-journal-shift="day">День</button>
         <button type="button" class="${shift === "night" ? "active" : ""}" data-qr-journal-shift="night">Ночь</button>
       </div>
-      <button type="button" data-print-qr-journal>Печать / PDF</button>
+      ${!mobileMode || selectedArea ? `<button type="button" data-print-qr-journal>Печать / PDF</button>` : ""}
     </div>
     ${profile?.role === "editor" ? `<details class="qr-journal-access no-print"><summary>Кому разрешён просмотр журнала</summary><div>${accessUsers.length ? accessUsers.map(user => `<label><input type="checkbox" data-qr-journal-access="${escapeHtml(user.id || "")}" ${user.qrWalkJournalAccess === true ? "checked" : ""}> <span>${escapeHtml(user.name || user.employeeId || "Сотрудник")} · ${escapeHtml(requestRoleLabel(user.role))}</span></label>`).join("") : "Нет подходящих сотрудников"}</div></details>` : ""}
-    <div class="aggregate-journal-sheet qr-walk-journal-sheet">
-      <div class="aggregate-sheet-head"><strong>Журнал QR-обходов: ${escapeHtml(QR_WALK_GROUPS[group])}</strong><span>${escapeHtml(dateHuman(date))} · ${shift === "night" ? "Ночь" : "День"}</span></div>
-      <div class="qr-walk-journal-summary"><strong>${completed} из ${rows.length}</strong><span>зафиксировано</span><b>${rows.length - completed}</b><span>не зафиксировано</span></div>
+    ${mobileMode && !selectedArea ? `<div class="qr-journal-area-overview">
+      <div class="qr-journal-area-overview-head"><strong>Цеха и участки</strong><span>Нажмите на цех, чтобы открыть его журнал</span></div>
+      <div class="qr-journal-area-grid">${areaGroups.map(item => `<button type="button" class="qr-journal-area-card ${item.rows.length - item.completed ? "has-missing" : "complete"}" data-qr-journal-area="${escapeHtml(item.area)}"><span><strong>${escapeHtml(item.area)}</strong><small>${item.completed} из ${item.rows.length} зафиксировано</small></span><b>${item.rows.length - item.completed}<small>не зафиксировано</small></b><i aria-hidden="true">›</i></button>`).join("")}</div>
+    </div>` : `<div class="aggregate-journal-sheet qr-walk-journal-sheet">
+      <div class="aggregate-sheet-head"><strong>Журнал QR-обходов: ${escapeHtml(selectedArea || QR_WALK_GROUPS[group])}</strong><span>${escapeHtml(dateHuman(date))} · ${shift === "night" ? "Ночь" : "День"}</span></div>
+      ${mobileMode && selectedArea ? `<button type="button" class="qr-journal-area-back no-print" data-qr-journal-area-back>‹ Все цеха</button>` : ""}
+      <div class="qr-walk-journal-summary"><strong>${displayCompleted} из ${displayRows.length}</strong><span>зафиксировано</span><b>${displayRows.length - displayCompleted}</b><span>не зафиксировано</span></div>
       <div class="aggregate-journal-table-wrap"><table class="aggregate-journal-table qr-walk-journal-table">
         <thead><tr><th>№</th><th>Цех</th><th>Оборудование</th><th>QR / узел</th><th>Статус</th><th>Кто выполнил</th><th>Должность</th><th>Дата и время</th><th>Смена</th></tr></thead>
-        <tbody>${rows.map((row, index) => `<tr class="${row.entry ? "qr-fixed" : "qr-missing"}"><td>${index + 1}</td><td>${escapeHtml(row.eq.area || "-")}</td><td>${escapeHtml(row.eq.name)}</td><td>${escapeHtml(row.node)}</td><td>${row.entry ? "✓ Зафиксирован" : "Не зафиксирован"}</td><td>${escapeHtml(row.entry?.byName || "-")}</td><td>${escapeHtml(row.entry ? requestRoleLabel(row.entry.byRole) : "-")}</td><td>${row.entry?.at ? escapeHtml(dateTimeHuman(row.entry.at)) : "-"}</td><td>${shift === "night" ? "Ночь" : "День"}</td></tr>`).join("")}</tbody>
+        <tbody>${displayRows.map((row, index) => `<tr class="${row.entry ? "qr-fixed" : "qr-missing"}"><td>${index + 1}</td><td>${escapeHtml(row.eq.area || "-")}</td><td>${escapeHtml(row.eq.name)}</td><td>${escapeHtml(row.node)}</td><td>${row.entry ? "✓ Зафиксирован" : "Не зафиксирован"}</td><td>${escapeHtml(row.entry?.byName || "-")}</td><td>${escapeHtml(row.entry ? requestRoleLabel(row.entry.byRole) : "-")}</td><td>${row.entry?.at ? escapeHtml(dateTimeHuman(row.entry.at)) : "-"}</td><td>${shift === "night" ? "Ночь" : "День"}</td></tr>`).join("")}</tbody>
       </table></div>
-    </div>`;
+    </div>`}`;
   ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-group]").forEach(button => button.addEventListener("click", () => { current.qrWalkJournalGroup = button.dataset.qrJournalGroup; renderQrWalkJournal(); }));
   ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-shift]").forEach(button => button.addEventListener("click", () => { current.qrWalkJournalShift = button.dataset.qrJournalShift; renderQrWalkJournal(); }));
   ui.qrWalkJournalPanel.querySelector("[data-qr-journal-date]")?.addEventListener("change", event => { current.qrWalkJournalDate = event.target.value || todayISO(); renderQrWalkJournal(); });
   ui.qrWalkJournalPanel.querySelector("[data-print-qr-journal]")?.addEventListener("click", () => printQrWalkJournal());
+  ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-area]").forEach(button => button.addEventListener("click", () => {
+    current.qrWalkJournalArea = button.dataset.qrJournalArea || "";
+    renderQrWalkJournal();
+  }));
+  ui.qrWalkJournalPanel.querySelector("[data-qr-journal-area-back]")?.addEventListener("click", () => {
+    current.qrWalkJournalArea = "";
+    renderQrWalkJournal();
+  });
   ui.qrWalkJournalPanel.querySelectorAll("[data-qr-journal-access]").forEach(control => control.addEventListener("change", async () => {
     control.disabled = true;
     try {

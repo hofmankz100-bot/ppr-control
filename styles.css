@@ -3959,6 +3959,57 @@ body.editor-profile .director-card.request-alert{
   .qr-walk-journal-table tr { margin:0 0 10px; border:1px solid #cddce1; border-radius:12px; overflow:hidden; }
   .qr-walk-journal-table td { border:0; border-bottom:1px solid #e1eaed; padding:8px 10px; }
   .qr-walk-journal-table td:last-child { border-bottom:0; }
+
+  .qr-journal-area-overview {
+    display: grid;
+    gap: 12px;
+  }
+
+  .qr-journal-area-overview-head {
+    display: grid;
+    gap: 3px;
+    padding: 4px 2px;
+  }
+
+  .qr-journal-area-overview-head strong { font-size: 19px; color: #14324a; }
+  .qr-journal-area-overview-head span { color: #607785; font-size: 13px; }
+  .qr-journal-area-grid { display: grid; gap: 10px; }
+
+  .qr-journal-area-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 18px;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    min-height: 82px;
+    border: 1px solid #bfd1d9;
+    border-left: 6px solid #16823f;
+    border-radius: 15px;
+    background: #fff;
+    color: #14324a;
+    padding: 12px;
+    text-align: left;
+    box-shadow: 0 5px 16px rgba(20, 50, 74, .08);
+  }
+
+  .qr-journal-area-card.has-missing { border-left-color: #d51f2a; }
+  .qr-journal-area-card > span { display: grid; gap: 5px; min-width: 0; }
+  .qr-journal-area-card > span strong { font-size: 17px; line-height: 1.2; }
+  .qr-journal-area-card > span small { color: #607785; font-size: 12px; }
+  .qr-journal-area-card > b { display: grid; place-items: center; min-width: 58px; color: #b4232c; font-size: 24px; }
+  .qr-journal-area-card.complete > b { color: #16823f; }
+  .qr-journal-area-card > b small { max-width: 72px; color: #6b7f8b; font-size: 9px; line-height: 1.1; text-align: center; text-transform: uppercase; }
+  .qr-journal-area-card > i { color: #65808e; font-size: 28px; font-style: normal; }
+
+  .qr-journal-area-back {
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid #b9ccd5;
+    border-radius: 11px;
+    background: #eef5f7;
+    color: #14324a;
+    font-weight: 900;
+  }
 }
 
 .aggregate-print-actions {
