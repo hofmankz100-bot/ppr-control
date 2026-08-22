@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v543-no-score-journal";
+const APP_VERSION = "v544-custom-journal-editor";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

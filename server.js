@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v543-no-score-journal";
+const SERVER_VERSION = "v544-custom-journal-editor";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5172,7 +5172,8 @@ async function handleApi(req, res, pathname, url) {
             shift,
             label: String(body.label || "").slice(0, 100),
             range: String(body.range || "").slice(0, 100)
-            ,group
+            ,group,
+            customJournal: body.customJournal && typeof body.customJournal === "object" ? JSON.parse(JSON.stringify(body.customJournal)) : null
             }
           }
         },
@@ -5195,6 +5196,7 @@ async function handleApi(req, res, pathname, url) {
         area: String(body.area || "").slice(0, 200),
         equipment: String(body.equipment || "").slice(0, 200),
         node: String(body.node || "").slice(0, 300)
+        ,customJournal: body.customJournal && typeof body.customJournal === "object" ? JSON.parse(JSON.stringify(body.customJournal)) : null
       };
       const journalIndex = db.qrWalkJournal.findIndex(item => item?.id === journalEntry.id);
       if (journalIndex >= 0) db.qrWalkJournal[journalIndex] = journalEntry;
@@ -5402,6 +5404,51 @@ async function handleApi(req, res, pathname, url) {
     if (result.error) { sendJson(res, 409, { ok: false, error: result.error }); return true; }
     const stateVersion = broadcastState("equipment-created", "", result.state, true);
     sendJson(res, 200, { ok: true, equipmentId: result.equipmentId, gpmId: result.gpmId, state: result.state, stateVersion });
+    return true;
+  }
+
+  if (pathname === "/api/admin/equipment/journal-schema" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const equipmentId = Number(body.equipmentId);
+    const title = String(body.title || "").trim().slice(0, 200);
+    const scope = String(body.scope || "equipment") === "node" ? "node" : "equipment";
+    const journalNodeIndex = Number(body.journalNodeIndex);
+    const allowedTypes = new Set(["autoDate", "autoTime", "autoShift", "autoEmployee", "autoEquipment", "autoNode", "result", "text", "number", "checkbox", "select", "signature"]);
+    const columns = Array.isArray(body.columns) ? body.columns.slice(0, 30).map((column, index) => {
+      const type = allowedTypes.has(String(column?.type || "")) ? String(column.type) : "text";
+      const requestedNode = column?.nodeIndex === "all" ? "all" : Number(column?.nodeIndex);
+      return {
+        id: String(column?.id || `column-${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || `column-${index + 1}`,
+        label: String(column?.label || "").trim().slice(0, 120),
+        type,
+        required: column?.required === true,
+        nodeIndex: requestedNode === "all" || (Number.isSafeInteger(requestedNode) && requestedNode >= 0 && requestedNode <= 500) ? requestedNode : "all",
+        options: type === "select" ? String(column?.options || "").split(/[,;\n]/).map(value => value.trim().slice(0, 80)).filter(Boolean).slice(0, 30) : []
+      };
+    }).filter(column => column.label) : [];
+    if (!Number.isSafeInteger(equipmentId) || !title || !columns.length) { sendJson(res, 400, { ok: false, error: "journal_schema_invalid" }); return true; }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const item = db.catalog?.equipment?.[equipmentId];
+      if (!item || item.deleted === true) return { error: "equipment_not_found" };
+      if (item.created !== true || String(item.equipmentKind || "ordinary") !== "ordinary") return { error: "journal_schema_protected" };
+      item.journalSchema = {
+        version: Number(item.journalSchema?.version || 0) + 1,
+        title,
+        scope,
+        nodeIndex: scope === "node" && Number.isSafeInteger(journalNodeIndex) && journalNodeIndex >= 0 && journalNodeIndex < (item.nodes?.length || 0) ? journalNodeIndex : null,
+        columns,
+        updatedAt: new Date().toISOString(),
+        updatedByName: String(req.authUser?.name || "Администратор").slice(0, 200)
+      };
+      item.updatedAt = item.journalSchema.updatedAt;
+      writeDb(db, { action: "equipment_journal_schema_updated", user: req.authUser, targetId: String(equipmentId), targetLabel: title, version: item.journalSchema.version });
+      return { state: publicState(db), schema: item.journalSchema };
+    });
+    if (result.error) { sendJson(res, result.error === "equipment_not_found" ? 404 : 409, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("equipment-journal-schema-updated", "", result.state, true);
+    sendJson(res, 200, { ok: true, schema: result.schema, state: result.state, stateVersion });
     return true;
   }
 

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v543-no-score-journal";
+const APP_VERSION = "v544-custom-journal-editor";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4408,7 +4408,8 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
     shift: shiftInfo.key,
     label: shiftInfo.label,
     range: shiftInfo.range,
-    group
+    group,
+    customJournal: options.customJournal || null
   };
   rec.to.tasks[0] = false;
   rec.to.walkDone = false;
@@ -4418,7 +4419,7 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   return { date, shift: shiftInfo };
 }
 
-async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "") {
+async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null) {
   const group = qrWalkGroup();
   const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[shiftInfo?.key];
   const publish = async () => {
@@ -4441,6 +4442,7 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
         node: equipmentById(equipmentId)?.nodes?.[nodeIndex] || "",
         label: shiftInfo?.label || "",
         range: shiftInfo?.range || ""
+        ,customJournal: customJournal || localMark?.customJournal || null
       })
     });
       if (result?.recordKey && result?.record) {
@@ -5497,6 +5499,16 @@ function promptQrWalkDecision(parsed) {
   const alreadyDone = isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key);
   const progress = qrWalkProgress(parsed.equipmentId, shift);
   const shgrpAKind = shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex);
+  const customSchema = eq?.created === true && eq?.journalSchema?.columns?.length
+    && (eq.journalSchema.scope !== "node" || Number(eq.journalSchema.nodeIndex) === Number(parsed.nodeIndex)) ? eq.journalSchema : null;
+  const customColumns = customSchema ? customSchema.columns.filter(column => column.nodeIndex === "all" || Number(column.nodeIndex) === Number(parsed.nodeIndex)) : [];
+  const customManualColumns = customColumns.filter(column => ["text", "number", "checkbox", "select", "signature"].includes(column.type));
+  const customFieldsHtml = customManualColumns.length ? `<section class="qr-custom-journal-fields"><strong>${escapeHtml(customSchema.title)}</strong>${customManualColumns.map(column => {
+    const id = escapeHtml(column.id);
+    if (column.type === "checkbox") return `<label class="qr-custom-check"><input type="checkbox" data-custom-column="${id}" data-custom-type="checkbox"><span>${escapeHtml(column.label)}${column.required ? " *" : ""}</span></label>`;
+    if (column.type === "select") return `<label><span>${escapeHtml(column.label)}${column.required ? " *" : ""}</span><select data-custom-column="${id}" data-custom-type="select"><option value="">Выберите</option>${(column.options || []).map(option => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></label>`;
+    return `<label><span>${escapeHtml(column.label)}${column.required ? " *" : ""}</span><input data-custom-column="${id}" data-custom-type="${column.type}" type="${column.type === "number" ? "number" : "text"}" ${column.type === "signature" ? `placeholder="Введите Ф.И.О."` : ""}></label>`;
+  }).join("")}<small>Поля со звёздочкой обязательны.</small></section>` : "";
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay";
   overlay.innerHTML = `
@@ -5504,6 +5516,7 @@ function promptQrWalkDecision(parsed) {
       <div class="qr-result-progress">Обойдено ${progress.done} из ${progress.total} · ${escapeHtml(shift.label)}</div>
       <h2>${escapeHtml(eq?.name || "Оборудование")}</h2>
       <p class="qr-result-node">${escapeHtml(nodeName)}</p>
+      ${alreadyDone ? "" : customFieldsHtml}
       ${alreadyDone ? `
         <div class="qr-already-done">Этот узел уже проверен в текущую смену.</div>
         <div class="qr-result-actions single">
@@ -5541,13 +5554,32 @@ function promptQrWalkDecision(parsed) {
     };
     overlay.querySelector("[data-qr-next]")?.addEventListener("click", () => finish("continue"));
     overlay.querySelector("[data-qr-finish]")?.addEventListener("click", () => finish("finish"));
+    const collectCustomJournal = result => {
+      if (!customSchema) return null;
+      const now = new Date();
+      const automatic = { autoDate: shift.date, autoTime: now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }), autoShift: shift.label, autoEmployee: profile?.name || "", autoEquipment: eq?.name || "", autoNode: nodeName, result };
+      const values = {};
+      for (const column of customColumns) {
+        const input = overlay.querySelector(`[data-custom-column="${CSS.escape(column.id)}"]`);
+        const value = Object.prototype.hasOwnProperty.call(automatic, column.type) ? automatic[column.type] : column.type === "checkbox" ? Boolean(input?.checked) : String(input?.value || "").trim();
+        if (column.required && (value === "" || value === false)) {
+          input?.focus();
+          showAppToast(`Заполните поле «${column.label}»`, "error");
+          return false;
+        }
+        values[column.id] = value;
+      }
+      return { schemaVersion: Number(customSchema.version || 1), title: customSchema.title, scope: customSchema.scope || "equipment", columns: customColumns.map(column => ({ ...column })), values, capturedAt: now.toISOString() };
+    };
     overlay.querySelector("[data-qr-good]")?.addEventListener("click", async event => {
       if (submitting) return;
+      const customJournal = collectCustomJournal("Исправно");
+      if (customJournal === false) return;
       submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
-      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
+      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal });
+      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal);
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
       showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
@@ -5596,10 +5628,12 @@ function promptQrWalkDecision(parsed) {
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
       try {
+        const customJournal = collectCustomJournal("Есть замечание");
+        if (customJournal === false) { submitting = false; setButtonBusy(button, false); return; }
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
+        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal });
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
@@ -11364,6 +11398,84 @@ function openCreateEquipmentDialog() {
   });
 }
 
+const CUSTOM_JOURNAL_COLUMN_TYPES = [
+  ["autoDate", "Дата (автоматически)"], ["autoTime", "Время (автоматически)"],
+  ["autoShift", "Смена (автоматически)"], ["autoEmployee", "Сотрудник (автоматически)"],
+  ["autoEquipment", "Оборудование (автоматически)"], ["autoNode", "Узел QR (автоматически)"],
+  ["result", "Результат осмотра"], ["text", "Текст вручную"], ["number", "Число вручную"],
+  ["checkbox", "Галочка"], ["select", "Выбор из списка"], ["signature", "Подпись / Ф.И.О. вручную"]
+];
+
+function defaultCustomJournalSchema(eq) {
+  return { title: `Журнал ${eq?.name || "оборудования"}`, scope: "equipment", nodeIndex: null, columns: [
+    { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all" },
+    { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all" },
+    { id: "employee", label: "Ф.И.О.", type: "autoEmployee", required: true, nodeIndex: "all" },
+    { id: "node", label: "Узел", type: "autoNode", required: true, nodeIndex: "all" },
+    { id: "result", label: "Результат", type: "result", required: true, nodeIndex: "all" }
+  ] };
+}
+
+function openCustomJournalEditor(eq) {
+  if (profile?.role !== "editor" || eq?.created !== true || String(eq?.equipmentKind || "ordinary") !== "ordinary") return;
+  const source = eq.journalSchema?.columns?.length ? eq.journalSchema : defaultCustomJournalSchema(eq);
+  const draft = { title: source.title, scope: source.scope === "node" ? "node" : "equipment", nodeIndex: Number.isInteger(source.nodeIndex) ? source.nodeIndex : 0, columns: source.columns.map(column => ({ ...column, options: Array.isArray(column.options) ? column.options.join(", ") : column.options || "" })) };
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay custom-journal-overlay";
+  overlay.innerHTML = `<section class="qr-result-panel custom-journal-panel" role="dialog" aria-modal="true" aria-label="Настроить журнал">
+    <header><div><h2>Настроить журнал</h2><p>${escapeHtml(eq.name)} · поля будут открываться после сканирования QR.</p></div><button type="button" class="secondary" data-journal-close>Закрыть</button></header>
+    <label><span>Название журнала</span><input type="text" maxlength="200" data-journal-title value="${escapeHtml(draft.title)}"></label>
+    <div class="custom-journal-binding"><label><span>Привязать журнал</span><select data-journal-scope><option value="equipment" ${draft.scope === "equipment" ? "selected" : ""}>Ко всему оборудованию</option><option value="node" ${draft.scope === "node" ? "selected" : ""}>К конкретному узлу</option></select></label><label data-journal-node-wrap ${draft.scope === "node" ? "" : "hidden"}><span>Узел / QR</span><select data-journal-node>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${draft.nodeIndex === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label></div>
+    <div class="custom-journal-columns" data-journal-columns></div>
+    <div class="custom-journal-footer"><button type="button" class="secondary" data-journal-add>+ Добавить столбец</button><button type="button" data-journal-save>Сохранить журнал</button></div>
+  </section>`;
+  document.body.append(overlay);
+  const list = overlay.querySelector("[data-journal-columns]");
+  const syncCard = (card, index) => {
+    draft.columns[index].label = card.querySelector("[data-column-label]").value;
+    draft.columns[index].type = card.querySelector("[data-column-type]").value;
+    draft.columns[index].nodeIndex = card.querySelector("[data-column-node]").value === "all" ? "all" : Number(card.querySelector("[data-column-node]").value);
+    draft.columns[index].required = card.querySelector("[data-column-required]").checked;
+    draft.columns[index].options = card.querySelector("[data-column-options]").value;
+    card.querySelector("[data-column-options-wrap]").hidden = draft.columns[index].type !== "select";
+  };
+  const renderColumns = () => {
+    list.innerHTML = draft.columns.map((column, index) => `<article class="custom-journal-column" data-journal-column="${index}">
+      <strong>Столбец ${index + 1}</strong>
+      <label><span>Название столбца</span><input type="text" maxlength="120" data-column-label value="${escapeHtml(column.label || "")}"></label>
+      <label><span>Что записывать</span><select data-column-type>${CUSTOM_JOURNAL_COLUMN_TYPES.map(([value, label]) => `<option value="${value}" ${column.type === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label><span>Привязать к QR узла</span><select data-column-node><option value="all">Все узлы</option>${eq.nodes.map((node, nodeIndex) => `<option value="${nodeIndex}" ${Number(column.nodeIndex) === nodeIndex ? "selected" : ""}>${escapeHtml(node)}</option>`).join("")}</select></label>
+      <label data-column-options-wrap ${column.type === "select" ? "" : "hidden"}><span>Варианты через запятую</span><input type="text" data-column-options value="${escapeHtml(column.options || "")}"></label>
+      <label class="custom-journal-required"><input type="checkbox" data-column-required ${column.required ? "checked" : ""}> Обязательное поле</label>
+      <div class="custom-journal-column-actions"><button type="button" class="secondary" data-column-up ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="secondary" data-column-down ${index === draft.columns.length - 1 ? "disabled" : ""}>↓</button><button type="button" class="danger" data-column-delete>Удалить</button></div>
+    </article>`).join("");
+    list.querySelectorAll("[data-journal-column]").forEach(card => {
+      const index = Number(card.dataset.journalColumn);
+      card.querySelectorAll("input,select").forEach(input => input.addEventListener("input", () => syncCard(card, index)));
+      card.querySelector("[data-column-up]")?.addEventListener("click", () => { syncCard(card, index); [draft.columns[index - 1], draft.columns[index]] = [draft.columns[index], draft.columns[index - 1]]; renderColumns(); });
+      card.querySelector("[data-column-down]")?.addEventListener("click", () => { syncCard(card, index); [draft.columns[index + 1], draft.columns[index]] = [draft.columns[index], draft.columns[index + 1]]; renderColumns(); });
+      card.querySelector("[data-column-delete]")?.addEventListener("click", () => { draft.columns.splice(index, 1); renderColumns(); });
+    });
+  };
+  renderColumns();
+  overlay.querySelector("[data-journal-scope]").addEventListener("change", event => { overlay.querySelector("[data-journal-node-wrap]").hidden = event.currentTarget.value !== "node"; });
+  const close = () => overlay.remove();
+  overlay.querySelector("[data-journal-close]").addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.querySelector("[data-journal-add]").addEventListener("click", () => { draft.columns.push({ id: `column-${Date.now()}`, label: "Новый столбец", type: "text", required: false, nodeIndex: "all", options: "" }); renderColumns(); });
+  overlay.querySelector("[data-journal-save]").addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    list.querySelectorAll("[data-journal-column]").forEach(card => syncCard(card, Number(card.dataset.journalColumn)));
+    const title = String(overlay.querySelector("[data-journal-title]").value || "").trim();
+    if (!title || !draft.columns.length || draft.columns.some(column => !String(column.label || "").trim())) throw new Error("Заполните название журнала и всех столбцов");
+    const scope = overlay.querySelector("[data-journal-scope]").value;
+    const journalNodeIndex = Number(overlay.querySelector("[data-journal-node]").value);
+    const result = await apiJson("/api/admin/equipment/journal-schema", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, title, scope, journalNodeIndex, columns: draft.columns }) });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (!result?.ok) throw new Error(result?.error || "journal_schema_failed");
+    close(); renderEquipment(); showAppToast("Структура журнала сохранена", "ok");
+  }, "Сохраняется..."));
+}
+
 function renderEquipment() {
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
@@ -11504,6 +11616,7 @@ function renderEquipment() {
               <div class="catalog-editor-actions">
                 <button type="button" data-save-equipment="${eq.id}">Сохранить</button>
                 <button type="button" class="secondary" data-cancel-equipment="${eq.id}">Отмена</button>
+                ${eq.created === true && String(eq.equipmentKind || "ordinary") === "ordinary" && profile?.role === "editor" ? `<button type="button" class="secondary" data-edit-journal="${eq.id}">Настроить журнал</button>` : ""}
                 ${profile?.role === "editor" ? `<button type="button" class="danger" data-delete-equipment="${eq.id}">Удалить оборудование</button>` : ""}
               </div>
             </details>
@@ -11598,6 +11711,7 @@ function renderEquipment() {
         const editor = tr.querySelector(`[data-equipment-editor="${eq.id}"]`);
         if (editor) editor.open = false;
       });
+      tr.querySelector("[data-edit-journal]")?.addEventListener("click", () => openCustomJournalEditor(eq));
       tr.querySelector("[data-delete-equipment]")?.addEventListener("click", event => {
         const reason = window.prompt(`Причина удаления «${eq.name}»:`, "Оборудование выведено из эксплуатации")?.trim();
         if (!reason) return;
@@ -18283,6 +18397,41 @@ function printQrWalkJournal() {
   popup.document.close();
 }
 
+function customJournalRows(equipmentId) {
+  const rows = [];
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
+    const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
+    if (Number(equipmentIdRaw) !== Number(equipmentId) || !journalMonthMatches(date)) return;
+    Object.values(rec?.to?.walkGroups || {}).forEach(group => Object.values(group || {}).forEach(mark => {
+      if (!mark?.done || !mark.customJournal?.columns?.length) return;
+      rows.push({ recordKey, nodeIndex: Number(nodeIndexRaw), date, at: mark.at || mark.customJournal.capturedAt || "", byName: mark.byName || "", schema: mark.customJournal });
+    }));
+  });
+  return rows.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+function renderCustomEquipmentJournal(eq) {
+  const rows = customJournalRows(eq.id);
+  const currentSchema = eq.journalSchema || defaultCustomJournalSchema(eq);
+  const schemaGroups = new Map();
+  rows.forEach(row => {
+    const key = `${row.schema.schemaVersion || 1}:${row.schema.title || ""}:${(row.schema.columns || []).map(column => column.id).join("|")}`;
+    if (!schemaGroups.has(key)) schemaGroups.set(key, []);
+    schemaGroups.get(key).push(row);
+  });
+  if (!schemaGroups.size) schemaGroups.set(`current:${currentSchema.version || 1}`, []);
+  ui.aggregateJournalTitle.textContent = currentSchema.title || `Журнал: ${eq.name}`;
+  ui.aggregateJournalMeta.textContent = `${rows.length} записей за ${journalMonthLabel()}. Структура каждой исторической записи сохраняется в том виде, в котором она была заполнена.`;
+  ui.aggregateJournalList.innerHTML = `<div class="aggregate-print-actions">${journalMonthControlHtml()}<button type="button" data-print-aggregate-journal>${printActionLabel("Печать журнала", "PDF журнала")}</button><button type="button" class="secondary" data-edit-current-journal>Настроить журнал</button></div>${[...schemaGroups.values()].map((groupRows, sheetIndex) => {
+    const snapshot = groupRows[0]?.schema || currentSchema;
+    const columns = snapshot.columns || [];
+    return `<div class="aggregate-journal-sheet custom-equipment-journal-sheet"><div class="aggregate-sheet-head"><strong>${escapeHtml(snapshot.title || currentSchema.title)}</strong><span>${escapeHtml(journalMonthLabel())} · форма ${snapshot.schemaVersion || snapshot.version || 1}</span></div><div class="aggregate-journal-table-wrap"><table class="aggregate-journal-table"><thead><tr><th>№</th>${columns.map(column => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${groupRows.length ? groupRows.map((row, rowIndex) => `<tr><td>${rowIndex + 1}</td>${columns.map(column => { const value = row.schema.values?.[column.id]; return `<td>${value === true ? "✓" : value === false ? "—" : escapeHtml(String(value ?? ""))}</td>`; }).join("")}</tr>`).join("") : `<tr><td colspan="${columns.length + 1}">За выбранный месяц записей пока нет</td></tr>`}</tbody></table></div></div>`;
+  }).join("")}`;
+  bindJournalMonthControl(ui.aggregateJournalList, () => renderCustomEquipmentJournal(eq));
+  ui.aggregateJournalList.querySelector("[data-edit-current-journal]")?.addEventListener("click", () => openCustomJournalEditor(eq));
+  ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal());
+}
+
 function renderAggregateJournal() {
   const selectedEquipment = equipmentById(Number(current.selectedAggregateEquipmentId || current.equipmentId))
     || visibleEquipment().find(eq => eq.area !== "Резерв")
@@ -18301,6 +18450,10 @@ function renderAggregateJournal() {
     return;
   }
   const journalName = selectedEquipment?.name || selectedArea;
+  if (selectedEquipment?.created === true && String(selectedEquipment?.equipmentKind || "ordinary") === "ordinary" && selectedEquipment?.journalSchema?.columns?.length) {
+    renderCustomEquipmentJournal(selectedEquipment);
+    return;
+  }
   ui.aggregateJournalTitle.textContent = journalName ? `Агрегатный журнал: ${journalName}` : "Агрегатный журнал";
   const items = selectedArea ? aggregateJournalItems(selectedArea, selectedEquipment?.id) : [];
   const openCount = items.filter(item => !item.resolved).length;

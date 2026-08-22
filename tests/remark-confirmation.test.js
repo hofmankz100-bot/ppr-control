@@ -900,9 +900,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v543-no-score-journal/);
-  assert.match(html, /styles\.css\?v=v543-no-score-journal/);
-  assert.match(serviceWorker, /app\.js\?v=v543-no-score-journal/);
+  assert.match(html, /app\.js\?v=v544-custom-journal-editor/);
+  assert.match(html, /styles\.css\?v=v544-custom-journal-editor/);
+  assert.match(serviceWorker, /app\.js\?v=v544-custom-journal-editor/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -2004,4 +2004,19 @@ test("production work section is named welder and turner", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(htmlSource, /<span>Сварщик и токарь<\/span>/);
   assert.match(clientSource, /<h1>Сварщик и токарь<\/h1>/);
+});
+
+test("admin can build a QR-linked journal for created equipment without changing factory journals", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(clientSource, /function openCustomJournalEditor\(eq\)/);
+  assert.match(clientSource, /data-edit-journal/);
+  assert.match(clientSource, /Ко всему оборудованию/);
+  assert.match(clientSource, /К конкретному узлу/);
+  assert.match(clientSource, /customJournal: options\.customJournal \|\| null/);
+  assert.match(clientSource, /function renderCustomEquipmentJournal\(eq\)/);
+  assert.match(serverSource, /\/api\/admin\/equipment\/journal-schema/);
+  assert.match(serverSource, /item\.created !== true/);
+  assert.match(serverSource, /journal_schema_protected/);
+  assert.match(serverSource, /equipment_journal_schema_updated/);
 });
