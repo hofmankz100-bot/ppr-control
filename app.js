@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v556-named-journal-pdfs";
+const APP_VERSION = "v557-qr-mobile-viewport";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4962,7 +4962,7 @@ function printNodeQrCode(eq, nodeIndex) {
     return;
   }
   win.document.write(`<!doctype html>
-    <html><head><meta charset="utf-8"><title>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</title>
+    <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</title>
     <style>
       body{margin:0;background:#eef3f6;font-family:Arial,sans-serif;color:#132f42}
       .sheet{width:120mm;min-height:170mm;margin:18px auto;background:#fff;padding:14mm;box-sizing:border-box;border:1px solid #d7e3e9}
@@ -5060,7 +5060,7 @@ function printEquipmentQrCodes(eq) {
     pages.push(`<main class="qr-page">${cards.slice(index, index + 4).join("")}</main>`);
   }
   win.document.write(`<!doctype html>
-    <html lang="ru"><head><meta charset="utf-8"><title>QR - ${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</title>
+    <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR - ${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</title>
     <style>
       @page{size:A4 portrait;margin:8mm}
       *{box-sizing:border-box}

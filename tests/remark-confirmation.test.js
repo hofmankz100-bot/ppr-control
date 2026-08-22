@@ -746,6 +746,7 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /class="qr-back"/);
   assert.match(client, /@media\(max-width:700px\)/);
   assert.match(client, /\.actions\{display:none\}/);
+  assert.match(client, /meta name="viewport" content="width=device-width,initial-scale=1"><title>QR -/);
 });
 
 test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
@@ -913,9 +914,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v556-named-journal-pdfs/);
-  assert.match(html, /styles\.css\?v=v556-named-journal-pdfs/);
-  assert.match(serviceWorker, /app\.js\?v=v556-named-journal-pdfs/);
+  assert.match(html, /app\.js\?v=v557-qr-mobile-viewport/);
+  assert.match(html, /styles\.css\?v=v557-qr-mobile-viewport/);
+  assert.match(serviceWorker, /app\.js\?v=v557-qr-mobile-viewport/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
