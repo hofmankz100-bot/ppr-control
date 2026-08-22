@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v546-journal-editor-polish";
+const SERVER_VERSION = "v547-custom-role-labels";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -963,6 +963,7 @@ const DEFAULT_ADMIN_CONFIG = Object.freeze({
   companyName: "ТОО «Aluminium of Kazakhstan»",
   departments: [],
   positions: [],
+  roleLabels: {},
   shifts: ["Дневная смена", "Ночная смена"],
   remarkTypes: ["Неисправность", "Нарушение безопасности", "Требуется обслуживание"],
   downtimeReasons: ["Механическая неисправность", "Электрическая неисправность", "Отсутствие материала", "Плановая остановка"],
@@ -987,10 +988,16 @@ function cleanStringList(values, limit = 200) {
 function normalizedAdminConfig(raw = {}) {
   const monitoring = raw.monitoring && typeof raw.monitoring === "object" ? raw.monitoring : {};
   const automation = raw.automation && typeof raw.automation === "object" ? raw.automation : {};
+  const allowedRoleKeys = new Set(["mechanic", "welder", "turner", "forkliftDriver", "operator", "shop", "engineer", "safetyEngineer", "energyEngineer", "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "productionDirector", "generalDirector", "director", "technicalDirector", "editor"]);
+  const roleLabels = Object.fromEntries(Object.entries(raw.roleLabels && typeof raw.roleLabels === "object" ? raw.roleLabels : {})
+    .filter(([role]) => allowedRoleKeys.has(role))
+    .map(([role, label]) => [role, String(label || "").trim().slice(0, 100)])
+    .filter(([, label]) => label));
   return {
     companyName: String(raw.companyName || DEFAULT_ADMIN_CONFIG.companyName).trim().slice(0, 200),
     departments: cleanStringList(raw.departments),
     positions: cleanStringList(raw.positions, 500),
+    roleLabels,
     shifts: cleanStringList(raw.shifts?.length ? raw.shifts : DEFAULT_ADMIN_CONFIG.shifts, 100),
     remarkTypes: cleanStringList(raw.remarkTypes?.length ? raw.remarkTypes : DEFAULT_ADMIN_CONFIG.remarkTypes, 500),
     downtimeReasons: cleanStringList(raw.downtimeReasons?.length ? raw.downtimeReasons : DEFAULT_ADMIN_CONFIG.downtimeReasons, 500),
