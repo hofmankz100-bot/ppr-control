@@ -1034,9 +1034,9 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.doesNotMatch(client, /data-admin-catalog-form/);
   assert.doesNotMatch(client, /Конструктор справочников/);
   assert.doesNotMatch(client, /Сохранить справочники/);
-  assert.match(client, /settingsForm\.querySelectorAll\(":scope > label, :scope > \.admin-settings-columns, :scope > \.admin-settings-numbers"\)/);
-  assert.match(client, /Сохранить названия ролей/);
-  assert.match(client, /querySelector\("\.admin-settings-shortcuts"\)\?\.remove/);
+  assert.match(client, /\["forms", "activity", "settings"\]/);
+  assert.doesNotMatch(client, /Сохранить названия ролей/);
+  assert.doesNotMatch(client, /data-role-label=/);
   assert.match(server, /downtimeReasons/);
   assert.match(server, /pathname === "\/api\/admin\/qr-routes"/);
   assert.match(server, /pathname === "\/api\/admin\/qr-journal\/correct"/);
