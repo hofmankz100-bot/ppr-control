@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v554-mobile-journal-share";
+const APP_VERSION = "v555-safe-pdf-filenames";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4348,8 +4348,17 @@ function printCurrentDocument(title = "ППР Контроль") {
 }
 
 function journalPdfFileName(title = "Журнал") {
-  const safe = String(title || "Журнал").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-  return `${safe || "Журнал"}.pdf`;
+  const transliteration = {
+    а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"i",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"c",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"
+  };
+  const latin = [...String(title || "PPR Journal")].map(char => {
+    const lower = char.toLowerCase();
+    const mapped = transliteration[lower];
+    if (mapped === undefined) return char;
+    return char === lower ? mapped : mapped.charAt(0).toUpperCase() + mapped.slice(1);
+  }).join("");
+  const safe = latin.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 90);
+  return `${safe || "PPR_Journal"}.pdf`;
 }
 
 function finalizeJournalPopup(popup, requestedTitle = "") {
