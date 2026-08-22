@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v549-remove-catalog-builder";
+const APP_VERSION = "v550-remove-correction-guide";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18112,15 +18112,11 @@ async function renderAdminMaintenance() {
   maintenanceTabs?.querySelector("[data-clear-recorded-data]")?.addEventListener("click", event => confirmClearRecordedData(event.currentTarget));
   const guideTabButton = maintenanceTabs?.querySelector('[data-admin-maintenance-tab="guide"]');
   if (guideTabButton && !maintenanceTabs.querySelector('[data-admin-maintenance-tab="instructionLog"]')) {
-    guideTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "corrections" ? "active" : ""}" data-admin-maintenance-tab="corrections">Исправления</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);
+    guideTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);
   }
   if (tab === "instructionLog") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Журнал ознакомления с инструкциями</strong><span>Записей: ${instructionAcknowledgements.length}</span></div><div class="admin-instruction-log">${instructionAcknowledgements.length ? instructionAcknowledgements.map(item => `<article><div><strong>${escapeHtml(item.actorName || "Сотрудник")}</strong><span>${escapeHtml(item.employeeId || item.role || "")}</span></div><div><b>${escapeHtml(item.instructionTitle || item.instructionId || "Инструкция")}</b><small>${escapeHtml(dateTimeHuman(item.acknowledgedAt))}</small></div></article>`).join("") : `<div class="empty-state">Подтверждений ознакомления пока нет.</div>`}</div>`;
-  }
-  if (tab === "corrections") {
-    const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
-    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Безопасное исправление данных</strong><span>Без прямого SQL</span></div><div class="admin-guide-grid"><article><strong>Сотрудники и дубли</strong><p>Исправляйте ФИО, табельный номер, телефон, роль и доступ через карточку сотрудника. Исторические журналы сохраняются.</p><button type="button" data-admin-open-users>Открыть сотрудников</button></article><article><strong>Оборудование и QR</strong><p>Узел можно переименовать или удалить из текущего маршрута. Уже созданные записи журнала не уничтожаются.</p><button type="button" data-admin-open-equipment>Открыть оборудование</button></article><article><strong>История изменений</strong><p>Кто, когда и почему изменил запись. Журнал нельзя удалить или отредактировать из интерфейса.</p><button type="button" data-guide-open-tab="audit">Открыть журнал</button></article></div><div class="admin-integrity-summary ${integrity.healthy ? "ok" : "warning"}"><strong>${integrity.healthy ? "Нарушений не найдено" : `Найдено записей для проверки: ${integrityCount}`}</strong><span>${Number(integrity.fixableCount || 0)} можно исправить автоматически после создания страховочной копии.</span></div><div class="admin-integrity-list">${integrityIssues.map(item => `<article class="${item.count ? (item.fixable ? "fixable" : "manual") : "ok"}"><div>${item.fixable && item.count ? `<label class="no-print"><input type="checkbox" data-integrity-fix="${escapeHtml(item.id)}"> Выбрать</label>` : ""}<strong>${escapeHtml(item.title || item.id)}</strong><span>${escapeHtml(item.description || "")}</span></div><b>${Number(item.count || 0)}</b></article>`).join("")}</div>${integrity.fixableCount ? `<button type="button" class="no-print" data-fix-integrity>Исправить выбранное безопасно</button>` : ""}<div class="empty-state">Для каждого опасного исправления система требует причину и пароль администратора. Произвольные SQL-команды запрещены.</div>`;
   }
   if (tab === "storage") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");

@@ -14,7 +14,7 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v549-remove-catalog-builder/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v550-remove-correction-guide/);
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(html, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
@@ -58,12 +58,11 @@ test("instruction acknowledgements are stored on the server and visible to admin
   assert.match(app, /Журнал ознакомления с инструкциями/);
 });
 
-test("admin correction and storage centers preserve history without direct SQL", () => {
-  assert.match(app, /data-admin-maintenance-tab="corrections"/);
-  assert.match(app, /Безопасное исправление данных/);
+test("admin storage center remains while the redundant correction guide is removed", () => {
+  assert.doesNotMatch(app, /data-admin-maintenance-tab="corrections"/);
+  assert.doesNotMatch(app, /Безопасное исправление данных/);
   assert.match(app, /data-admin-maintenance-tab="storage"/);
   assert.match(app, /Хранилище и безопасная очистка/);
-  assert.match(app, /Без прямого SQL/);
 });
 
 test("backup policy exposes daily weekly and monthly retention tiers", () => {
@@ -248,11 +247,11 @@ test("permit completion fields are optional and official output is compact A4", 
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v549-remove-catalog-builder/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v549-remove-catalog-builder/);
+  assert.match(serviceWorker, /ppr-v550-remove-correction-guide/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v550-remove-correction-guide/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
-  assert.match(serviceWorker, /styles\.css\?v=v549-remove-catalog-builder/);
-  assert.match(serviceWorker, /app\.js\?v=v549-remove-catalog-builder/);
-  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v549-remove-catalog-builder/);
+  assert.match(serviceWorker, /styles\.css\?v=v550-remove-correction-guide/);
+  assert.match(serviceWorker, /app\.js\?v=v550-remove-correction-guide/);
+  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v550-remove-correction-guide/);
 });
