@@ -738,7 +738,9 @@ test("admin can rotate one node QR without changing other node indexes", () => {
 test("admin can print one existing node QR without rotating it", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /data-print-node-qr=/);
-  assert.match(client, /Печатать этот QR/);
+  assert.match(client, /Печатать QR/);
+  assert.match(client, /node-admin-action-groups/);
+  assert.match(client, /equipment-secondary-tools/);
   assert.match(client, /querySelector\("\[data-print-node-qr\]"\)/);
   assert.match(client, /printNodeQrCode\(eq, index\)/);
 });
@@ -851,9 +853,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v537-single-node-qr-print/);
-  assert.match(html, /styles\.css\?v=v537-single-node-qr-print/);
-  assert.match(serviceWorker, /app\.js\?v=v537-single-node-qr-print/);
+  assert.match(html, /app\.js\?v=v538-ordered-node-actions/);
+  assert.match(html, /styles\.css\?v=v538-ordered-node-actions/);
+  assert.match(serviceWorker, /app\.js\?v=v538-ordered-node-actions/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

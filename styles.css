@@ -4320,7 +4320,19 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
 }
 
 .equipment-row-tools {
-  display: block;
+  display: grid;
+  gap: 7px;
+}
+
+.equipment-secondary-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+  align-items: stretch;
+}
+
+.equipment-secondary-tools > button:only-child {
+  grid-column: 1 / -1;
 }
 
 .equipment-journal-cell .equipment-journal-button {
@@ -4972,10 +4984,31 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
 .node-admin-actions {
   grid-column: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 10px 10px 0;
+}
+
+.node-admin-action-groups {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  padding: 0 10px 10px 0;
+}
+
+.node-admin-action-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.node-admin-action-qr {
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.node-admin-action-danger {
+  margin-left: auto;
 }
 
 .node-admin-actions button {
@@ -4988,12 +5021,28 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
 
 @media (max-width: 760px) {
   .node-admin-actions {
-    grid-template-columns: 1fr 1fr;
     padding-right: 0;
   }
 
-  .node-admin-actions input {
-    grid-column: 1 / -1;
+  .node-admin-action-groups,
+  .node-admin-action-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .node-admin-action-qr {
+    padding: 8px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .node-admin-action-danger {
+    margin-left: 0;
+  }
+
+  .node-admin-action-group button {
+    width: 100%;
   }
 }
 
@@ -13045,6 +13094,21 @@ body.editor-profile #createTmcRequestButton.request-alert,
   border: 1px solid #d3dfe6;
   border-radius: 14px;
   background: #eef3f6;
+}
+
+.equipment-secondary-tools .equipment-installed-parts-button,
+.equipment-secondary-tools .equipment-qr-print-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.equipment-secondary-tools .equipment-installed-parts-button strong {
+  font-size: 16px;
 }
 
 .admin-technical-tools {

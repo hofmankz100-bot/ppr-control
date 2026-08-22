@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v537-single-node-qr-print";
+const APP_VERSION = "v538-ordered-node-actions";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11357,10 +11357,12 @@ function renderEquipment() {
               <span>${modernCraneEquipment ? "2 QR · вахтенный журнал" : modernForkliftEquipment ? "1 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : modernCraneEquipment ? "Только новая схема QR-обходов" : modernForkliftEquipment ? "Ежесменный обход и Плановое ТО через один QR" : gpmEquipment ? "Осмотры и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
-            <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
-            ${isEditorSession() ? linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "gpm"
-              ? `<button type="button" class="equipment-qr-print-button" data-print-all-gpm-qr>${allCraneQrCount} QR кран-балок<br><small>По 2 на каждый кран</small></button>`
-              : !gpmEquipment ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : "" : ""}
+            <div class="equipment-secondary-tools">
+              <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
+              ${isEditorSession() ? linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "gpm"
+                ? `<button type="button" class="equipment-qr-print-button" data-print-all-gpm-qr>${allCraneQrCount} QR кран-балок<br><small>По 2 на каждый кран</small></button>`
+                : !gpmEquipment ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : "" : ""}
+            </div>
           </div>
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
@@ -11926,15 +11928,17 @@ function renderNodeWalkthrough(eq) {
         ${canEditEquipmentCatalog(eq) ? `
           <div class="node-admin-actions">
             <input class="node-name-editor" data-node-name-list="${index}" type="text" value="${escapeHtml(nodeName)}">
-            <button type="button" data-save-node-name="${index}">Сохранить</button>
-            <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
-            ${catalogEditorRole() === "editor" ? `<button type="button" class="secondary" data-print-node-qr="${index}">Печатать этот QR</button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button>` : ""}
-            ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
-            ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `
-              <button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">
-                ${operationalPause ? "Возобновить узел" : "Временно остановить узел"}
-              </button>
-            ` : ""}
+            <div class="node-admin-action-groups">
+              <div class="node-admin-action-group node-admin-action-primary">
+                <button type="button" data-save-node-name="${index}">Сохранить</button>
+                <button type="button" class="secondary" data-cancel-node-name="${index}">Отмена</button>
+              </div>
+              ${catalogEditorRole() === "editor" ? `<div class="node-admin-action-group node-admin-action-qr"><button type="button" class="secondary" data-print-node-qr="${index}">Печатать QR</button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button></div>` : ""}
+              ${(canManageCatalogStructure(eq) || (catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date))) ? `<div class="node-admin-action-group node-admin-action-danger">
+                ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
+                ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `<button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">${operationalPause ? "Возобновить узел" : "Временно остановить узел"}</button>` : ""}
+              </div>` : ""}
+            </div>
           </div>
         ` : ""}
         ${nodeDocumentMemoHtml(eq, nodeName)}
