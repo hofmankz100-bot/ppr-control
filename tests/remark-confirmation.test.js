@@ -900,9 +900,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v551-remove-organization-settings/);
-  assert.match(html, /styles\.css\?v=v551-remove-organization-settings/);
-  assert.match(serviceWorker, /app\.js\?v=v551-remove-organization-settings/);
+  assert.match(html, /app\.js\?v=v552-fast-admin-trash/);
+  assert.match(html, /styles\.css\?v=v552-fast-admin-trash/);
+  assert.match(serviceWorker, /app\.js\?v=v552-fast-admin-trash/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1035,6 +1035,8 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.doesNotMatch(client, /Конструктор справочников/);
   assert.doesNotMatch(client, /Сохранить справочники/);
   assert.match(client, /\["forms", "activity", "settings"\]/);
+  assert.match(client, /adminMaintenanceTab: "trash"/);
+  assert.match(client, /current\.adminMaintenanceTab \|\| "trash"/);
   assert.doesNotMatch(client, /Сохранить названия ролей/);
   assert.doesNotMatch(client, /data-role-label=/);
   assert.match(server, /downtimeReasons/);

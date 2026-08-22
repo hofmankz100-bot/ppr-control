@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v551-remove-organization-settings";
+const APP_VERSION = "v552-fast-admin-trash";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -574,7 +574,7 @@ let current = {
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
   qrWalkJournalShift: currentWalkShift().key,
-  adminMaintenanceTab: "backups",
+  adminMaintenanceTab: "trash",
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
   gpmJournalKind: "gpm",
@@ -18029,8 +18029,8 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
-  if (["forms", "activity", "settings"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "backups";
-  const requestedTab = current.adminMaintenanceTab || "backups";
+  if (["forms", "activity", "settings"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "trash";
+  const requestedTab = current.adminMaintenanceTab || "trash";
   let result;
   try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
   catch { ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Не удалось загрузить административные данные. Проверьте соединение.</div>`; return; }
@@ -18040,7 +18040,7 @@ async function renderAdminMaintenance() {
   const trash = Array.isArray(result.trash) ? result.trash : [];
   const alerts = Array.isArray(result.alerts) ? result.alerts : [];
   const activeAlerts = alerts.filter(item => item.status === "active");
-  const tab = current.adminMaintenanceTab || "backups";
+  const tab = current.adminMaintenanceTab || "trash";
   const pg = result.postgres || {};
   const monitor = result.monitoring || {};
   const config = result.config || {};
