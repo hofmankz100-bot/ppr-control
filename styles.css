@@ -3964,6 +3964,152 @@ body.editor-profile .director-card.request-alert{
 .aggregate-print-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media screen and (max-width: 760px) {
+  #aggregateJournalScreen {
+    padding-bottom: 96px;
+  }
+
+  #aggregateJournalScreen .panel-head {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  #aggregateJournalScreen .panel-head h1 {
+    margin-bottom: 6px;
+    font-size: 25px;
+    line-height: 1.12;
+  }
+
+  #aggregateJournalScreen .panel-head p {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  #aggregateJournalScreen .aggregate-print-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  #aggregateJournalScreen .journal-month-control {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+  }
+
+  #aggregateJournalScreen .journal-month-control input,
+  #aggregateJournalScreen .aggregate-print-actions button {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 9px 10px;
+    line-height: 1.2;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  #aggregateJournalScreen .aggregate-journal-sheet {
+    min-width: 0;
+    padding: 8px;
+    border-radius: 14px;
+    box-shadow: 0 5px 18px rgba(20, 50, 74, .09);
+  }
+
+  #aggregateJournalScreen .aggregate-sheet-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px 10px;
+  }
+
+  #aggregateJournalScreen .aggregate-sheet-head strong {
+    min-width: 0;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  #aggregateJournalScreen .aggregate-sheet-print {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 46px;
+    white-space: normal;
+  }
+
+  #aggregateJournalScreen .aggregate-journal-table-wrap {
+    max-width: calc(100vw - 30px);
+    border: 1px solid #c8d7de;
+    border-radius: 11px;
+    background: #fff;
+    touch-action: pan-x pan-y;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table,
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table tbody,
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table tr,
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table {
+    table-layout: auto;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table colgroup,
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table thead {
+    display: none;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table tr {
+    margin: 0 0 10px;
+    border: 1px solid #cbd9df;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td {
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(105px, 36%) minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px 10px;
+    border: 0;
+    border-bottom: 1px solid #e1e9ed;
+    box-shadow: none;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td::before {
+    content: attr(data-mobile-label);
+    color: #476172;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td:last-child {
+    border-bottom: 0;
+  }
+
+  #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table tr.open td {
+    background: #fffaf1;
+  }
 }
 
 .aggregate-print-actions button {
@@ -11522,6 +11668,10 @@ body.editor-profile #createTmcRequestButton.request-alert,
 }
 
 .hofmann-forklift-mascot[hidden] {
+  display: none !important;
+}
+
+body.non-home-view .hofmann-forklift-mascot {
   display: none !important;
 }
 

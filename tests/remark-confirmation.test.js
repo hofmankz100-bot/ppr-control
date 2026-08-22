@@ -880,6 +880,7 @@ test("completed PPR is sent to every engineer and only the first confirmation wi
 
 test("aggregate journal prints as complete landscape A4 pages", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(source, /AGGREGATE_JOURNAL_ROWS_PER_SHEET = 10/);
   assert.match(source, /function printAggregateJournal\(area, selectedSheetIndex = null\)/);
   assert.match(source, /data-print-aggregate-sheet/);
@@ -890,6 +891,10 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /allSheets\.slice\(1\)/);
   assert.match(source, /querySelectorAll\("\.no-print, \.aggregate-sheet-print"\)\.forEach\(node => node\.remove\(\)\)/);
   assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction \{ display: none !important; \}/);
+  assert.match(source, /standard-aggregate-journal-sheet/);
+  assert.match(source, /data-mobile-label="Оборудование и узел"/);
+  assert.match(styles, /standard-aggregate-journal-sheet \.aggregate-journal-table td::before/);
+  assert.match(styles, /#aggregateJournalScreen \.aggregate-print-actions/);
 });
 
 test("aggregate journals are separated by equipment even inside one area", () => {
@@ -920,9 +925,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v561-mobile-node-actions/);
-  assert.match(html, /styles\.css\?v=v561-mobile-node-actions/);
-  assert.match(serviceWorker, /app\.js\?v=v561-mobile-node-actions/);
+  assert.match(html, /app\.js\?v=v562-mobile-journals/);
+  assert.match(html, /styles\.css\?v=v562-mobile-journals/);
+  assert.match(serviceWorker, /app\.js\?v=v562-mobile-journals/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1344,6 +1349,8 @@ test("the Hofmann forklift drives, smokes and carries aluminum profiles without 
   assert.doesNotMatch(app, /forklift-web-screen/);
   assert.doesNotMatch(app, /is-web-shooting/);
   assert.match(app, /document\.body\.append\(mascot\);\s+mascot\.hidden = true/);
+  assert.match(app, /current\.view !== "equipment"/);
+  assert.match(style, /body\.non-home-view \.hofmann-forklift-mascot/);
   assert.match(style, /pointer-events: none/);
   assert.match(style, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(style, /@keyframes forkliftSmoke/);

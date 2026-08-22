@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v561-mobile-node-actions";
+const APP_VERSION = "v562-mobile-journals";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -10056,6 +10056,7 @@ function show(view, push = true) {
   if (push && current.view !== view) nav.push(current.view);
   current.view = view;
   document.body.classList.toggle("director-control-profile", view === "directorControl");
+  document.body.classList.toggle("non-home-view", view !== "equipment");
   document.querySelectorAll(".view").forEach(el => el.classList.remove("active"));
   document.querySelector(`#${view}Screen`).classList.add("active");
   if (ui.back) ui.back.disabled = view === homeViewForProfile(profile?.role) || view === "directorControl";
@@ -18639,7 +18640,7 @@ function renderAggregateJournal() {
     </div>
     ${repairMode ? `<div class="aggregate-admin-repair-note no-print">Служебный режим администратора. Используйте только для старой зависшей записи с уже выполненной работой.</div>` : ""}
     ${sheets.map((sheetItems, sheetIndex) => `
-      <div class="aggregate-journal-sheet">
+      <div class="aggregate-journal-sheet standard-aggregate-journal-sheet">
         <div class="aggregate-sheet-head">
           <strong>Агрегатный журнал: ${escapeHtml(journalName)}</strong>
           <span>Лист № ${sheetIndex + 1}</span>
@@ -18687,19 +18688,19 @@ function renderAggregateJournal() {
             const partComments = parts.map(part => part.comment).filter(Boolean).join("\n");
             return `
               <tr class="${item.resolved ? "" : "open"}">
-                <td>${rowNumber}</td>
-                <td>${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
-                <td>${dateTimeHuman(item.at)}</td>
-                <td>${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
-                <td>${escapeHtml(author)}</td>
-                <td>${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
-                <td>${escapeHtml(item.closedWithoutScore
+                <td data-mobile-label="№">${rowNumber}</td>
+                <td data-mobile-label="Оборудование и узел">${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
+                <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
+                <td data-mobile-label="Неисправность">${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
+                <td data-mobile-label="Осмотр выполнил">${escapeHtml(author)}</td>
+                <td data-mobile-label="Дата ремонта">${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
+                <td data-mobile-label="Выполненные работы">${escapeHtml(item.closedWithoutScore
                   ? `Закрыто без баллов. Причина: ${item.resolvedComment || "не указана"}`
                   : partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
-                <td>${escapeHtml(partNames || "")}</td>
-                <td>${escapeHtml(partQty || "")}</td>
-                <td>${item.durationMs ? durationText(item.durationMs) : ""}</td>
-                <td>
+                <td data-mobile-label="Заменённые детали">${escapeHtml(partNames || "")}</td>
+                <td data-mobile-label="Количество">${escapeHtml(partQty || "")}</td>
+                <td data-mobile-label="Время устранения">${item.durationMs ? durationText(item.durationMs) : ""}</td>
+                <td data-mobile-label="Исполнитель и подтверждение">
                   ${escapeHtml(item.closedWithoutScore
                     ? `Закрыл без баллов: ${noScoreCloser || "ответственный"}${item.closedWithoutScoreAt ? ` · ${dateTimeHuman(item.closedWithoutScoreAt)}` : ""}`
                     : resolver ? `Устранили: ${resolver}${confirmer ? `\nПодтвердил: ${confirmer}${item.confirmedAt ? ` · ${dateTimeHuman(item.confirmedAt)}` : ""}` : ""}` : "")}
@@ -19892,7 +19893,7 @@ function setupHofmannForkliftMascot() {
 
   const run = async () => {
     window.clearTimeout(timer);
-    if (!isProfileReady() || document.hidden || document.querySelector(".login-overlay:not([hidden])")) {
+    if (!isProfileReady() || current.view !== "equipment" || document.hidden || document.querySelector(".login-overlay:not([hidden])")) {
       timer = window.setTimeout(run, 20000);
       return;
     }
