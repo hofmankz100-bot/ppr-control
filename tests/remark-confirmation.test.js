@@ -893,7 +893,10 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction \{ display: none !important; \}/);
   assert.match(source, /standard-aggregate-journal-sheet/);
   assert.match(source, /data-mobile-label="Оборудование и узел"/);
+  assert.match(source, /aggregate-mobile-record-carousel/);
+  assert.match(source, /sourceRows\.forEach\(row =>/);
   assert.match(styles, /standard-aggregate-journal-sheet \.aggregate-journal-table td::before/);
+  assert.match(styles, /scroll-snap-type: x mandatory/);
   assert.match(styles, /#aggregateJournalScreen \.aggregate-print-actions/);
 });
 
@@ -925,9 +928,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v563-mobile-qr-journal-shops/);
-  assert.match(html, /styles\.css\?v=v563-mobile-qr-journal-shops/);
-  assert.match(serviceWorker, /app\.js\?v=v563-mobile-qr-journal-shops/);
+  assert.match(html, /app\.js\?v=v564-mobile-journal-swipes/);
+  assert.match(html, /styles\.css\?v=v564-mobile-journal-swipes/);
+  assert.match(serviceWorker, /app\.js\?v=v564-mobile-journal-swipes/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1006,6 +1009,7 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(client, /data-qr-journal-area-back/);
   assert.match(client, /current\.qrWalkJournalArea/);
   assert.match(styles, /\.qr-journal-area-card\.has-missing/);
+  assert.match(styles, /\.qr-walk-journal-table tbody[\s\S]*?scroll-snap-type: x mandatory/);
   assert.match(server, /pathname === "\/api\/qr-walk\/journal"/);
   assert.match(server, /pathname === "\/api\/qr-walk\/status"/);
   assert.match(client, /await refreshQrWalkStatusFromServer\(parsed\.equipmentId, shift\)/);

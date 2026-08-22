@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v563-mobile-qr-journal-shops";
+const APP_VERSION = "v564-mobile-journal-swipes";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18772,6 +18772,25 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
+  ui.aggregateJournalList.classList.remove("mobile-record-carousel-active");
+  if (window.matchMedia?.("(max-width: 680px)")?.matches) {
+    const sourceRows = [...ui.aggregateJournalList.querySelectorAll(".standard-aggregate-journal-sheet tbody tr")];
+    if (sourceRows.length) {
+      const mobileSection = document.createElement("section");
+      mobileSection.className = "aggregate-mobile-record-view no-print";
+      mobileSection.innerHTML = `<div class="mobile-journal-swipe-title"><strong>Записи журнала</strong><span>Свайп влево или вправо</span></div><div class="aggregate-mobile-record-carousel"></div>`;
+      const carousel = mobileSection.querySelector(".aggregate-mobile-record-carousel");
+      sourceRows.forEach(row => {
+        const card = document.createElement("article");
+        card.className = `aggregate-mobile-record-card ${row.classList.contains("open") ? "open" : ""}`;
+        [...row.children].forEach(cell => card.append(cell.cloneNode(true)));
+        card.querySelectorAll(".no-print, .aggregate-correction").forEach(node => node.remove());
+        carousel.append(card);
+      });
+      ui.aggregateJournalList.querySelector(".aggregate-journal-sheet")?.before(mobileSection);
+      ui.aggregateJournalList.classList.add("mobile-record-carousel-active");
+    }
+  }
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
   bindJournalMonthControl(ui.aggregateJournalList, renderAggregateJournal);
   ui.aggregateJournalList.querySelector("[data-toggle-aggregate-repair]")?.addEventListener("click", () => {
