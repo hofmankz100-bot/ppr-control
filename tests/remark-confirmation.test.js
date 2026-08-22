@@ -900,9 +900,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v548-journal-workflow-settings/);
-  assert.match(html, /styles\.css\?v=v548-journal-workflow-settings/);
-  assert.match(serviceWorker, /app\.js\?v=v548-journal-workflow-settings/);
+  assert.match(html, /app\.js\?v=v549-remove-catalog-builder/);
+  assert.match(html, /styles\.css\?v=v549-remove-catalog-builder/);
+  assert.match(serviceWorker, /app\.js\?v=v549-remove-catalog-builder/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1031,7 +1031,12 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(client, /data-access-end-sessions/);
   assert.match(server, /pathname === "\/api\/admin\/user-permissions"/);
   assert.match(client, /data-user-permissions-form/);
-  assert.match(client, /data-admin-catalog-form/);
+  assert.doesNotMatch(client, /data-admin-catalog-form/);
+  assert.doesNotMatch(client, /Конструктор справочников/);
+  assert.doesNotMatch(client, /Сохранить справочники/);
+  assert.match(client, /settingsForm\.querySelectorAll\(":scope > label, :scope > \.admin-settings-columns, :scope > \.admin-settings-numbers"\)/);
+  assert.match(client, /Сохранить названия ролей/);
+  assert.match(client, /querySelector\("\.admin-settings-shortcuts"\)\?\.remove/);
   assert.match(server, /downtimeReasons/);
   assert.match(server, /pathname === "\/api\/admin\/qr-routes"/);
   assert.match(server, /pathname === "\/api\/admin\/qr-journal\/correct"/);
