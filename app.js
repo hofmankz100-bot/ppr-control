@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v541-equipment-trash";
+const APP_VERSION = "v542-admin-equipment-removal";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3674,7 +3674,7 @@ function allEquipment() {
         ? override.nodeOperationalPauses
         : {}
     };
-  });
+  }).filter(item => item.deleted !== true);
   const created = Object.values(state.catalog.equipment)
     .filter(item => item?.created === true && Number.isSafeInteger(Number(item.id)) && !builtInIds.has(Number(item.id)) && item.deleted !== true)
     .map(item => ({
@@ -11501,7 +11501,7 @@ function renderEquipment() {
               <div class="catalog-editor-actions">
                 <button type="button" data-save-equipment="${eq.id}">Сохранить</button>
                 <button type="button" class="secondary" data-cancel-equipment="${eq.id}">Отмена</button>
-                ${profile?.role === "editor" && eq.created === true ? `<button type="button" class="danger" data-delete-equipment="${eq.id}">Удалить оборудование</button>` : ""}
+                ${profile?.role === "editor" ? `<button type="button" class="danger" data-delete-equipment="${eq.id}">Удалить оборудование</button>` : ""}
               </div>
             </details>
           ` : ""}
@@ -11602,7 +11602,7 @@ function renderEquipment() {
         const password = window.prompt("Пароль главного администратора:");
         if (!password) return;
         runButtonOperation(event.currentTarget, async () => {
-          const result = await apiJson("/api/admin/equipment/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, reason, password }) });
+          const result = await apiJson("/api/admin/equipment/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, equipment: eq.name, area: eq.area, nodes: eq.nodes, builtIn: eq.created !== true, reason, password }) });
           if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
           if (!result?.ok) throw new Error(result?.error || "equipment_delete_failed");
           renderEquipment();

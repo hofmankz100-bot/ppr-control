@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v541-equipment-trash";
+const SERVER_VERSION = "v542-admin-equipment-removal";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5416,8 +5416,19 @@ async function handleApi(req, res, pathname, url) {
     if (!Number.isSafeInteger(equipmentId) || !reason) { sendJson(res, 400, { ok: false, error: "equipment_delete_invalid" }); return true; }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const item = db.catalog?.equipment?.[equipmentId];
-      if (!item || item.created !== true || item.deleted === true) return { error: "created_equipment_not_found" };
+      db.catalog ||= { equipment: {} };
+      db.catalog.equipment ||= {};
+      const existing = db.catalog.equipment[equipmentId];
+      if (existing?.deleted === true) return { error: "equipment_already_deleted" };
+      const requestedNodes = Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [];
+      const item = existing || {
+        id: equipmentId,
+        builtIn: body.builtIn === true,
+        name: String(body.equipment || "").trim().slice(0, 200) || `Оборудование ${equipmentId}`,
+        area: String(body.area || "").trim().slice(0, 200),
+        nodes: requestedNodes
+      };
+      if (!existing) db.catalog.equipment[equipmentId] = item;
       const deletedAt = new Date().toISOString();
       const linkedGpm = Object.values(db.gpmJournal?.equipment || {}).filter(entry => Number(entry?.sourceEquipmentId || 0) === equipmentId);
       item.deleted = true;
@@ -6514,7 +6525,13 @@ async function handleApi(req, res, pathname, url) {
         createManualBackup("before-trash-purge");
         if (item.type === "equipment") {
           const equipmentId = Number(item.targetId);
-          if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) delete db.catalog.equipment[equipmentId];
+          if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) {
+            if (item.snapshot?.catalogItem?.builtIn === true) {
+              db.catalog.equipment[equipmentId] = { id: equipmentId, builtIn: true, deleted: true, purged: true, purgedAt: new Date().toISOString() };
+            } else {
+              delete db.catalog.equipment[equipmentId];
+            }
+          }
           Object.keys(db.gpmJournal?.equipment || {}).forEach(id => {
             const gpm = db.gpmJournal.equipment[id];
             if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) delete db.gpmJournal.equipment[id];
