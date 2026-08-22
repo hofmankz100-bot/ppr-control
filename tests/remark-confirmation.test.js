@@ -900,9 +900,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v550-remove-correction-guide/);
-  assert.match(html, /styles\.css\?v=v550-remove-correction-guide/);
-  assert.match(serviceWorker, /app\.js\?v=v550-remove-correction-guide/);
+  assert.match(html, /app\.js\?v=v551-remove-organization-settings/);
+  assert.match(html, /styles\.css\?v=v551-remove-organization-settings/);
+  assert.match(serviceWorker, /app\.js\?v=v551-remove-organization-settings/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -2044,15 +2044,10 @@ test("PPR completion records the actual performer and resolution comment", () =>
   assert.match(serverSource, /row\.markedByRole = mark \? role/);
 });
 
-test("primary admin can rename displayed roles without changing permission keys", () => {
+test("organization settings and role-name editor are no longer accessible", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(clientSource, /const DEFAULT_ROLE_LABELS/);
-  assert.match(clientSource, /function applyRoleLabelOverrides/);
-  assert.match(clientSource, /data-role-label/);
-  assert.match(clientSource, /Вернуть стандартные названия/);
-  assert.match(clientSource, /ROLE_ACCESS\[role\]\?\.label \|\| systemLabel/);
-  assert.match(serverSource, /const allowedRoleKeys = new Set/);
-  assert.match(serverSource, /roleLabels,/);
-  assert.doesNotMatch(serverSource, /requestRoles:\s*roleLabels/);
+  assert.match(clientSource, /\["forms", "activity", "settings"\]/);
+  assert.match(clientSource, /maintenanceTabs\?\.querySelector\('\[data-admin-maintenance-tab="settings"\]'\)\?\.remove/);
+  assert.doesNotMatch(clientSource, /data-role-label=/);
+  assert.doesNotMatch(clientSource, /Вернуть стандартные названия/);
 });

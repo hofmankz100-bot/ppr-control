@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v550-remove-correction-guide";
+const APP_VERSION = "v551-remove-organization-settings";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18029,7 +18029,7 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
-  if (["forms", "activity"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "backups";
+  if (["forms", "activity", "settings"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "backups";
   const requestedTab = current.adminMaintenanceTab || "backups";
   let result;
   try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
@@ -18089,21 +18089,8 @@ async function renderAdminMaintenance() {
       <div class="aggregate-sheet-head"><strong>${tab === "settings" ? "Административный редактор" : tab === "backups" ? "Резервные копии и восстановление" : tab === "monitoring" ? "Состояние системы и уведомления" : tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"}</strong><span>${dateTimeHuman(new Date().toISOString())}</span></div>
       ${tab === "settings" ? `<div class="admin-settings-shortcuts no-print"><button type="button" data-admin-open-equipment>Оборудование и QR</button><button type="button" data-admin-open-instructions>Инструкции наряда</button><button type="button" data-admin-open-users>Сотрудники и роли</button></div><form class="admin-settings-form" data-admin-settings-form><label><span>Название организации</span><input name="companyName" maxlength="200" value="${escapeHtml(config.companyName || "ТОО «Aluminium of Kazakhstan»")}" required><small>Автоматически подставляется в новые наряды-допуски.</small></label><div class="admin-settings-columns"><label><span>Подразделения — по одному в строке</span><textarea name="departments" rows="7">${escapeHtml((config.departments || []).join("\n"))}</textarea></label><label><span>Должности — по одной в строке</span><textarea name="positions" rows="7">${escapeHtml((config.positions || []).join("\n"))}</textarea></label></div><div class="admin-settings-numbers"><label><span>Хранить корзину, дней</span><input name="trashRetentionDays" type="number" min="1" max="365" value="${Number(config.trashRetentionDays || 30)}"></label><label><span>Порог памяти, МБ</span><input name="memoryAlertMb" type="number" min="128" value="${Number(config.monitoring?.memoryAlertMb || 512)}"></label><label><span>Лимит базы, МБ</span><input name="databaseSizeLimitMb" type="number" min="100" value="${Number(config.monitoring?.databaseSizeLimitMb || 1024)}"></label><label><span>Копия не старше, часов</span><input name="backupMaxAgeHours" type="number" min="12" max="168" value="${Number(config.monitoring?.backupMaxAgeHours || 36)}"></label><label><span>Ошибок за 10 минут</span><input name="clientErrorThreshold" type="number" min="1" max="100" value="${Number(config.monitoring?.clientErrorThreshold || 5)}"></label></div><button type="submit">Сохранить настройки</button></form><div class="admin-config-history"><h3>История настроек</h3>${configHistory.length ? configHistory.map(item => `<article><div><strong>${escapeHtml(dateTimeHuman(item.at))}</strong><span>${escapeHtml(item.actorName || "Администратор")} · ${escapeHtml(item.reason || "Изменение настроек")}</span></div><button type="button" class="secondary no-print" data-admin-config-rollback="${escapeHtml(item.id)}">Вернуть эту версию</button></article>`).join("") : `<div class="empty-state">Сохранённых версий пока нет.</div>`}</div>` : tab === "monitoring" ? `<div class="system-monitor-grid"><article><strong>Node.js</strong><b>${Number(monitor.node?.uptimeSeconds || 0) ? `${Math.floor(Number(monitor.node.uptimeSeconds) / 3600)} ч` : "работает"}</b><span>Память ${Number(monitor.node?.memoryMb || 0)} МБ</span></article><article><strong>PostgreSQL</strong><b>${monitor.postgres?.connected ? "Подключён" : "Недоступен"}</b><span>${Number(monitor.postgres?.usagePercent || 0)}% · ${Number(monitor.postgres?.activeConnections || 0)} подключений</span></article><article><strong>Резервная копия</strong><b>${monitor.postgres?.lastBackupAt ? dateTimeHuman(monitor.postgres.lastBackupAt) : "Не найдена"}</b><span>Последняя запись: ${monitor.postgres?.lastWriteAt ? dateTimeHuman(monitor.postgres.lastWriteAt) : "—"}</span></article><article><strong>Ошибки</strong><b>${Number(monitor.api?.clientErrors10m || 0)}</b><span>за 10 минут · HTTP 5xx: ${Number(monitor.api?.errors5xx || 0)}</span></article></div><div class="admin-alert-list">${alerts.length ? alerts.map(item => `<article class="${escapeHtml(item.severity || "warning")} ${item.status === "resolved" ? "resolved" : ""}"><div><strong>${escapeHtml(item.title || "Системное уведомление")}</strong><span>${escapeHtml(item.message || "")}</span><small>${item.status === "active" ? `Обнаружено ${escapeHtml(dateTimeHuman(item.createdAt))}` : `Проверено ${escapeHtml(dateTimeHuman(item.resolvedAt))} · ${escapeHtml(item.resolvedByName || "Система")}`}</small></div>${item.status === "active" ? `<button type="button" class="no-print" data-resolve-system-alert="${escapeHtml(item.id)}">Проверено</button>` : ""}</article>`).join("") : `<div class="empty-state ok">Система работает нормально, активных предупреждений нет.</div>`}</div>` : tab === "audit" ? `<div class="admin-audit-list">${audit.length ? audit.map(item => `<article><time>${escapeHtml(dateTimeHuman(item.at))}</time><div><strong>${escapeHtml(item.actorName || "Система")}</strong><span>${escapeHtml(adminAuditActionLabel(item.action))}</span><small>${escapeHtml([item.targetLabel || item.targetId, item.reason].filter(Boolean).join(" · "))}</small></div></article>`).join("") : `<div class="empty-state">Действий пока нет</div>`}</div>` : `<div class="admin-trash-list">${trash.length ? trash.map(item => `<article class="${item.canRestore ? "" : "restored"}"><div><strong>${escapeHtml(item.label || item.targetId || "Запись")}</strong><span>${escapeHtml(item.type === "user" ? "Сотрудник" : item.type || "Данные")} · удалено ${escapeHtml(dateTimeHuman(item.deletedAt))}</span><small>Причина: ${escapeHtml(item.reason || "не указана")} · удалил: ${escapeHtml(item.deletedByName || "Администратор")}</small><small>${item.canRestore ? `Хранить до ${escapeHtml(dateTimeHuman(item.expiresAt))}` : `Восстановлено ${escapeHtml(dateTimeHuman(item.restoredAt))}`}</small></div>${item.canRestore ? `<div class="no-print"><button type="button" data-trash-restore="${escapeHtml(item.id)}">Восстановить</button><button type="button" class="danger" data-trash-purge="${escapeHtml(item.id)}">Удалить навсегда</button></div>` : ""}</article>`).join("") : `<div class="empty-state">Корзина пуста</div>`}</div>`}
     </section>`;
-  const settingsForm = ui.adminMaintenancePanel.querySelector("[data-admin-settings-form]");
-  if (tab === "settings" && settingsForm) {
-    ui.adminMaintenancePanel.querySelector(".admin-settings-shortcuts")?.remove();
-    settingsForm.querySelectorAll(":scope > label, :scope > .admin-settings-columns, :scope > .admin-settings-numbers").forEach(element => element.remove());
-    const settingsSubmit = settingsForm.querySelector('button[type="submit"]');
-    if (settingsSubmit) settingsSubmit.textContent = "Сохранить названия ролей";
-  }
-  if (tab === "settings" && settingsForm && isPrimaryAdminEngineer()) {
-    const submitButton = settingsForm.querySelector('button[type="submit"]');
-    submitButton?.insertAdjacentHTML("beforebegin", `<section class="admin-role-label-editor"><div><h3>Названия ролей</h3><p>Меняется только отображаемое название. Права сотрудников сохраняются.</p></div><div class="admin-role-label-grid">${visibleRoleEntries().map(([role]) => `<label><span>${escapeHtml(DEFAULT_ROLE_LABELS[role] || role)}</span><input type="text" maxlength="100" data-role-label="${escapeHtml(role)}" value="${escapeHtml(config.roleLabels?.[role] || DEFAULT_ROLE_LABELS[role] || role)}"></label>`).join("")}</div><button type="button" class="secondary" data-reset-role-labels>Вернуть стандартные названия</button></section>`);
-    settingsForm.querySelector("[data-reset-role-labels]")?.addEventListener("click", () => {
-      settingsForm.querySelectorAll("[data-role-label]").forEach(input => { input.value = DEFAULT_ROLE_LABELS[input.dataset.roleLabel] || input.dataset.roleLabel; });
-    });
-  }
   const maintenanceTabs = ui.adminMaintenancePanel.querySelector(".admin-maintenance-tabs");
+  maintenanceTabs?.querySelector('[data-admin-maintenance-tab="settings"]')?.remove();
   maintenanceTabs?.querySelector("[data-admin-preview-role]")?.addEventListener("change", event => setEditorPreviewRole(event.currentTarget.value));
   maintenanceTabs?.querySelector("[data-admin-preview-area]")?.addEventListener("change", event => setEditorPreviewArea(event.currentTarget.value));
   maintenanceTabs?.querySelector("[data-admin-language]")?.addEventListener("change", event => saveProfileLanguage(event.currentTarget.value));
@@ -18339,21 +18326,6 @@ async function renderAdminMaintenance() {
       window.location.reload();
     }, "Восстанавливаем…");
   }));
-  ui.adminMaintenancePanel.querySelector("[data-admin-settings-form]")?.addEventListener("submit", async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const roleLabels = Object.fromEntries([...form.querySelectorAll("[data-role-label]")].map(input => [input.dataset.roleLabel, String(input.value || "").trim()]).filter(([, label]) => label));
-    const reason = window.prompt("Кратко укажите причину изменения названий ролей:", "Обновление названий ролей")?.trim();
-    if (!reason) return;
-    const password = window.prompt("Введите пароль администратора:");
-    if (!password) return;
-    const submit = form.querySelector('button[type="submit"]');
-    await runButtonOperation(submit, async () => {
-      const saved = await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason, password, config: { ...config, roleLabels } }) });
-      if (saved?.config) { state.adminConfig = saved.config; applyRoleLabelOverrides(saved.config); saveState({ remote: false }); }
-      renderAdminMaintenance();
-    }, "Сохраняем…");
-  });
   ui.adminMaintenancePanel.querySelector("[data-admin-qr-route-form]")?.addEventListener("submit", async event => { event.preventDefault(); const form=event.currentTarget; const reason=window.prompt("Укажите причину изменения QR-маршрута:")?.trim();if(!reason)return;const password=window.prompt("Введите пароль администратора:");if(!password)return;const points=String(form.elements.points.value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);const userIds=String(form.elements.userIds.value||"").split(",").map(x=>x.trim()).filter(Boolean);await runButtonOperation(form.querySelector('button[type="submit"]'),async()=>{await apiJson("/api/admin/qr-routes",{method:"POST",body:JSON.stringify({name:form.elements.name.value,group:form.elements.group.value,role:form.elements.role.value,area:form.elements.area.value,userIds,points,reason,password})});renderAdminMaintenance();},"Сохраняем…"); });
   ui.adminMaintenancePanel.querySelectorAll("[data-admin-config-rollback]").forEach(button => button.addEventListener("click", async () => {
     if (!window.confirm("Вернуть выбранную версию настроек? Текущая версия будет сохранена в истории.")) return;
