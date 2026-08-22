@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v539-catalog-entity-sync";
+const APP_VERSION = "v540-equipment-creation";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3657,7 +3657,8 @@ function equipmentOverride(id) {
 function allEquipment() {
   state.catalog ||= { equipment: {} };
   state.catalog.equipment ||= {};
-  return EQUIPMENT.map(eq => {
+  const builtInIds = new Set(EQUIPMENT.map(eq => Number(eq.id)));
+  const builtIn = EQUIPMENT.map(eq => {
     const override = state.catalog.equipment[eq.id] || {};
     return {
       ...eq,
@@ -3674,6 +3675,20 @@ function allEquipment() {
         : {}
     };
   });
+  const created = Object.values(state.catalog.equipment)
+    .filter(item => item?.created === true && Number.isSafeInteger(Number(item.id)) && !builtInIds.has(Number(item.id)) && item.deleted !== true)
+    .map(item => ({
+      ...item,
+      id: Number(item.id),
+      name: String(item.name || `Оборудование ${item.id}`),
+      area: String(item.area || "Без участка"),
+      nodes: Array.isArray(item.nodes) && item.nodes.length ? item.nodes : ["Основное оборудование"],
+      reminders: item.reminders || {},
+      reminderMeta: item.reminderMeta && typeof item.reminderMeta === "object" ? item.reminderMeta : {},
+      operationalPauses: Array.isArray(item.operationalPauses) ? item.operationalPauses : [],
+      nodeOperationalPauses: item.nodeOperationalPauses && typeof item.nodeOperationalPauses === "object" ? item.nodeOperationalPauses : {}
+    }));
+  return [...builtIn, ...created].sort((a, b) => Number(a.id) - Number(b.id));
 }
 
 function operationalPauseApplies(pause, date = todayISO()) {
@@ -3962,7 +3977,7 @@ function visibleEquipment() {
   const mode = roleAccess().equipment;
   if (mode === "none") return [];
   const equipment = allEquipment();
-  if (profile?.jobRole === "forkliftDriver") return equipment.filter(eq => String(eq.name || "").trim().toLocaleLowerCase("ru-RU") === "вилочные погрузчики");
+  if (profile?.jobRole === "forkliftDriver") return equipment.filter(isForkliftEquipment);
   if (mode === "area") return equipment.filter(eq => areaAllowed(equipmentEmployeeArea(eq)));
   return equipment;
 }
@@ -8252,11 +8267,13 @@ function equipmentRowColor(eq) {
 }
 
 function isForkliftEquipment(eq) {
+  if (eq?.equipmentKind === "forklift") return true;
   const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
   return text.includes("вилоч") || text.includes("погрузчик");
 }
 
 function isGpmEquipment(eq) {
+  if (["gpm", "forklift"].includes(eq?.equipmentKind)) return true;
   const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
   return text.includes("гпм") || text.includes("грузопод") || isForkliftEquipment(eq);
 }
@@ -11299,6 +11316,51 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   }
 }
 
+function openCreateEquipmentDialog() {
+  if (profile?.role !== "editor") return;
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay equipment-create-overlay";
+  overlay.innerHTML = `<section class="qr-result-panel equipment-create-panel" role="dialog" aria-modal="true" aria-label="Создать оборудование">
+    <header><div><h2>Создать оборудование</h2><p>Карточка автоматически появится во всех связанных разделах.</p></div><button type="button" class="secondary" data-equipment-create-close>Закрыть</button></header>
+    <form data-equipment-create-form>
+      <label><span>Тип оборудования</span><select name="type"><option value="ordinary">Обычное оборудование</option><option value="gpm">Кран-балка</option><option value="forklift">Вилочный погрузчик</option></select></label>
+      <label><span>Название</span><input name="name" maxlength="200" required placeholder="Полное название оборудования"></label>
+      <label><span>Участок / место установки</span><input name="area" maxlength="200" required placeholder="Цех или участок"></label>
+      <label data-equipment-first-node><span>Первый узел</span><input name="firstNode" maxlength="200" required value="Основное оборудование"></label>
+      <label data-equipment-capacity hidden><span>Грузоподъёмность</span><input name="capacity" maxlength="100" placeholder="Например, 3,2 тонны"></label>
+      <div class="equipment-create-note">После создания объект получит постоянный ID и QR. Остальные сведения и ответственных можно заполнить в его карточке.</div>
+      <button type="submit">Создать и добавить в систему</button>
+    </form>
+  </section>`;
+  document.body.append(overlay);
+  const form = overlay.querySelector("[data-equipment-create-form]");
+  const type = form.elements.type;
+  const updateType = () => {
+    const special = ["gpm", "forklift"].includes(type.value);
+    overlay.querySelector("[data-equipment-first-node]").hidden = special;
+    form.elements.firstNode.required = !special;
+    overlay.querySelector("[data-equipment-capacity]").hidden = !special;
+  };
+  type.addEventListener("change", updateType);
+  updateType();
+  const close = () => overlay.remove();
+  overlay.querySelector("[data-equipment-create-close]")?.addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const button = form.querySelector("button[type=submit]");
+    runButtonOperation(button, async () => {
+      const values = Object.fromEntries(new FormData(form).entries());
+      const result = await apiJson("/api/admin/equipment/create", { method: "POST", timeout: 60000, body: JSON.stringify(values) });
+      if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+      if (!result?.ok) throw new Error(result?.error || "equipment_create_failed");
+      close();
+      renderEquipment();
+      showAppToast(`Создано: ${values.name}`, "ok");
+    }, "Создаётся...");
+  });
+}
+
 function renderEquipment() {
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
@@ -11335,6 +11397,7 @@ function renderEquipment() {
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
     </div>
     <div class="segmented">
+      ${profile?.role === "editor" ? `<button type="button" data-create-equipment>+ Создать оборудование</button>` : ""}
       ${canEditAnnualPpr() ? `<button type="button" class="desktop-annual-ppr-button" data-open-annual-ppr>Годовой график ППР</button>` : ""}
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
       ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Корзина и восстановление</button>` : ""}
@@ -11343,6 +11406,7 @@ function renderEquipment() {
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
     </div>
   `;
+  monthBar.querySelector("[data-create-equipment]")?.addEventListener("click", openCreateEquipmentDialog);
   monthBar.querySelector("[data-open-annual-ppr]")?.addEventListener("click", () => openAnnualPprSchedule());
   monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
   monthBar.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
@@ -14183,7 +14247,7 @@ function purgeLegacyForkliftGpmJournal() {
   const store = gpmStore();
   if (store.forkliftResetVersion === "clean-journal-v1") return false;
   const forkliftIds = Object.values(store.equipment)
-    .filter(item => item && !item.deleted && gpmItemKind(item) === "forklift")
+    .filter(item => item && !item.deleted && gpmItemKind(item) === "forklift" && !Number(item.sourceEquipmentId || 0))
     .map(item => item.id);
   forkliftIds.forEach(id => delete store.equipment[id]);
   Object.keys(store.inspections).forEach(id => {

@@ -761,6 +761,23 @@ test("new catalog nodes are registered atomically with a permanent QR identity",
   assert.match(client, /syncOpenEquipmentLabels\(equipmentId, eq\.name, eq\.area, nodeIndex, nextName\)/);
 });
 
+test("admin can create complete equipment cards from the main screen", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /data-create-equipment/);
+  assert.match(client, /function openCreateEquipmentDialog\(\)/);
+  assert.match(client, /Обычное оборудование/);
+  assert.match(client, /Кран-балка/);
+  assert.match(client, /Вилочный погрузчик/);
+  assert.match(client, /\/api\/admin\/equipment\/create/);
+  assert.match(client, /item\?\.created === true/);
+  assert.match(server, /pathname === "\/api\/admin\/equipment\/create"/);
+  assert.match(server, /equipmentId = Math\.max\(999, \.\.\.usedIds\) \+ 1/);
+  assert.match(server, /created: true/);
+  assert.match(server, /db\.gpmJournal\.equipment\[gpmId\]/);
+  assert.match(server, /broadcastState\("equipment-created"/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -869,9 +886,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v539-catalog-entity-sync/);
-  assert.match(html, /styles\.css\?v=v539-catalog-entity-sync/);
-  assert.match(serviceWorker, /app\.js\?v=v539-catalog-entity-sync/);
+  assert.match(html, /app\.js\?v=v540-equipment-creation/);
+  assert.match(html, /styles\.css\?v=v540-equipment-creation/);
+  assert.match(serviceWorker, /app\.js\?v=v540-equipment-creation/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

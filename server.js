@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v539-catalog-entity-sync";
+const SERVER_VERSION = "v540-equipment-creation";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5327,6 +5327,81 @@ async function handleApi(req, res, pathname, url) {
     if (result.error) { sendJson(res, result.error === "month_not_ready" || result.error === "month_already_closed" || result.error === "month_already_open" ? 409 : 400, { ok: false, ...result }); return true; }
     const stateVersion = broadcastState("month-close", "", result.state, true);
     sendJson(res, 200, { ok: true, closure: result.closure, readiness: result.readiness, state: result.state, stateVersion });
+    return true;
+  }
+
+  if (pathname === "/api/admin/equipment/create" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    const type = ["ordinary", "gpm", "forklift"].includes(String(body.type || "")) ? String(body.type) : "ordinary";
+    const name = String(body.name || "").trim().slice(0, 200);
+    const area = String(body.area || "").trim().slice(0, 200);
+    const firstNode = String(body.firstNode || "").trim().slice(0, 200) || "Основное оборудование";
+    const capacity = String(body.capacity || "").trim().slice(0, 100);
+    if (!name || !area) { sendJson(res, 400, { ok: false, error: "equipment_create_invalid" }); return true; }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.catalog ||= { equipment: {} };
+      db.catalog.equipment ||= {};
+      const duplicate = Object.values(db.catalog.equipment).some(item => item?.deleted !== true && String(item?.name || "").trim().toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU") && String(item?.area || "").trim().toLocaleLowerCase("ru-RU") === area.toLocaleLowerCase("ru-RU"));
+      if (duplicate) return { error: "equipment_already_exists" };
+      const usedIds = Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger);
+      const equipmentId = Math.max(999, ...usedIds) + 1;
+      const now = new Date().toISOString();
+      const equipmentKind = type === "ordinary" ? "ordinary" : type;
+      const nodes = [type === "ordinary" ? firstNode : type === "forklift" ? "Вахтенный осмотр погрузчика" : "Вахтенный осмотр кран-балки"];
+      const catalogItem = {
+        id: equipmentId,
+        created: true,
+        createdAt: now,
+        createdByName: String(req.authUser?.name || "Администратор"),
+        updatedAt: now,
+        name,
+        area,
+        equipmentKind,
+        nodes,
+        nodeCreatedAt: { 0: now },
+        qrTokens: { 0: crypto.randomBytes(12).toString("hex") },
+        reminders: {},
+        reminderMeta: {},
+        operationalPauses: [],
+        nodeOperationalPauses: {}
+      };
+      db.catalog.equipment[equipmentId] = catalogItem;
+      let gpmId = "";
+      if (type !== "ordinary") {
+        db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
+        db.gpmJournal.equipment ||= {};
+        gpmId = `gpm:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`;
+        const due = new Date();
+        due.setDate(due.getDate() + 30);
+        if (due.getDay() === 6) due.setDate(due.getDate() + 2);
+        if (due.getDay() === 0) due.setDate(due.getDate() + 1);
+        const dueDate = due.toISOString().slice(0, 10);
+        db.gpmJournal.equipment[gpmId] = {
+          id: gpmId,
+          sourceEquipmentId: equipmentId,
+          sourceEquipmentName: name,
+          equipmentKind: type,
+          name,
+          location: area,
+          capacity,
+          operationStatus: "allowed",
+          inspectorKeys: [],
+          engineerKeys: [],
+          nextMonthlyInspectionDate: dueDate,
+          nextMaintenanceDate: type === "forklift" ? dueDate : "",
+          createdAt: now,
+          updatedAt: now,
+          updatedByName: String(req.authUser?.name || "Администратор")
+        };
+      }
+      writeDb(db, { action: "equipment_created", user: req.authUser, targetId: String(equipmentId), targetLabel: `${name} · ${area}` });
+      return { state: publicState(db), equipmentId, gpmId };
+    });
+    if (result.error) { sendJson(res, 409, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("equipment-created", "", result.state, true);
+    sendJson(res, 200, { ok: true, equipmentId: result.equipmentId, gpmId: result.gpmId, state: result.state, stateVersion });
     return true;
   }
 

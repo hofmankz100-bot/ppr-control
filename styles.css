@@ -3840,6 +3840,64 @@ body.editor-profile .director-card.request-alert{
   display: block;
 }
 
+.equipment-create-panel {
+  max-width: 620px;
+}
+
+.equipment-create-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.equipment-create-panel h2,
+.equipment-create-panel p {
+  margin: 0;
+}
+
+.equipment-create-panel p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.equipment-create-panel form {
+  display: grid;
+  gap: 12px;
+}
+
+.equipment-create-panel label {
+  display: grid;
+  gap: 5px;
+  font-weight: 800;
+}
+
+.equipment-create-panel input,
+.equipment-create-panel select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 11px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.equipment-create-note {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #eef7f8;
+  color: #28596a;
+  font-size: 13px;
+}
+
+@media (max-width: 680px) {
+  .equipment-create-overlay { padding: 8px; }
+  .equipment-create-panel header { display: grid; }
+  .equipment-create-panel header button { width: 100%; }
+}
+
 .equipment-month-bar span {
   margin-top: 3px;
   color: var(--muted);
