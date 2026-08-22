@@ -778,6 +778,19 @@ test("admin can create complete equipment cards from the main screen", () => {
   assert.match(server, /broadcastState\("equipment-created"/);
 });
 
+test("only created equipment can be moved to trash and restored with its journal", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(client, /eq\.created === true \? `<button[^`]*data-delete-equipment/);
+  assert.match(client, /\/api\/admin\/equipment\/delete/);
+  assert.match(server, /pathname === "\/api\/admin\/equipment\/delete"/);
+  assert.match(server, /item\.created !== true/);
+  assert.match(server, /type: "equipment"/);
+  assert.match(server, /snapshot: \{ catalogItem: \{ \.\.\.item \}, gpmItems:/);
+  assert.match(server, /item\.type === "equipment"/);
+  assert.match(server, /deleted: false/);
+});
+
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
@@ -886,9 +899,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v540-equipment-creation/);
-  assert.match(html, /styles\.css\?v=v540-equipment-creation/);
-  assert.match(serviceWorker, /app\.js\?v=v540-equipment-creation/);
+  assert.match(html, /app\.js\?v=v541-equipment-trash/);
+  assert.match(html, /styles\.css\?v=v541-equipment-trash/);
+  assert.match(serviceWorker, /app\.js\?v=v541-equipment-trash/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

@@ -47,7 +47,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v540-equipment-creation";
+const SERVER_VERSION = "v541-equipment-trash";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5405,6 +5405,47 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/equipment/delete" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    const equipmentId = Number(body.equipmentId);
+    const reason = String(body.reason || "").trim().slice(0, 2000);
+    if (!Number.isSafeInteger(equipmentId) || !reason) { sendJson(res, 400, { ok: false, error: "equipment_delete_invalid" }); return true; }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const item = db.catalog?.equipment?.[equipmentId];
+      if (!item || item.created !== true || item.deleted === true) return { error: "created_equipment_not_found" };
+      const deletedAt = new Date().toISOString();
+      const linkedGpm = Object.values(db.gpmJournal?.equipment || {}).filter(entry => Number(entry?.sourceEquipmentId || 0) === equipmentId);
+      item.deleted = true;
+      item.deletedAt = deletedAt;
+      item.deletedByName = String(req.authUser?.name || "Администратор");
+      linkedGpm.forEach(entry => { entry.deleted = true; entry.deletedAt = deletedAt; });
+      db.adminTrash ||= [];
+      db.adminTrash.unshift({
+        id: `trash:equipment:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`,
+        type: "equipment",
+        targetId: String(equipmentId),
+        label: String(item.name || `Оборудование ${equipmentId}`),
+        reason,
+        deletedAt,
+        expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
+        deletedById: String(req.authUser?.id || ""),
+        deletedByName: String(req.authUser?.name || "Администратор"),
+        snapshot: { catalogItem: { ...item }, gpmItems: linkedGpm.map(entry => ({ ...entry })) }
+      });
+      writeDb(db, { action: "equipment_moved_to_trash", user: req.authUser, targetType: "equipment", targetId: String(equipmentId), targetLabel: item.name, reason });
+      return { state: publicState(db) };
+    });
+    if (result.error) { sendJson(res, 404, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("equipment-deleted", "", result.state, true);
+    sendJson(res, 200, { ok: true, state: result.state, stateVersion });
+    return true;
+  }
+
   if (pathname === "/api/admin/equipment/node-add" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     const body = await readBody(req).catch(() => ({}));
@@ -6446,6 +6487,22 @@ async function handleApi(req, res, pathname, url) {
           );
           if (conflict) return { error: "restore_conflict" };
           db.users.push(snapshot);
+        } else if (item.type === "equipment") {
+          const snapshot = item.snapshot || {};
+          const catalogItem = snapshot.catalogItem;
+          const equipmentId = Number(item.targetId);
+          if (!catalogItem || !Number.isSafeInteger(equipmentId)) return { error: "restore_snapshot_invalid" };
+          db.catalog ||= { equipment: {} };
+          db.catalog.equipment ||= {};
+          const active = db.catalog.equipment[equipmentId];
+          if (active && active.deleted !== true) return { error: "restore_conflict" };
+          db.catalog.equipment[equipmentId] = { ...catalogItem, id: equipmentId, deleted: false, deletedAt: "", deletedByName: "", restoredAt: new Date().toISOString() };
+          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
+          db.gpmJournal.equipment ||= {};
+          (snapshot.gpmItems || []).forEach(gpm => {
+            if (!gpm?.id) return;
+            db.gpmJournal.equipment[gpm.id] = { ...gpm, deleted: false, deletedAt: "", restoredAt: new Date().toISOString() };
+          });
         } else return { error: "restore_type_not_supported" };
         item.restoredAt = new Date().toISOString();
         item.restoredByName = String(req.authUser?.name || "Администратор");
@@ -6455,6 +6512,14 @@ async function handleApi(req, res, pathname, url) {
       if (action === "purge") {
         if (String(body.confirm || "").trim().toUpperCase() !== "УДАЛИТЬ НАВСЕГДА") return { error: "purge_confirmation_required" };
         createManualBackup("before-trash-purge");
+        if (item.type === "equipment") {
+          const equipmentId = Number(item.targetId);
+          if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) delete db.catalog.equipment[equipmentId];
+          Object.keys(db.gpmJournal?.equipment || {}).forEach(id => {
+            const gpm = db.gpmJournal.equipment[id];
+            if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) delete db.gpmJournal.equipment[id];
+          });
+        }
         db.adminTrash = (db.adminTrash || []).filter(entry => entry.id !== trashId);
         writeDb(db, { action: "trash_purge", user: req.authUser, targetType: item.type, targetId: item.targetId, targetLabel: item.label, reason: String(body.reason || "Окончательное удаление") });
         return { purged: true };

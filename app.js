@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v540-equipment-creation";
+const APP_VERSION = "v541-equipment-trash";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11501,6 +11501,7 @@ function renderEquipment() {
               <div class="catalog-editor-actions">
                 <button type="button" data-save-equipment="${eq.id}">Сохранить</button>
                 <button type="button" class="secondary" data-cancel-equipment="${eq.id}">Отмена</button>
+                ${profile?.role === "editor" && eq.created === true ? `<button type="button" class="danger" data-delete-equipment="${eq.id}">Удалить оборудование</button>` : ""}
               </div>
             </details>
           ` : ""}
@@ -11593,6 +11594,20 @@ function renderEquipment() {
         if (areaInput) areaInput.value = eq.area;
         const editor = tr.querySelector(`[data-equipment-editor="${eq.id}"]`);
         if (editor) editor.open = false;
+      });
+      tr.querySelector("[data-delete-equipment]")?.addEventListener("click", event => {
+        const reason = window.prompt(`Причина удаления «${eq.name}»:`, "Оборудование выведено из эксплуатации")?.trim();
+        if (!reason) return;
+        if (!window.confirm(`Убрать «${eq.name}» с главного экрана? Журналы и история сохранятся в корзине.`)) return;
+        const password = window.prompt("Пароль главного администратора:");
+        if (!password) return;
+        runButtonOperation(event.currentTarget, async () => {
+          const result = await apiJson("/api/admin/equipment/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, reason, password }) });
+          if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+          if (!result?.ok) throw new Error(result?.error || "equipment_delete_failed");
+          renderEquipment();
+          showAppToast("Оборудование перемещено в корзину", "ok");
+        }, "Перемещается...");
       });
       tbody.append(tr);
     });
