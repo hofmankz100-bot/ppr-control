@@ -78,9 +78,9 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v535-clean-rating-exclusions";
+const APP_VERSION = "v536-weekday-crane-maintenance";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
-const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
+const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
@@ -977,6 +977,27 @@ function removeWarehouseStateLocal(targetState) {
   return { changed };
 }
 
+function gpmNextWorkday(date) {
+  const value = date instanceof Date ? new Date(date) : new Date(`${String(date || todayISO())}T12:00:00`);
+  while (value.getDay() === 0 || value.getDay() === 6) value.setDate(value.getDate() + 1);
+  return value;
+}
+
+function gpmWorkdayByIndex(baseDate, index = 0) {
+  const value = gpmNextWorkday(baseDate);
+  let remaining = Math.max(0, Number(index) || 0);
+  while (remaining > 0) {
+    value.setDate(value.getDate() + 1);
+    if (value.getDay() !== 0 && value.getDay() !== 6) remaining -= 1;
+  }
+  return value.toISOString().slice(0, 10);
+}
+
+function gpmNormalizeWorkday(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return "";
+  return gpmNextWorkday(date).toISOString().slice(0, 10);
+}
+
 function distributeGpmMonthlySchedule(targetState) {
   targetState.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
   if (targetState.gpmJournal.monthlyScheduleVersion === GPM_MONTHLY_SCHEDULE_VERSION) return { changed: false };
@@ -984,12 +1005,10 @@ function distributeGpmMonthlySchedule(targetState) {
     .filter(item => item && !item.deleted && item.equipmentKind !== "forklift" && !/вилоч|погрузчик/i.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
   if (!cranes.length) return { changed: false };
-  const base = new Date(`${todayISO()}T12:00:00`);
+  const base = todayISO();
   const now = new Date().toISOString();
   cranes.forEach((item, index) => {
-    const scheduled = new Date(base);
-    scheduled.setDate(scheduled.getDate() + index);
-    item.nextMonthlyInspectionDate = scheduled.toISOString().slice(0, 10);
+    item.nextMonthlyInspectionDate = gpmWorkdayByIndex(base, index);
     item.updatedAt = now;
   });
   targetState.gpmJournal.monthlyScheduleVersion = GPM_MONTHLY_SCHEDULE_VERSION;
@@ -14321,12 +14340,12 @@ function gpmDatePlusMonth(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return "";
   const [year, month, day] = String(date).split("-").map(Number);
   const lastDay = new Date(year, month + 1, 0).getDate();
-  return `${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+  return gpmNormalizeWorkday(`${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`);
 }
 
 function gpmMonthlyDueDate(item) {
-  if (gpmItemKind(item) === "forklift" && /^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMaintenanceDate || ""))) return item.nextMaintenanceDate;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMonthlyInspectionDate || ""))) return item.nextMonthlyInspectionDate;
+  if (gpmItemKind(item) === "forklift" && /^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMaintenanceDate || ""))) return gpmNormalizeWorkday(item.nextMaintenanceDate);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(item?.nextMonthlyInspectionDate || ""))) return gpmNormalizeWorkday(item.nextMonthlyInspectionDate);
   const latest = Object.values(gpmStore().inspections || {})
     .filter(entry => entry?.gpmId === item?.id && entry.inspectionType === "monthly" && /^\d{4}-\d{2}-\d{2}$/.test(String(entry.shiftDate || "")))
     .sort((a, b) => String(b.shiftDate).localeCompare(String(a.shiftDate)))[0];
