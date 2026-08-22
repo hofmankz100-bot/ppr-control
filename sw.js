@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v534-technical-rating-only";
+const CACHE_NAME = "ppr-v535-clean-rating-exclusions";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=v534-technical-rating-only",
+  "./styles.css?v=v535-clean-rating-exclusions",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -10,12 +10,12 @@ const ASSETS = [
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
   "./node_modules/html2canvas/dist/html2canvas.min.js?v=421-annual-ppr-equipment-acts",
-  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v534-technical-rating-only",
-  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v534-technical-rating-only",
+  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v535-clean-rating-exclusions",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v535-clean-rating-exclusions",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=v534-technical-rating-only",
-  "./node_modules/jsqr/dist/jsQR.js?v=v534-technical-rating-only",
+  "./app.js?v=v535-clean-rating-exclusions",
+  "./node_modules/jsqr/dist/jsQR.js?v=v535-clean-rating-exclusions",
   "./assets/hofmann-forklift.png?v=v327-ppr-autofill-refresh",
   "./manifest.json",
   "./icon.svg",

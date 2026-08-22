@@ -843,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v534-technical-rating-only/);
-  assert.match(html, /styles\.css\?v=v534-technical-rating-only/);
-  assert.match(serviceWorker, /app\.js\?v=v534-technical-rating-only/);
+  assert.match(html, /app\.js\?v=v535-clean-rating-exclusions/);
+  assert.match(html, /styles\.css\?v=v535-clean-rating-exclusions/);
+  assert.match(serviceWorker, /app\.js\?v=v535-clean-rating-exclusions/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1758,6 +1758,8 @@ test("forklift drivers, welders and turners never participate in the employee ra
   assert.match(appSource, /\["forkliftDriver", "welder", "turner"\]/);
   assert.match(appSource, /\.filter\(user => isWorkerRatingRole\(user\.role\)\)/);
   assert.match(appSource, /if \(!isWorkerRatingRole\(role\)\) return/);
+  assert.match(appSource, /const eligibleKeys = new Set\(loadUsers\(\)/);
+  assert.match(appSource, /filter\(item => eligibleKeys\.has\(String\(item\?\.key/);
 });
 
 test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
