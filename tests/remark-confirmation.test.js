@@ -834,8 +834,8 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const serviceWorker = fs.readFileSync(path.join(root, "sw.js"), "utf8");
-  assert.match(client, /function workerRatingLedger\(year, workerKey\)/);
-  assert.match(client, /workerRatingPointMap\(year, null, ledger\)/);
+  assert.match(client, /function workerRatingLedger\(year, monthIndex, workerKey\)/);
+  assert.match(client, /workerRatingPointMap\(year, monthIndex, ledger\)/);
   assert.match(client, /function canAuditWorkerRating\(\)/);
   assert.match(client, /return profile\?\.role === "editor" \|\| hasEngineerInboxAccess\(\)/);
   assert.match(client, /if \(!canAuditWorkerRating\(\)\) return/);
@@ -843,9 +843,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v531-automatic-database-failover/);
-  assert.match(html, /styles\.css\?v=v531-automatic-database-failover/);
-  assert.match(serviceWorker, /app\.js\?v=v531-automatic-database-failover/);
+  assert.match(html, /app\.js\?v=v532-monthly-rating/);
+  assert.match(html, /styles\.css\?v=v532-monthly-rating/);
+  assert.match(serviceWorker, /app\.js\?v=v532-monthly-rating/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1727,17 +1727,29 @@ test("only admin or an explicitly permitted engineer can edit annual PPR", () =>
   assert.match(serverSource, /annual_ppr_permission_denied/);
 });
 
-test("administration keeps four primary tabs and all technical tools in a responsive disclosure", () => {
+test("administration keeps four primary tabs and only useful technical tools", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(4/);
   assert.match(appSource, /primaryAdminTabs = new Set\(\["trash", "backups", "audit", "report"\]\)/);
   assert.match(appSource, /class="admin-technical-tools"/);
-  for (const tab of ["guide", "forms", "broadcasts", "settings", "transfer", "access", "automation", "activity", "archives", "integrity", "monitoring"]) {
+  for (const tab of ["guide", "broadcasts", "settings", "transfer", "access", "automation", "archives", "integrity", "monitoring"]) {
     assert.match(appSource, new RegExp(`data-admin-maintenance-tab="${tab}"`));
   }
+  assert.doesNotMatch(appSource, /data-admin-maintenance-tab="forms"/);
+  assert.doesNotMatch(appSource, /data-admin-maintenance-tab="activity"/);
   assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(2/);
   assert.match(stylesSource, /@media \(max-width: 760px\)[\s\S]*repeat\(2/);
+});
+
+test("worker rating is calculated and displayed separately for each calendar month", () => {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(appSource, /ratingMonth: todayISO\(\)\.slice\(0, 7\)/);
+  assert.match(appSource, /id="workerRatingMonth" type="month"/);
+  assert.match(appSource, /function workerRatingStats\(period = current\.ratingMonth/);
+  assert.match(appSource, /workerRatingPointMap\(year, monthIndex\)/);
+  assert.match(appSource, /at\.month !== monthIndex/);
+  assert.match(appSource, /current\.ratingMonth = ui\.workerRatingMonth\.value/);
 });
 
 test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {

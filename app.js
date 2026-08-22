@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v531-automatic-database-failover";
+const APP_VERSION = "v532-monthly-rating";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-day-v2";
 const TMC_REQUESTS_DISABLED = true;
@@ -556,6 +556,7 @@ let current = {
   downtimeYear: new Date().getFullYear(),
   engineerReportMonth: todayISO().slice(0, 7),
   ratingYear: new Date().getFullYear(),
+  ratingMonth: todayISO().slice(0, 7),
   serviceCostArea: "",
   serviceCostEquipmentId: "",
   serviceCostNodeIndex: "",
@@ -566,7 +567,7 @@ let current = {
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
   qrWalkJournalShift: currentWalkShift().key,
-  adminMaintenanceTab: "audit",
+  adminMaintenanceTab: "backups",
   selectedGpmId: "",
   gpmSourceEquipmentId: 0,
   gpmJournalKind: "gpm",
@@ -744,10 +745,8 @@ function ensureWorkerRatingUi() {
           <h1>Рейтинг электромехаников</h1>
           <p>Баллы, КПД, скорость ремонта, аварии, ППР и лучший сотрудник месяца</p>
         </div>
-        <div class="segmented worker-rating-controls" role="group" aria-label="Год рейтинга">
-          <button id="prevRatingYear" type="button">‹</button>
-          <strong id="workerRatingYearLabel"></strong>
-          <button id="nextRatingYear" type="button">›</button>
+        <div class="segmented worker-rating-controls" role="group" aria-label="Месяц рейтинга">
+          <label><span>Месяц</span><input id="workerRatingMonth" type="month" value="${escapeHtml(current.ratingMonth)}"></label>
         </div>
       </div>
       <div id="workerRatingPanel" class="worker-rating-panel"></div>
@@ -755,10 +754,8 @@ function ensureWorkerRatingUi() {
     main?.append(section);
   }
   ui.workerRatingButton = document.querySelector("#workerRatingButton");
-  ui.workerRatingYearLabel = document.querySelector("#workerRatingYearLabel");
+  ui.workerRatingMonth = document.querySelector("#workerRatingMonth");
   ui.workerRatingPanel = document.querySelector("#workerRatingPanel");
-  ui.prevRatingYear = document.querySelector("#prevRatingYear");
-  ui.nextRatingYear = document.querySelector("#nextRatingYear");
 }
 
 ensureWorkerRatingUi();
@@ -15904,9 +15901,9 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
   return points;
 }
 
-function workerRatingLedger(year, workerKey) {
+function workerRatingLedger(year, monthIndex, workerKey) {
   const ledger = [];
-  workerRatingPointMap(year, null, ledger);
+  workerRatingPointMap(year, monthIndex, ledger);
   return ledger
     .filter(item => item.key === workerKey)
     .sort((a, b) => Date.parse(b.date || "") - Date.parse(a.date || ""));
@@ -15931,10 +15928,10 @@ function canAuditWorkerRating() {
 
 function openWorkerRatingLedger(workerKey) {
   if (!canAuditWorkerRating()) return;
-  const stats = workerRatingStats(current.ratingYear);
+  const stats = workerRatingStats();
   const worker = stats.workers.find(item => item.key === workerKey);
   if (!worker) return;
-  const entries = workerRatingLedger(stats.year, workerKey);
+  const entries = workerRatingLedger(stats.year, stats.monthIndex, workerKey);
   const grouped = new Map();
   entries.forEach(item => {
     if (!grouped.has(item.type)) grouped.set(item.type, []);
@@ -15949,7 +15946,7 @@ function openWorkerRatingLedger(workerKey) {
     <section role="dialog" aria-modal="true" aria-label="Расшифровка баллов">
       <header>
         <div>
-          <span>Расшифровка за ${stats.year} год</span>
+          <span>Расшифровка за ${escapeHtml(new Date(stats.year, stats.monthIndex, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" }))}</span>
           <strong>${escapeHtml(worker.name)}</strong>
           <small>${escapeHtml(worker.roleLabel)} · итог ${worker.points} баллов</small>
         </div>
@@ -15974,7 +15971,7 @@ function openWorkerRatingLedger(workerKey) {
             </div>
             <b>${item.points > 0 ? "+" : ""}${item.points}</b>
           </article>
-        `).join("") : `<p class="empty-state">Начислений за выбранный год нет.</p>`}
+        `).join("") : `<p class="empty-state">Начислений за выбранный месяц нет.</p>`}
       </div>
       <footer>
         <span>Проверено записей: ${entries.length}</span>
@@ -15986,7 +15983,14 @@ function openWorkerRatingLedger(workerKey) {
   modal.querySelectorAll("[data-close-rating-ledger]").forEach(button => button.addEventListener("click", () => modal.remove()));
 }
 
-function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
+function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7)) {
+  const [parsedYear, parsedMonth] = String(period || "").split("-").map(Number);
+  const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
+  const monthIndex = Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth - 1 : new Date().getMonth();
+  const inSelectedMonth = value => {
+    const parsed = dateYearMonth(value);
+    return parsed?.year === year && parsed.month === monthIndex;
+  };
   const workers = new Map();
   const ensureWorker = (role, name) => {
     if (!isResolutionExecutorRole(role)) return null;
@@ -16006,11 +16010,11 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   annualRepairEvents(year).forEach(event => {
     const created = dateYearMonth(event.createdAt || "");
     const resolved = dateYearMonth(event.resolvedAt || "");
-    if (event.type === "remark" && created?.year === year) {
+    if (event.type === "remark" && created?.year === year && created.month === monthIndex) {
       const author = ensureWorker(event.authorRole, event.authorName);
       if (author) author.remarksFound += 1;
     }
-    let countResolution = Boolean(event.resolvedAt && resolved?.year === year);
+    let countResolution = Boolean(event.resolvedAt && resolved?.year === year && resolved.month === monthIndex);
     if (event.type === "remark" && event.resolutionKey) {
       if (resolvedRemarkKeys.has(event.resolutionKey)) countResolution = false;
       else if (countResolution) resolvedRemarkKeys.add(event.resolutionKey);
@@ -16029,7 +16033,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
         if (event.type !== "install") worker.repairDurations.push(event.durationMs);
       }
     }
-    if (event.open && isResolutionExecutorRole(event.authorRole)) {
+    if (event.open && inSelectedMonth(event.createdAt) && isResolutionExecutorRole(event.authorRole)) {
       if (event.type === "remark" && event.resolutionKey) {
         if (overdueRemarkKeys.has(event.resolutionKey)) return;
         overdueRemarkKeys.add(event.resolutionKey);
@@ -16047,7 +16051,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     Object.values(shifts).forEach(shift => {
       if (!shift?.done) return;
       const at = dateYearMonth(shift.at || "");
-      if (at?.year !== year) return;
+      if (at?.year !== year || at.month !== monthIndex) return;
       const worker = ensureWorker(shift.byRole, shift.byName);
       if (!worker) return;
       worker.qrDone += 1;
@@ -16056,7 +16060,7 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
     });
   });
 
-  const annualPoints = workerRatingPointMap(year);
+  const annualPoints = workerRatingPointMap(year, monthIndex);
   const list = [...workers.values()].map(worker => {
     const avgReactionMs = worker.reactionDurations.length
       ? worker.reactionDurations.reduce((sum, value) => sum + value, 0) / worker.reactionDurations.length
@@ -16090,60 +16094,9 @@ function workerRatingStats(year = current.ratingYear || directorAnnualYear()) {
   list.sort((a, b) => b.points - a.points || b.efficiency - a.efficiency || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
   list.forEach((worker, index) => worker.place = index + 1);
 
-  const monthIndex = Math.min(new Date().getMonth(), 11);
-  const monthWorkers = new Map();
-  const ensureMonthWorker = (role, name) => {
-    if (!isResolutionExecutorRole(role)) return null;
-    const cleanName = String(name || "").trim() || requestRoleLabel(role);
-    if (workerRatingExcluded(role, cleanName)) return null;
-    const key = workerRatingKey(role, cleanName);
-    if (!monthWorkers.has(key)) monthWorkers.set(key, { role, name: cleanName, roleLabel: requestRoleLabel(role), points: 0, closed: 0, qrDone: 0, breakdownClosed: 0, remarksFound: 0, remarksResolved: 0 });
-    return monthWorkers.get(key);
-  };
-  const monthResolvedRemarkKeys = new Set();
-  annualRepairEvents(year).forEach(event => {
-    const created = dateYearMonth(event.createdAt || "");
-    if (event.type === "remark" && created?.year === year && created.month === monthIndex) {
-      const author = ensureMonthWorker(event.authorRole, event.authorName);
-      if (author) {
-        author.remarksFound += 1;
-      }
-    }
-    const resolved = dateYearMonth(event.resolvedAt || "");
-    if (resolved?.year !== year || resolved.month !== monthIndex) return;
-    if (event.type === "remark" && event.resolutionKey) {
-      if (monthResolvedRemarkKeys.has(event.resolutionKey)) return;
-      monthResolvedRemarkKeys.add(event.resolutionKey);
-    }
-    const worker = ensureMonthWorker(event.resolvedByRole, event.resolvedByName);
-    if (!worker) return;
-    worker.closed += 1;
-    if (event.type === "breakdown") worker.breakdownClosed += 1;
-    if (event.type === "remark") worker.remarksResolved += 1;
-  });
-  Object.values(state.checks || {}).forEach(rec => {
-    Object.values({ ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) }).forEach(shift => {
-      const at = dateYearMonth(shift?.at || "");
-      if (!shift?.done || at?.year !== year || at.month !== monthIndex) return;
-      const worker = ensureMonthWorker(shift.byRole, shift.byName);
-      if (!worker) return;
-      worker.qrDone += 1;
-    });
-  });
-  const monthPoints = workerRatingPointMap(year, monthIndex);
-  monthWorkers.forEach(worker => { worker.points = Number(monthPoints.get(workerRatingKey(worker.role, worker.name)) || 0); });
-  monthPoints.forEach((value, key) => {
-    if (monthWorkers.has(key)) return;
-    const separator = key.indexOf(":");
-    const role = key.slice(0, separator);
-    const matchedUser = loadUsers().find(user => workerRatingKey(user.role, user.name || user.employeeId || user.phone) === key);
-    const worker = ensureMonthWorker(role, matchedUser?.name || key.slice(separator + 1));
-    if (worker) worker.points = Number(value || 0);
-  });
-  const monthLeaders = [...monthWorkers.values()].sort((a, b) => b.points - a.points || b.closed - a.closed || b.qrDone - a.qrDone);
-  const bestMechanic = monthLeaders.find(worker => isElectromechanicRole(worker.role)) || null;
+  const bestMechanic = list.find(worker => isElectromechanicRole(worker.role)) || null;
   const bestElectrician = null;
-  const bestOverall = monthLeaders[0] || list[0] || null;
+  const bestOverall = list[0] || null;
   const totals = {
     workers: list.length,
     points: list.reduce((sum, worker) => sum + worker.points, 0),
@@ -16294,8 +16247,8 @@ function workerRatingHtml(stats = workerRatingStats()) {
 
 function renderWorkerRating() {
   if (!ui.workerRatingPanel) return;
-  const stats = workerRatingStats(current.ratingYear);
-  if (ui.workerRatingYearLabel) ui.workerRatingYearLabel.textContent = String(stats.year);
+  const stats = workerRatingStats(current.ratingMonth);
+  if (ui.workerRatingMonth) ui.workerRatingMonth.value = `${stats.year}-${String(stats.monthIndex + 1).padStart(2, "0")}`;
   ui.workerRatingPanel.innerHTML = workerRatingHtml(stats);
   ui.workerRatingPanel.querySelectorAll("[data-worker-rating-details]").forEach(button => {
     button.addEventListener("click", () => openWorkerRatingLedger(button.dataset.workerRatingDetails));
@@ -17694,6 +17647,29 @@ function adminAuditActionLabel(action = "") {
   return ({ user_moved_to_trash: "Сотрудник перемещён в корзину", trash_restore: "Запись восстановлена", trash_purge: "Запись удалена окончательно", user_password_reset: "Пароль сотрудника изменён", user_role_update: "Изменены роль или участок", user_access_disabled: "Доступ сотрудника отключён", user_access_enabled: "Доступ сотрудника включён", user_login_unlocked: "Вход сотрудника разблокирован", user_sessions_ended: "Завершены все сеансы сотрудника", qr_walk_journal_access: "Изменён доступ к QR-журналу", manual_backup: "Создана резервная копия", admin_settings_saved: "Административные настройки изменены", admin_settings_rollback: "Административные настройки восстановлены", admin_config_package_imported: "Импортирован пакет административных настроек", admin_backup_created: "Создана полная резервная копия", admin_backup_restored: "База восстановлена из резервной копии", admin_integrity_fixed: "Выполнено безопасное исправление данных", admin_archive_created: "Старые записи перенесены в защищённый архив", admin_archive_restored: "Данные восстановлены из архива", admin_notification_policy_saved: "Изменены правила уведомлений", admin_broadcast_reminded: "Повторно отправлено напоминание" })[action] || action.replaceAll("_", " ");
 }
 
+const VISIBLE_ADMIN_AUDIT_ACTIONS = new Set([
+  "user_moved_to_trash", "trash_restore", "trash_purge",
+  "user_password_reset", "user_role_update", "user_access_disabled",
+  "user_access_enabled", "user_login_unlocked", "user_sessions_ended",
+  "qr_walk_journal_access", "manual_backup", "admin_backup_created",
+  "admin_backup_restored", "admin_automatic_backup_created",
+  "admin_automatic_backup_failed", "admin_integrity_fixed",
+  "admin_archive_created", "admin_archive_restored",
+  "admin_config_package_imported"
+]);
+
+function visibleAdminAuditItems(items = []) {
+  const seen = new Set();
+  return items.filter(item => {
+    const action = String(item.action || "");
+    if (!VISIBLE_ADMIN_AUDIT_ACTIONS.has(action) && !/(error|failed|critical|database|postgres)/i.test(action)) return false;
+    const key = [action, item.actorId || item.actorName, item.targetId || item.targetLabel, item.at || ""].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 100);
+}
+
 function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
@@ -17707,16 +17683,18 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
-  const requestedTab = current.adminMaintenanceTab || "audit";
+  if (["forms", "activity"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "backups";
+  const requestedTab = current.adminMaintenanceTab || "backups";
   let result;
   try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
   catch { ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Не удалось загрузить административные данные. Проверьте соединение.</div>`; return; }
   if (current.view !== "adminMaintenance") return;
-  const audit = Array.isArray(result.audit) ? result.audit : [];
+  const rawAudit = Array.isArray(result.audit) ? result.audit : [];
+  const audit = visibleAdminAuditItems(rawAudit);
   const trash = Array.isArray(result.trash) ? result.trash : [];
   const alerts = Array.isArray(result.alerts) ? result.alerts : [];
   const activeAlerts = alerts.filter(item => item.status === "active");
-  const tab = current.adminMaintenanceTab || "audit";
+  const tab = current.adminMaintenanceTab || "backups";
   const pg = result.postgres || {};
   const monitor = result.monitoring || {};
   const config = result.config || {};
@@ -17744,7 +17722,7 @@ async function renderAdminMaintenance() {
   ui.adminMaintenancePanel.innerHTML = `
     <div class="admin-maintenance-status">
       <div class="${pg.connected ? "ok" : "warning"}"><strong>${pg.connected ? "PostgreSQL работает" : "PostgreSQL недоступен или используется JSON"}</strong><span>Режим: ${escapeHtml(pg.mode || "-")} · размер ${escapeHtml(sizeText)}</span></div>
-      <div><strong>${audit.length}</strong><span>действий загружено</span></div><div><strong>${trash.filter(item => item.canRestore).length}</strong><span>записей в корзине</span></div>
+      <div><strong>${audit.length}</strong><span>значимых действий</span></div><div><strong>${trash.filter(item => item.canRestore).length}</strong><span>записей в корзине</span></div>
     </div>
     <div class="segmented admin-maintenance-tabs no-print">
       <button type="button" class="${tab === "trash" ? "active" : ""}" data-admin-maintenance-tab="trash">Корзина · ${trash.filter(item => item.canRestore).length}</button>
@@ -17757,7 +17735,7 @@ async function renderAdminMaintenance() {
           <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
-          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "forms" ? "active" : ""}" data-admin-maintenance-tab="forms">Формы</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "activity" ? "active" : ""}" data-admin-maintenance-tab="activity">Системные события · ${Number(activity.unreadCount || 0)}</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" class="${tab === "monitoring" ? "active" : ""}" data-admin-maintenance-tab="monitoring">Система и сервер · ${activeAlerts.length}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button><button type="button" data-print-admin-maintenance>Печать / PDF</button>
+          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" class="${tab === "monitoring" ? "active" : ""}" data-admin-maintenance-tab="monitoring">Система и сервер · ${activeAlerts.length}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button><button type="button" data-print-admin-maintenance>Печать / PDF</button>
         </div>
       </details>
     </div>
@@ -17772,9 +17750,9 @@ async function renderAdminMaintenance() {
   maintenanceTabs?.querySelector("[data-open-push-diagnostics]")?.addEventListener("click", openPushDiagnostics);
   maintenanceTabs?.querySelector("[data-open-storage-diagnostics]")?.addEventListener("click", openStorageDiagnostics);
   maintenanceTabs?.querySelector("[data-clear-recorded-data]")?.addEventListener("click", event => confirmClearRecordedData(event.currentTarget));
-  const formsTabButton = maintenanceTabs?.querySelector('[data-admin-maintenance-tab="forms"]');
-  if (formsTabButton && !maintenanceTabs.querySelector('[data-admin-maintenance-tab="instructionLog"]')) {
-    formsTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "corrections" ? "active" : ""}" data-admin-maintenance-tab="corrections">Исправления</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);
+  const guideTabButton = maintenanceTabs?.querySelector('[data-admin-maintenance-tab="guide"]');
+  if (guideTabButton && !maintenanceTabs.querySelector('[data-admin-maintenance-tab="instructionLog"]')) {
+    guideTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "corrections" ? "active" : ""}" data-admin-maintenance-tab="corrections">Исправления</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);
   }
   if (tab === "instructionLog") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
@@ -17788,12 +17766,7 @@ async function renderAdminMaintenance() {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Хранилище и безопасная очистка</strong><span>${escapeHtml(sizeText)}</span></div><div class="system-monitor-grid"><article><strong>PostgreSQL</strong><b>${pg.connected ? "Подключён" : "Недоступен"}</b><span>Размер ${escapeHtml(sizeText)}</span></article><article><strong>Использование лимита</strong><b>${Number(monitor.postgres?.usagePercent || 0)}%</b><span>Предупреждение от 70%</span></article><article><strong>Архивировать старше</strong><b>${Number(archivePreview.days || 180)} дней</b><span>${Object.values(archivePreview.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0)} записей доступно</span></article><article><strong>Корзина</strong><b>${trash.filter(item => item.canRestore).length}</b><span>Можно восстановить до окончательной очистки</span></article></div><div class="admin-guide-grid"><article><strong>Предпросмотр очистки</strong><p>Сначала откройте диагностику и убедитесь, какие записи будут затронуты.</p><button type="button" data-guide-open-tab="integrity">Проверить данные</button></article><article><strong>Архивация</strong><p>Переносит старые данные в защищённый архив, не уничтожая рабочие журналы.</p><button type="button" data-guide-open-tab="archives">Открыть архивы</button></article><article><strong>Политика резервных копий</strong><p>14 дней — все автоматические копии, затем одна в неделю до 8 недель и одна в месяц до 12 месяцев. Ручные копии не удаляются.</p><b>К удалению сейчас: ${Number(backupRetention.deleteCount || 0)}</b><button type="button" data-apply-backup-retention ${Number(backupRetention.deleteCount || 0) ? "" : "disabled"}>Применить политику</button></article><article><strong>Корзина</strong><p>Удалённые записи можно восстановить до истечения срока хранения.</p><button type="button" data-guide-open-tab="trash">Открыть корзину</button></article></div>`;
   }
-  if (tab === "forms") {
-    const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
-    const optionalSections = config.formPolicies?.workPermit?.optionalSections || [];
-    const sections = [["leader","Ответственный руководитель"],["completedMeasures","Выполненные мероприятия"],["approval","Согласование"],["brigade","Допуск бригады"],["breaks","Перерывы и возобновление"],["changes","Изменения состава"]];
-    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Конструктор форм</strong><span>Без изменения кода · версия сохраняется</span></div><div class="empty-state">Настройки применяются к новым нарядам. Уже созданные черновики и документы сохраняют свой состав.</div><form class="admin-form-builder" data-admin-form-builder><label><span>Форма</span><select disabled><option>Наряд-допуск</option></select></label><fieldset><legend>Разделы, открытые в новом наряде</legend>${sections.map(([id,label])=>`<label><input type="checkbox" name="optionalSections" value="${id}" ${optionalSections.includes(id)?"checked":""}> ${label}</label>`).join("")}</fieldset><button type="submit">Создать новую версию формы</button></form><div class="admin-config-history"><h3>Предыдущие версии</h3>${configHistory.length?configHistory.slice(0,10).map(item=>`<article><div><strong>${escapeHtml(dateTimeHuman(item.at))}</strong><span>${escapeHtml(item.actorName||"Администратор")} · ${escapeHtml(item.reason||"Изменение формы")}</span></div><button type="button" class="secondary no-print" data-admin-config-rollback="${escapeHtml(item.id)}">Вернуть эту версию</button></article>`).join(""):`<div class="empty-state">Версий пока нет.</div>`}</div>`;
-  }  if (tab === "guide") {
+  if (tab === "guide") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `
       <div class="aggregate-sheet-head"><strong>Инструкция администратора</strong><span>Этап 18</span></div>
@@ -18018,19 +17991,7 @@ async function renderAdminMaintenance() {
   ui.adminMaintenancePanel.querySelector("[data-admin-open-equipment]")?.addEventListener("click", () => show("equipment"));
   ui.adminMaintenancePanel.querySelector("[data-admin-open-instructions]")?.addEventListener("click", () => show("workPermit"));
   ui.adminMaintenancePanel.querySelector("[data-admin-open-users]")?.addEventListener("click", () => show("director"));
-  ui.adminMaintenancePanel.querySelector("[data-admin-form-builder]")?.addEventListener("submit", async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const optionalSections = [...form.querySelectorAll('[name="optionalSections"]:checked')].map(input => input.value);
-    const reason = window.prompt("Укажите причину создания новой версии формы:")?.trim();
-    if (!reason) return;
-    const password = window.prompt("Введите пароль администратора:");
-    if (!password) return;
-    await runButtonOperation(form.querySelector('button[type="submit"]'), async () => {
-      await apiJson("/api/admin/settings", { method: "PUT", body: JSON.stringify({ reason, password, config: { ...config, formPolicies: { ...(config.formPolicies || {}), workPermit: { optionalSections } } } }) });
-      renderAdminMaintenance();
-    }, "Сохраняем версию…");
-  });  ui.adminMaintenancePanel.querySelector("[data-admin-settings-form]")?.addEventListener("submit", async event => {
+  ui.adminMaintenancePanel.querySelector("[data-admin-settings-form]")?.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const lines = value => String(value || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean);
@@ -18982,13 +18943,9 @@ ui.workerRatingButton?.addEventListener("click", () => {
   show("workerRating");
 });
 
-ui.prevRatingYear?.addEventListener("click", () => {
-  current.ratingYear -= 1;
-  renderWorkerRating();
-});
-
-ui.nextRatingYear?.addEventListener("click", () => {
-  current.ratingYear += 1;
+ui.workerRatingMonth?.addEventListener("change", () => {
+  current.ratingMonth = ui.workerRatingMonth.value || todayISO().slice(0, 7);
+  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || new Date().getFullYear();
   renderWorkerRating();
 });
 

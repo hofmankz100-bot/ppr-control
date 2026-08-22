@@ -14,7 +14,7 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v531-automatic-database-failover/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v532-monthly-rating/);
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(html, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
@@ -37,13 +37,13 @@ test("all permit sections stay visible while optional rows remain dynamic", () =
   assert.match(permit, /work-permit-table td\.no-print[\s\S]*?display:\s*none !important/);
 });
 
-test("admin form versions configure defaults only for new permit drafts", () => {
+test("permit defaults remain compatible while the unused form builder is hidden", () => {
   assert.match(server, /formPolicies: \{ workPermit:/);
   assert.match(server, /settings: \{ companyName:.*formPolicies:/);
   assert.match(permit, /configuredOptionalSectionIds/);
   assert.match(permit, /new Set\(defaultOptionalSectionIds\(\)\)/);
-  assert.match(app, /data-admin-form-builder/);
-  assert.match(app, /Создать новую версию формы/);
+  assert.doesNotMatch(app, /data-admin-form-builder/);
+  assert.doesNotMatch(app, /Создать новую версию формы/);
 });
 
 test("instruction acknowledgements are stored on the server and visible to admin", () => {
@@ -248,11 +248,11 @@ test("permit completion fields are optional and official output is compact A4", 
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v531-automatic-database-failover/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v531-automatic-database-failover/);
+  assert.match(serviceWorker, /ppr-v532-monthly-rating/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v532-monthly-rating/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
-  assert.match(serviceWorker, /styles\.css\?v=v531-automatic-database-failover/);
-  assert.match(serviceWorker, /app\.js\?v=v531-automatic-database-failover/);
-  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v531-automatic-database-failover/);
+  assert.match(serviceWorker, /styles\.css\?v=v532-monthly-rating/);
+  assert.match(serviceWorker, /app\.js\?v=v532-monthly-rating/);
+  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v532-monthly-rating/);
 });
