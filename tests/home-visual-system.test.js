@@ -19,3 +19,9 @@ test("home actions expose consistent keyboard focus and reduced motion", () => {
   assert.match(styles, /outline: 3px solid rgba\(8, 121, 135, \.22\)/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
+
+test("wide maintenance monitors use the available workspace", () => {
+  assert.match(styles, /@media screen and \(min-width: 1280px\)/);
+  assert.match(styles, /width: min\(1480px, 100%\)/);
+  assert.match(styles, /#equipmentScreen > \.quick-nav \{[\s\S]*?repeat\(5, minmax\(0, 1fr\)\)/);
+});

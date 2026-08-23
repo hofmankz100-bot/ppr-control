@@ -13663,3 +13663,18 @@ body.non-home-view .hofmann-forklift-mascot {
     transition: none !important;
   }
 }
+
+/* Use wide maintenance monitors efficiently without changing tablet or phone layouts. */
+@media screen and (min-width: 1280px) {
+  .screen {
+    width: min(1480px, 100%);
+  }
+
+  #equipmentScreen > .quick-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  #equipmentScreen > .quick-nav button {
+    min-height: 56px;
+  }
+}
