@@ -992,6 +992,7 @@ test("test and duplicate worker identities are excluded without hiding the valid
 test("QR walks are separated into technical and operational journals", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const qrRoute = fs.readFileSync(path.join(root, "server", "admin-qr-route.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /const QR_WALK_GROUPS/);
   assert.match(client, /function qrWalkGroup\(role = profile\?\.role\)/);
@@ -1031,8 +1032,8 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(server, /currentItem\.walkGroups\?\.\[group\]\?\.\[shift\]\?\.done/);
   assert.match(client, /function canViewQrWalkJournal/);
   assert.match(client, /Кому разрешён просмотр журнала/);
-  assert.match(server, /pathname === "\/api\/qr-walk\/journal-access"/);
-  assert.match(server, /qrWalkJournalAccess/);
+  assert.match(qrRoute, /pathname === "\/api\/qr-walk\/journal-access"/);
+  assert.match(qrRoute, /qrWalkJournalAccess/);
   assert.match(client, /selfRemarkBonus: 5/);
   assert.match(client, /Сам обнаружил и устранил замечание · бонус \+5/);
   assert.match(client, /if \(!isElectromechanicRole\(shift\.byRole\)\) return/);
@@ -1043,6 +1044,7 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const maintenanceRoute = fs.readFileSync(path.join(root, "server", "admin-maintenance-route.js"), "utf8");
   const dashboardRoute = fs.readFileSync(path.join(root, "server", "admin-dashboard-route.js"), "utf8");
+  const qrRoute = fs.readFileSync(path.join(root, "server", "admin-qr-route.js"), "utf8");
   const userPermissionsRoute = fs.readFileSync(path.join(root, "server", "admin-user-permissions-route.js"), "utf8");
   const userSessionsRoute = fs.readFileSync(path.join(root, "server", "admin-user-sessions-route.js"), "utf8");
   assert.match(client, /function renderAdminMaintenance\(\)/);
@@ -1079,8 +1081,8 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.doesNotMatch(client, /Сохранить названия ролей/);
   assert.doesNotMatch(client, /data-role-label=/);
   assert.match(server, /downtimeReasons/);
-  assert.match(server, /pathname === "\/api\/admin\/qr-routes"/);
-  assert.match(server, /pathname === "\/api\/admin\/qr-journal\/correct"/);
+  assert.match(qrRoute, /pathname === "\/api\/admin\/qr-routes"/);
+  assert.match(qrRoute, /pathname === "\/api\/admin\/qr-journal\/correct"/);
   assert.match(client, /data-admin-qr-route-form/);
 });
 
