@@ -14163,6 +14163,221 @@ body.non-home-view .hofmann-forklift-mascot {
       background: linear-gradient(180deg, rgba(11, 20, 26, 0), #0b141a 30%);
     }
   }
+
+  html[data-theme="dark"] .qr-walk-journal-controls,
+  html[data-theme="dark"] .qr-journal-access,
+  html[data-theme="dark"] .qr-walk-journal-summary,
+  html[data-theme="dark"] .qr-journal-area-card,
+  html[data-theme="dark"] .qr-journal-area-back {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-controls label,
+  html[data-theme="dark"] .qr-journal-access summary,
+  html[data-theme="dark"] .qr-journal-area-overview-head strong,
+  html[data-theme="dark"] .qr-journal-area-card > span strong,
+  html[data-theme="dark"] .qr-journal-area-card > b,
+  html[data-theme="dark"] .qr-journal-area-card.complete > b {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-journal-area-overview-head span,
+  html[data-theme="dark"] .qr-journal-area-card > span small,
+  html[data-theme="dark"] .qr-journal-area-card > b small,
+  html[data-theme="dark"] .qr-journal-area-card > i {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .qr-journal-area-card,
+  html[data-theme="dark"] .qr-journal-area-card.has-missing {
+    border-left-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-table .qr-missing td,
+  html[data-theme="dark"] .qr-walk-journal-table .qr-fixed td {
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .attendance-panel,
+  html[data-theme="dark"] .attendance-qr-card,
+  html[data-theme="dark"] .attendance-manual-card,
+  html[data-theme="dark"] .attendance-person,
+  html[data-theme="dark"] .attendance-person.on-duty,
+  html[data-theme="dark"] .attendance-person.off-duty,
+  html[data-theme="dark"] .attendance-people-group {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .attendance-panel header p,
+  html[data-theme="dark"] .attendance-manual-card p,
+  html[data-theme="dark"] .attendance-qr-card p,
+  html[data-theme="dark"] .attendance-person span,
+  html[data-theme="dark"] .attendance-person small,
+  html[data-theme="dark"] .attendance-group-title span,
+  html[data-theme="dark"] .attendance-binding-status small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .attendance-binding-status,
+  html[data-theme="dark"] .attendance-binding-status.is-linked,
+  html[data-theme="dark"] .attendance-state-text.green,
+  html[data-theme="dark"] .attendance-state-text.red {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .attendance-binding-status strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .attendance-panel button:not(.attendance-close) {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .equipment-create-panel,
+  html[data-theme="dark"] .equipment-create-panel header,
+  html[data-theme="dark"] .equipment-create-note {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .equipment-create-panel p {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .equipment-create-panel input,
+  html[data-theme="dark"] .equipment-create-panel select,
+  html[data-theme="dark"] .equipment-create-panel button {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .admin-maintenance-status > div,
+  html[data-theme="dark"] .admin-maintenance-status > div.ok,
+  html[data-theme="dark"] .admin-maintenance-status > div.warning,
+  html[data-theme="dark"] .admin-maintenance-sheet,
+  html[data-theme="dark"] .admin-audit-list article,
+  html[data-theme="dark"] .admin-trash-list article,
+  html[data-theme="dark"] .admin-trash-list article.restored,
+  html[data-theme="dark"] .admin-technical-tools,
+  html[data-theme="dark"] .admin-maintenance-tabs.segmented {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .admin-maintenance-tabs.segmented button,
+  html[data-theme="dark"] .admin-technical-tools > summary,
+  html[data-theme="dark"] .admin-technical-tools[open] > summary,
+  html[data-theme="dark"] .admin-technical-select select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .admin-maintenance-tabs.segmented button.active {
+    border-color: #54646f;
+    background: #2a3942;
+    color: #fff;
+  }
+
+  html[data-theme="dark"] .admin-audit-list article span,
+  html[data-theme="dark"] .admin-trash-list article span,
+  html[data-theme="dark"] .admin-audit-list article small,
+  html[data-theme="dark"] .admin-trash-list article small,
+  html[data-theme="dark"] .admin-technical-select {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .factory-analytics-card,
+  html[data-theme="dark"] .worker-rating-summary div,
+  html[data-theme="dark"] .worker-month-winners div,
+  html[data-theme="dark"] .worker-rating-explain,
+  html[data-theme="dark"] .worker-rating-graph,
+  html[data-theme="dark"] .worker-rating-row,
+  html[data-theme="dark"] .worker-rating-row.gold,
+  html[data-theme="dark"] .worker-rating-row.green,
+  html[data-theme="dark"] .worker-rating-row.yellow,
+  html[data-theme="dark"] .worker-rating-row.red,
+  html[data-theme="dark"] .worker-rating-hidden,
+  html[data-theme="dark"] .worker-rating-ledger-modal > section {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .factory-analytics-head h2,
+  html[data-theme="dark"] .worker-rating-summary strong,
+  html[data-theme="dark"] .worker-month-winners strong,
+  html[data-theme="dark"] .worker-rating-explain strong,
+  html[data-theme="dark"] .worker-rating-graph-head strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .factory-analytics-head span,
+  html[data-theme="dark"] .factory-analytics-head p,
+  html[data-theme="dark"] .worker-rating-summary span,
+  html[data-theme="dark"] .worker-month-winners span,
+  html[data-theme="dark"] .worker-rating-explain span,
+  html[data-theme="dark"] .worker-rating-graph-head span,
+  html[data-theme="dark"] .worker-rating-hidden small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .engineer-report-controls input,
+  html[data-theme="dark"] .engineer-report,
+  html[data-theme="dark"] .engineer-report-summary div,
+  html[data-theme="dark"] .engineer-report-year-strip div,
+  html[data-theme="dark"] .engineer-report-note {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .engineer-report-title h2,
+  html[data-theme="dark"] .engineer-report-summary strong,
+  html[data-theme="dark"] .engineer-report-year-strip strong,
+  html[data-theme="dark"] .engineer-report-block h3 {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .engineer-report-title span,
+  html[data-theme="dark"] .engineer-report-title p,
+  html[data-theme="dark"] .engineer-report-note span,
+  html[data-theme="dark"] .engineer-report-summary span,
+  html[data-theme="dark"] .engineer-report-year-strip span,
+  html[data-theme="dark"] .engineer-report-empty {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .engineer-report-block th {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .engineer-report-block td {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
 }
 
 @media print {
