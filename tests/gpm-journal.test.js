@@ -126,7 +126,7 @@ test("linked crane beams no longer expose or accept the legacy node workflow", (
   assert.match(app, /2 QR · вахтенный журнал/);
   assert.match(styles, /\.modern-crane-workflow-cell/);
   assert.match(app, /const equipmentOperationalPause = modernShiftJournal \? null : activeOperationalPause/);
-  assert.match(app, /catalogEditorRole\(\) === "editor" && !modernShiftJournal/);
+  assert.match(app, /canEditEquipmentCatalog\(eq\) && !modernShiftJournal/);
 });
 
 test("crane QR opens a quick result screen and expands details only for a remark", () => {

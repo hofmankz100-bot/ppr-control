@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v593-fast-admin-access-1";
+const SERVER_VERSION = "v594-cross-platform-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -6043,25 +6043,26 @@ async function handleApi(req, res, pathname, url) {
       const beforeRemarkKeys = openRemarkKeysServer(db);
       const authenticatedRole = String(req.authUser?.role || "");
       const catalogRole = permissionBaseRoleServer(authenticatedRole);
+      const individualEquipmentEdit = activeUserPermission(req.authUser, "equipmentEdit");
       const authenticatedArea = String(req.authUser?.area || "").trim();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
-      if (["editor", "engineer", "shop"].includes(catalogRole) && body.catalog?.equipment) {
+      if ((["editor", "engineer", "shop"].includes(catalogRole) || individualEquipmentEdit) && body.catalog?.equipment) {
         Object.entries(body.catalog.equipment).forEach(([equipmentId, rawItem]) => {
           if (!rawItem || typeof rawItem !== "object") return;
           if (REMOVED_EQUIPMENT_IDS.has(String(equipmentId))) return;
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           const requestedArea = String(rawItem.area || currentItem.area || "").trim().slice(0, 200);
-          if (catalogRole === "shop" && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
+          if (catalogRole === "shop" && !individualEquipmentEdit && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
           const currentUpdatedAt = Date.parse(currentItem.updatedAt || "");
           const incomingUpdatedAt = Date.parse(rawItem.updatedAt || "");
           if (Number.isFinite(currentUpdatedAt) && (!Number.isFinite(incomingUpdatedAt) || incomingUpdatedAt < currentUpdatedAt)) return;
           const requestedEditingEnabled = rawItem.editingEnabled === true;
           const editingEnabled = currentItem.editingEnabled === true;
-          if (catalogRole !== "editor" && !editingEnabled) return;
+          if (catalogRole !== "editor" && !individualEquipmentEdit && !editingEnabled) return;
           const item = { ...currentItem };
           if (String(rawItem.name || "").trim()) item.name = String(rawItem.name).trim().slice(0, 200);
           if (Array.isArray(rawItem.nodes)) {
@@ -6108,7 +6109,7 @@ async function handleApi(req, res, pathname, url) {
               };
             });
           }
-          if (catalogRole === "editor" && Array.isArray(rawItem.operationalPauses)) {
+          if (Array.isArray(rawItem.operationalPauses)) {
             item.operationalPauses = rawItem.operationalPauses.slice(-100).map(pause => ({
               startedAt: String(pause?.startedAt || "").slice(0, 50),
               endedAt: String(pause?.endedAt || "").slice(0, 50),
@@ -6117,7 +6118,7 @@ async function handleApi(req, res, pathname, url) {
               endedBy: String(pause?.endedBy || "").trim().slice(0, 200)
             })).filter(pause => pause.startedAt);
           }
-          if (catalogRole === "editor" && rawItem.nodeOperationalPauses && typeof rawItem.nodeOperationalPauses === "object") {
+          if (rawItem.nodeOperationalPauses && typeof rawItem.nodeOperationalPauses === "object") {
             item.nodeOperationalPauses = {};
             Object.entries(rawItem.nodeOperationalPauses).forEach(([nodeIndex, pauses]) => {
               if (!Array.isArray(pauses)) return;

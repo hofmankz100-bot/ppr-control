@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v593-fast-admin-access-1";
+const APP_VERSION = "v594-cross-platform-access-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3724,7 +3724,7 @@ function activeOperationalPause(equipmentOrId, nodeIndex = null, date = todayISO
 }
 
 function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
-  if (catalogEditorRole() !== "editor") return false;
+  if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(Number(equipmentId));
   if (!eq || (nodeIndex !== null && (!Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length))) return false;
   const item = equipmentOverride(eq.id);
@@ -11784,7 +11784,7 @@ function renderEquipment() {
           ${canEditEquipmentCatalog(eq) ? `
             <details class="catalog-editor" data-equipment-editor="${eq.id}">
               <summary>Редактировать оборудование</summary>
-              ${catalogEditorRole() === "editor" && !modernShiftJournal ? (() => {
+              ${canEditEquipmentCatalog(eq) && !modernShiftJournal ? (() => {
                 const pause = activeOperationalPause(eq);
                 return `<div class="operational-pause-control ${pause ? "paused" : ""}">
                   <strong>${pause ? "Оборудование временно не работает" : "Оборудование работает"}</strong>
@@ -12373,7 +12373,7 @@ function renderNodeWalkthrough(eq) {
               ${catalogEditorRole() === "editor" ? `<div class="node-admin-action-group node-admin-action-qr"><button type="button" class="secondary" data-print-node-qr="${index}"><span class="qr-action-desktop">Печатать QR</span><span class="qr-action-mobile">Показать QR</span></button><button type="button" class="secondary" data-rotate-node-qr="${index}">Обновить QR</button></div>` : ""}
               ${(canManageCatalogStructure(eq) || (catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date))) ? `<div class="node-admin-action-group node-admin-action-danger">
                 ${canManageCatalogStructure(eq) ? `<button type="button" class="danger" data-delete-node="${index}">Удалить</button>` : ""}
-                ${catalogEditorRole() === "editor" && !activeOperationalPause(eq, null, current.date) ? `<button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">${operationalPause ? "Возобновить узел" : "Временно остановить узел"}</button>` : ""}
+                ${canEditEquipmentCatalog(eq) && !activeOperationalPause(eq, null, current.date) ? `<button type="button" class="${operationalPause ? "" : "danger"}" data-toggle-node-pause="${index}">${operationalPause ? "Возобновить узел" : "Временно остановить узел"}</button>` : ""}
               </div>` : ""}
             </div>
           </div>
@@ -20032,6 +20032,63 @@ function placeSingleAttendanceButton() {
   }
 }
 
+function setupPullToRefresh() {
+  if (!("ontouchstart" in window) || document.querySelector(".pull-refresh-indicator")) return;
+  const indicator = document.createElement("div");
+  indicator.className = "pull-refresh-indicator";
+  indicator.setAttribute("role", "status");
+  indicator.setAttribute("aria-live", "polite");
+  indicator.innerHTML = `<span aria-hidden="true">↓</span><strong>Потяните вниз для обновления</strong>`;
+  document.body.append(indicator);
+  let startY = 0;
+  let distance = 0;
+  let tracking = false;
+  let refreshing = false;
+  const blockedTarget = target => Boolean(target?.closest?.("input, textarea, select, button, a, form, dialog, [role='dialog'], [contenteditable='true'], .modal, .overlay"));
+  const reset = () => {
+    tracking = false;
+    distance = 0;
+    indicator.classList.remove("visible", "ready");
+    indicator.style.removeProperty("--pull-distance");
+  };
+  document.addEventListener("touchstart", event => {
+    if (refreshing || event.touches.length !== 1 || window.scrollY > 0 || blockedTarget(event.target)) return;
+    startY = event.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+  document.addEventListener("touchmove", event => {
+    if (!tracking || event.touches.length !== 1) return;
+    const delta = event.touches[0].clientY - startY;
+    if (delta <= 0 || window.scrollY > 0) return reset();
+    distance = Math.min(110, delta * .55);
+    indicator.classList.add("visible");
+    indicator.classList.toggle("ready", distance >= 72);
+    indicator.style.setProperty("--pull-distance", `${distance}px`);
+    indicator.querySelector("strong").textContent = distance >= 72 ? "Отпустите для обновления" : "Потяните вниз для обновления";
+    if (distance >= 12) event.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchend", async () => {
+    if (!tracking) return;
+    const shouldRefresh = distance >= 72;
+    reset();
+    if (!shouldRefresh || refreshing) return;
+    refreshing = true;
+    indicator.classList.add("visible", "refreshing");
+    indicator.querySelector("span").textContent = "↻";
+    indicator.querySelector("strong").textContent = "Обновляем данные…";
+    try {
+      await Promise.allSettled([loadRemoteState(), refreshAuthenticatedProfile(), loadRemoteUsers()]);
+      render();
+      showAppToast("Данные обновлены");
+    } finally {
+      refreshing = false;
+      indicator.classList.remove("visible", "refreshing");
+      indicator.querySelector("span").textContent = "↓";
+    }
+  }, { passive: true });
+  document.addEventListener("touchcancel", reset, { passive: true });
+}
+
 window.addEventListener("error", event => {
   reportClientError(event.message, event.filename, event.lineno, event.colno);
 });
@@ -20085,6 +20142,7 @@ if ("serviceWorker" in navigator) {
 setupTheme();
 disableTmcRequestFeature();
 placeSingleAttendanceButton();
+setupPullToRefresh();
 window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);

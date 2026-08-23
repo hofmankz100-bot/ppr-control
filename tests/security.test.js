@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v593-fast-admin-access-1";
+const APP_VERSION = "v594-cross-platform-access-1";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -58,6 +58,17 @@ test("production API requires a server session and rate-limits failed logins", a
     phone: "7475408321",
     passwordHash: passwordHash("worker-password"),
     role: "mechanic",
+    permissionOverrides: { equipmentEdit: { enabled: true } },
+    approved: true,
+    pendingApproval: false
+  };
+  const restrictedWorker = {
+    id: "security-restricted-worker",
+    name: "Restricted Worker",
+    employeeId: "restricted-worker",
+    phone: "70000000002",
+    passwordHash: passwordHash("restricted-password"),
+    role: "mechanic",
     approved: true,
     pendingApproval: false
   };
@@ -65,9 +76,10 @@ test("production API requires a server session and rate-limits failed logins", a
     checks: {},
     requests: {},
     inventory: {},
-    catalog: { equipment: {} },
+    catalog: { equipment: { "1": { name: "Test press", area: "Test shop", nodes: ["Main"], editingEnabled: false } } },
     downtimes: [],
-    users: [editor, worker]
+    attendanceSessions: [worker, restrictedWorker].map(user => ({ userKey: user.id, startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() })),
+    users: [editor, worker, restrictedWorker]
   }));
   const port = await reservePort();
   const qrPort = await reservePort();
@@ -159,6 +171,35 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.match(grpRow.actions, /Охранная зона газопровода — Требуется/);
     assert.match(grpRow.gasSmell, /ГРП - Печь №10 — Есть запах газа/);
     assert.match(grpRow.remarks, /ГРП - Печь №10 — Проверить настройку давления/);
+    const equipmentEditorLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ identifier: worker.employeeId, password: "worker-password" })
+    });
+    assert.equal(equipmentEditorLogin.status, 200);
+    const equipmentEditorCookie = equipmentEditorLogin.headers.get("set-cookie").split(";")[0];
+    const operationalPauseAt = new Date().toISOString();
+    const equipmentPauseResponse = await fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { cookie: equipmentEditorCookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({ actionId: "equipment-pause-permission-test", clientId: "security-test", catalog: { equipment: { "1": { name: "Test press", area: "Test shop", nodes: ["Main"], updatedAt: operationalPauseAt, operationalPauses: [{ startedAt: operationalPauseAt, reason: "Проверка права", changedBy: worker.name }] } } } })
+    });
+    assert.equal(equipmentPauseResponse.status, 200);
+    const pausedState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(pausedState.catalog.equipment["1"].operationalPauses[0].reason, "Проверка права");
+    const restrictedLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ identifier: restrictedWorker.employeeId, password: "restricted-password" })
+    });
+    const restrictedCookie = restrictedLogin.headers.get("set-cookie").split(";")[0];
+    await fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { cookie: restrictedCookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({ actionId: "equipment-pause-denied-test", clientId: "security-test", catalog: { equipment: { "1": { updatedAt: new Date(Date.now() + 1000).toISOString(), operationalPauses: [{ startedAt: operationalPauseAt, reason: "Несанкционированная замена" }] } } } })
+    });
+    const protectedState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(protectedState.catalog.equipment["1"].operationalPauses[0].reason, "Проверка права");
     const rejectedDelete = await fetch(`${baseUrl}/api/users`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION },
