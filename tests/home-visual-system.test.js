@@ -75,5 +75,9 @@ test("dark theme uses a WhatsApp-inspired palette", () => {
   assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-mobile-record-card/);
   assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-journal-table th/);
   assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-journal-table td/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table \.area-color-cell \.equipment-installed-parts-button/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table \.area-color-cell \.equipment-qr-print-button/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table td\.downtime-cell/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table td\.operational-paused-day/);
   assert.match(styles, /@media print \{[\s\S]*?color-scheme: light/);
 });
