@@ -14243,6 +14243,16 @@ body.non-home-view .hofmann-forklift-mascot {
     color: #e9edef;
   }
 
+  html[data-theme="dark"] .attendance-person-actions .button-link,
+  html[data-theme="dark"] .attendance-call,
+  html[data-theme="dark"] .attendance-whatsapp,
+  html[data-theme="dark"] .attendance-person.off-duty .attendance-call,
+  html[data-theme="dark"] .attendance-person.off-duty .attendance-whatsapp {
+    border: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef !important;
+  }
+
   html[data-theme="dark"] .equipment-create-panel,
   html[data-theme="dark"] .equipment-create-panel header,
   html[data-theme="dark"] .equipment-create-note {
@@ -14376,6 +14386,92 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .engineer-report-block td {
     border-color: #2a3942;
     background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-sheet,
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table-wrap,
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table td {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-sheet-head,
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-sheet-head strong,
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-sheet-head span {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .worker-metrics span,
+  html[data-theme="dark"] .worker-metric-found,
+  html[data-theme="dark"] .worker-metric-resolved,
+  html[data-theme="dark"] .worker-rating-ledger-summary,
+  html[data-theme="dark"] .worker-rating-ledger-summary div,
+  html[data-theme="dark"] .worker-graph-bar-wrap {
+    border-color: #2a3942 !important;
+    background: #202c33 !important;
+    color: #e9edef !important;
+  }
+
+  html[data-theme="dark"] .worker-metrics b,
+  html[data-theme="dark"] .worker-rating-ledger-summary strong,
+  html[data-theme="dark"] .worker-graph-item b {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .worker-rating-ledger-summary span,
+  html[data-theme="dark"] .worker-rating-ledger-summary small,
+  html[data-theme="dark"] .worker-rating-ledger-list time,
+  html[data-theme="dark"] .worker-rating-ledger-list span,
+  html[data-theme="dark"] .worker-graph-item span,
+  html[data-theme="dark"] .worker-graph-item small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .worker-graph-item.gold .worker-graph-bar,
+  html[data-theme="dark"] .worker-graph-item.green .worker-graph-bar,
+  html[data-theme="dark"] .worker-graph-item.yellow .worker-graph-bar,
+  html[data-theme="dark"] .worker-graph-item.red .worker-graph-bar {
+    background: #3b4a54;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .month-close-panel,
+  html[data-theme="dark"] .month-close-summary,
+  html[data-theme="dark"] .month-close-summary.closed,
+  html[data-theme="dark"] .month-close-summary.conditional,
+  html[data-theme="dark"] .month-close-purpose,
+  html[data-theme="dark"] .month-close-check,
+  html[data-theme="dark"] .month-close-check.green,
+  html[data-theme="dark"] .month-close-check.yellow,
+  html[data-theme="dark"] .month-close-check.red,
+  html[data-theme="dark"] .month-close-snapshot,
+  html[data-theme="dark"] .month-close-work-list,
+  html[data-theme="dark"] .month-close-work-list.red,
+  html[data-theme="dark"] .month-close-work-list.yellow {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .month-close-head span,
+  html[data-theme="dark"] .month-close-purpose p,
+  html[data-theme="dark"] .month-close-check span,
+  html[data-theme="dark"] .month-close-history span,
+  html[data-theme="dark"] .month-close-history small,
+  html[data-theme="dark"] .month-close-work-list > p {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .month-close-head input,
+  html[data-theme="dark"] .month-transfer-row select,
+  html[data-theme="dark"] .month-close-actions button,
+  html[data-theme="dark"] .month-close-work-list button {
+    border-color: #3b4a54;
+    background: #202c33;
     color: #e9edef;
   }
 }
