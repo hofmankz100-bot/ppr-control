@@ -13907,6 +13907,21 @@ body.non-home-view .hofmann-forklift-mascot {
     color: #e9edef;
   }
 
+  html[data-theme="dark"] .qr-walk-journal-controls .segmented {
+    border: 1px solid #3b4a54;
+    background: #202c33;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-controls .segmented button {
+    background: transparent;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-controls .segmented button.active {
+    background: #008f78;
+    color: #fff;
+  }
+
   html[data-theme="dark"] .qr-journal-area-overview-head span,
   html[data-theme="dark"] .qr-journal-area-card > span small,
   html[data-theme="dark"] .qr-journal-area-card > b small,
@@ -13923,6 +13938,31 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .qr-walk-journal-table .qr-fixed td {
     background: #111b21;
     color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table {
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table th {
+    border-color: #3b4a54;
+    background: #0f3447;
+    color: #f0f5f7;
+  }
+
+  @media (max-width: 680px) {
+    html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table {
+      width: 100%;
+      min-width: 0;
+    }
+
+    html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table th:first-child,
+    html[data-theme="dark"] .qr-walk-journal-sheet .aggregate-journal-table td:first-child {
+      position: static;
+      left: auto;
+      box-shadow: none;
+    }
   }
 
   html[data-theme="dark"] .attendance-panel,
