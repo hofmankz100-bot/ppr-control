@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "build": "esbuild app.js --minify --outfile=app.min.js && esbuild styles.css --minify --loader:.css=css --outfile=styles.min.css",
+    "check": "npm run build && npm test",
+    "dev": "node server.js",
     "start": "node server.js",
     "test": "node --test"
   },
