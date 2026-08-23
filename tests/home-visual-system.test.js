@@ -64,5 +64,7 @@ test("dark theme uses a WhatsApp-inspired palette", () => {
   assert.match(styles, /--ui-accent:#00a884/);
   assert.match(styles, /Stage 1 dark theme: home, navigation and equipment overview/);
   assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-month-bar/);
+  assert.match(styles, /html\[data-theme="dark"\] \.mobile-nav/);
   assert.match(styles, /@media print \{[\s\S]*?color-scheme: light/);
 });

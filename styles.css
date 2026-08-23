@@ -13877,6 +13877,38 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #202c33;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .equipment-month-bar {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .equipment-month-bar .segmented {
+    border-color: #2a3942;
+    background: #182229;
+  }
+
+  html[data-theme="dark"] .equipment-month-bar button {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .mobile-nav {
+    border-top-color: #2a3942;
+    background: rgba(17, 27, 33, .97);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .26);
+  }
+
+  html[data-theme="dark"] .mobile-nav button {
+    color: #8696a0;
+  }
+
+  html[data-theme="dark"] .mobile-nav button.active,
+  html[data-theme="dark"] .mobile-nav button[aria-current="page"] {
+    color: #00a884;
+  }
 }
 
 @media print {
