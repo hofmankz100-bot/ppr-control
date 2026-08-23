@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v581-dark-reminder-calendar";
+const APP_VERSION = "v582-dark-deep-workflows";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

@@ -14812,6 +14812,109 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .order-history > div {
     border-color: #2a3942;
   }
+
+  html[data-theme="dark"] .work-permit-safety-item,
+  html[data-theme="dark"] .work-permit-safety-item.is-enabled,
+  html[data-theme="dark"] .work-permit-safety-options label,
+  html[data-theme="dark"] .work-permit-instruction-select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .work-permit-safety-details {
+    border-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .worker-main strong,
+  html[data-theme="dark"] .worker-main span,
+  html[data-theme="dark"] .worker-time span {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .worker-rating-details-button,
+  html[data-theme="dark"] .worker-rating-details-button.danger {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .factory-graph-help,
+  html[data-theme="dark"] .factory-summary-strip div,
+  html[data-theme="dark"] .engineer-report-controls {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .factory-graph-help strong,
+  html[data-theme="dark"] .factory-summary-strip strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .factory-graph-help span,
+  html[data-theme="dark"] .factory-summary-strip span {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .engineer-report-controls input,
+  html[data-theme="dark"] .engineer-report-controls button {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .ppr-maintenance-sheet,
+  html[data-theme="dark"] .ppr-sheet-header,
+  html[data-theme="dark"] .ppr-sheet-footer,
+  html[data-theme="dark"] .ppr-sheet-table td,
+  html[data-theme="dark"] .ppr-sheet-table tbody tr:nth-child(even) td {
+    border-color: #3b4a54 !important;
+    background: #111b21 !important;
+    color: #e9edef !important;
+  }
+
+  html[data-theme="dark"] .ppr-sheet-table th {
+    border-color: #3b4a54 !important;
+    background: #0f3447 !important;
+    color: #f0f5f7 !important;
+  }
+
+  html[data-theme="dark"] .ppr-sheet-header h3,
+  html[data-theme="dark"] .ppr-sheet-header span,
+  html[data-theme="dark"] .ppr-sheet-equipment,
+  html[data-theme="dark"] .ppr-sheet-resolution small,
+  html[data-theme="dark"] .ppr-row-author,
+  html[data-theme="dark"] .ppr-sheet-footer > small {
+    border-color: #3b4a54;
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .ppr-sheet-table textarea,
+  html[data-theme="dark"] .ppr-sheet-mark-buttons button {
+    border-color: #3b4a54 !important;
+    background: #202c33 !important;
+    color: #e9edef !important;
+  }
+
+  html[data-theme="dark"] .node-walk-list-item,
+  html[data-theme="dark"] .node-open-button {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .node-open-main strong,
+  html[data-theme="dark"] .node-open-arrow {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-open-main small {
+    color: #aebac1;
+  }
 }
 
 @media print {
