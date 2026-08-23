@@ -15156,6 +15156,14 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #202c33;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .notification-support-status,
+  html[data-theme="dark"] .notification-support-status.ready {
+    border: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+    box-shadow: none;
+  }
 }
 
 @media print {

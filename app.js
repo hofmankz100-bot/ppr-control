@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v585-mobile-logo";
+const APP_VERSION = "v586-dark-push";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -19057,7 +19057,6 @@ function renderDirectorUsers() {
         <strong>Зарегистрированные сотрудники</strong>
         <button type="button" class="mini-action" data-refresh-users>Обновить список</button>
       </div>
-      <div class="empty-state">Пароли не отображаются. Директор может выдать сотруднику новый временный пароль.</div>
       ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">Новые регистрации ждут подтверждения: ${pendingCount}</div>` : ""}
       ${users.length ? users.map(user => {
         const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
