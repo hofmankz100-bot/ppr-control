@@ -14915,6 +14915,206 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .node-open-main small {
     color: #aebac1;
   }
+
+  html[data-theme="dark"] .work-permit-optional-toolbar,
+  html[data-theme="dark"] .work-permit-section-constructor,
+  html[data-theme="dark"] .work-permit-section-options label,
+  html[data-theme="dark"] .work-permit-extra-details,
+  html[data-theme="dark"] .work-permit-instruction-card,
+  html[data-theme="dark"] .work-permit-instruction-card.is-acknowledged,
+  html[data-theme="dark"] .work-permit-instruction-editor,
+  html[data-theme="dark"] .work-permit-flow {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .work-permit-optional-label,
+  html[data-theme="dark"] .work-permit-instruction-card summary,
+  html[data-theme="dark"] .work-permit-instruction-card a,
+  html[data-theme="dark"] .work-permit-instruction-editor h4,
+  html[data-theme="dark"] .work-permit-flow span {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-optional-actions button,
+  html[data-theme="dark"] .work-permit-add-row,
+  html[data-theme="dark"] .work-permit-extra-details summary {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .worker-rating-controls,
+  html[data-theme="dark"] #downtimeScreen .segmented {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .worker-rating-controls input,
+  html[data-theme="dark"] .worker-rating-controls button,
+  html[data-theme="dark"] #downtimeScreen .segmented button,
+  html[data-theme="dark"] #downtimeScreen .segmented strong {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-document-memo,
+  html[data-theme="dark"] .node-document-memo > summary,
+  html[data-theme="dark"] .node-document-memo-body,
+  html[data-theme="dark"] .node-document-access,
+  html[data-theme="dark"] .node-document-access-options label,
+  html[data-theme="dark"] .node-walk-row,
+  html[data-theme="dark"] .node-catalog-admin,
+  html[data-theme="dark"] .remark-card,
+  html[data-theme="dark"] .remark-card.resolved,
+  html[data-theme="dark"] .remark-card.pending-confirmation,
+  html[data-theme="dark"] .remark-card.returned-rework,
+  html[data-theme="dark"] .remark-collaboration,
+  html[data-theme="dark"] .resolution-participant,
+  html[data-theme="dark"] .resolution-user-picker,
+  html[data-theme="dark"] .resolution-update {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .node-document-memo > summary,
+  html[data-theme="dark"] .node-document-memo-body > strong,
+  html[data-theme="dark"] .remark-card-head strong,
+  html[data-theme="dark"] .remark-cards-title strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-document-memo-body > small,
+  html[data-theme="dark"] .node-document-legal span,
+  html[data-theme="dark"] .remark-card-head small,
+  html[data-theme="dark"] .resolution-empty,
+  html[data-theme="dark"] .resolution-update small,
+  html[data-theme="dark"] .resolution-user-options small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .node-walk-row input[type="file"],
+  html[data-theme="dark"] .resolution-user-picker > input[type="search"],
+  html[data-theme="dark"] .resolution-user-options label {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .role-personal-inbox,
+  html[data-theme="dark"] .role-personal-message,
+  html[data-theme="dark"] .role-personal-empty,
+  html[data-theme="dark"] .role-personal-resolution,
+  html[data-theme="dark"] .role-personal-return-reason {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .role-personal-inbox-head h2,
+  html[data-theme="dark"] .role-personal-empty strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .role-personal-inbox-head span,
+  html[data-theme="dark"] .role-personal-message > header small,
+  html[data-theme="dark"] .role-personal-message > header span,
+  html[data-theme="dark"] .role-personal-resolution small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .user-login-status,
+  html[data-theme="dark"] .user-login-status.ok,
+  html[data-theme="dark"] .user-login-status.warning {
+    border: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-instruction-card details,
+  html[data-theme="dark"] .work-permit-instruction-full-text {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-instruction-card details p,
+  html[data-theme="dark"] .work-permit-instruction-card details li {
+    color: #c7d0d5;
+  }
+
+  html[data-theme="dark"] .gpm-equipment-list > button,
+  html[data-theme="dark"] .gpm-manager-settings,
+  html[data-theme="dark"] .gpm-manager-settings form,
+  html[data-theme="dark"] .gpm-detail,
+  html[data-theme="dark"] .gpm-admin-form,
+  html[data-theme="dark"] .gpm-entry-form {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .gpm-detail-head,
+  html[data-theme="dark"] .gpm-responsibles,
+  html[data-theme="dark"] .gpm-dates,
+  html[data-theme="dark"] .gpm-work-grid,
+  html[data-theme="dark"] .gpm-responsibles > div,
+  html[data-theme="dark"] .gpm-dates > div {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-detail-head span,
+  html[data-theme="dark"] .gpm-detail-head p,
+  html[data-theme="dark"] .gpm-responsibles span,
+  html[data-theme="dark"] .gpm-dates span,
+  html[data-theme="dark"] .gpm-equipment-list > button small,
+  html[data-theme="dark"] .gpm-manager-settings p {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .gpm-detail-head h2,
+  html[data-theme="dark"] .gpm-responsibles strong,
+  html[data-theme="dark"] .gpm-dates strong,
+  html[data-theme="dark"] .gpm-equipment-list > button strong,
+  html[data-theme="dark"] .gpm-manager-settings summary {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-qr-print-actions button,
+  html[data-theme="dark"] .gpm-form-actions button.secondary {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-admin-form label,
+  html[data-theme="dark"] .gpm-admin-form label > span,
+  html[data-theme="dark"] .gpm-admin-form small {
+    color: #c7d0d5;
+  }
+
+  html[data-theme="dark"] .gpm-admin-form input,
+  html[data-theme="dark"] .gpm-admin-form select,
+  html[data-theme="dark"] .gpm-admin-form textarea,
+  html[data-theme="dark"] .gpm-manager-settings select,
+  html[data-theme="dark"] .journal-month-control,
+  html[data-theme="dark"] .journal-month-control input {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
 }
 
 @media print {

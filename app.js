@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v582-dark-deep-workflows";
+const APP_VERSION = "v583-dark-final-nested";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -426,14 +426,13 @@ const engineerRequestSaveTimers = new Map();
 const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
 const THEME_KEY = "ppr-theme-mode-v2";
-const THEME_MODES = new Set(["light", "dark", "system"]);
-const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const THEME_MODES = new Set(["light", "dark"]);
 const CLIENT_ID = localStorage.getItem(CLIENT_ID_KEY) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 localStorage.setItem(CLIENT_ID_KEY, CLIENT_ID);
 
 function applyTheme(theme, { persist = true } = {}) {
-  const mode = THEME_MODES.has(theme) ? theme : "system";
-  const resolved = mode === "system" ? (themeMediaQuery.matches ? "dark" : "light") : mode;
+  const mode = THEME_MODES.has(theme) ? theme : "dark";
+  const resolved = mode;
   document.documentElement.dataset.theme = resolved;
   document.documentElement.dataset.themeMode = mode;
   if (persist) localStorage.setItem(THEME_KEY, mode);
@@ -447,10 +446,7 @@ function applyTheme(theme, { persist = true } = {}) {
 }
 
 function setupTheme() {
-  applyTheme(localStorage.getItem(THEME_KEY) || "system", { persist: false });
-  themeMediaQuery.addEventListener?.("change", () => {
-    if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyTheme("system", { persist: false });
-  });
+  applyTheme(localStorage.getItem(THEME_KEY) || "dark", { persist: false });
 }
 const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
@@ -4114,7 +4110,6 @@ function renderProfile() {
     <label class="profile-theme-switcher">
       <span>Тема</span>
       <select data-theme-mode aria-label="Тема оформления">
-        <option value="system">Как на телефоне</option>
         <option value="light">Светлая</option>
         <option value="dark">Тёмная</option>
       </select>

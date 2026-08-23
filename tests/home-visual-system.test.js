@@ -47,6 +47,14 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.factory-graph-help/);
   assert.match(styles, /html\[data-theme="dark"\] \.ppr-maintenance-sheet/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-open-button/);
+  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-optional-toolbar/);
+  assert.match(styles, /html\[data-theme="dark"\] \.node-document-memo/);
+  assert.match(styles, /html\[data-theme="dark"\] \.role-personal-inbox/);
+  assert.match(styles, /html\[data-theme="dark"\] \.user-login-status/);
+  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-instruction-full-text/);
+  assert.match(styles, /html\[data-theme="dark"\] \.gpm-equipment-list > button/);
+  assert.match(styles, /html\[data-theme="dark"\] \.gpm-detail/);
+  assert.match(styles, /html\[data-theme="dark"\] \.gpm-admin-form input/);
   assert.match(styles, /\.topbar-brand-logo \{[\s\S]*?display: none/);
   assert.match(styles, /\.topbar-actions \{[\s\S]*?max-width: 146px/);
   assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);
@@ -66,12 +74,12 @@ test("phone equipment actions keep readable contrast", () => {
   assert.match(styles, /\.equipment-qr-print-button small \{[\s\S]*?color: rgba\(255, 255, 255, \.88\) !important/);
 });
 
-test("theme selection supports light dark and phone modes", () => {
-  assert.match(app, /const THEME_MODES = new Set\(\["light", "dark", "system"\]\)/);
-  assert.match(app, /Как на телефоне/);
+test("theme selection offers only clear light and dark modes", () => {
+  assert.match(app, /const THEME_MODES = new Set\(\["light", "dark"\]\)/);
+  assert.doesNotMatch(app, /Как на телефоне/);
   assert.match(app, /data-theme-mode/);
   assert.match(html, /ppr-theme-mode-v2/);
-  assert.match(html, /prefers-color-scheme: dark/);
+  assert.match(app, /localStorage\.getItem\(THEME_KEY\) \|\| "dark"/);
 });
 
 test("dark theme uses a WhatsApp-inspired palette", () => {
