@@ -17,6 +17,7 @@ const { createAdminActivityRoute } = require("./server/admin-activity-route");
 const { createAdminIntegrityRoute } = require("./server/admin-integrity-route");
 const { createAdminBackupsRoute } = require("./server/admin-backups-route");
 const { createAdminSettingsRoute } = require("./server/admin-settings-route");
+const { createAdminMonitoringRoute } = require("./server/admin-monitoring-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4489,6 +4490,14 @@ const handleAdminSettingsRoute = createAdminSettingsRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminMonitoringRoute = createAdminMonitoringRoute({
+  enqueueStateWrite,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6246,31 +6255,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminSettingsRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/monitoring" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    if (String(body.action || "") !== "resolve") {
-      sendJson(res, 400, { ok: false, error: "monitoring_action_invalid" });
-      return true;
-    }
-    const alertId = String(body.alertId || "");
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const alert = (db.adminAlerts || []).find(item => item.id === alertId);
-      if (!alert) return { error: "alert_not_found" };
-      alert.status = "resolved";
-      alert.resolvedAt = new Date().toISOString();
-      alert.resolvedByName = String(req.authUser?.name || "Администратор");
-      writeDb(db, { action: "system_alert_resolved", user: req.authUser, targetId: alert.id, targetLabel: alert.title, reason: String(body.reason || "Проверено администратором") });
-      return { resolved: true };
-    });
-    if (result.error) sendJson(res, 404, { ok: false, error: result.error });
-    else sendJson(res, 200, { ok: true, ...result });
-    return true;
-  }
+  if (await handleAdminMonitoringRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/maintenance" && req.method === "POST") {
     if (req.authUser?.role !== "editor") {
