@@ -13678,3 +13678,43 @@ body.non-home-view .hofmann-forklift-mascot {
     min-height: 56px;
   }
 }
+
+/* Keep the phone header readable: the wordmark already identifies the product. */
+@media screen and (max-width: 430px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px;
+  }
+
+  .topbar-brand-logo {
+    display: none;
+  }
+
+  .title-block {
+    min-width: 0;
+  }
+
+  .app-title {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .app-subtitle {
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .topbar-actions {
+    max-width: 146px;
+    gap: 5px;
+  }
+
+  .topbar-rating-button {
+    flex-basis: 58px;
+  }
+
+  .topbar-factory-button {
+    flex-basis: 78px;
+  }
+}

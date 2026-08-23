@@ -25,3 +25,10 @@ test("wide maintenance monitors use the available workspace", () => {
   assert.match(styles, /width: min\(1480px, 100%\)/);
   assert.match(styles, /#equipmentScreen > \.quick-nav \{[\s\S]*?repeat\(5, minmax\(0, 1fr\)\)/);
 });
+
+test("narrow phones keep a readable product header", () => {
+  assert.match(styles, /@media screen and \(max-width: 430px\)/);
+  assert.match(styles, /\.topbar-brand-logo \{[\s\S]*?display: none/);
+  assert.match(styles, /\.topbar-actions \{[\s\S]*?max-width: 146px/);
+  assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);
+});
