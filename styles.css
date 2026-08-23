@@ -14753,6 +14753,28 @@ body.non-home-view .hofmann-forklift-mascot {
     color: #aebac1;
   }
 
+  html[data-theme="dark"] .node-document-legal a,
+  html[data-theme="dark"] .node-document-legal a:visited,
+  html[data-theme="dark"] .node-document-legal a:hover,
+  html[data-theme="dark"] .node-document-legal a:active {
+    color: #53bdeb;
+    text-decoration-color: rgba(83, 189, 235, .7);
+  }
+
+  html[data-theme="dark"] .node-reminder {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-reminder summary {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-reminder-autofill small {
+    color: #aebac1;
+  }
+
   html[data-theme="dark"] .node-walk-row input[type="file"],
   html[data-theme="dark"] .resolution-user-picker > input[type="search"],
   html[data-theme="dark"] .resolution-user-options label {
@@ -14824,6 +14846,33 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .gpm-responsibles > div,
   html[data-theme="dark"] .gpm-dates > div {
     border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-qr-only,
+  html[data-theme="dark"] .gpm-official-sheet {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-official-meta,
+  html[data-theme="dark"] .gpm-official-meta span,
+  html[data-theme="dark"] .gpm-official-checks th,
+  html[data-theme="dark"] .gpm-official-checks td,
+  html[data-theme="dark"] .gpm-official-signatures,
+  html[data-theme="dark"] .gpm-official-signatures div,
+  html[data-theme="dark"] .gpm-official-signatures span {
+    border-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .gpm-official-checks th {
+    background: #0f3447;
+    color: #f0f5f7;
+  }
+
+  html[data-theme="dark"] .gpm-official-checks td {
     background: #111b21;
     color: #e9edef;
   }
