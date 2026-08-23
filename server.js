@@ -13,6 +13,7 @@ const { createAdminUserAccessRoute } = require("./server/admin-user-access-route
 const { createAdminAutomationRoute } = require("./server/admin-automation-route");
 const { createAdminConfigPackageRoute } = require("./server/admin-config-package-route");
 const { createAdminArchivesRoute } = require("./server/admin-archives-route");
+const { createAdminActivityRoute } = require("./server/admin-activity-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4436,6 +4437,14 @@ const handleAdminArchivesRoute = createAdminArchivesRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminActivityRoute = createAdminActivityRoute({
+  adminActivityFeed,
+  enqueueStateWrite,
+  readDb,
+  sendJson,
+  writeDb
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6185,22 +6194,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminArchivesRoute(req, res, pathname, url)) return true;
 
-  if (pathname === "/api/admin/activity/read" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const key = String(req.authUser?.id || req.authUser?.employeeId || "primary-admin");
-      db.adminActivityReadAt ||= {};
-      db.adminActivityReadAt[key] = new Date().toISOString();
-      writeDb(db, { action: "admin_activity_read", user: req.authUser, reason: "События просмотрены администратором" });
-      return adminActivityFeed(db, req.authUser);
-    });
-    sendJson(res, 200, { ok: true, activity: result });
-    return true;
-  }
+  if (await handleAdminActivityRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/integrity" && req.method === "GET") {
     if (req.authUser?.role !== "editor") {
