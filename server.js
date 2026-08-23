@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
+const { buildHealthPayload } = require("./server/health");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -4909,23 +4910,18 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
-    const reportedClientVersion = compatibleClient && clientVersion ? clientVersion : SERVER_VERSION;
-    sendJson(res, 200, {
-      ok: true,
-      version: reportedClientVersion,
-      latestVersion: SERVER_VERSION,
+    sendJson(res, 200, buildHealthPayload({
+      compatibleClient,
+      clientVersion,
+      serverVersion: SERVER_VERSION,
       clientProtocol: CLIENT_PROTOCOL_VERSION,
-      time: new Date().toISOString(),
-      uptimeSeconds: Math.round(process.uptime()),
-      memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
       storage: storageStatus,
-      realtime: Boolean(wss) || sseClients.size > 0,
-      stateVersion: realtimeStateVersion(),
       websocket: Boolean(wss),
       websocketClients: wss ? wss.clients.size : 0,
       eventClients: sseClients.size,
-      productionRequestDuplicatesRemoved: Number(readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed || 0)
-    });
+      stateVersion: realtimeStateVersion(),
+      productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed
+    }));
     return true;
   }
 
