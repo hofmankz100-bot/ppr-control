@@ -7,6 +7,7 @@ const zlib = require("zlib");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
 const { buildHealthPayload } = require("./server/health");
+const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4358,6 +4359,18 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+const handleAdminUserPermissionsRoute = createAdminUserPermissionsRoute({
+  adminPermissionKeys: ADMIN_PERMISSION_KEYS,
+  enqueueStateWrite,
+  passwordMatches,
+  readBody,
+  readDb,
+  sendJson,
+  userPublic,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6131,14 +6144,7 @@ async function handleApi(req, res, pathname, url) {
     if (result.error) sendJson(res, result.error === "user_not_found" ? 404 : 409, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ended: result.ended }); return true;
   }
 
-  if (pathname === "/api/admin/user-permissions" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500); if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const result = await enqueueStateWrite(async () => { const db = readDb(); const target = (db.users || []).find(user => String(user.id || "") === String(body.userId || "")); if (!target) return { error: "user_not_found" }; const action = String(body.action || "save"); if (action === "reset") target.permissionOverrides = {}; else if (action === "copy") { const source = (db.users || []).find(user => String(user.id || "") === String(body.sourceUserId || "")); if (!source) return { error: "source_user_not_found" }; target.permissionOverrides = JSON.parse(JSON.stringify(source.permissionOverrides || {})); } else { const expiresAt = String(body.expiresAt || ""); if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) return { error: "permission_expiry_invalid" }; const enabled = new Set((Array.isArray(body.permissions) ? body.permissions : []).map(String).filter(key => ADMIN_PERMISSION_KEYS.has(key))); target.permissionOverrides = Object.fromEntries([...ADMIN_PERMISSION_KEYS].filter(key => enabled.has(key)).map(key => [key, { enabled: true, expiresAt, grantedAt: new Date().toISOString(), grantedBy: String(req.authUser?.name || "Администратор") }])); } db.authSessions = (db.authSessions || []).filter(session => String(session.userId || "") !== String(target.id || "")); writeDb(db, { action: action === "reset" ? "user_permissions_reset" : action === "copy" ? "user_permissions_copied" : "user_permissions_saved", user: req.authUser, targetId: target.id, targetLabel: target.name, reason }); return { user: userPublic(target) }; });
-    if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, user: result.user }); return true;
-  }
+  if (await handleAdminUserPermissionsRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/automation/run" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }

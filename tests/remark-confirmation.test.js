@@ -1039,6 +1039,7 @@ test("QR walks are separated into technical and operational journals", () => {
 test("admin maintenance keeps an immutable audit and a recoverable trash", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const userPermissionsRoute = fs.readFileSync(path.join(root, "server", "admin-user-permissions-route.js"), "utf8");
   assert.match(client, /function renderAdminMaintenance\(\)/);
   assert.match(client, /Журнал действий администратора/);
   assert.match(client, /Корзина удалённых данных/);
@@ -1063,7 +1064,7 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(server, /pathname === "\/api\/admin\/user-sessions"/);
   assert.match(client, /function adminUserDetailsHtml/);
   assert.match(client, /data-access-end-sessions/);
-  assert.match(server, /pathname === "\/api\/admin\/user-permissions"/);
+  assert.match(userPermissionsRoute, /pathname !== "\/api\/admin\/user-permissions"/);
   assert.match(client, /data-user-permissions-form/);
   assert.doesNotMatch(client, /data-admin-catalog-form/);
   assert.doesNotMatch(client, /Конструктор справочников/);
