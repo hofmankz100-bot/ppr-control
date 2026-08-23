@@ -72,5 +72,8 @@ test("dark theme uses a WhatsApp-inspired palette", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.downtime-journal-sheet/);
   assert.match(styles, /html\[data-theme="dark"\] \.downtime-journal-table th/);
   assert.match(styles, /html\[data-theme="dark"\] \.downtime-journal-table td/);
+  assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-mobile-record-card/);
+  assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-journal-table th/);
+  assert.match(styles, /html\[data-theme="dark"\] #aggregateJournalScreen \.aggregate-journal-table td/);
   assert.match(styles, /@media print \{[\s\S]*?color-scheme: light/);
 });
