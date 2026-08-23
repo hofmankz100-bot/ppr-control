@@ -730,11 +730,12 @@ test("SHGRP QR nodes are restored in their historical index order", () => {
 test("admin can rotate one node QR without changing other node indexes", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const equipmentQrRoute = fs.readFileSync(path.join(root, "server", "admin-equipment-qr-route.js"), "utf8");
   assert.match(client, /data-rotate-node-qr/);
   assert.match(client, /function currentNodeQrMatches\(parsed = \{\}\)/);
   assert.match(client, /api\/admin\/equipment\/node-qr-rotate/);
-  assert.match(serverSource, /pathname === "\/api\/admin\/equipment\/node-qr-rotate"/);
-  assert.match(serverSource, /crypto\.randomBytes\(12\)\.toString\("hex"\)/);
+  assert.match(equipmentQrRoute, /pathname !== "\/api\/admin\/equipment\/node-qr-rotate"/);
+  assert.match(equipmentQrRoute, /randomBytes\(12\)\.toString\("hex"\)/);
   assert.match(serverSource, /error: "node_qr_replaced"/);
 });
 
