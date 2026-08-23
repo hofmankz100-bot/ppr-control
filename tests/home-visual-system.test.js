@@ -32,3 +32,10 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /\.topbar-actions \{[\s\S]*?max-width: 146px/);
   assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);
 });
+
+test("phone equipment cards use calm surfaces with area accents", () => {
+  assert.match(styles, /Phone equipment rows: keep the area color as an accent/);
+  assert.match(styles, /border-left: 6px solid var\(--downtime-area-color, var\(--ui-brand\)\)/);
+  assert.match(styles, /\.equipment-journal-button > strong \{[\s\S]*?font-size: 17px/);
+  assert.match(styles, /\.equipment-journal-button > small \{[\s\S]*?border-radius: 999px/);
+});
