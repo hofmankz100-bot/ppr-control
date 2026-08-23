@@ -15115,6 +15115,43 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #202c33;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .send-kind-dialog,
+  html[data-theme="dark"] .admin-close-performers,
+  html[data-theme="dark"] .admin-close-performers label {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .send-kind-dialog > strong,
+  html[data-theme="dark"] .send-kind-dialog label > span,
+  html[data-theme="dark"] .admin-close-performers legend,
+  html[data-theme="dark"] .admin-close-performers label span {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .send-kind-dialog > p {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .send-kind-dialog select,
+  html[data-theme="dark"] .send-kind-dialog textarea,
+  html[data-theme="dark"] .node-catalog-admin input,
+  html[data-theme="dark"] .node-admin-actions input,
+  html[data-theme="dark"] .node-walk-field textarea,
+  html[data-theme="dark"] .node-walk-field input[type="file"] {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .node-detail-toolbar button {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
 }
 
 @media print {

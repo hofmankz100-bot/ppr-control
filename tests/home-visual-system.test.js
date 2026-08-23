@@ -55,6 +55,10 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.gpm-equipment-list > button/);
   assert.match(styles, /html\[data-theme="dark"\] \.gpm-detail/);
   assert.match(styles, /html\[data-theme="dark"\] \.gpm-admin-form input/);
+  assert.match(styles, /html\[data-theme="dark"\] \.send-kind-dialog/);
+  assert.match(styles, /html\[data-theme="dark"\] \.admin-close-performers label/);
+  assert.match(styles, /html\[data-theme="dark"\] \.node-catalog-admin input/);
+  assert.match(styles, /html\[data-theme="dark"\] \.node-detail-toolbar button/);
   assert.match(styles, /\.topbar-brand-logo \{[\s\S]*?display: none/);
   assert.match(styles, /\.topbar-actions \{[\s\S]*?max-width: 146px/);
   assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);
