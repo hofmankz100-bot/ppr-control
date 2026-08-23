@@ -13689,7 +13689,7 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 }
 
-/* Keep the phone header readable: the wordmark already identifies the product. */
+/* Keep the company mark visible on phones without crowding the two overview buttons. */
 @media screen and (max-width: 430px) {
   .topbar {
     grid-template-columns: minmax(0, 1fr) auto !important;
@@ -13697,7 +13697,11 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   .topbar-brand-logo {
-    display: none;
+    display: block;
+    flex: 0 0 58px;
+    width: 58px;
+    height: 25px;
+    margin-left: 3px;
   }
 
   .title-block {
