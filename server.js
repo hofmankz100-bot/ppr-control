@@ -4421,11 +4421,13 @@ const handleAdminConfigPackageRoute = createAdminConfigPackageRoute({
 });
 const handleAdminArchivesRoute = createAdminArchivesRoute({
   adminArchiveSelection,
+  backupChecksum,
   createAdminArchive,
   createAdminBackup,
   enqueueStateWrite,
   passwordMatches,
   readBody,
+  readAdminArchive,
   readDb,
   sendJson,
   shouldStoreArchiveInState: () => !postgresPool,
@@ -6181,42 +6183,6 @@ async function handleApi(req, res, pathname, url) {
   if (await handleAdminConfigPackageRoute(req, res, pathname)) return true;
 
   if (await handleAdminArchivesRoute(req, res, pathname, url)) return true;
-
-  if (pathname === "/api/admin/archives/restore" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
-    }
-    if (String(body.confirm || "").trim().toUpperCase() !== "ВОССТАНОВИТЬ АРХИВ") {
-      sendJson(res, 400, { ok: false, error: "archive_restore_confirmation_required" }); return true;
-    }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const archiveId = String(body.archiveId || "");
-    const archive = await readAdminArchive(archiveId);
-    if (!archive) { sendJson(res, 404, { ok: false, error: "archive_not_found" }); return true; }
-    if (backupChecksum(archive.payload) !== archive.checksum) { sendJson(res, 409, { ok: false, error: "archive_checksum_invalid" }); return true; }
-    await createAdminBackup("Перед восстановлением архива", req.authUser?.name || "Администратор");
-    const restoredCount = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const records = archive.payload?.records || {};
-      const merge = (current, incoming) => {
-        const ids = new Set((current || []).map(item => item.id));
-        const additions = (incoming || []).filter(item => item?.id && !ids.has(item.id));
-        return { items: [...additions, ...(current || [])], added: additions.length };
-      };
-      let total = 0;
-      let merged = merge(db.adminAuditLog, records.audit); db.adminAuditLog = merged.items; total += merged.added;
-      merged = merge(db.adminAlerts, records.resolved_alerts); db.adminAlerts = merged.items; total += merged.added;
-      merged = merge(db.adminTrash, records.restored_trash); db.adminTrash = merged.items; total += merged.added;
-      merged = merge(db.adminConfigHistory, records.config_history); db.adminConfigHistory = merged.items; total += merged.added;
-      writeDb(db, { action: "admin_archive_restored", user: req.authUser, targetId: archiveId, reason, details: `${total} записей` });
-      return total;
-    });
-    sendJson(res, 200, { ok: true, restoredCount, archiveId });
-    return true;
-  }
 
   const adminArchiveMatch = pathname.match(/^\/api\/admin\/archives\/([A-Za-z0-9._-]+)$/);
   if (adminArchiveMatch && req.method === "GET") {

@@ -24,6 +24,7 @@ function createHarness() {
         }
       };
     },
+    backupChecksum: payload => `checksum:${JSON.stringify(payload)}`,
     createAdminArchive: async (payload, label, createdBy) => {
       events.push({ type: "archive", payload });
       return { id: "archive-1", label, createdBy, payload, checksum: "abc" };
@@ -32,6 +33,7 @@ function createHarness() {
     enqueueStateWrite: async task => { events.push({ type: "write-start" }); return task(); },
     passwordMatches: (supplied, stored) => supplied === stored,
     readBody: async req => req.body || {},
+    readAdminArchive: async id => database.archiveToRead?.id === id ? database.archiveToRead : null,
     readDb: () => database,
     sendJson: (_res, status, payload) => responses.push({ status, payload }),
     shouldStoreArchiveInState: () => true,
@@ -46,6 +48,59 @@ test("admin archives route ignores unrelated requests", async () => {
   assert.equal(handled, false);
   assert.deepEqual(responses, []);
   assert.deepEqual(calls, []);
+});
+
+test("admin archive restore rejects a damaged archive before backup", async () => {
+  const { handler, responses, database, events } = createHarness();
+  database.archiveToRead = { id: "archive-1", payload: { records: {} }, checksum: "wrong" };
+  await handler({
+    method: "POST",
+    authUser: { role: "editor", passwordHash: "secret" },
+    body: {
+      password: "secret",
+      confirm: "ВОССТАНОВИТЬ АРХИВ",
+      reason: "Проверка",
+      archiveId: "archive-1"
+    }
+  }, {}, "/api/admin/archives/restore", new URL("https://example.test/api/admin/archives/restore"));
+  assert.deepEqual(responses[0], { status: 409, payload: { ok: false, error: "archive_checksum_invalid" } });
+  assert.deepEqual(events, []);
+});
+
+test("admin archive restore backs up and adds only missing records", async () => {
+  const { handler, responses, database, events } = createHarness();
+  database.adminAuditLog = [{ id: "existing" }];
+  const payload = {
+    records: {
+      audit: [{ id: "existing" }, { id: "restored-audit" }],
+      resolved_alerts: [{ id: "restored-alert" }]
+    }
+  };
+  database.archiveToRead = {
+    id: "archive-1",
+    payload,
+    checksum: `checksum:${JSON.stringify(payload)}`
+  };
+
+  await handler({
+    method: "POST",
+    authUser: { role: "editor", name: "Admin", passwordHash: "secret" },
+    body: {
+      password: "secret",
+      confirm: "ВОССТАНОВИТЬ АРХИВ",
+      reason: "Возврат истории",
+      archiveId: "archive-1"
+    }
+  }, {}, "/api/admin/archives/restore", new URL("https://example.test/api/admin/archives/restore"));
+
+  assert.deepEqual(events.map(event => event.type), ["backup", "write-start", "audit"]);
+  assert.deepEqual(database.adminAuditLog.map(item => item.id), ["restored-audit", "existing"]);
+  assert.deepEqual(database.adminAlerts.map(item => item.id), ["restored-alert"]);
+  assert.equal(events[2].audit.action, "admin_archive_restored");
+  assert.deepEqual(responses[0], {
+    status: 200,
+    payload: { ok: true, restoredCount: 2, archiveId: "archive-1" }
+  });
 });
 
 test("admin archive creation validates confirmation before changing data", async () => {
