@@ -20,6 +20,7 @@ const { createAdminSettingsRoute } = require("./server/admin-settings-route");
 const { createAdminMonitoringRoute } = require("./server/admin-monitoring-route");
 const { createAdminMaintenanceRoute } = require("./server/admin-maintenance-route");
 const { createAdminNotificationsRoute } = require("./server/admin-notifications-route");
+const { createAdminSystemReportRoute } = require("./server/admin-system-report-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4523,6 +4524,16 @@ const handleAdminNotificationsRoute = createAdminNotificationsRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminSystemReportRoute = createAdminSystemReportRoute({
+  listAdminBackups,
+  readDb,
+  refreshSystemMonitoring,
+  sendDownload,
+  sendJson,
+  systemReadinessReport,
+  todayStamp
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6207,15 +6218,7 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/admin/system-report" && req.method === "GET") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const monitoringResult = await refreshSystemMonitoring();
-    const db = readDb();
-    const report = systemReadinessReport(db, monitoringResult.snapshot, await listAdminBackups());
-    if (url.searchParams.get("download") === "1") sendDownload(res, `ppr_system_report_${todayStamp()}.json`, report);
-    else sendJson(res, 200, { ok: true, report });
-    return true;
-  }
+  if (await handleAdminSystemReportRoute(req, res, pathname, url)) return true;
 
   if (await handleAdminUserAccessRoute(req, res, pathname)) return true;
 
