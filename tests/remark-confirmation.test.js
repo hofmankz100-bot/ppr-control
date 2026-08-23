@@ -782,7 +782,7 @@ test("new catalog nodes are registered atomically with a permanent QR identity",
 
 test("admin can create complete equipment cards from the main screen", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server", "admin-equipment-config-route.js"), "utf8");
   assert.match(client, /data-create-equipment/);
   assert.match(client, /function openCreateEquipmentDialog\(\)/);
   assert.match(client, /Обычное оборудование/);
@@ -2064,7 +2064,7 @@ test("production work section is named welder and turner", () => {
 
 test("admin can build a QR-linked journal for created equipment without changing factory journals", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server/admin-equipment-config-route.js"), "utf8");
   assert.match(clientSource, /function openCustomJournalEditor\(eq\)/);
   assert.match(clientSource, /data-edit-journal/);
   assert.match(clientSource, /Ко всему оборудованию/);
