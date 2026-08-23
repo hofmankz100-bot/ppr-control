@@ -14733,6 +14733,85 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #111b21;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .global-reminder-panel,
+  html[data-theme="dark"] .global-control-grid > section,
+  html[data-theme="dark"] .director-reminder-row,
+  html[data-theme="dark"] .director-reminder-row.red,
+  html[data-theme="dark"] .director-reminder-row.yellow,
+  html[data-theme="dark"] .director-calendar-row,
+  html[data-theme="dark"] .director-reminders-card.has-alerts,
+  html[data-theme="dark"] .director-empty-ok {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .global-reminder-head {
+    border-bottom: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .global-control-date,
+  html[data-theme="dark"] .director-section-head small,
+  html[data-theme="dark"] .director-calendar-row small,
+  html[data-theme="dark"] .director-reminder-row small,
+  html[data-theme="dark"] .director-safe-note {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .director-calendar-row strong,
+  html[data-theme="dark"] .director-reminder-row strong,
+  html[data-theme="dark"] .director-section-head h2 {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .system-load-card,
+  html[data-theme="dark"] .director-users,
+  html[data-theme="dark"] .order-create-form,
+  html[data-theme="dark"] .order-card,
+  html[data-theme="dark"] .order-result,
+  html[data-theme="dark"] .order-return,
+  html[data-theme="dark"] .order-closed,
+  html[data-theme="dark"] .order-create-form fieldset,
+  html[data-theme="dark"] .order-complete-form fieldset {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .system-load-head span,
+  html[data-theme="dark"] .system-load-card p,
+  html[data-theme="dark"] .order-history small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .system-load-head i,
+  html[data-theme="dark"] .system-load-stats span,
+  html[data-theme="dark"] .order-card header span,
+  html[data-theme="dark"] .order-filters button,
+  html[data-theme="dark"] .system-load-actions button.secondary {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .order-create-form textarea,
+  html[data-theme="dark"] .order-complete-form textarea,
+  html[data-theme="dark"] .order-complete-form input,
+  html[data-theme="dark"] .order-complete-form select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .order-history,
+  html[data-theme="dark"] .order-history > div {
+    border-color: #2a3942;
+  }
 }
 
 @media print {
