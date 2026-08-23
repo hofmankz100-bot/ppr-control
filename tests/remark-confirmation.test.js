@@ -932,9 +932,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v594-cross-platform-access-1/);
-  assert.match(html, /styles\.css\?v=v594-cross-platform-access-1/);
-  assert.match(serviceWorker, /app\.js\?v=v594-cross-platform-access-1/);
+  assert.match(html, /app\.js\?v=v595-durable-cross-platform-photos-1/);
+  assert.match(html, /styles\.css\?v=v595-durable-cross-platform-photos-1/);
+  assert.match(serviceWorker, /app\.js\?v=v595-durable-cross-platform-photos-1/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1168,8 +1168,14 @@ test("push subscriptions use the authenticated employee and expose admin diagnos
 
 test("uploaded photos are served and production keeps a PostgreSQL fallback", async () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /CREATE TABLE IF NOT EXISTS ppr_photos/);
   assert.match(source, /SELECT mime_type, payload FROM ppr_photos WHERE file_name = \$1/);
+  assert.match(source, /await persistPhotoToPostgres\(saved\.fileName, saved\.mimeType, saved\.bytes\)/);
+  assert.match(source, /photo_storage_unavailable/);
+  assert.doesNotMatch(source, /externalizePhotosInValue/);
+  assert.match(appSource, /if \(!\/\^image\\\/\/i\.test\(String\(file\.type \|\| ""\)\)\)/);
+  assert.match(appSource, /dataset\.photoRetry/);
   const data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
   const upload = await fetch(`${baseUrl}/api/photos`, {
     method: "POST",

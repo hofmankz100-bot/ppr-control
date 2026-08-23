@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v594-cross-platform-access-1";
+const SERVER_VERSION = "v595-durable-cross-platform-photos-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -146,7 +146,6 @@ let postgresWriteQueue = Promise.resolve();
 let postgresPendingState = null;
 let postgresWriterActive = false;
 let lastPostgresBackupDate = "";
-let postgresPhotoWriteQueue = Promise.resolve();
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
@@ -691,62 +690,20 @@ function savePhotoDataUrl(dataUrl = "") {
   const fileName = `${hash}.${ext}`;
   const file = path.join(photosDir, fileName);
   if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
-  schedulePostgresPhotoWrite(fileName, match[1] === "image/jpg" ? "image/jpeg" : match[1], bytes);
-  return `/api/photos/${fileName}`;
+  const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+  return { url: `/api/photos/${fileName}`, fileName, mimeType, bytes };
 }
 
-function schedulePostgresPhotoWrite(fileName, mimeType, bytes) {
-  if (!postgresPool || !fileName || !Buffer.isBuffer(bytes) || !bytes.length) return;
-  const storedBytes = Buffer.from(bytes);
-  postgresPhotoWriteQueue = postgresPhotoWriteQueue
-    .then(() => postgresPool.query(
-      `INSERT INTO ppr_photos(file_name, mime_type, payload, updated_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT(file_name) DO UPDATE
-       SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
-      [fileName, mimeType, storedBytes]
-    ))
-    .catch(error => {
-      console.error(`PostgreSQL photo write failed; local copy preserved: ${error.message}`);
-    });
-}
-
-function externalizePhotosInValue(value, seen = new WeakSet()) {
-  let changed = false;
-  const walk = item => {
-    if (!item || typeof item !== "object") return item;
-    if (seen.has(item)) return item;
-    seen.add(item);
-    if (Array.isArray(item)) {
-      item.forEach((entry, index) => {
-        if (typeof entry === "string" && (entry.startsWith("data:image/") || entry.startsWith("data:application/pdf"))) {
-          const url = savePhotoDataUrl(entry);
-          if (url) {
-            item[index] = url;
-            changed = true;
-          }
-          return;
-        }
-        walk(entry);
-      });
-      return item;
-    }
-    Object.keys(item).forEach(key => {
-      const entry = item[key];
-      if (typeof entry === "string" && (entry.startsWith("data:image/") || entry.startsWith("data:application/pdf"))) {
-        const url = savePhotoDataUrl(entry);
-        if (url) {
-          item[key] = url;
-          changed = true;
-        }
-        return;
-      }
-      walk(entry);
-    });
-    return item;
-  };
-  walk(value);
-  return changed;
+async function persistPhotoToPostgres(fileName, mimeType, bytes) {
+  if (!postgresPool) return false;
+  await postgresPool.query(
+    `INSERT INTO ppr_photos(file_name, mime_type, payload, updated_at)
+     VALUES ($1, $2, $3, now())
+     ON CONFLICT(file_name) DO UPDATE
+     SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
+    [fileName, mimeType, bytes]
+  );
+  return true;
 }
 
 async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
@@ -1917,7 +1874,8 @@ function writeDb(db, action = {}) {
     normalized.adminAuditLog = normalized.adminAuditLog.slice(0, 5000);
   }
   purgeRemovedEquipmentData(normalized);
-  externalizePhotosInValue(normalized);
+  // A data URL is the durable fallback when PostgreSQL photo storage is unavailable.
+  // Do not replace it with an ephemeral Render filesystem URL during a state write.
   if (postgresPool) {
     postgresState = normalized;
     scheduleLocalBackup(normalized);
@@ -5946,20 +5904,27 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/state" && req.method === "GET") {
     await stateWriteQueue.catch(() => {});
     const db = readDb();
-    if (externalizePhotosInValue(db)) writeDb(db, { action: "externalize_photos_get" });
     sendPublicState(res, db);
     return true;
   }
 
   if (pathname === "/api/photos" && req.method === "POST") {
     const body = await readBody(req);
-    const url = savePhotoDataUrl(body?.data || "");
-    if (!url) {
+    const saved = savePhotoDataUrl(body?.data || "");
+    if (!saved?.url) {
       sendJson(res, 400, { ok: false, error: "Bad photo" });
       return true;
     }
-    if (postgresPool) await postgresPhotoWriteQueue;
-    sendJson(res, 200, { ok: true, url });
+    if (postgresPool) {
+      try {
+        await persistPhotoToPostgres(saved.fileName, saved.mimeType, saved.bytes);
+      } catch (error) {
+        console.error(`PostgreSQL photo upload failed; client will keep embedded fallback: ${error.message}`);
+        sendJson(res, 503, { ok: false, error: "photo_storage_unavailable" });
+        return true;
+      }
+    }
+    sendJson(res, 200, { ok: true, url: saved.url });
     return true;
   }
 
@@ -5994,7 +5959,7 @@ async function handleApi(req, res, pathname, url) {
       }
     }
     if (!data) {
-      res.writeHead(404);
+      res.writeHead(404, { "Cache-Control": "no-store" });
       res.end("Not found");
       return true;
     }
@@ -7850,7 +7815,6 @@ async function shutdown() {
   try {
     flushLocalBackup();
     await flushPostgresWrites();
-    await postgresPhotoWriteQueue;
     if (postgresPool) await postgresPool.end();
   } catch {}
   server.close(() => process.exit(0));

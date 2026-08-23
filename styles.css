@@ -13357,6 +13357,21 @@ body.non-home-view .hofmann-forklift-mascot {
   .qr-action-mobile{display:inline}
 }
 
+img.photo-load-failed {
+  min-height: 72px;
+  padding: 12px;
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  color: #475569;
+  object-fit: contain;
+}
+
+html[data-theme="dark"] img.photo-load-failed {
+  border-color: #475569;
+  background: #17212b;
+  color: #cbd5e1;
+}
+
 .pull-refresh-indicator {
   --pull-distance: 0px;
   position: fixed;

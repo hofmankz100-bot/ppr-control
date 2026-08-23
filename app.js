@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v594-cross-platform-access-1";
+const APP_VERSION = "v595-durable-cross-platform-photos-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -8190,8 +8190,8 @@ function readPhotoFile(file) {
       resolve("");
       return;
     }
-    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(String(file.type || ""))) {
-      reject(new Error("Поддерживаются только фотографии JPEG, PNG и WebP."));
+    if (!/^image\//i.test(String(file.type || ""))) {
+      reject(new Error("Выберите файл фотографии."));
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
@@ -8204,7 +8204,11 @@ function readPhotoFile(file) {
       const img = new Image();
       img.onerror = () => {
         const dataUrl = String(reader.result || "");
-        uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
+        if (/^data:image\/(jpeg|jpg|png|webp);/i.test(dataUrl)) {
+          uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
+        } else {
+          reject(new Error("Этот формат фото не удалось прочитать. На iPhone выберите «Наиболее совместимый» или сделайте снимок камерой приложения."));
+        }
       };
       img.onload = () => {
         const maxSide = 1200;
@@ -8221,6 +8225,23 @@ function readPhotoFile(file) {
     reader.readAsDataURL(file);
   });
 }
+
+document.addEventListener("error", event => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !/\/api\/photos\//.test(String(image.src || ""))) return;
+  const attempt = Number(image.dataset.photoRetry || 0);
+  if (attempt >= 2) {
+    image.classList.add("photo-load-failed");
+    image.alt = "Фото временно не загрузилось — обновите экран";
+    return;
+  }
+  image.dataset.photoRetry = String(attempt + 1);
+  window.setTimeout(() => {
+    const url = new URL(image.src, location.origin);
+    url.searchParams.set("retry", String(Date.now()));
+    image.src = url.href;
+  }, 800 * (attempt + 1));
+}, true);
 
 function downtimes() {
   state.downtimes ||= [];
