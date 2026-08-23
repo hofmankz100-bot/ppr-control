@@ -14474,6 +14474,101 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #202c33;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .downtime-active-summary-card {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .downtime-active-summary-head,
+  html[data-theme="dark"] .downtime-active-list-title {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .downtime-pie-rest path {
+    fill: #202c33;
+    stroke: #3b4a54;
+  }
+
+  html[data-theme="dark"] .downtime-pie-slice path {
+    stroke: #2a3942;
+  }
+
+  html[data-theme="dark"] .downtime-pie-slice text {
+    fill: #e9edef;
+  }
+
+  html[data-theme="dark"] .request-archive-dialog,
+  html[data-theme="dark"] .request-archive-dialog-list,
+  html[data-theme="dark"] .open-remark-item,
+  html[data-theme="dark"] .open-remark-item.pending-confirmation,
+  html[data-theme="dark"] .open-remark-item.returned-rework {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .open-remark-status,
+  html[data-theme="dark"] .open-remark-item.pending-confirmation .open-remark-status,
+  html[data-theme="dark"] .open-remark-item.returned-rework .open-remark-status {
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .qr-scan-panel {
+    border: 1px solid #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+  }
+
+  html[data-theme="dark"] .qr-scan-panel span {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .installed-part-journal-dialog,
+  html[data-theme="dark"] .installed-part-entry {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .installed-part-journal-dialog input,
+  html[data-theme="dark"] .installed-part-journal-dialog button:not([data-print-parts]) {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .catalog-editor label,
+  html[data-theme="dark"] .catalog-editor input,
+  html[data-theme="dark"] .node-name-editor,
+  html[data-theme="dark"] .node-reminder textarea,
+  html[data-theme="dark"] .catalog-editor button.secondary,
+  html[data-theme="dark"] .node-reminder button.secondary,
+  html[data-theme="dark"] .node-admin-actions button.secondary {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .catalog-editor label span {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .operational-pause-control,
+  html[data-theme="dark"] .operational-pause-control.paused {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .operational-pause-control span {
+    color: #aebac1;
+  }
 }
 
 @media print {

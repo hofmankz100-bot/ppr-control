@@ -95,5 +95,10 @@ test("dark theme uses a WhatsApp-inspired palette", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.worker-graph-bar-wrap/);
   assert.match(styles, /html\[data-theme="dark"\] \.month-close-panel/);
   assert.match(styles, /html\[data-theme="dark"\] \.attendance-person-actions \.button-link/);
+  assert.match(styles, /html\[data-theme="dark"\] \.downtime-active-summary-card/);
+  assert.match(styles, /html\[data-theme="dark"\] \.open-remark-item/);
+  assert.match(styles, /html\[data-theme="dark"\] \.qr-scan-panel/);
+  assert.match(styles, /html\[data-theme="dark"\] \.installed-part-journal-dialog/);
+  assert.match(styles, /html\[data-theme="dark"\] \.operational-pause-control/);
   assert.match(styles, /@media print \{[\s\S]*?color-scheme: light/);
 });
