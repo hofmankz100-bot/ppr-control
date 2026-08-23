@@ -20,6 +20,18 @@
   --space-sm: 8px;
   --space-md: 12px;
   --table-font-size: 13px;
+  --ui-brand: #123b53;
+  --ui-brand-strong: #0b2b3e;
+  --ui-accent: #087987;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f4f8fa;
+  --ui-border: #cbd9e1;
+  --ui-shadow-sm: 0 4px 12px rgba(20, 50, 74, .07);
+  --ui-shadow-md: 0 10px 26px rgba(20, 50, 74, .11);
+  --ui-radius: 14px;
+  --ui-danger: #b4232f;
+  --ui-danger-soft: #fff5f5;
+  --ui-danger-border: #e3a6ab;
   font-family: Calibri, Arial, sans-serif;
 }
 
@@ -13589,4 +13601,65 @@ body.non-home-view .hofmann-forklift-mascot {
 @media(max-width:700px){
   .qr-action-desktop{display:none}
   .qr-action-mobile{display:inline}
+}
+
+/* Shared visual language for the primary home actions. */
+@media screen {
+  .quick-nav button,
+  .quick-nav .global-reminder-button,
+  .request-tabs .tab {
+    border-color: var(--ui-border);
+    border-radius: var(--ui-radius);
+    background: linear-gradient(180deg, var(--ui-surface), var(--ui-surface-soft));
+    box-shadow: var(--ui-shadow-sm);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+  }
+
+  .quick-nav button:hover,
+  .quick-nav .global-reminder-button:hover,
+  .request-tabs .tab:hover {
+    border-color: #9eb8c6;
+    box-shadow: var(--ui-shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .quick-nav button:focus-visible,
+  .quick-nav .global-reminder-button:focus-visible,
+  .request-tabs .tab:focus-visible {
+    outline: 3px solid rgba(8, 121, 135, .22);
+    outline-offset: 2px;
+  }
+
+  .quick-nav button.request-alert,
+  .quick-nav .global-reminder-button.has-alerts,
+  .request-tabs .tab.request-alert,
+  body.editor-profile .quick-nav button.request-alert,
+  body.editor-profile .request-tabs .tab.request-alert {
+    animation: none !important;
+    border-color: var(--ui-danger-border);
+    background: linear-gradient(180deg, #fff, var(--ui-danger-soft));
+    color: var(--ui-danger);
+  }
+
+  .quick-nav button.request-alert strong,
+  .quick-nav .global-reminder-button.has-alerts strong,
+  .request-tabs .tab.request-alert strong {
+    background: var(--ui-danger);
+    color: #fff;
+  }
+
+  .quick-nav button.primary-nav-button,
+  .request-tabs .tab.active {
+    border-color: #17657e;
+    background: linear-gradient(135deg, var(--ui-brand-strong), #12627f);
+    box-shadow: 0 10px 24px rgba(12, 77, 103, .2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-nav button,
+  .request-tabs .tab {
+    animation: none !important;
+    transition: none !important;
+  }
 }
