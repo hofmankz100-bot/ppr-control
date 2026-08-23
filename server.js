@@ -4404,12 +4404,19 @@ const handleAdminAutomationRoute = createAdminAutomationRoute({
 });
 const handleAdminConfigPackageRoute = createAdminConfigPackageRoute({
   buildAdminConfigPackage,
+  createAdminBackup,
+  enqueueStateWrite,
+  normalizedAdminConfig,
+  passwordMatches,
+  randomHex: bytes => crypto.randomBytes(bytes).toString("hex"),
   readBody,
   readDb,
   sendDownload,
   sendJson,
   todayStamp,
-  validateAdminConfigPackage
+  validateAdminConfigPackage,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
 async function handleApi(req, res, pathname, url) {
@@ -6158,36 +6165,6 @@ async function handleApi(req, res, pathname, url) {
   if (await handleAdminAutomationRoute(req, res, pathname)) return true;
 
   if (await handleAdminConfigPackageRoute(req, res, pathname)) return true;
-
-  if (pathname === "/api/admin/config-package/import" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
-    }
-    if (String(body.confirm || "").trim().toUpperCase() !== "ИМПОРТИРОВАТЬ НАСТРОЙКИ") { sendJson(res, 400, { ok: false, error: "config_import_confirmation_required" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const validated = validateAdminConfigPackage(body.package);
-    if (validated.error) { sendJson(res, 400, { ok: false, error: validated.error }); return true; }
-    await createAdminBackup("Перед импортом административных настроек", req.authUser?.name || "Администратор");
-    await enqueueStateWrite(async () => {
-      const db = readDb();
-      const now = new Date().toISOString();
-      db.adminConfigHistory ||= [];
-      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: "Автокопия перед импортом пакета", snapshot: normalizedAdminConfig(db.adminConfig) });
-      db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
-      db.adminConfig = validated.config;
-      db.workPermitInstructions ||= {};
-      for (const [id, instruction] of Object.entries(validated.instructions)) {
-        const existing = db.workPermitInstructions[id] || {};
-        db.workPermitInstructions[id] = { ...existing, ...instruction, editorIds: Array.isArray(existing.editorIds) ? existing.editorIds : [], updatedAt: now, updatedBy: String(req.authUser?.name || "Администратор") };
-      }
-      writeDb(db, { action: "admin_config_package_imported", user: req.authUser, reason, details: `${validated.summary.instructions} инструкций` });
-    });
-    sendJson(res, 200, { ok: true, summary: validated.summary });
-    return true;
-  }
 
   if (pathname === "/api/admin/archives/preview" && req.method === "GET") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
