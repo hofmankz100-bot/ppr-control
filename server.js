@@ -14,6 +14,7 @@ const { createAdminAutomationRoute } = require("./server/admin-automation-route"
 const { createAdminConfigPackageRoute } = require("./server/admin-config-package-route");
 const { createAdminArchivesRoute } = require("./server/admin-archives-route");
 const { createAdminActivityRoute } = require("./server/admin-activity-route");
+const { createAdminIntegrityRoute } = require("./server/admin-integrity-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4445,6 +4446,18 @@ const handleAdminActivityRoute = createAdminActivityRoute({
   writeDb
 });
 
+const handleAdminIntegrityRoute = createAdminIntegrityRoute({
+  createAdminBackup,
+  dataIntegrityReport,
+  enqueueStateWrite,
+  passwordMatches,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6196,78 +6209,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminActivityRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/integrity" && req.method === "GET") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    sendJson(res, 200, { ok: true, integrity: dataIntegrityReport(readDb()) });
-    return true;
-  }
-
-  if (pathname === "/api/admin/integrity/fix" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
-      && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" });
-      return true;
-    }
-    if (String(body.confirm || "").trim().toUpperCase() !== "ИСПРАВИТЬ ДАННЫЕ") {
-      sendJson(res, 400, { ok: false, error: "integrity_confirmation_required" });
-      return true;
-    }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) {
-      sendJson(res, 400, { ok: false, error: "reason_required" });
-      return true;
-    }
-    const allowed = new Set(["expired_sessions", "dangling_sessions", "invalid_instruction_editors", "stale_alerts"]);
-    const fixes = [...new Set((Array.isArray(body.fixes) ? body.fixes : []).map(String).filter(id => allowed.has(id)))];
-    if (!fixes.length) {
-      sendJson(res, 400, { ok: false, error: "integrity_fixes_required" });
-      return true;
-    }
-    const backup = await createAdminBackup("Перед исправлением данных", req.authUser?.name || "Администратор");
-    const fixed = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const counts = {};
-      const now = Date.now();
-      if (fixes.includes("expired_sessions")) {
-        const before = (db.authSessions || []).length;
-        db.authSessions = (db.authSessions || []).filter(item => Number.isFinite(Date.parse(item.expiresAt || "")) && Date.parse(item.expiresAt) > now);
-        counts.expired_sessions = before - db.authSessions.length;
-      }
-      if (fixes.includes("dangling_sessions")) {
-        const userIds = new Set((db.users || []).map(user => String(user.id || "")).filter(Boolean));
-        const before = (db.authSessions || []).length;
-        db.authSessions = (db.authSessions || []).filter(item => !item.userId || userIds.has(String(item.userId)));
-        counts.dangling_sessions = before - db.authSessions.length;
-      }
-      if (fixes.includes("invalid_instruction_editors")) {
-        const userKeys = new Set((db.users || []).flatMap(user => [user.id, user.employeeId, user.phone].map(value => String(value || "").trim()).filter(Boolean)));
-        let removed = 0;
-        for (const instruction of Object.values(db.workPermitInstructions || {})) {
-          const before = (instruction.editorIds || []).length;
-          instruction.editorIds = (instruction.editorIds || []).filter(key => userKeys.has(String(key || "")));
-          removed += before - instruction.editorIds.length;
-        }
-        counts.invalid_instruction_editors = removed;
-      }
-      if (fixes.includes("stale_alerts")) {
-        const before = (db.adminAlerts || []).length;
-        db.adminAlerts = (db.adminAlerts || []).filter(item => !(item.status === "resolved" && Date.parse(item.resolvedAt || item.lastSeenAt || 0) < now - 90 * 86400000));
-        counts.stale_alerts = before - db.adminAlerts.length;
-      }
-      writeDb(db, { action: "admin_integrity_fixed", user: req.authUser, targetId: backup.id, targetLabel: fixes.join(", "), reason });
-      return counts;
-    });
-    sendJson(res, 200, { ok: true, fixed, backup, integrity: dataIntegrityReport(readDb()) });
-    return true;
-  }
+  if (await handleAdminIntegrityRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/backups/retention" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
