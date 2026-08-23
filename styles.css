@@ -14329,6 +14329,13 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   html[data-theme="dark"] .admin-guide-grid article,
+  html[data-theme="dark"] .system-monitor-grid article,
+  html[data-theme="dark"] .admin-transfer-grid article,
+  html[data-theme="dark"] .admin-notification-policy,
+  html[data-theme="dark"] .admin-broadcast-form,
+  html[data-theme="dark"] .admin-broadcast-list article,
+  html[data-theme="dark"] .admin-broadcast-list article.important,
+  html[data-theme="dark"] .admin-broadcast-list article.critical,
   html[data-theme="dark"] .admin-guide-emergency,
   html[data-theme="dark"] .admin-instruction-log article,
   html[data-theme="dark"] .admin-access-list article,
@@ -14344,6 +14351,13 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   html[data-theme="dark"] .admin-guide-grid p,
+  html[data-theme="dark"] .system-monitor-grid span,
+  html[data-theme="dark"] .admin-transfer-grid p,
+  html[data-theme="dark"] .admin-notification-policy label span,
+  html[data-theme="dark"] .admin-broadcast-form label span,
+  html[data-theme="dark"] .admin-broadcast-fields small,
+  html[data-theme="dark"] .admin-broadcast-list span,
+  html[data-theme="dark"] .admin-broadcast-list small,
   html[data-theme="dark"] .admin-guide-emergency li,
   html[data-theme="dark"] .admin-instruction-log span,
   html[data-theme="dark"] .admin-instruction-log small,
@@ -14355,6 +14369,10 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   html[data-theme="dark"] .admin-guide-grid strong,
+  html[data-theme="dark"] .system-monitor-grid strong,
+  html[data-theme="dark"] .admin-transfer-grid strong,
+  html[data-theme="dark"] .admin-notification-policy > strong,
+  html[data-theme="dark"] .admin-broadcast-list strong,
   html[data-theme="dark"] .admin-guide-emergency strong,
   html[data-theme="dark"] .admin-instruction-log strong,
   html[data-theme="dark"] .admin-instruction-log b,
@@ -14362,6 +14380,24 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .admin-user-details summary,
   html[data-theme="dark"] .director-user-row > span {
     color: #e9edef;
+  }
+
+  html[data-theme="dark"] .system-monitor-grid b,
+  html[data-theme="dark"] .admin-transfer-preview strong,
+  html[data-theme="dark"] .admin-broadcast-list summary {
+    color: #53bdeb;
+  }
+
+  html[data-theme="dark"] .admin-transfer-preview,
+  html[data-theme="dark"] .admin-delivery-list > span,
+  html[data-theme="dark"] .admin-transfer-grid + .empty-state {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #d7e0e5;
+  }
+
+  html[data-theme="dark"] .admin-broadcast-list article.closed {
+    opacity: .82;
   }
 
   html[data-theme="dark"] .admin-user-summary span,
