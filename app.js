@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v587-css-cleanup-1";
+const APP_VERSION = "v588-dedup-audit-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -10407,7 +10407,7 @@ function compressorJournalBaseDate() {
   return `${selectedJournalMonth()}-01`;
 }
 
-function compressorJournalMobileMode() {
+function journalMobileMode() {
   return window.matchMedia?.("(max-width: 760px)")?.matches || false;
 }
 
@@ -10417,7 +10417,7 @@ function compressorJournalMobileDate() {
 }
 
 function shiftCompressorJournalMobileDate(deltaDays) {
-  current.compressorMobileDate = compressorJournalAddDays(compressorJournalMobileDate(), deltaDays);
+  current.compressorMobileDate = addDaysISO(compressorJournalMobileDate(), deltaDays);
   renderCompressorJournal(COMPRESSOR_JOURNAL_AREA);
 }
 
@@ -10434,18 +10434,12 @@ function compressorJournalSheetIndex() {
   return current.compressorSheetIndex;
 }
 
-function compressorJournalAddDays(dateISO, days) {
-  const date = new Date(dateISO);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 function compressorJournalSheetDates(sheetIndex = compressorJournalSheetIndex()) {
   const base = compressorJournalBaseDate();
   const startOffset = sheetIndex * COMPRESSOR_JOURNAL_DAYS_PER_SHEET;
   const dates = [];
   for (let i = 0; i < COMPRESSOR_JOURNAL_DAYS_PER_SHEET; i++) {
-    const date = compressorJournalAddDays(base, startOffset + i);
+    const date = addDaysISO(base, startOffset + i);
     if (date <= COMPRESSOR_JOURNAL_END_DATE && journalMonthMatches(date)) dates.push(date);
   }
   return dates;
@@ -10560,7 +10554,7 @@ function incompleteJournalDays(startDate, completeForDate) {
   let guard = 0;
   while (date <= today && guard < 3660) {
     if (!completeForDate(date)) count += 1;
-    date = compressorJournalAddDays(date, 1);
+    date = addDaysISO(date, 1);
     guard += 1;
   }
   return count;
@@ -10597,7 +10591,7 @@ function compressorJournalHasIncompleteDueDays(area = COMPRESSOR_JOURNAL_AREA) {
   const today = todayISO();
   while (date <= today && date <= COMPRESSOR_JOURNAL_END_DATE) {
     if (!compressorJournalDateComplete(area, date)) return true;
-    date = compressorJournalAddDays(date, 1);
+    date = addDaysISO(date, 1);
   }
   return false;
 }
@@ -10805,10 +10799,6 @@ function gasJournalSheetDates(section) {
   const startOffset = sheetIndex * daysPerSheet;
   return Array.from({ length: daysPerSheet }, (_, index) => addDaysISO(base, startOffset + index))
     .filter(date => journalMonthMatches(date));
-}
-
-function gasJournalMobileMode() {
-  return window.matchMedia?.("(max-width: 760px)")?.matches || false;
 }
 
 function gasJournalMobileDate() {
@@ -11210,7 +11200,7 @@ function gasSheetActionsHtml(section) {
 
 function renderGasJournal() {
   state.gasJournal ||= {};
-  const mobileMode = gasJournalMobileMode();
+  const mobileMode = journalMobileMode();
   ui.aggregateJournalTitle.textContent = "Агрегатный журнал ШГРП / ГРП / ГРУ";
   ui.aggregateJournalMeta.textContent = mobileMode
     ? `${gasJournalFilledCount()} зафиксированных записей. На телефоне открыт один выбранный день.`
@@ -11339,7 +11329,7 @@ function renderGasJournal() {
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-prev]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetPrev, -1)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-next]").forEach(btn => btn.addEventListener("click", () => shiftGasJournalSheet(btn.dataset.gasSheetNext, 1)));
   ui.aggregateJournalList.querySelectorAll("[data-gas-sheet-today]").forEach(btn => btn.addEventListener("click", () => setGasJournalSheetToToday(btn.dataset.gasSheetToday)));
-  if (gasJournalMobileMode()) {
+  if (journalMobileMode()) {
     ui.aggregateJournalList.querySelectorAll(".gas-journal-sheet").forEach(sheet => {
       let touchStartX = 0;
       let touchStartY = 0;
@@ -11377,7 +11367,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
   const maxSheetIndex = compressorJournalMaxSheetIndex();
   if (current.compressorSheetIndex > maxSheetIndex) current.compressorSheetIndex = maxSheetIndex;
   const activeSheetIndex = compressorJournalSheetIndex();
-  const mobileMode = compressorJournalMobileMode();
+  const mobileMode = journalMobileMode();
   const mobileDate = compressorJournalMobileDate();
   const sheetRows = mobileMode
     ? compressorJournalDateRows(area, mobileDate)

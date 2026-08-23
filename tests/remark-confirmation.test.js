@@ -932,9 +932,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v587-css-cleanup-1/);
-  assert.match(html, /styles\.css\?v=v587-css-cleanup-1/);
-  assert.match(serviceWorker, /app\.js\?v=v587-css-cleanup-1/);
+  assert.match(html, /app\.js\?v=v588-dedup-audit-1/);
+  assert.match(html, /styles\.css\?v=v588-dedup-audit-1/);
+  assert.match(serviceWorker, /app\.js\?v=v588-dedup-audit-1/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1311,8 +1311,10 @@ test("one compressor button fixes and locks all three rows for a date", () => {
   assert.doesNotMatch(appSource, /data-compressor-fix-entry=/);
   assert.match(appSource, /const sheetRows = mobileMode[\s\S]*?compressorJournalDateRows\(area, mobileDate\)/);
   assert.match(appSource, /shiftCompressorJournalMobileDate\(deltaX < 0 \? 1 : -1\)/);
-  assert.match(appSource, /function compressorJournalAddDays\(dateISO, days\) \{[\s\S]*?setUTCDate\(date\.getUTCDate\(\) \+ days\)/);
   assert.match(appSource, /function addDaysISO\(dateISO, days\) \{[\s\S]*?setUTCDate\(date\.getUTCDate\(\) \+ days\)/);
+  assert.doesNotMatch(appSource, /function compressorJournalAddDays\(/);
+  assert.match(appSource, /function journalMobileMode\(\)/);
+  assert.doesNotMatch(appSource, /function (?:compressor|gas)JournalMobileMode\(/);
   assert.match(appSource, /data-mobile-label="Давление воздуха"/);
   assert.match(appSource, /const locked = compressorJournalRowComplete\(row\)/);
   assert.match(appSource, /data-compressor-field="airPressure"[\s\S]*?\$\{locked \? "disabled" : ""\}/);
