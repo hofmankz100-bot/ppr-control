@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v569-mobile-action-contrast";
+const APP_VERSION = "v570-whatsapp-dark-theme";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -425,24 +425,32 @@ let tmcRequestSubmitting = false;
 const engineerRequestSaveTimers = new Map();
 const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
-const THEME_KEY = "ppr-theme-v1";
+const THEME_KEY = "ppr-theme-mode-v2";
+const THEME_MODES = new Set(["light", "dark", "system"]);
+const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 const CLIENT_ID = localStorage.getItem(CLIENT_ID_KEY) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 localStorage.setItem(CLIENT_ID_KEY, CLIENT_ID);
 
-function applyTheme(theme) {
-  const next = theme === "dark" ? "dark" : "light";
-  document.documentElement.dataset.theme = next;
-  localStorage.setItem(THEME_KEY, next);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#08141f" : "#14324a");
+function applyTheme(theme, { persist = true } = {}) {
+  const mode = THEME_MODES.has(theme) ? theme : "system";
+  const resolved = mode === "system" ? (themeMediaQuery.matches ? "dark" : "light") : mode;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themeMode = mode;
+  if (persist) localStorage.setItem(THEME_KEY, mode);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111b21" : "#14324a");
   document.querySelectorAll("[data-theme-toggle]").forEach(button => {
-    button.textContent = next === "dark" ? "☀" : "☾";
-    button.setAttribute("aria-label", next === "dark" ? "Включить светлую тему" : "Включить тёмную тему");
-    button.setAttribute("title", next === "dark" ? "Светлая тема" : "Тёмная тема");
+    button.textContent = resolved === "dark" ? "☀" : "☾";
+    button.setAttribute("aria-label", resolved === "dark" ? "Включить светлую тему" : "Включить тёмную тему");
+    button.setAttribute("title", resolved === "dark" ? "Светлая тема" : "Тёмная тема");
   });
+  document.querySelectorAll("[data-theme-mode]").forEach(select => { select.value = mode; });
 }
 
 function setupTheme() {
-  applyTheme("light");
+  applyTheme(localStorage.getItem(THEME_KEY) || "system", { persist: false });
+  themeMediaQuery.addEventListener?.("change", () => {
+    if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyTheme("system", { persist: false });
+  });
 }
 const ui = {
   subtitle: document.querySelector("#screenSubtitle"),
@@ -4102,6 +4110,16 @@ function renderProfile() {
       <select id="profileLanguageSelect">${languageOptions()}</select>
     </label>
   `;
+  const themeSwitcher = `
+    <label class="profile-theme-switcher">
+      <span>Тема</span>
+      <select data-theme-mode aria-label="Тема оформления">
+        <option value="system">Как на телефоне</option>
+        <option value="light">Светлая</option>
+        <option value="dark">Тёмная</option>
+      </select>
+    </label>
+  `;
   const attendanceBadge = attendanceRequired()
     ? (attendanceAllowsEditing()
       ? `<span class="attendance-badge active">На работе · до ${escapeHtml(attendanceTime(attendanceStatus?.session?.expiresAt))}</span>`
@@ -4112,6 +4130,7 @@ function renderProfile() {
     ${profile.role === "editor" ? "" : editorRoleSwitcher}
     ${profile.role === "editor" ? "" : editorAreaSwitcher}
     ${profile.role === "editor" ? "" : languageSwitcher}
+    ${themeSwitcher}
     ${appNotificationPermissionButton()}
     ${profile.role === "director" && current.view !== "directorControl" ? `<button type="button" id="openDirectorControlButton">${escapeHtml(t("commonControl"))}</button>` : ""}
     <button type="button" id="changeUserButton">${escapeHtml(t("logout"))}</button>
@@ -4124,6 +4143,9 @@ function renderProfile() {
   });
   ui.profileBar.querySelector("#profileLanguageSelect")?.addEventListener("change", event => {
     saveProfileLanguage(event.currentTarget.value);
+  });
+  ui.profileBar.querySelector("[data-theme-mode]")?.addEventListener("change", event => {
+    applyTheme(event.currentTarget.value);
   });
   ui.profileBar.querySelector("#enableAppNotificationsButton")?.addEventListener("click", event => {
     requestAppNotificationPermission(event.currentTarget);

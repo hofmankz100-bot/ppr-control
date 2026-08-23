@@ -6,6 +6,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const styles = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
+const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 
 test("home actions share design tokens and calm alert states", () => {
   assert.match(styles, /--ui-brand: #123b53/);
@@ -45,4 +47,22 @@ test("phone equipment actions keep readable contrast", () => {
   assert.match(styles, /\.equipment-installed-parts-button span,[\s\S]*?color: #27475b !important/);
   assert.match(styles, /\.equipment-qr-print-button \{[\s\S]*?background: #0f766e !important/);
   assert.match(styles, /\.equipment-qr-print-button small \{[\s\S]*?color: rgba\(255, 255, 255, \.88\) !important/);
+});
+
+test("theme selection supports light dark and phone modes", () => {
+  assert.match(app, /const THEME_MODES = new Set\(\["light", "dark", "system"\]\)/);
+  assert.match(app, /Как на телефоне/);
+  assert.match(app, /data-theme-mode/);
+  assert.match(html, /ppr-theme-mode-v2/);
+  assert.match(html, /prefers-color-scheme: dark/);
+});
+
+test("dark theme uses a WhatsApp-inspired palette", () => {
+  assert.match(styles, /--paper:#0b141a/);
+  assert.match(styles, /--panel:#111b21/);
+  assert.match(styles, /--nav:#202c33/);
+  assert.match(styles, /--ui-accent:#00a884/);
+  assert.match(styles, /Stage 1 dark theme: home, navigation and equipment overview/);
+  assert.match(styles, /html\[data-theme="dark"\] \.equipment-schedule-table/);
+  assert.match(styles, /@media print \{[\s\S]*?color-scheme: light/);
 });

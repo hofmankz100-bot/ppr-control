@@ -1139,13 +1139,22 @@ body.global-reminder-open {
 
 html[data-theme="dark"] {
   color-scheme:dark;
-  --ink:#e8f0f6;
-  --muted:#a8bac7;
-  --line:#334c5d;
-  --panel:#122534;
-  --paper:#07131d;
-  --nav:#0a2638;
-  --nav-soft:#17394d;
+  --ink:#e9edef;
+  --muted:#8696a0;
+  --line:#2a3942;
+  --panel:#111b21;
+  --paper:#0b141a;
+  --nav:#202c33;
+  --nav-soft:#202c33;
+  --ui-brand:#202c33;
+  --ui-brand-strong:#e9edef;
+  --ui-accent:#00a884;
+  --ui-surface:#111b21;
+  --ui-surface-soft:#182229;
+  --ui-border:#2a3942;
+  --ui-danger:#ff6b75;
+  --ui-danger-soft:#2b1a1d;
+  --ui-danger-border:#6d3339;
   --to:#6a531d;
   --to2:#163d62;
   --to3:#1c4a35;
@@ -1294,7 +1303,8 @@ html[data-theme="dark"] td { border-color:var(--line); }
 
 .editor-role-switcher,
 .editor-area-switcher,
-.profile-language-switcher {
+.profile-language-switcher,
+.profile-theme-switcher {
   display: grid;
   gap: 3px;
   min-width: 170px;
@@ -13795,5 +13805,92 @@ body.non-home-view .hofmann-forklift-mascot {
 
   .equipment-schedule-table .area-color-cell .equipment-qr-print-button small {
     color: rgba(255, 255, 255, .88) !important;
+  }
+}
+
+/* Stage 1 dark theme: home, navigation and equipment overview. */
+@media screen {
+  html[data-theme="dark"] body {
+    background: linear-gradient(180deg, #0b141a, #0e171d 420px, #0b141a);
+    color: var(--ink);
+  }
+
+  html[data-theme="dark"] .topbar {
+    border-bottom-color: #2a3942;
+    background: #202c33;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .28);
+  }
+
+  html[data-theme="dark"] .profile-bar,
+  html[data-theme="dark"] .quick-nav button:not(.primary-nav-button),
+  html[data-theme="dark"] .equipment-list,
+  html[data-theme="dark"] .equipment-schedule-wrap,
+  html[data-theme="dark"] .equipment-schedule-table,
+  html[data-theme="dark"] .equipment-schedule-table td,
+  html[data-theme="dark"] .equipment-schedule-table th {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .quick-nav button:not(.primary-nav-button) {
+    background: linear-gradient(180deg, #202c33, #182229);
+    box-shadow: 0 5px 16px rgba(0, 0, 0, .2);
+  }
+
+  html[data-theme="dark"] .quick-nav button strong {
+    background: #2a3942;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .quick-nav button.request-alert {
+    border-color: #6d3339;
+    background: #2b1a1d;
+    color: #ff8a92;
+  }
+
+  html[data-theme="dark"] .equipment-schedule-table .equipment-journal-cell.area-color-cell {
+    background: #111b21 !important;
+  }
+
+  html[data-theme="dark"] .equipment-schedule-table .area-color-cell .equipment-journal-button {
+    border-color: #2a3942 !important;
+    background: linear-gradient(180deg, #202c33, #182229) !important;
+    color: #e9edef !important;
+  }
+
+  html[data-theme="dark"] .equipment-schedule-table .area-color-cell .equipment-journal-button > strong {
+    color: #e9edef !important;
+  }
+
+  html[data-theme="dark"] .equipment-schedule-table .area-color-cell .equipment-journal-button > span:not(.journal-button-title) {
+    color: #aebac1 !important;
+  }
+
+  html[data-theme="dark"] .equipment-schedule-table .area-color-cell .equipment-journal-button > small {
+    background: #2a3942;
+    color: #d4dde1 !important;
+  }
+
+  html[data-theme="dark"] .profile-theme-switcher select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+}
+
+@media print {
+  html[data-theme="dark"] {
+    color-scheme: light;
+    --ink: #1d2935;
+    --muted: #6b7785;
+    --line: #d7e0e8;
+    --panel: #fff;
+    --paper: #fff;
+  }
+
+  html[data-theme="dark"] body {
+    background: #fff !important;
+    color: #000 !important;
   }
 }

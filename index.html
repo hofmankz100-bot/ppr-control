@@ -6,14 +6,17 @@
   <meta name="theme-color" content="#14324a">
   <script>
     (() => {
-      document.documentElement.dataset.theme = "light";
+      const mode = localStorage.getItem("ppr-theme-mode-v2") || "system";
+      const dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.dataset.themeMode = mode;
     })();
   </script>
   <title>ППР Контроль</title>
   <link rel="icon" href="icon.svg?v=176" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png?v=176">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=v569-mobile-action-contrast">
+  <link rel="stylesheet" href="styles.css?v=v570-whatsapp-dark-theme">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -270,11 +273,11 @@
   <script src="modules/comments.js?v=288-print-request-pages"></script>
   <script src="modules/director.js?v=288-print-request-pages"></script>
   <script src="node_modules/html2canvas/dist/html2canvas.min.js?v=421-annual-ppr-equipment-acts"></script>
-  <script src="node_modules/jspdf/dist/jspdf.umd.min.js?v=v569-mobile-action-contrast"></script>
-  <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v569-mobile-action-contrast"></script>
+  <script src="node_modules/jspdf/dist/jspdf.umd.min.js?v=v570-whatsapp-dark-theme"></script>
+  <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v570-whatsapp-dark-theme"></script>
   <script src="node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts"></script>
   <script src="modules/work-permit.js?v=482-crane-journals-entry"></script>
-  <script src="app.js?v=v569-mobile-action-contrast"></script>
+  <script src="app.js?v=v570-whatsapp-dark-theme"></script>
 </body>
 </html>
 
