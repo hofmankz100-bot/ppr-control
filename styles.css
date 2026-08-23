@@ -14624,6 +14624,115 @@ body.non-home-view .hofmann-forklift-mascot {
     background: #202c33;
     color: #e9edef;
   }
+
+  html[data-theme="dark"] .annual-ppr-act-dialog,
+  html[data-theme="dark"] .annual-ppr-act-columns fieldset,
+  html[data-theme="dark"] .annual-ppr-act-history,
+  html[data-theme="dark"] .annual-ppr-work-dialog,
+  html[data-theme="dark"] .annual-ppr-work-dialog form,
+  html[data-theme="dark"] .annual-ppr-work-list article,
+  html[data-theme="dark"] .annual-ppr-work-list article.fixed {
+    border-color: #2a3942;
+    border-left-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .annual-ppr-act-dialog > header,
+  html[data-theme="dark"] .annual-ppr-work-dialog > header {
+    border-bottom: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .annual-ppr-act-dialog label,
+  html[data-theme="dark"] .annual-ppr-act-columns legend,
+  html[data-theme="dark"] .annual-ppr-work-dialog form label {
+    color: #d4dde1;
+  }
+
+  html[data-theme="dark"] .annual-ppr-act-history span,
+  html[data-theme="dark"] .annual-ppr-act-history small,
+  html[data-theme="dark"] .annual-ppr-work-list .work-main span,
+  html[data-theme="dark"] .annual-ppr-work-list .work-main small,
+  html[data-theme="dark"] .annual-ppr-work-list .work-main em {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .annual-ppr-act-dialog input,
+  html[data-theme="dark"] .annual-ppr-act-dialog select,
+  html[data-theme="dark"] .annual-ppr-act-dialog textarea,
+  html[data-theme="dark"] .annual-ppr-work-dialog form input,
+  html[data-theme="dark"] .annual-ppr-work-dialog form select,
+  html[data-theme="dark"] .annual-ppr-work-dialog form textarea,
+  html[data-theme="dark"] .annual-ppr-work-dialog > header button {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-screen,
+  html[data-theme="dark"] .work-permit-paper,
+  html[data-theme="dark"] .work-permit-document-head,
+  html[data-theme="dark"] .work-permit-section,
+  html[data-theme="dark"] .work-permit-toolbar,
+  html[data-theme="dark"] .work-permit-reminder,
+  html[data-theme="dark"] .work-permit-responsive-table tr {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .work-permit-intro h1,
+  html[data-theme="dark"] .work-permit-title-row h1,
+  html[data-theme="dark"] .work-permit-section > h2,
+  html[data-theme="dark"] .work-permit-reminder h2,
+  html[data-theme="dark"] .work-permit-company,
+  html[data-theme="dark"] .work-permit-field {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-intro p,
+  html[data-theme="dark"] .work-permit-intro small,
+  html[data-theme="dark"] .work-permit-title-row p,
+  html[data-theme="dark"] .work-permit-language-control,
+  html[data-theme="dark"] .work-permit-language-control small,
+  html[data-theme="dark"] .work-permit-responsive-table td::before {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .work-permit-document-code,
+  html[data-theme="dark"] .work-permit-form input,
+  html[data-theme="dark"] .work-permit-form select,
+  html[data-theme="dark"] .work-permit-form textarea,
+  html[data-theme="dark"] .work-permit-language-control select,
+  html[data-theme="dark"] .work-permit-toolbar button,
+  html[data-theme="dark"] .work-permit-reminder header button,
+  html[data-theme="dark"] .work-permit-reminder-show {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .work-permit-table-wrap,
+  html[data-theme="dark"] .work-permit-table th,
+  html[data-theme="dark"] .work-permit-table td,
+  html[data-theme="dark"] .work-permit-responsive-table th[scope="row"] {
+    border-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .work-permit-table th,
+  html[data-theme="dark"] .work-permit-responsive-table th[scope="row"] {
+    background: #0f3447;
+    color: #f0f5f7;
+  }
+
+  html[data-theme="dark"] .work-permit-table td {
+    background: #111b21;
+    color: #e9edef;
+  }
 }
 
 @media print {
