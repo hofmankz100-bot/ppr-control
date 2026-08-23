@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v595-durable-cross-platform-photos-1";
+const SERVER_VERSION = "v596-remove-forklift-animation-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -189,7 +189,6 @@ function isPublicStaticPath(relativePath = "") {
   const normalized = String(relativePath).split(path.sep).join("/");
   if (publicRootFiles.has(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
-  if (normalized === "assets/hofmann-forklift.png") return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js"
     || normalized === "node_modules/html2canvas/dist/html2canvas.min.js"
     || normalized === "node_modules/jspdf/dist/jspdf.umd.min.js"

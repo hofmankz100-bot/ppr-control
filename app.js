@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v595-durable-cross-platform-photos-1";
+const APP_VERSION = "v596-remove-forklift-animation-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -19948,61 +19948,6 @@ window.addEventListener("online", () => {
   pollRemoteUsers(true);
 });
 
-function setupHofmannForkliftMascot() {
-  if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || navigator.connection?.saveData) return;
-  const mascot = document.createElement("div");
-  mascot.className = "hofmann-forklift-mascot";
-  mascot.setAttribute("aria-hidden", "true");
-  mascot.innerHTML = `
-    <div class="forklift-smoke" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div class="forklift-flag"><b>HOFMANN</b><span>ALUMINIUM</span></div>
-    <img class="forklift-vehicle" src="assets/hofmann-forklift.png?v=${APP_VERSION}" alt="">
-    <div class="forklift-aluminum-load">
-      <i></i><i></i><i></i><i></i><i></i>
-      <strong>AL</strong>
-    </div>
-  `;
-  document.body.append(mascot);
-  mascot.hidden = true;
-  let timer = 0;
-  const moveForklift = (fromX, fromY, toX, toY, duration) => mascot.animate([
-    { transform: `translate3d(${fromX}px,${fromY}px,0)` },
-    { transform: `translate3d(${toX}px,${toY}px,0)` }
-  ], { duration, easing: "linear", fill: "forwards" }).finished.catch(() => {});
-  const pause = duration => new Promise(resolve => window.setTimeout(resolve, duration));
-
-  const run = async () => {
-    window.clearTimeout(timer);
-    if (!isProfileReady() || current.view !== "equipment" || document.hidden || document.querySelector(".login-overlay:not([hidden])")) {
-      timer = window.setTimeout(run, 20000);
-      return;
-    }
-    const width = window.innerWidth <= 640 ? 148 : 205;
-    const height = Math.round(width * .66);
-    const startX = -width - 24;
-    const pickupX = Math.max(8, Math.min(window.innerWidth * .28, window.innerWidth - width - 8));
-    const finishX = window.innerWidth + width + 30;
-    const floorY = Math.max(90, window.innerHeight - height - (window.innerWidth <= 640 ? 78 : 18));
-    mascot.style.setProperty("--forklift-width", `${width}px`);
-    mascot.style.setProperty("--forklift-height", `${height}px`);
-    mascot.hidden = false;
-    mascot.classList.remove("is-loading", "is-carrying");
-    mascot.classList.add("is-driving");
-    await moveForklift(startX, floorY, pickupX, floorY, window.innerWidth <= 640 ? 4300 : 5200);
-    mascot.classList.remove("is-driving");
-    mascot.classList.add("is-loading");
-    await pause(2600);
-    mascot.classList.remove("is-loading");
-    mascot.classList.add("is-driving", "is-carrying");
-    await moveForklift(pickupX, floorY, finishX, floorY, window.innerWidth <= 640 ? 5600 : 6800);
-    mascot.classList.remove("is-driving", "is-carrying");
-    mascot.hidden = true;
-    timer = window.setTimeout(run, 45000 + Math.round(Math.random() * 30000));
-  };
-
-  timer = window.setTimeout(run, 12000);
-}
-
 function reportClientError(message, source = "", line = 0, column = 0) {
   if (!isProfileReady() || !navigator.onLine) return;
   fetch("/api/client-error", {
@@ -20170,7 +20115,6 @@ window.setInterval(checkRequiredClientVersion, 30000);
 window.setInterval(refreshAuthenticatedProfile, 30000);
 setupPublicAttendanceEntry();
 setupLogin();
-setupHofmannForkliftMascot();
 resetAppNotificationsForOpen();
 (async () => {
   if (!loadProfile()) return;
