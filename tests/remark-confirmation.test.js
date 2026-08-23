@@ -932,9 +932,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(client, /entries\.reduce\(\(sum, item\) => sum \+ item\.points, 0\)/);
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
-  assert.match(html, /app\.js\?v=v596-remove-forklift-animation-1/);
-  assert.match(html, /styles\.css\?v=v596-remove-forklift-animation-1/);
-  assert.match(serviceWorker, /app\.js\?v=v596-remove-forklift-animation-1/);
+  assert.match(html, /app\.js\?v=v597-employee-audit-photo-metrics-1/);
+  assert.match(html, /styles\.css\?v=v597-employee-audit-photo-metrics-1/);
+  assert.match(serviceWorker, /app\.js\?v=v597-employee-audit-photo-metrics-1/);
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
@@ -1176,6 +1176,8 @@ test("uploaded photos are served and production keeps a PostgreSQL fallback", as
   assert.doesNotMatch(source, /externalizePhotosInValue/);
   assert.match(appSource, /if \(!\/\^image\\\/\/i\.test\(String\(file\.type \|\| ""\)\)\)/);
   assert.match(appSource, /dataset\.photoRetry/);
+  assert.match(appSource, /storedPhotoUrls = serialized\.match\(\/\\\/api\\\/photos/);
+  assert.match(appSource, /new Set\(storedPhotoUrls\.map/);
   const data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
   const upload = await fetch(`${baseUrl}/api/photos`, {
     method: "POST",

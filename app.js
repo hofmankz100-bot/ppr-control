@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v596-remove-forklift-animation-1";
+const APP_VERSION = "v597-employee-audit-photo-metrics-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18965,7 +18965,9 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
 function systemLoadMetrics() {
   const serialized = JSON.stringify(state || {});
   const bytes = new Blob([serialized]).size;
-  const photoCount = (serialized.match(/data:image\//g) || []).length;
+  const embeddedPhotoCount = (serialized.match(/data:image\//g) || []).length;
+  const storedPhotoUrls = serialized.match(/\/api\/photos\/[a-f0-9]{40}\.(?:jpg|jpeg|png|webp)/gi) || [];
+  const photoCount = embeddedPhotoCount + new Set(storedPhotoUrls.map(url => url.toLowerCase())).size;
   const checks = Object.keys(state.checks || {}).length;
   const requests = allRequests().length;
   const inventory = Object.keys(state.inventory || {}).length;
