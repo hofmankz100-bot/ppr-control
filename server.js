@@ -11,6 +11,7 @@ const { createAdminUserPermissionsRoute } = require("./server/admin-user-permiss
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
 const { createAdminAutomationRoute } = require("./server/admin-automation-route");
+const { createAdminConfigPackageRoute } = require("./server/admin-config-package-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4401,6 +4402,15 @@ const handleAdminAutomationRoute = createAdminAutomationRoute({
   sendJson,
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
+const handleAdminConfigPackageRoute = createAdminConfigPackageRoute({
+  buildAdminConfigPackage,
+  readBody,
+  readDb,
+  sendDownload,
+  sendJson,
+  todayStamp,
+  validateAdminConfigPackage
+});
 
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
@@ -6147,21 +6157,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminAutomationRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/config-package" && req.method === "GET") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const configPackage = buildAdminConfigPackage(readDb());
-    sendDownload(res, `ppr_admin_config_${todayStamp()}.json`, configPackage);
-    return true;
-  }
-
-  if (pathname === "/api/admin/config-package/preview" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    const validated = validateAdminConfigPackage(body.package);
-    if (validated.error) sendJson(res, 400, { ok: false, error: validated.error });
-    else sendJson(res, 200, { ok: true, summary: validated.summary });
-    return true;
-  }
+  if (await handleAdminConfigPackageRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/config-package/import" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
