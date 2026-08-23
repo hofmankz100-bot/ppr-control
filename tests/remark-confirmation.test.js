@@ -1059,7 +1059,7 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(server, /const requestedTab = String\(url\.searchParams\.get\("tab"\) \|\| "all"\)/);
   assert.match(server, /\["all", "access"\]\.includes\(requestedTab\) \? \(db\.users \|\| \[\]\)\.map/);
   assert.match(server, /\["all", "audit"\]\.includes\(requestedTab\)/);
-  const maintenanceGet = server.slice(server.indexOf('if (pathname === "/api/admin/maintenance" && req.method === "GET")'), server.indexOf('if (pathname === "/api/admin/notification-policy"'));
+  const maintenanceGet = server.slice(server.indexOf('if (pathname === "/api/admin/maintenance" && req.method === "GET")'), server.indexOf('if (await handleAdminNotificationsRoute'));
   assert.doesNotMatch(maintenanceGet, /await refreshSystemMonitoring\(\)/);
   assert.match(maintenanceRoute, /createManualBackup\("before-trash-purge"\)/);
   assert.match(server, /30 \* 24 \* 60 \* 60 \* 1000/);

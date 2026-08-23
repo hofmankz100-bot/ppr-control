@@ -19,6 +19,7 @@ const { createAdminBackupsRoute } = require("./server/admin-backups-route");
 const { createAdminSettingsRoute } = require("./server/admin-settings-route");
 const { createAdminMonitoringRoute } = require("./server/admin-monitoring-route");
 const { createAdminMaintenanceRoute } = require("./server/admin-maintenance-route");
+const { createAdminNotificationsRoute } = require("./server/admin-notifications-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4510,6 +4511,18 @@ const handleAdminMaintenanceRoute = createAdminMaintenanceRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminNotificationsRoute = createAdminNotificationsRoute({
+  broadcastState,
+  enqueueStateWrite,
+  passwordMatches,
+  randomBytes: crypto.randomBytes,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6180,50 +6193,7 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/admin/notification-policy" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500); if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    await enqueueStateWrite(async () => { const db = readDb(); db.adminNotificationPolicy = { defaultPriority: ["normal","important","critical"].includes(body.defaultPriority) ? body.defaultPriority : "normal", defaultExpiryHours: Math.max(1, Math.min(720, Number(body.defaultExpiryHours || 24))), unreadReminderHours: Math.max(1, Math.min(168, Number(body.unreadReminderHours || 8))), updatedAt: new Date().toISOString(), updatedBy: String(req.authUser?.name || "Администратор") }; writeDb(db, { action: "admin_notification_policy_saved", user: req.authUser, reason }); });
-    sendJson(res, 200, { ok: true }); return true;
-  }
-
-  if (pathname === "/api/admin/broadcasts/remind" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500); if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const result = await enqueueStateWrite(async () => { const db = readDb(); const item = (db.systemBroadcasts || []).find(entry => entry.id === String(body.id || "")); if (!item || item.active === false) return { error: "broadcast_not_found" }; item.remindedAt = new Date().toISOString(); item.remindedBy = String(req.authUser?.name || "Администратор"); writeDb(db, { action: "admin_broadcast_reminded", user: req.authUser, targetId: item.id, targetLabel: item.title, reason }); return { ok: true }; });
-    if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else { broadcastState("admin-broadcast-reminder", "", { systemBroadcasts: readDb().systemBroadcasts }, true); sendJson(res, 200, { ok: true }); } return true;
-  }
-
-  if (pathname === "/api/admin/broadcasts" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const allowedRoles = new Set(["mechanic","electrician","welder","turner","forkliftDriver","operator","shop","engineer","safetyEngineer","energyEngineer","designEngineer","mechanicalEngineer","instrumentationEngineer","productionDirector","generalDirector","director","technicalDirector","editor"]);
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb(); db.systemBroadcasts ||= [];
-      if (body.action === "close") {
-        const item = db.systemBroadcasts.find(entry => entry.id === String(body.id || "")); if (!item) return { error: "broadcast_not_found" };
-        item.active = false; item.closedAt = new Date().toISOString(); item.closedBy = String(req.authUser?.name || "Администратор");
-        writeDb(db, { action: "admin_broadcast_closed", user: req.authUser, targetId: item.id, targetLabel: item.title, reason }); return { item };
-      }
-      const title = String(body.title || "").trim().slice(0, 200); const text = String(body.text || "").trim().slice(0, 3000);
-      if (!title || !text) return { error: "broadcast_content_required" };
-      const roles = [...new Set((Array.isArray(body.roles) ? body.roles : []).map(String).filter(role => allowedRoles.has(role)))];
-      const now = new Date().toISOString(); const expiresAt = String(body.expiresAt || "");
-      if (!expiresAt || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) return { error: "broadcast_expiry_invalid" };
-      const item = { id: `broadcast-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`, title, text, priority: ["normal","important","critical"].includes(body.priority) ? body.priority : "normal", roles, active: true, startsAt: now, expiresAt, createdAt: now, author: String(req.authUser?.name || "Администратор"), readBy: [] };
-      db.systemBroadcasts.push(item); db.systemBroadcasts = db.systemBroadcasts.slice(-500);
-      writeDb(db, { action: "admin_broadcast_created", user: req.authUser, targetId: item.id, targetLabel: title, reason }); return { item };
-    });
-    if (result.error) sendJson(res, result.error === "broadcast_not_found" ? 404 : 400, { ok: false, error: result.error }); else { broadcastState("admin-broadcast", "", { systemBroadcasts: readDb().systemBroadcasts }, true); sendJson(res, 200, { ok: true }); }
-    return true;
-  }
+  if (await handleAdminNotificationsRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/broadcasts/read" && req.method === "POST") {
     const body = await readBody(req).catch(() => ({}));
