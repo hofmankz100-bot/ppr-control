@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
 const { MultiPostgres, configuredDatabases } = require("../multi-postgres");
 
 function fakeNode(name, handler) {
@@ -44,4 +45,23 @@ test("duplicate database URLs are ignored", () => {
     NEON_DATABASE_URL: "postgres://same",
     SUPABASE_DATABASE_URL: "postgres://third"
   }).map(item => item.name), ["primary", "supabase"]);
+});
+
+test("an idle pool error marks only that database unavailable without becoming unhandled", () => {
+  const pool = new EventEmitter();
+  pool.query = async () => ({ rows: [] });
+  pool.end = async () => {};
+  const errors = [];
+  const cluster = new MultiPostgres([
+    { name: "primary", healthy: true, pool },
+    fakeNode("backup", async () => ({ rows: [] }))
+  ], {
+    onPoolError: (error, nodeName) => errors.push([nodeName, error.message])
+  });
+
+  pool.emit("error", new Error("Connection terminated unexpectedly"));
+
+  assert.equal(cluster.status().nodes[0].healthy, false);
+  assert.equal(cluster.status().nodes[1].healthy, true);
+  assert.deepEqual(errors, [["primary", "Connection terminated unexpectedly"]]);
 });

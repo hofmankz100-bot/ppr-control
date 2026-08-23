@@ -858,7 +858,12 @@ async function initializeStorage() {
       await Promise.allSettled(nodes.map(node => node.pool.end()));
       throw new Error("All configured PostgreSQL databases are unavailable");
     }
-    const pool = new MultiPostgres(nodes, { onStatus: status => { postgresClusterStatus = status; } });
+    const pool = new MultiPostgres(nodes, {
+      onStatus: status => { postgresClusterStatus = status; },
+      onPoolError: (error, nodeName) => {
+        console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`);
+      }
+    });
     postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (

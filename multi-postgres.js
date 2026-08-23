@@ -11,7 +11,16 @@ class MultiPostgres {
     this.nodes = nodes;
     this.activeIndex = Math.max(0, nodes.findIndex(node => node.healthy));
     this.onStatus = typeof options.onStatus === "function" ? options.onStatus : () => {};
+    this.onPoolError = typeof options.onPoolError === "function" ? options.onPoolError : () => {};
     this.mirrorJobs = new Set();
+    this.nodes.forEach((node, index) => {
+      if (typeof node.pool?.on !== "function") return;
+      node.pool.on("error", error => {
+        this.markFailure(index, error);
+        this.onStatus(this.status());
+        this.onPoolError(error, node.name);
+      });
+    });
   }
 
   activeNode() {
