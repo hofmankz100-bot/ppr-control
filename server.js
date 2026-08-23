@@ -16,6 +16,7 @@ const { createAdminArchivesRoute } = require("./server/admin-archives-route");
 const { createAdminActivityRoute } = require("./server/admin-activity-route");
 const { createAdminIntegrityRoute } = require("./server/admin-integrity-route");
 const { createAdminBackupsRoute } = require("./server/admin-backups-route");
+const { createAdminSettingsRoute } = require("./server/admin-settings-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4476,6 +4477,18 @@ const handleAdminBackupsRoute = createAdminBackupsRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminSettingsRoute = createAdminSettingsRoute({
+  enqueueStateWrite,
+  normalizedAdminConfig,
+  passwordMatches,
+  randomBytes: crypto.randomBytes,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6231,57 +6244,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminBackupsRoute(req, res, pathname)) return true;
 
-
-  if (pathname === "/api/admin/settings" && req.method === "PUT") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const before = normalizedAdminConfig(db.adminConfig);
-      const after = normalizedAdminConfig(body.config || {});
-      const now = new Date().toISOString();
-      db.adminConfigHistory ||= [];
-      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason, snapshot: before });
-      db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
-      db.adminConfig = after;
-      writeDb(db, { action: "admin_settings_saved", user: req.authUser, reason });
-      return after;
-    });
-    sendJson(res, 200, { ok: true, config: result });
-    return true;
-  }
-
-  if (pathname === "/api/admin/settings/rollback" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) { sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true; }
-    const reason = String(body.reason || "").trim().slice(0, 500);
-    if (!reason) { sendJson(res, 400, { ok: false, error: "reason_required" }); return true; }
-    const versionId = String(body.versionId || "");
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const version = (db.adminConfigHistory || []).find(item => item.id === versionId);
-      if (!version) return { error: "config_version_not_found" };
-      const current = normalizedAdminConfig(db.adminConfig);
-      const now = new Date().toISOString();
-      db.adminConfigHistory.unshift({ id: `config-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, at: now, actorId: String(req.authUser?.id || ""), actorName: String(req.authUser?.name || "Администратор"), reason: "Автокопия перед откатом", snapshot: current });
-      db.adminConfig = normalizedAdminConfig(version.snapshot);
-      writeDb(db, { action: "admin_settings_rollback", user: req.authUser, targetId: versionId, reason: String(body.reason || "Откат настроек") });
-      return { config: db.adminConfig };
-    });
-    if (result.error) sendJson(res, 404, { ok: false, error: result.error });
-    else sendJson(res, 200, { ok: true, ...result });
-    return true;
-  }
+  if (await handleAdminSettingsRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/monitoring" && req.method === "POST") {
     if (req.authUser?.role !== "editor") {
