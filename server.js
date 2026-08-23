@@ -10,6 +10,7 @@ const { buildHealthPayload } = require("./server/health");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
+const { createAdminAutomationRoute } = require("./server/admin-automation-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4391,6 +4392,15 @@ const handleAdminUserAccessRoute = createAdminUserAccessRoute({
   writeDb,
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
+const handleAdminAutomationRoute = createAdminAutomationRoute({
+  adminAutomationSnapshot,
+  passwordMatches,
+  readBody,
+  readDb,
+  runAutomaticBackupIfDue,
+  sendJson,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
 
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
@@ -6135,16 +6145,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminUserPermissionsRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/automation/run" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
-    }
-    const result = await runAutomaticBackupIfDue(true, req.authUser?.name || "Администратор");
-    sendJson(res, 200, { ok: true, ...result, status: adminAutomationSnapshot(readDb()) });
-    return true;
-  }
+  if (await handleAdminAutomationRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/admin/config-package" && req.method === "GET") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
