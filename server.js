@@ -4429,6 +4429,7 @@ const handleAdminArchivesRoute = createAdminArchivesRoute({
   readBody,
   readAdminArchive,
   readDb,
+  sendDownload,
   sendJson,
   shouldStoreArchiveInState: () => !postgresPool,
   writeDb,
@@ -6183,16 +6184,6 @@ async function handleApi(req, res, pathname, url) {
   if (await handleAdminConfigPackageRoute(req, res, pathname)) return true;
 
   if (await handleAdminArchivesRoute(req, res, pathname, url)) return true;
-
-  const adminArchiveMatch = pathname.match(/^\/api\/admin\/archives\/([A-Za-z0-9._-]+)$/);
-  if (adminArchiveMatch && req.method === "GET") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const archive = await readAdminArchive(adminArchiveMatch[1]);
-    if (!archive) { sendJson(res, 404, { ok: false, error: "archive_not_found" }); return true; }
-    if (backupChecksum(archive.payload) !== archive.checksum) { sendJson(res, 409, { ok: false, error: "archive_checksum_invalid" }); return true; }
-    sendDownload(res, `ppr_archive_${adminArchiveMatch[1]}.json`, { exportedAt: new Date().toISOString(), archiveId: adminArchiveMatch[1], checksum: archive.checksum, payload: archive.payload });
-    return true;
-  }
 
   if (pathname === "/api/admin/activity/read" && req.method === "POST") {
     if (req.authUser?.role !== "editor") {

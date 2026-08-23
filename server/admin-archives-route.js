@@ -11,17 +11,22 @@ function createAdminArchivesRoute(dependencies = {}) {
     readBody,
     readAdminArchive,
     readDb,
+    sendDownload,
     sendJson,
     shouldStoreArchiveInState,
     writeDb,
-    allowPasswordlessTestAuth = false
+    allowPasswordlessTestAuth = false,
+    now = () => Date.now()
   } = dependencies;
 
   return async function handleAdminArchivesRoute(req, res, pathname, url) {
     const isPreview = pathname === "/api/admin/archives/preview" && req.method === "GET";
     const isCreate = pathname === "/api/admin/archives" && req.method === "POST";
     const isRestore = pathname === "/api/admin/archives/restore" && req.method === "POST";
-    if (!isPreview && !isCreate && !isRestore) return false;
+    const downloadMatch = req.method === "GET"
+      ? pathname.match(/^\/api\/admin\/archives\/([A-Za-z0-9._-]+)$/)
+      : null;
+    if (!isPreview && !isCreate && !isRestore && !downloadMatch) return false;
 
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
@@ -37,6 +42,26 @@ function createAdminArchivesRoute(dependencies = {}) {
           cutoffAt: preview.cutoffAt,
           counts: preview.counts
         }
+      });
+      return true;
+    }
+
+    if (downloadMatch) {
+      const archiveId = downloadMatch[1];
+      const archive = await readAdminArchive(archiveId);
+      if (!archive) {
+        sendJson(res, 404, { ok: false, error: "archive_not_found" });
+        return true;
+      }
+      if (backupChecksum(archive.payload) !== archive.checksum) {
+        sendJson(res, 409, { ok: false, error: "archive_checksum_invalid" });
+        return true;
+      }
+      sendDownload(res, `ppr_archive_${archiveId}.json`, {
+        exportedAt: new Date(now()).toISOString(),
+        archiveId,
+        checksum: archive.checksum,
+        payload: archive.payload
       });
       return true;
     }

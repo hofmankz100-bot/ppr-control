@@ -8,6 +8,7 @@ function createHarness() {
   const responses = [];
   const calls = [];
   const events = [];
+  const downloads = [];
   const database = { adminAuditLog: [], adminAlerts: [], adminTrash: [], adminConfigHistory: [], adminArchives: [] };
   const handler = createAdminArchivesRoute({
     adminArchiveSelection: (db, days) => {
@@ -35,11 +36,13 @@ function createHarness() {
     readBody: async req => req.body || {},
     readAdminArchive: async id => database.archiveToRead?.id === id ? database.archiveToRead : null,
     readDb: () => database,
+    sendDownload: (_res, filename, payload) => downloads.push({ filename, payload }),
     sendJson: (_res, status, payload) => responses.push({ status, payload }),
     shouldStoreArchiveInState: () => true,
-    writeDb: (_db, audit) => events.push({ type: "audit", audit })
+    writeDb: (_db, audit) => events.push({ type: "audit", audit }),
+    now: () => Date.parse("2026-08-23T12:00:00.000Z")
   });
-  return { handler, responses, calls, database, events };
+  return { handler, responses, calls, database, events, downloads };
 }
 
 test("admin archives route ignores unrelated requests", async () => {
@@ -48,6 +51,45 @@ test("admin archives route ignores unrelated requests", async () => {
   assert.equal(handled, false);
   assert.deepEqual(responses, []);
   assert.deepEqual(calls, []);
+});
+
+test("admin archive download rejects a damaged archive", async () => {
+  const { handler, responses, database, downloads } = createHarness();
+  database.archiveToRead = { id: "archive-1", payload: { records: {} }, checksum: "wrong" };
+  await handler(
+    { method: "GET", authUser: { role: "editor" } },
+    {},
+    "/api/admin/archives/archive-1",
+    new URL("https://example.test/api/admin/archives/archive-1")
+  );
+  assert.deepEqual(responses[0], { status: 409, payload: { ok: false, error: "archive_checksum_invalid" } });
+  assert.deepEqual(downloads, []);
+});
+
+test("admin archive download returns a verified dated package", async () => {
+  const { handler, responses, database, downloads } = createHarness();
+  const payload = { records: { audit: [{ id: "audit-1" }] } };
+  database.archiveToRead = {
+    id: "archive-1",
+    payload,
+    checksum: `checksum:${JSON.stringify(payload)}`
+  };
+  await handler(
+    { method: "GET", authUser: { role: "editor" } },
+    {},
+    "/api/admin/archives/archive-1",
+    new URL("https://example.test/api/admin/archives/archive-1")
+  );
+  assert.deepEqual(responses, []);
+  assert.deepEqual(downloads, [{
+    filename: "ppr_archive_archive-1.json",
+    payload: {
+      exportedAt: "2026-08-23T12:00:00.000Z",
+      archiveId: "archive-1",
+      checksum: `checksum:${JSON.stringify(payload)}`,
+      payload
+    }
+  }]);
 });
 
 test("admin archive restore rejects a damaged archive before backup", async () => {
