@@ -13575,7 +13575,8 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .equipment-schedule-wrap,
   html[data-theme="dark"] .equipment-schedule-table,
   html[data-theme="dark"] .equipment-schedule-table td,
-  html[data-theme="dark"] .equipment-schedule-table th {
+  html[data-theme="dark"] .equipment-schedule-table th,
+  html[data-theme="dark"] .equipment-month-bar {
     border-color: #2a3942;
     background: #111b21;
     color: #e9edef;
@@ -13620,27 +13621,16 @@ body.non-home-view .hofmann-forklift-mascot {
     color: #d4dde1 !important;
   }
 
-  html[data-theme="dark"] .profile-theme-switcher select {
+  html[data-theme="dark"] .profile-theme-switcher select,
+  html[data-theme="dark"] .equipment-month-bar button {
     border-color: #3b4a54;
     background: #202c33;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .equipment-month-bar {
-    border-color: #2a3942;
-    background: #111b21;
     color: #e9edef;
   }
 
   html[data-theme="dark"] .equipment-month-bar .segmented {
     border-color: #2a3942;
     background: #182229;
-  }
-
-  html[data-theme="dark"] .equipment-month-bar button {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
   }
 
   html[data-theme="dark"] .mobile-nav {
@@ -13736,7 +13726,10 @@ body.non-home-view .hofmann-forklift-mascot {
 
   html[data-theme="dark"] #aggregateJournalScreen .aggregate-journal-sheet,
   html[data-theme="dark"] #aggregateJournalScreen .aggregate-journal-table-wrap,
-  html[data-theme="dark"] #aggregateJournalScreen .aggregate-mobile-record-card {
+  html[data-theme="dark"] #aggregateJournalScreen .aggregate-mobile-record-card,
+  html[data-theme="dark"] #aggregateJournalScreen .aggregate-journal-table td,
+  html[data-theme="dark"] #aggregateJournalScreen .aggregate-mobile-record-card > td,
+  html[data-theme="dark"] #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td {
     border-color: #2a3942;
     background: #111b21;
     color: #e9edef;
@@ -13759,14 +13752,6 @@ body.non-home-view .hofmann-forklift-mascot {
     border-color: #3b4a54;
     background: #0f3447;
     color: #f0f5f7;
-  }
-
-  html[data-theme="dark"] #aggregateJournalScreen .aggregate-journal-table td,
-  html[data-theme="dark"] #aggregateJournalScreen .aggregate-mobile-record-card > td,
-  html[data-theme="dark"] #aggregateJournalScreen .standard-aggregate-journal-sheet .aggregate-journal-table td {
-    border-color: #2a3942;
-    background: #111b21;
-    color: #e9edef;
   }
 
   html[data-theme="dark"] #aggregateJournalScreen .aggregate-mobile-record-card > td::before,
@@ -13866,7 +13851,17 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .welding-return-reason,
   html[data-theme="dark"] .welding-result,
   html[data-theme="dark"] .welding-summary span,
-  html[data-theme="dark"] .production-work-photos figure {
+  html[data-theme="dark"] .production-work-photos figure,
+  html[data-theme="dark"] .welding-request-form input,
+  html[data-theme="dark"] .welding-request-form select,
+  html[data-theme="dark"] .welding-request-form textarea,
+  html[data-theme="dark"] .welding-complete-form input,
+  html[data-theme="dark"] .welding-complete-form select,
+  html[data-theme="dark"] .welding-complete-form textarea,
+  html[data-theme="dark"] .welding-toolbar input,
+  html[data-theme="dark"] .welding-card-head > span,
+  html[data-theme="dark"] .production-join-button,
+  html[data-theme="dark"] .production-worker-home button {
     border-color: #3b4a54;
     background: #202c33;
     color: #e9edef;
@@ -13878,26 +13873,6 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .welding-card-head small,
   html[data-theme="dark"] .production-work-photos figcaption {
     color: #aebac1;
-  }
-
-  html[data-theme="dark"] .welding-request-form input,
-  html[data-theme="dark"] .welding-request-form select,
-  html[data-theme="dark"] .welding-request-form textarea,
-  html[data-theme="dark"] .welding-complete-form input,
-  html[data-theme="dark"] .welding-complete-form select,
-  html[data-theme="dark"] .welding-complete-form textarea,
-  html[data-theme="dark"] .welding-toolbar input {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .welding-card-head > span,
-  html[data-theme="dark"] .production-join-button,
-  html[data-theme="dark"] .production-worker-home button {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
   }
 
   html[data-theme="dark"] .welding-card.status-new,
@@ -13975,19 +13950,14 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .attendance-binding-status,
   html[data-theme="dark"] .attendance-binding-status.is-linked,
   html[data-theme="dark"] .attendance-state-text.green,
-  html[data-theme="dark"] .attendance-state-text.red {
+  html[data-theme="dark"] .attendance-state-text.red,
+  html[data-theme="dark"] .attendance-panel button:not(.attendance-close) {
     border-color: #3b4a54;
     background: #202c33;
     color: #e9edef;
   }
 
   html[data-theme="dark"] .attendance-binding-status strong {
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .attendance-panel button:not(.attendance-close) {
-    border-color: #3b4a54;
-    background: #202c33;
     color: #e9edef;
   }
 
@@ -14541,12 +14511,7 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .system-load-stats span,
   html[data-theme="dark"] .order-card header span,
   html[data-theme="dark"] .order-filters button,
-  html[data-theme="dark"] .system-load-actions button.secondary {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
+  html[data-theme="dark"] .system-load-actions button.secondary,
   html[data-theme="dark"] .order-create-form textarea,
   html[data-theme="dark"] .order-complete-form textarea,
   html[data-theme="dark"] .order-complete-form input,
@@ -14841,18 +14806,7 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   html[data-theme="dark"] .gpm-qr-print-actions button,
-  html[data-theme="dark"] .gpm-form-actions button.secondary {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-admin-form label,
-  html[data-theme="dark"] .gpm-admin-form label > span,
-  html[data-theme="dark"] .gpm-admin-form small {
-    color: #c7d0d5;
-  }
-
+  html[data-theme="dark"] .gpm-form-actions button.secondary,
   html[data-theme="dark"] .gpm-admin-form input,
   html[data-theme="dark"] .gpm-admin-form select,
   html[data-theme="dark"] .gpm-admin-form textarea,
@@ -14862,6 +14816,12 @@ body.non-home-view .hofmann-forklift-mascot {
     border-color: #3b4a54;
     background: #202c33;
     color: #e9edef;
+  }
+
+  html[data-theme="dark"] .gpm-admin-form label,
+  html[data-theme="dark"] .gpm-admin-form label > span,
+  html[data-theme="dark"] .gpm-admin-form small {
+    color: #c7d0d5;
   }
 
   html[data-theme="dark"] .send-kind-dialog,
@@ -14889,12 +14849,7 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .node-catalog-admin input,
   html[data-theme="dark"] .node-admin-actions input,
   html[data-theme="dark"] .node-walk-field textarea,
-  html[data-theme="dark"] .node-walk-field input[type="file"] {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
+  html[data-theme="dark"] .node-walk-field input[type="file"],
   html[data-theme="dark"] .node-detail-toolbar button {
     border-color: #3b4a54;
     background: #202c33;
