@@ -1327,12 +1327,14 @@ test("one compressor button fixes and locks all three rows for a date", () => {
 test("only the primary admin also receives the engineer workflow", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const permissions = fs.readFileSync(path.join(root, "server", "permissions.js"), "utf8");
   assert.match(client, /PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893"/);
   assert.match(client, /function hasEngineerInboxAccess\(user = profile\)/);
   assert.match(client, /"Админ \+ Инженер"/);
   assert.match(server, /PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893"/);
-  assert.match(server, /function engineerPermissionRoleServer\(profile = \{\}\)/);
-  assert.match(server, /isPrimaryAdminEngineerServer\(profile\) \? "engineer"/);
+  assert.match(server, /createServerPermissions\(\{ primaryAdminEmployeeId: PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID \}\)/);
+  assert.match(permissions, /function engineerPermissionRole\(profile = \{\}\)/);
+  assert.match(permissions, /isPrimaryAdminEngineer\(profile\) \? "engineer"/);
 });
 
 test("the create request button uses a calm halo instead of blinking", () => {
@@ -1581,7 +1583,8 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(appSource, /Устранили: \$\{resolver\}/);
   assert.match(serverSource, /Array\.isArray\(body\.participants\)/);
   assert.match(serverSource, /notifyParticipants = addedParticipants/);
-  assert.match(serverSource, /RESOLUTION_EXECUTOR_ROLES_SERVER/);
+  const permissionsSource = fs.readFileSync(path.join(root, "server", "permissions.js"), "utf8");
+  assert.match(permissionsSource, /RESOLUTION_EXECUTOR_ROLES/);
   assert.match(serverSource, /action === "admin-close"/);
   assert.match(appSource, /data-admin-close-legacy-remark/);
   assert.match(appSource, /data-toggle-aggregate-repair/);

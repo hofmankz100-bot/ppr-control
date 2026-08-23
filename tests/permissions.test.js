@@ -1,0 +1,33 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { createServerPermissions } = require("../server/permissions");
+
+const permissions = createServerPermissions({ primaryAdminEmployeeId: "87064091893" });
+
+test("specialized roles inherit their agreed permission base", () => {
+  assert.equal(permissions.permissionBaseRole("electrician"), "mechanic");
+  assert.equal(permissions.permissionBaseRole("welder"), "mechanic");
+  assert.equal(permissions.permissionBaseRole("safetyEngineer"), "engineer");
+  assert.equal(permissions.permissionBaseRole("generalDirector"), "productionDirector");
+  assert.equal(permissions.permissionBaseRole("operator"), "operator");
+  assert.equal(permissions.samePermissionRole("electrician", "mechanic"), true);
+  assert.equal(permissions.samePermissionRole("operator", "mechanic"), false);
+});
+
+test("only the configured editor receives the primary engineer capability", () => {
+  assert.equal(permissions.isPrimaryAdminEngineer({ employeeId: "87064091893", role: "editor" }), true);
+  assert.equal(permissions.isPrimaryAdminEngineer({ employeeId: "87064091893", role: "engineer" }), false);
+  assert.equal(permissions.engineerPermissionRole({ employeeId: "87064091893", role: "editor" }), "engineer");
+  assert.equal(permissions.engineerPermissionRole({ employeeId: "other", role: "editor" }), "editor");
+});
+
+test("remark resolution executors stay restricted to field worker roles", () => {
+  for (const role of ["mechanic", "electrician", "welder", "turner", "forkliftDriver"]) {
+    assert.equal(permissions.isResolutionExecutorRole(role), true);
+  }
+  for (const role of ["operator", "shop", "engineer", "editor"]) {
+    assert.equal(permissions.isResolutionExecutorRole(role), false);
+  }
+});

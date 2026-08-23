@@ -7,6 +7,7 @@ const zlib = require("zlib");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
 const { buildHealthPayload } = require("./server/health");
+const { createServerPermissions } = require("./server/permissions");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -62,6 +63,13 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   SERVER_VERSION
 ]);
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
+const {
+  permissionBaseRole: permissionBaseRoleServer,
+  isPrimaryAdminEngineer: isPrimaryAdminEngineerServer,
+  engineerPermissionRole: engineerPermissionRoleServer,
+  samePermissionRole: samePermissionRoleServer,
+  isResolutionExecutorRole: isResolutionExecutorRoleServer
+} = createServerPermissions({ primaryAdminEmployeeId: PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID });
 const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
 const FALSE_DOWNTIME_IDS = new Set(["downtime:1784527334957:1fd01bff99135"]);
@@ -2121,29 +2129,6 @@ function openRemarkKeysServer(db = readDb()) {
     ensureRemarkEntriesServer(item).filter(entry => !entry.resolved).forEach(entry => keys.add(`${recordKey}|${entry.id}`));
   }
   return keys;
-}
-
-function permissionBaseRoleServer(role) {
-  return ({ electrician: "mechanic", welder: "mechanic", turner: "mechanic", forkliftDriver: "mechanic", safetyEngineer: "engineer", energyEngineer: "engineer", designEngineer: "engineer", mechanicalEngineer: "engineer", instrumentationEngineer: "engineer", generalDirector: "productionDirector", technicalDirector: "director" })[role] || role;
-}
-
-function isPrimaryAdminEngineerServer(profile = {}) {
-  return String(profile.employeeId || "").trim() === PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID
-    && String(profile.role || "") === "editor";
-}
-
-function engineerPermissionRoleServer(profile = {}) {
-  return isPrimaryAdminEngineerServer(profile) ? "engineer" : permissionBaseRoleServer(profile.role);
-}
-
-function samePermissionRoleServer(left, right) {
-  return permissionBaseRoleServer(String(left || "")) === permissionBaseRoleServer(String(right || ""));
-}
-
-const RESOLUTION_EXECUTOR_ROLES_SERVER = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
-
-function isResolutionExecutorRoleServer(role) {
-  return RESOLUTION_EXECUTOR_ROLES_SERVER.has(String(role || ""));
 }
 
 function remarkEntryByKeyServer(db, key) {
