@@ -12,6 +12,7 @@ const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-r
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
 const { createAdminAutomationRoute } = require("./server/admin-automation-route");
 const { createAdminConfigPackageRoute } = require("./server/admin-config-package-route");
+const { createAdminArchivesRoute } = require("./server/admin-archives-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4418,6 +4419,11 @@ const handleAdminConfigPackageRoute = createAdminConfigPackageRoute({
   writeDb,
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
+const handleAdminArchivesRoute = createAdminArchivesRoute({
+  adminArchiveSelection,
+  readDb,
+  sendJson
+});
 
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
@@ -6166,12 +6172,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminConfigPackageRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/archives/preview" && req.method === "GET") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const preview = adminArchiveSelection(readDb(), url.searchParams.get("days"));
-    sendJson(res, 200, { ok: true, preview: { days: preview.days, cutoffAt: preview.cutoffAt, counts: preview.counts } });
-    return true;
-  }
+  if (await handleAdminArchivesRoute(req, res, pathname, url)) return true;
 
   if (pathname === "/api/admin/archives" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
