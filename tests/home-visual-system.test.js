@@ -39,3 +39,10 @@ test("phone equipment cards use calm surfaces with area accents", () => {
   assert.match(styles, /\.equipment-journal-button > strong \{[\s\S]*?font-size: 17px/);
   assert.match(styles, /\.equipment-journal-button > small \{[\s\S]*?border-radius: 999px/);
 });
+
+test("phone equipment actions keep readable contrast", () => {
+  assert.match(styles, /\.equipment-installed-parts-button \{[\s\S]*?color: #27475b !important/);
+  assert.match(styles, /\.equipment-installed-parts-button span,[\s\S]*?color: #27475b !important/);
+  assert.match(styles, /\.equipment-qr-print-button \{[\s\S]*?background: #0f766e !important/);
+  assert.match(styles, /\.equipment-qr-print-button small \{[\s\S]*?color: rgba\(255, 255, 255, \.88\) !important/);
+});

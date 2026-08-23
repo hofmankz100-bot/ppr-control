@@ -13772,11 +13772,28 @@ body.non-home-view .hofmann-forklift-mascot {
     gap: 8px;
   }
 
-  .equipment-installed-parts-button,
-  .equipment-qr-print-button {
+  .equipment-schedule-table .area-color-cell .equipment-installed-parts-button {
     min-height: 64px;
-    border-color: var(--ui-border);
-    background: #f6f9fb;
+    border: 1px solid var(--ui-border);
+    background: #edf4f7;
+    color: #27475b !important;
     box-shadow: none;
+  }
+
+  .equipment-schedule-table .area-color-cell .equipment-installed-parts-button span,
+  .equipment-schedule-table .area-color-cell .equipment-installed-parts-button strong {
+    color: #27475b !important;
+  }
+
+  .equipment-schedule-table .area-color-cell .equipment-qr-print-button {
+    min-height: 64px;
+    border: 1px solid #0b665f !important;
+    background: #0f766e !important;
+    color: #fff !important;
+    box-shadow: none;
+  }
+
+  .equipment-schedule-table .area-color-cell .equipment-qr-print-button small {
+    color: rgba(255, 255, 255, .88) !important;
   }
 }
