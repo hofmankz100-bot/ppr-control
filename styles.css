@@ -13902,12 +13902,88 @@ body.non-home-view .hofmann-forklift-mascot {
   }
 
   html[data-theme="dark"] .mobile-nav button {
+    background: transparent;
     color: #8696a0;
   }
 
   html[data-theme="dark"] .mobile-nav button.active,
   html[data-theme="dark"] .mobile-nav button[aria-current="page"] {
     color: #00a884;
+  }
+
+  html[data-theme="dark"] .mobile-nav .iphone-home-button,
+  html[data-theme="dark"] .mobile-nav [data-mobile-view="home"].active .iphone-home-button {
+    border-color: #3b4a54;
+    background: linear-gradient(145deg, #202c33, #182229);
+    color: #00a884;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .34), inset 0 0 0 3px #111b21;
+  }
+
+  html[data-theme="dark"] .mobile-nav [data-mobile-view="home"] small {
+    color: #d4dde1;
+  }
+
+  html[data-theme="dark"] .downtime-legend-item,
+  html[data-theme="dark"] .downtime-detail-head,
+  html[data-theme="dark"] .downtime-entry,
+  html[data-theme="dark"] .downtime-journal-sheet {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .downtime-legend-item strong,
+  html[data-theme="dark"] .downtime-legend-chevron,
+  html[data-theme="dark"] .downtime-journal-sheet-head strong {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .downtime-legend-counts,
+  html[data-theme="dark"] .downtime-detail-head span,
+  html[data-theme="dark"] .downtime-entry span,
+  html[data-theme="dark"] .downtime-entry small,
+  html[data-theme="dark"] .downtime-journal-sheet-head small,
+  html[data-theme="dark"] .downtime-journal-table td small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .downtime-legend-item.active {
+    border-color: #00a884;
+    box-shadow: 0 0 0 2px rgba(0, 168, 132, .2);
+  }
+
+  html[data-theme="dark"] .downtime-legend-item.limit-exceeded {
+    border-color: #6d3339;
+    background: #2b1a1d;
+  }
+
+  html[data-theme="dark"] .downtime-expanded-desktop,
+  html[data-theme="dark"] .downtime-expanded-mobile {
+    border-color: #2a3942;
+    background: #0e171d;
+  }
+
+  html[data-theme="dark"] .downtime-journal-sheet-head {
+    border-bottom-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .downtime-journal-table th,
+  html[data-theme="dark"] .downtime-journal-table td {
+    border-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .downtime-journal-table th {
+    background: #0f3447;
+    color: #f0f5f7;
+  }
+
+  html[data-theme="dark"] .downtime-journal-table td {
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .downtime-journal-table tbody tr.active td {
+    background: #2b1a1d;
   }
 }
 
