@@ -94,3 +94,24 @@ test("broadcast closing records administrator and pushes updated state", async (
   assert.equal(events[1].args[0], "admin-broadcast");
   assert.deepEqual(responses[0], { status: 200, payload: { ok: true } });
 });
+
+test("broadcast read receipt is idempotent for each authenticated user", async () => {
+  const database = { systemBroadcasts: [{ id: "broadcast-1", title: "Объявление", active: true, readBy: [] }] };
+  const { handler, responses, events } = createHarness(database);
+  const req = { method: "POST", authUser: { id: "user-1", role: "mechanic" }, body: { id: "broadcast-1" } };
+  await handler(req, {}, "/api/broadcasts/read");
+  await handler(req, {}, "/api/broadcasts/read");
+  assert.deepEqual(database.systemBroadcasts[0].readBy, [{ userId: "user-1", at: "2026-08-23T12:00:00.000Z" }]);
+  assert.equal(events.filter(item => item.type === "audit").length, 2);
+  assert.deepEqual(responses, [
+    { status: 200, payload: { ok: true } },
+    { status: 200, payload: { ok: true } }
+  ]);
+});
+
+test("broadcast read receipt reports an unknown announcement", async () => {
+  const { handler, responses, events } = createHarness();
+  await handler({ method: "POST", authUser: { id: "user-1" }, body: { id: "missing" } }, {}, "/api/broadcasts/read");
+  assert.deepEqual(responses[0], { status: 404, payload: { ok: false, error: "broadcast_not_found" } });
+  assert.deepEqual(events, []);
+});

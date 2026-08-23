@@ -25,13 +25,32 @@ function createAdminNotificationsRoute(dependencies = {}) {
     const isPolicy = pathname === "/api/admin/notification-policy" && req.method === "POST";
     const isRemind = pathname === "/api/admin/broadcasts/remind" && req.method === "POST";
     const isBroadcast = pathname === "/api/admin/broadcasts" && req.method === "POST";
-    if (!isPolicy && !isRemind && !isBroadcast) return false;
+    const isRead = pathname === "/api/broadcasts/read" && req.method === "POST";
+    if (!isPolicy && !isRemind && !isBroadcast && !isRead) return false;
+
+    const body = await readBody(req).catch(() => ({}));
+    if (isRead) {
+      const result = await enqueueStateWrite(async () => {
+        const db = readDb();
+        const item = (db.systemBroadcasts || []).find(entry => entry.id === String(body.id || ""));
+        if (!item) return { error: "broadcast_not_found" };
+        item.readBy ||= [];
+        const userId = String(req.authUser?.id || "");
+        if (userId && !item.readBy.some(entry => String(entry.userId || "") === userId)) {
+          item.readBy.push({ userId, at: new Date(now()).toISOString() });
+        }
+        writeDb(db, { action: "broadcast_read", user: req.authUser, targetId: item.id, targetLabel: item.title });
+        return { read: true };
+      });
+      if (result.error) sendJson(res, 404, { ok: false, error: result.error });
+      else sendJson(res, 200, { ok: true });
+      return true;
+    }
 
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
-    const body = await readBody(req).catch(() => ({}));
     if (!(allowPasswordlessTestAuth && !req.authUser?.passwordHash)
       && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
       sendJson(res, 401, { ok: false, error: "admin_password_invalid" });

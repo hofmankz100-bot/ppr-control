@@ -6206,18 +6206,6 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminNotificationsRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/broadcasts/read" && req.method === "POST") {
-    const body = await readBody(req).catch(() => ({}));
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb(); const item = (db.systemBroadcasts || []).find(entry => entry.id === String(body.id || "")); if (!item) return { error: "broadcast_not_found" };
-      item.readBy ||= []; const userId = String(req.authUser?.id || "");
-      if (userId && !item.readBy.some(entry => String(entry.userId || "") === userId)) item.readBy.push({ userId, at: new Date().toISOString() });
-      writeDb(db, { action: "broadcast_read", user: req.authUser, targetId: item.id, targetLabel: item.title }); return { read: true };
-    });
-    if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true });
-    return true;
-  }
-
   if (await handleAdminSystemReportRoute(req, res, pathname, url)) return true;
 
   if (await handleAdminUserAccessRoute(req, res, pathname)) return true;
