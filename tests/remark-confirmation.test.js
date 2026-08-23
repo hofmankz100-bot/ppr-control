@@ -1380,14 +1380,15 @@ test("the Hofmann forklift drives, smokes and carries aluminum profiles without 
 test("admin garbage check is read-only and Back skips invalid history entries", () => {
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const storageRoute = fs.readFileSync(path.join(root, "server", "admin-storage-route.js"), "utf8");
   const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(app, /data-open-storage-diagnostics>Проверить мусор/);
   assert.match(app, /admin-technical-tools-grid[\s\S]*data-open-storage-diagnostics/);
   assert.match(app, /apiJson\("\/api\/admin\/storage-status"/);
   assert.match(app, /Только проверка — ничего не удалено/);
-  assert.match(server, /pathname === "\/api\/admin\/storage-status" && req\.method === "GET"/);
-  assert.match(server, /safeCheckOnly: true/);
-  assert.match(server, /req\.authUser\?\.role !== "editor"/);
+  assert.match(storageRoute, /pathname === "\/api\/admin\/storage-status" && req\.method === "GET"/);
+  assert.match(storageRoute, /safeCheckOnly: true/);
+  assert.match(storageRoute, /req\.authUser\?\.role !== "editor"/);
   assert.match(app, /while \(nav\.length\)[\s\S]*?previous === current\.view \|\| !canOpenView\(previous\)/);
   assert.match(app, /show\(homeViewForProfile\(profile\?\.role\), false\)/);
   assert.match(style, /\.storage-diagnostics-grid/);

@@ -22,6 +22,7 @@ const { createAdminMaintenanceRoute } = require("./server/admin-maintenance-rout
 const { createAdminNotificationsRoute } = require("./server/admin-notifications-route");
 const { createAdminSystemReportRoute } = require("./server/admin-system-report-route");
 const { createAdminDashboardRoute } = require("./server/admin-dashboard-route");
+const { createAdminStorageRoute } = require("./server/admin-storage-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4555,6 +4556,23 @@ const handleAdminDashboardRoute = createAdminDashboardRoute({
   userPublic
 });
 
+const handleAdminStorageRoute = createAdminStorageRoute({
+  appendActionLog,
+  basename: path.basename,
+  byteLength: Buffer.byteLength,
+  createManualBackup,
+  directoryStorageStats,
+  getBackupDirectory: () => backupDir,
+  getPhotosDirectory: () => photosDir,
+  githubRepositoryStorage,
+  publicState,
+  readBody,
+  readDb,
+  sendJson,
+  unusedPublicAssetCandidates,
+  waitForStateWrites: () => stateWriteQueue.catch(() => {})
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -4596,40 +4614,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/storage-status" && req.method === "GET") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const db = readDb();
-    const databaseBytes = Buffer.byteLength(JSON.stringify(publicState(db)), "utf8");
-    const photos = directoryStorageStats(photosDir);
-    const backups = directoryStorageStats(backupDir);
-    const garbageCandidates = unusedPublicAssetCandidates();
-    const github = await githubRepositoryStorage();
-    sendJson(res, 200, {
-      ok: true,
-      checkedAt: new Date().toISOString(),
-      github,
-      application: {
-        databaseBytes,
-        photosBytes: photos.bytes,
-        photoFiles: photos.files,
-        backupsBytes: backups.bytes,
-        backupFiles: backups.files
-      },
-      garbage: {
-        candidates: garbageCandidates,
-        bytes: garbageCandidates.reduce((sum, item) => sum + item.bytes, 0),
-        safeCheckOnly: true
-      },
-      billing: {
-        githubLfs: "Для точного остатка требуется защищённый GitHub billing token",
-        render: "Точный лимит тарифа смотрите в Render; приложение показывает фактически занятые данные"
-      }
-    }, { "Cache-Control": "no-store" });
-    return true;
-  }
+  if (await handleAdminStorageRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/attendance/lookup" && req.method === "POST") {
     if (!contractorAttendanceRateAllowed(req)) {
@@ -6111,19 +6096,6 @@ async function handleApi(req, res, pathname, url) {
       ...exportedDb,
       users: (db.users || []).map(userPublic)
     });
-    return true;
-  }
-
-  if (pathname === "/api/backup/manual" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    await stateWriteQueue.catch(() => {});
-    const file = createManualBackup(body?.label || "manual");
-    appendActionLog({ action: "manual_backup", file: path.basename(file), clientId: String(body?.clientId || "") });
-    sendJson(res, 200, { ok: true, file: path.basename(file) });
     return true;
   }
 
