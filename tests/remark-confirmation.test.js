@@ -706,10 +706,11 @@ test("node editing permission is selective per equipment and admin keeps full ac
 test("deleted and renamed equipment nodes cannot return from stale clients", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const equipmentRoute = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   assert.match(source, /state\.catalog\.equipment = \{ \.\.\.\(remote\.catalog\?\.equipment \|\| \{\}\) \}/);
   assert.match(serverSource, /function repairCatalogNodeHistory\(db\)/);
   assert.match(serverSource, /entry\?\.action !== "equipment_node_deleted"/);
-  assert.match(serverSource, /catalogNodeTombstone\(catalogItem, nodes\[nodeIndex\]/);
+  assert.match(equipmentRoute, /catalogNodeTombstone\(catalogItem, nodes\[nodeIndex\]/);
   assert.match(serverSource, /incomingUpdatedAt < currentUpdatedAt/);
   assert.match(serverSource, /removed\.has\(normalizedCatalogNodeName\(value\)\)/);
 });
@@ -766,14 +767,14 @@ test("mobile journal print windows create a shareable PDF while desktop keeps pr
 
 test("new catalog nodes are registered atomically with a permanent QR identity", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   assert.match(client, /async function addNodeName\(equipmentId, value\)/);
   assert.match(client, /\/api\/admin\/equipment\/node-add/);
   assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true \}\)/);
   assert.match(client, /\.\.\.override,[\s\S]*id: eq\.id,[\s\S]*name: override\.name \|\| eq\.name/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/node-add"/);
   assert.match(server, /catalogItem\.nodeCreatedAt\[nodeIndex\]/);
-  assert.match(server, /catalogItem\.qrTokens\[nodeIndex\] = crypto\.randomBytes\(12\)/);
+  assert.match(server, /catalogItem\.qrTokens\[nodeIndex\] = randomBytes\(12\)/);
   assert.match(server, /broadcastState\("equipment-node-added"/);
   assert.match(client, /function syncOpenEquipmentLabels\(equipmentId, name, area, nodeIndex = null, nodeName = ""\)/);
   assert.match(client, /syncOpenEquipmentLabels\(equipmentId, nextName, nextArea\)/);
@@ -799,7 +800,7 @@ test("admin can create complete equipment cards from the main screen", () => {
 
 test("admin can move any equipment to trash and restore it with its journal", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   const maintenanceRoute = fs.readFileSync(path.join(root, "server", "admin-maintenance-route.js"), "utf8");
   assert.match(client, /profile\?\.role === "editor" \? `<button[^`]*data-delete-equipment/);
   assert.match(client, /\/api\/admin\/equipment\/delete/);
@@ -994,6 +995,7 @@ test("test and duplicate worker identities are excluded without hiding the valid
 test("QR walks are separated into technical and operational journals", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const equipmentRoute = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   const qrRoute = fs.readFileSync(path.join(root, "server", "admin-qr-route.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /const QR_WALK_GROUPS/);
@@ -1019,9 +1021,9 @@ test("QR walks are separated into technical and operational journals", () => {
   assert.match(server, /pathname === "\/api\/qr-walk\/status"/);
   assert.match(client, /await refreshQrWalkStatusFromServer\(parsed\.equipmentId, shift\)/);
   assert.match(client, /\/api\/qr-walk\/status\?\$\{query\.toString\(\)\}/);
-  assert.match(server, /pathname === "\/api\/admin\/equipment\/node-delete"/);
-  assert.match(server, /db\.archivedNodeChecks\.push/);
-  assert.match(server, /entry\.archivedNode = true/);
+  assert.match(equipmentRoute, /pathname === "\/api\/admin\/equipment\/node-delete"/);
+  assert.match(equipmentRoute, /db\.archivedNodeChecks\.push/);
+  assert.match(equipmentRoute, /entry\.archivedNode = true/);
   assert.match(server, /entry\.archivedNode === true/);
   assert.match(server, /db\.qrWalkJournal\.push/);
   assert.match(server, /group !== expectedGroup/);
