@@ -2,7 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createServerPermissions } = require("../server/permissions");
+const {
+  ADMIN_PERMISSION_KEYS,
+  activeUserPermission,
+  createServerPermissions
+} = require("../server/permissions");
 
 const permissions = createServerPermissions({ primaryAdminEmployeeId: "87064091893" });
 
@@ -30,4 +34,21 @@ test("remark resolution executors stay restricted to field worker roles", () => 
   for (const role of ["operator", "shop", "engineer", "editor"]) {
     assert.equal(permissions.isResolutionExecutorRole(role), false);
   }
+});
+
+test("individual permissions only activate when enabled and unexpired", () => {
+  const now = Date.parse("2026-08-23T12:00:00.000Z");
+  assert.equal(activeUserPermission({}, "instructionEdit", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: false } } }, "instructionEdit", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true } } }, "instructionEdit", now), true);
+  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "2026-08-23T11:59:59.000Z" } } }, "instructionEdit", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "2026-08-23T12:00:01.000Z" } } }, "instructionEdit", now), true);
+  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "invalid" } } }, "instructionEdit", now), false);
+});
+
+test("admin permission allowlist contains only supported individual capabilities", () => {
+  assert.equal(ADMIN_PERMISSION_KEYS.has("instructionEdit"), true);
+  assert.equal(ADMIN_PERMISSION_KEYS.has("remarkGlobalConfirm"), true);
+  assert.equal(ADMIN_PERMISSION_KEYS.has("monthCloseManage"), false);
+  assert.equal(ADMIN_PERMISSION_KEYS.size, 9);
 });

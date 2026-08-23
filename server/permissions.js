@@ -22,6 +22,25 @@ const RESOLUTION_EXECUTOR_ROLES = new Set([
   "forkliftDriver"
 ]);
 
+const ADMIN_PERMISSION_KEYS = new Set([
+  "qrJournalView",
+  "equipmentEdit",
+  "annualPprEdit",
+  "instructionEdit",
+  "journalPrint",
+  "remarkMultiClose",
+  "aggregateJournalCorrect",
+  "remarkGlobalConfirm",
+  "orderJournalManage"
+]);
+
+function activeUserPermission(user = {}, key = "", now = Date.now()) {
+  const entry = user.permissionOverrides?.[key];
+  if (!entry || entry.enabled !== true) return false;
+  return !entry.expiresAt
+    || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > now);
+}
+
 function createServerPermissions(options = {}) {
   const primaryAdminEmployeeId = String(options.primaryAdminEmployeeId || "").trim();
 
@@ -60,5 +79,7 @@ function createServerPermissions(options = {}) {
 module.exports = {
   ROLE_PERMISSION_BASE,
   RESOLUTION_EXECUTOR_ROLES,
+  ADMIN_PERMISSION_KEYS,
+  activeUserPermission,
   createServerPermissions
 };

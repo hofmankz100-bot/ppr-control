@@ -7,7 +7,11 @@ const zlib = require("zlib");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
 const { buildHealthPayload } = require("./server/health");
-const { createServerPermissions } = require("./server/permissions");
+const {
+  ADMIN_PERMISSION_KEYS,
+  activeUserPermission,
+  createServerPermissions
+} = require("./server/permissions");
 let WebSocketServer = null;
 try {
   ({ WebSocketServer } = require("ws"));
@@ -3245,13 +3249,6 @@ function userLoginDiagnostics(db, user) {
     passwordUpdatedBy: user.passwordUpdatedBy || "",
     lastLoginAt: user.lastLoginAt || ""
   };
-}
-
-const ADMIN_PERMISSION_KEYS = new Set(["qrJournalView", "equipmentEdit", "annualPprEdit", "instructionEdit", "journalPrint", "remarkMultiClose", "aggregateJournalCorrect", "remarkGlobalConfirm", "orderJournalManage"]);
-function activeUserPermission(user = {}, key = "") {
-  const entry = user.permissionOverrides?.[key];
-  if (!entry || entry.enabled !== true) return false;
-  return !entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now());
 }
 
 function adminUserOperationalSummary(db, user = {}) {
