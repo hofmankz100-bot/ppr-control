@@ -18,6 +18,7 @@ const { createAdminIntegrityRoute } = require("./server/admin-integrity-route");
 const { createAdminBackupsRoute } = require("./server/admin-backups-route");
 const { createAdminSettingsRoute } = require("./server/admin-settings-route");
 const { createAdminMonitoringRoute } = require("./server/admin-monitoring-route");
+const { createAdminMaintenanceRoute } = require("./server/admin-maintenance-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4498,6 +4499,17 @@ const handleAdminMonitoringRoute = createAdminMonitoringRoute({
   writeDb
 });
 
+const handleAdminMaintenanceRoute = createAdminMaintenanceRoute({
+  createManualBackup,
+  enqueueStateWrite,
+  passwordMatches,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb,
+  allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -6257,83 +6269,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (await handleAdminMonitoringRoute(req, res, pathname)) return true;
 
-  if (pathname === "/api/admin/maintenance" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash)
-      && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" });
-      return true;
-    }
-    const action = String(body.action || "");
-    const trashId = String(body.trashId || "");
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const item = (db.adminTrash || []).find(entry => entry.id === trashId);
-      if (!item) return { error: "trash_item_not_found" };
-      if (action === "restore") {
-        if (item.restoredAt) return { error: "trash_item_already_restored" };
-        if (item.type === "user") {
-          const snapshot = item.snapshot || {};
-          const conflict = (db.users || []).some(user =>
-            (snapshot.id && user.id === snapshot.id)
-            || (snapshot.employeeId && user.employeeId === snapshot.employeeId)
-            || (snapshot.phone && user.phone === snapshot.phone)
-          );
-          if (conflict) return { error: "restore_conflict" };
-          db.users.push(snapshot);
-        } else if (item.type === "equipment") {
-          const snapshot = item.snapshot || {};
-          const catalogItem = snapshot.catalogItem;
-          const equipmentId = Number(item.targetId);
-          if (!catalogItem || !Number.isSafeInteger(equipmentId)) return { error: "restore_snapshot_invalid" };
-          db.catalog ||= { equipment: {} };
-          db.catalog.equipment ||= {};
-          const active = db.catalog.equipment[equipmentId];
-          if (active && active.deleted !== true) return { error: "restore_conflict" };
-          db.catalog.equipment[equipmentId] = { ...catalogItem, id: equipmentId, deleted: false, deletedAt: "", deletedByName: "", restoredAt: new Date().toISOString() };
-          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-          db.gpmJournal.equipment ||= {};
-          (snapshot.gpmItems || []).forEach(gpm => {
-            if (!gpm?.id) return;
-            db.gpmJournal.equipment[gpm.id] = { ...gpm, deleted: false, deletedAt: "", restoredAt: new Date().toISOString() };
-          });
-        } else return { error: "restore_type_not_supported" };
-        item.restoredAt = new Date().toISOString();
-        item.restoredByName = String(req.authUser?.name || "Администратор");
-        writeDb(db, { action: "trash_restore", user: req.authUser, targetType: item.type, targetId: item.targetId, targetLabel: item.label, reason: String(body.reason || "Восстановление из корзины") });
-        return { restored: true };
-      }
-      if (action === "purge") {
-        if (String(body.confirm || "").trim().toUpperCase() !== "УДАЛИТЬ НАВСЕГДА") return { error: "purge_confirmation_required" };
-        createManualBackup("before-trash-purge");
-        if (item.type === "equipment") {
-          const equipmentId = Number(item.targetId);
-          if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) {
-            if (item.snapshot?.catalogItem?.builtIn === true) {
-              db.catalog.equipment[equipmentId] = { id: equipmentId, builtIn: true, deleted: true, purged: true, purgedAt: new Date().toISOString() };
-            } else {
-              delete db.catalog.equipment[equipmentId];
-            }
-          }
-          Object.keys(db.gpmJournal?.equipment || {}).forEach(id => {
-            const gpm = db.gpmJournal.equipment[id];
-            if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) delete db.gpmJournal.equipment[id];
-          });
-        }
-        db.adminTrash = (db.adminTrash || []).filter(entry => entry.id !== trashId);
-        writeDb(db, { action: "trash_purge", user: req.authUser, targetType: item.type, targetId: item.targetId, targetLabel: item.label, reason: String(body.reason || "Окончательное удаление") });
-        return { purged: true };
-      }
-      return { error: "maintenance_action_invalid" };
-    });
-    if (result.error) sendJson(res, 400, { ok: false, error: result.error });
-    else sendJson(res, 200, { ok: true, ...result });
-    return true;
-  }
+  if (await handleAdminMaintenanceRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
     const db = readDb();

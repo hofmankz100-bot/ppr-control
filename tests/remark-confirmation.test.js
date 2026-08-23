@@ -799,15 +799,17 @@ test("admin can create complete equipment cards from the main screen", () => {
 test("admin can move any equipment to trash and restore it with its journal", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const maintenanceRoute = fs.readFileSync(path.join(root, "server", "admin-maintenance-route.js"), "utf8");
   assert.match(client, /profile\?\.role === "editor" \? `<button[^`]*data-delete-equipment/);
   assert.match(client, /\/api\/admin\/equipment\/delete/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/delete"/);
   assert.match(server, /body\.builtIn === true/);
   assert.match(server, /type: "equipment"/);
   assert.match(server, /snapshot: \{ catalogItem: \{ \.\.\.item \}, gpmItems:/);
-  assert.match(server, /item\.type === "equipment"/);
-  assert.match(server, /deleted: false/);
-  assert.match(server, /builtIn: true, deleted: true, purged: true/);
+  assert.match(maintenanceRoute, /item\.type === "equipment"/);
+  assert.match(maintenanceRoute, /deleted: false/);
+  assert.match(maintenanceRoute, /builtIn: true,/);
+  assert.match(maintenanceRoute, /purged: true,/);
 });
 
 test("admin can temporarily pause equipment or one node without creating PPR overdue warnings", () => {
@@ -1039,6 +1041,7 @@ test("QR walks are separated into technical and operational journals", () => {
 test("admin maintenance keeps an immutable audit and a recoverable trash", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const maintenanceRoute = fs.readFileSync(path.join(root, "server", "admin-maintenance-route.js"), "utf8");
   const userPermissionsRoute = fs.readFileSync(path.join(root, "server", "admin-user-permissions-route.js"), "utf8");
   const userSessionsRoute = fs.readFileSync(path.join(root, "server", "admin-user-sessions-route.js"), "utf8");
   assert.match(client, /function renderAdminMaintenance\(\)/);
@@ -1058,9 +1061,9 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.match(server, /\["all", "audit"\]\.includes\(requestedTab\)/);
   const maintenanceGet = server.slice(server.indexOf('if (pathname === "/api/admin/maintenance" && req.method === "GET")'), server.indexOf('if (pathname === "/api/admin/notification-policy"'));
   assert.doesNotMatch(maintenanceGet, /await refreshSystemMonitoring\(\)/);
-  assert.match(server, /createManualBackup\("before-trash-purge"\)/);
+  assert.match(maintenanceRoute, /createManualBackup\("before-trash-purge"\)/);
   assert.match(server, /30 \* 24 \* 60 \* 60 \* 1000/);
-  assert.match(server, /passwordMatches\(String\(body\.password/);
+  assert.match(maintenanceRoute, /passwordMatches\(String\(body\.password/);
   assert.match(server, /function adminUserOperationalSummary/);
   assert.match(userSessionsRoute, /pathname !== "\/api\/admin\/user-sessions"/);
   assert.match(client, /function adminUserDetailsHtml/);
