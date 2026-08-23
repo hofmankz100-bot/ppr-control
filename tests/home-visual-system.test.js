@@ -30,6 +30,10 @@ test("wide maintenance monitors use the available workspace", () => {
 
 test("narrow phones keep a readable product header", () => {
   assert.match(styles, /@media screen and \(max-width: 430px\)/);
+  assert.match(styles, /html\[data-theme="dark"\] \.admin-guide-grid article/);
+  assert.match(styles, /html\[data-theme="dark"\] \.admin-instruction-log article/);
+  assert.match(styles, /html\[data-theme="dark"\] \.admin-access-list article/);
+  assert.match(styles, /html\[data-theme="dark"\] \.director-user-row/);
   assert.match(styles, /\.topbar-brand-logo \{[\s\S]*?display: none/);
   assert.match(styles, /\.topbar-actions \{[\s\S]*?max-width: 146px/);
   assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);

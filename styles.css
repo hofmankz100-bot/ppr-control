@@ -14569,6 +14569,61 @@ body.non-home-view .hofmann-forklift-mascot {
   html[data-theme="dark"] .operational-pause-control span {
     color: #aebac1;
   }
+
+  html[data-theme="dark"] .admin-guide-grid article,
+  html[data-theme="dark"] .admin-guide-emergency,
+  html[data-theme="dark"] .admin-instruction-log article,
+  html[data-theme="dark"] .admin-access-list article,
+  html[data-theme="dark"] .admin-access-list article.disabled,
+  html[data-theme="dark"] .admin-user-details,
+  html[data-theme="dark"] .admin-user-permissions,
+  html[data-theme="dark"] .director-user-row,
+  html[data-theme="dark"] .director-user-row.pending-user {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .admin-guide-grid p,
+  html[data-theme="dark"] .admin-guide-emergency li,
+  html[data-theme="dark"] .admin-instruction-log span,
+  html[data-theme="dark"] .admin-instruction-log small,
+  html[data-theme="dark"] .admin-access-person span,
+  html[data-theme="dark"] .admin-access-person small,
+  html[data-theme="dark"] .admin-access-rights,
+  html[data-theme="dark"] .admin-user-sessions small {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .admin-guide-grid strong,
+  html[data-theme="dark"] .admin-guide-emergency strong,
+  html[data-theme="dark"] .admin-instruction-log strong,
+  html[data-theme="dark"] .admin-instruction-log b,
+  html[data-theme="dark"] .admin-access-person strong,
+  html[data-theme="dark"] .admin-user-details summary,
+  html[data-theme="dark"] .director-user-row > span {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .admin-user-summary span,
+  html[data-theme="dark"] .admin-user-linked span,
+  html[data-theme="dark"] .admin-user-permissions > div > label {
+    border-color: #2a3942;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .admin-access-list input,
+  html[data-theme="dark"] .admin-access-list select,
+  html[data-theme="dark"] .admin-user-permissions input,
+  html[data-theme="dark"] .admin-user-permissions select,
+  html[data-theme="dark"] .director-user-row input,
+  html[data-theme="dark"] .director-user-row select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
 }
 
 @media print {
