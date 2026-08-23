@@ -14,7 +14,7 @@ const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v592-dark-admin-panels-1/);
+  assert.match(html, /html2pdf\.bundle\.min\.js\?v=v593-fast-admin-access-1/);
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(html, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
@@ -247,11 +247,11 @@ test("permit completion fields are optional and official output is compact A4", 
 });
 
 test("service worker caches the current permit assets", () => {
-  assert.match(serviceWorker, /ppr-v592-dark-admin-panels-1/);
-  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v592-dark-admin-panels-1/);
+  assert.match(serviceWorker, /ppr-v593-fast-admin-access-1/);
+  assert.match(serviceWorker, /html2pdf\.bundle\.min\.js\?v=v593-fast-admin-access-1/);
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
-  assert.match(serviceWorker, /styles\.css\?v=v592-dark-admin-panels-1/);
-  assert.match(serviceWorker, /app\.js\?v=v592-dark-admin-panels-1/);
-  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v592-dark-admin-panels-1/);
+  assert.match(serviceWorker, /styles\.css\?v=v593-fast-admin-access-1/);
+  assert.match(serviceWorker, /app\.js\?v=v593-fast-admin-access-1/);
+  assert.match(serviceWorker, /node_modules\/jsqr\/dist\/jsQR\.js\?v=v593-fast-admin-access-1/);
 });

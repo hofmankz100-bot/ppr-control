@@ -103,11 +103,12 @@ function createAdminDashboardRoute(dependencies = {}) {
         };
       })
       : [];
+    const operationalReferenceCache = new Map();
     const access = ["all", "access"].includes(requestedTab)
       ? (db.users || []).map(user => ({
         ...userPublic(user),
         loginDiagnostics: userLoginDiagnostics(db, user),
-        operationalSummary: adminUserOperationalSummary(db, user),
+        operationalSummary: adminUserOperationalSummary(db, user, operationalReferenceCache),
         instructionEditorCount: Object.values(db.workPermitInstructions || {})
           .filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key))))
           .length

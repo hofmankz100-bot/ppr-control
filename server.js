@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v592-dark-admin-panels-1";
+const SERVER_VERSION = "v593-fast-admin-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3272,10 +3272,15 @@ function userLoginDiagnostics(db, user) {
   };
 }
 
-function adminUserOperationalSummary(db, user = {}) {
+function adminUserOperationalSummary(db, user = {}, referenceCache = new Map()) {
   const keys = [...new Set([user.id, user.employeeId, user.phone, user.name].map(value => String(value || "").trim()).filter(Boolean))];
   const values = source => Array.isArray(source) ? source : Object.values(source || {});
-  const references = source => values(source).filter(item => { const serialized = JSON.stringify(item || {}).toLocaleLowerCase("ru-RU"); return keys.some(key => serialized.includes(key.toLocaleLowerCase("ru-RU"))); }).length;
+  const searchableRows = source => {
+    const cacheKey = source && typeof source === "object" ? source : null;
+    if (!referenceCache.has(cacheKey)) referenceCache.set(cacheKey, values(source).map(item => JSON.stringify(item || {}).toLocaleLowerCase("ru-RU")));
+    return referenceCache.get(cacheKey);
+  };
+  const references = source => searchableRows(source).filter(serialized => keys.some(key => serialized.includes(key.toLocaleLowerCase("ru-RU")))).length;
   const sessions = (db.authSessions || []).filter(item => String(item.userId || "") === String(user.id || "") && Date.parse(item.expiresAt || "") > Date.now()).map(item => ({ createdAt: item.createdAt || "", expiresAt: item.expiresAt || "", ip: item.ip || "", userAgent: item.userAgent || "" }));
   const history = (db.adminAuditLog || []).filter(item => keys.some(key => [item.actorId, item.actorName, item.targetId, item.targetLabel].some(value => String(value || "").toLocaleLowerCase("ru-RU").includes(key.toLocaleLowerCase("ru-RU"))))).slice(0, 30).map(item => ({ at: item.at || "", action: item.action || "", actorName: item.actorName || "", reason: item.reason || "" }));
   return { activeSessions: sessions.length, sessions, history, linked: { qrWalks: references(db.qrWalkJournal), remarks: references(db.checks), requests: references(db.requests), downtimes: references(db.downtimes), pprSheets: references(db.pprSheets), workPermits: references(db.workPermitNumberClaims) }, lastActivityAt: history[0]?.at || user.lastLoginAt || "" };

@@ -14400,6 +14400,58 @@ body.non-home-view .hofmann-forklift-mascot {
     opacity: .82;
   }
 
+  html[data-theme="dark"] .admin-automation-status article,
+  html[data-theme="dark"] .admin-automation-status.warning article,
+  html[data-theme="dark"] .admin-automation-form,
+  html[data-theme="dark"] .admin-archive-builder,
+  html[data-theme="dark"] .admin-archive-categories label,
+  html[data-theme="dark"] .admin-archive-list article,
+  html[data-theme="dark"] .admin-integrity-summary,
+  html[data-theme="dark"] .admin-integrity-summary.ok,
+  html[data-theme="dark"] .admin-integrity-list article,
+  html[data-theme="dark"] .admin-integrity-list article.fixable,
+  html[data-theme="dark"] .admin-integrity-list article.manual,
+  html[data-theme="dark"] .admin-alert-list article,
+  html[data-theme="dark"] .admin-alert-list article.critical,
+  html[data-theme="dark"] .admin-alert-list article.resolved,
+  html[data-theme="dark"] .admin-backup-list article,
+  html[data-theme="dark"] .admin-report-hero,
+  html[data-theme="dark"] .admin-report-hero.ok,
+  html[data-theme="dark"] .admin-report-hero.critical,
+  html[data-theme="dark"] .admin-report-checks article,
+  html[data-theme="dark"] .admin-report-checks article.ok,
+  html[data-theme="dark"] .admin-report-checks article.warning,
+  html[data-theme="dark"] .admin-report-checks article.critical,
+  html[data-theme="dark"] .admin-report-metrics article,
+  html[data-theme="dark"] #adminMaintenancePanel .empty-state,
+  html[data-theme="dark"] .storage-diagnostics-grid article,
+  html[data-theme="dark"] .storage-diagnostics-note {
+    border-color: #3b4a54;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: none;
+  }
+
+  html[data-theme="dark"] .admin-automation-status b,
+  html[data-theme="dark"] .admin-automation-toggle span,
+  html[data-theme="dark"] .admin-archive-builder small,
+  html[data-theme="dark"] .admin-archive-list span,
+  html[data-theme="dark"] .admin-archive-list small,
+  html[data-theme="dark"] .admin-integrity-summary span,
+  html[data-theme="dark"] .admin-integrity-list span,
+  html[data-theme="dark"] .admin-integrity-list small,
+  html[data-theme="dark"] .admin-alert-list span,
+  html[data-theme="dark"] .admin-alert-list small,
+  html[data-theme="dark"] .admin-backup-list span,
+  html[data-theme="dark"] .admin-backup-list small,
+  html[data-theme="dark"] .admin-report-hero span,
+  html[data-theme="dark"] .admin-report-checks span,
+  html[data-theme="dark"] .admin-report-metrics span,
+  html[data-theme="dark"] .storage-diagnostics-grid span,
+  html[data-theme="dark"] .storage-diagnostics-grid small {
+    color: #aebac1;
+  }
+
   html[data-theme="dark"] .admin-user-summary span,
   html[data-theme="dark"] .admin-user-linked span,
   html[data-theme="dark"] .admin-user-permissions > div > label {

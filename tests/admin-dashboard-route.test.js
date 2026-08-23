@@ -7,6 +7,7 @@ const { createAdminDashboardRoute } = require("../server/admin-dashboard-route")
 function createHarness(database = {}) {
   const responses = [];
   const calls = [];
+  const summaryCaches = [];
   const handler = createAdminDashboardRoute({
     adminActivityFeed: () => ({ readAt: "read", unreadCount: 2, items: ["activity"] }),
     adminArchiveSelection: (_db, days) => ({ days, cutoffAt: "cutoff", counts: { audit: 1 } }),
@@ -15,7 +16,7 @@ function createHarness(database = {}) {
       calls.push("diagnostic");
       try { return await promise; } catch { return fallback; }
     },
-    adminUserOperationalSummary: (_db, user) => ({ userId: user.id }),
+    adminUserOperationalSummary: (_db, user, cache) => { summaryCaches.push(cache); return { userId: user.id }; },
     backupRetentionDeleteIds: rows => rows.map(item => item.id),
     dataIntegrityReport: () => ({ healthy: true, fixableCount: 0, issues: [] }),
     getPostgresConnected: () => true,
@@ -29,8 +30,17 @@ function createHarness(database = {}) {
     userLoginDiagnostics: (_db, user) => ({ userId: user.id }),
     userPublic: user => ({ id: user.id, name: user.name, role: user.role })
   });
-  return { handler, responses, calls, database };
+  return { handler, responses, calls, summaryCaches, database };
 }
+
+test("access summaries reuse one request-local reference cache", async () => {
+  const database = { adminTrash: [], adminAlerts: [], adminConfig: {}, users: [{ id: "one" }, { id: "two" }] };
+  const { handler, summaryCaches } = createHarness(database);
+  await handler({ method: "GET", authUser: { role: "editor" } }, {}, "/api/admin/maintenance", new URL("https://example.test/api/admin/maintenance?tab=access"));
+  assert.equal(summaryCaches.length, 2);
+  assert.equal(summaryCaches[0], summaryCaches[1]);
+  assert.equal(summaryCaches[0] instanceof Map, true);
+});
 
 test("admin dashboard route ignores unrelated requests and protects access", async () => {
   const { handler, responses, calls } = createHarness();

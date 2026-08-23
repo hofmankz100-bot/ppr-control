@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v592-dark-admin-panels-1";
+const APP_VERSION = "v593-fast-admin-access-1";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
