@@ -979,10 +979,11 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
 test("test and duplicate worker identities are excluded without hiding the valid rating", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const ratingRoute = fs.readFileSync(path.join(root, "server", "admin-rating-route.js"), "utf8");
   assert.match(server, /"mechanic:шонов\.уткел"/);
   assert.match(server, /"mechanic:рамазан"/);
   assert.match(server, /"mechanic:адлет"/);
-  assert.match(server, /pathname === "\/api\/admin\/rating-exclusions"/);
+  assert.match(ratingRoute, /pathname !== "\/api\/admin\/rating-exclusions"/);
   assert.match(client, /data-hide-worker-rating=/);
   assert.match(client, /data-restore-worker-rating=/);
   assert.match(client, /Без комментария действие не выполнено/);

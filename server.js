@@ -24,6 +24,7 @@ const { createAdminSystemReportRoute } = require("./server/admin-system-report-r
 const { createAdminDashboardRoute } = require("./server/admin-dashboard-route");
 const { createAdminStorageRoute } = require("./server/admin-storage-route");
 const { createAdminQrRoute } = require("./server/admin-qr-route");
+const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -4586,6 +4587,16 @@ const handleAdminQrRoute = createAdminQrRoute({
   allowPasswordlessTestAuth: process.env.NODE_ENV === "test"
 });
 
+const handleAdminRatingRoute = createAdminRatingRoute({
+  enqueueStateWrite,
+  normalizedAdminConfig,
+  publicState,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
@@ -4630,6 +4641,8 @@ async function handleApi(req, res, pathname, url) {
   if (await handleAdminStorageRoute(req, res, pathname)) return true;
 
   if (await handleAdminQrRoute(req, res, pathname)) return true;
+
+  if (await handleAdminRatingRoute(req, res, pathname)) return true;
 
   if (pathname === "/api/attendance/lookup" && req.method === "POST") {
     if (!contractorAttendanceRateAllowed(req)) {
@@ -5881,37 +5894,6 @@ async function handleApi(req, res, pathname, url) {
     const patch = { catalog: { equipment: { [String(equipmentId)]: result.item } } };
     const stateVersion = broadcastState("node-qr-rotate", "", patch, true);
     sendJson(res, 200, { ok: true, item: result.item, stateVersion });
-    return true;
-  }
-
-  if (pathname === "/api/admin/rating-exclusions" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") {
-      sendJson(res, 403, { ok: false, error: "admin_required" });
-      return true;
-    }
-    const body = await readBody(req).catch(() => ({}));
-    const action = body.action === "restore" ? "restore" : "hide";
-    const key = String(body.key || "").trim().toLocaleLowerCase("ru-RU").slice(0, 300);
-    const label = String(body.label || "").trim().slice(0, 300);
-    const reason = String(body.reason || "").trim().slice(0, 1000);
-    if (!/^(mechanic|welder|turner|forkliftDriver):.+$/i.test(key)) {
-      sendJson(res, 400, { ok: false, error: "invalid_rating_worker" });
-      return true;
-    }
-    if (!reason) {
-      sendJson(res, 400, { ok: false, error: "reason_required" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const config = normalizedAdminConfig(db.adminConfig);
-      const entries = config.excludedRatingWorkers.filter(item => item.key !== key);
-      if (action === "hide") entries.push({ key, label, reason, hiddenAt: new Date().toISOString(), hiddenBy: String(req.authUser.name || "Администратор") });
-      db.adminConfig = { ...config, excludedRatingWorkers: entries };
-      writeDb(db, { action: action === "hide" ? "rating_worker_hidden" : "rating_worker_restored", user: req.authUser, targetId: key, targetLabel: label || key, reason });
-      return publicState(db).adminConfig.excludedRatingWorkers;
-    });
-    sendJson(res, 200, { ok: true, excludedRatingWorkers: result });
     return true;
   }
 
