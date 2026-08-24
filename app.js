@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v600-pause-scroll-confirmations-1";
+const APP_VERSION = "v601-ppr-reasons-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -17490,7 +17490,12 @@ async function loadMonthClosePanel() {
       const eq = equipmentById(Number(equipmentId));
       return `${eq?.name || `Оборудование ${equipmentId}`} · ${eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`} · ${date || month}: ${entry.text || "Замечание"}`;
     };
-    const transferEntries = (groups.incompletePpr || []).map(entry => ({ key: `ppr:${entry.id}`, kind: "ppr", id: entry.id, label: `Лист ППР: ${entry.id}` }));
+    const transferEntries = (groups.incompletePpr || []).map(entry => ({
+      key: `ppr:${entry.id}`,
+      kind: "ppr",
+      id: entry.id,
+      label: entry.label || `ППР на ${dateHuman(entry.date || entry.id)}`
+    }));
     const reasonOptions = ["Ожидание запчасти", "Ожидание подрядчика", "Ожидание бюджета", "Ожидание согласования", "Решение руководителя"];
     const detailList = (title, tone, entries, label, actions = null) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong>${actions ? actions(entry) : ""}</article>`).join("")}</details>`;
     host.className = "month-close-content";
@@ -17498,12 +17503,13 @@ async function loadMonthClosePanel() {
       <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
       <div class="month-close-purpose"><strong>Что закрываем?</strong><p>Только месячный показатель «Состояние завода». Заявки на закупку здесь не учитываются.</p><ol><li>Проверьте красные критические пункты.</li><li>Устраните замечания и аварийные остановки.</li><li>Закройте месяц полностью или перенесите только незавершённые листы ППР.</li></ol></div>
       <div class="month-close-checks">
-        ${item(Number(readiness.criticalCount) ? "red" : "green", "Критические пункты", readiness.criticalCount, `${(groups.openRemarks || []).length} замечаний · ${(groups.activeBreakdowns || []).length} аварийных остановок`)}
+        ${item(Number(readiness.criticalCount) ? "red" : "green", "Критические пункты", readiness.criticalCount, `${(groups.openRemarks || []).length} замечаний · ${(groups.activeBreakdowns || []).length} аварийных остановок${(groups.deferredRemarks || []).length ? ` · ${(groups.deferredRemarks || []).length} обоснованно отложено и не считается` : ""}`)}
         ${item(Number(readiness.warningCount) ? "yellow" : "green", "Незавершённые ППР", readiness.warningCount, `${(groups.incompletePpr || []).length} листов ППР можно перенести`)}
         ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
       </div>
       <div class="month-close-work-lists">
-        ${detailList("Открытые критические замечания", "red", groups.openRemarks || [], remarkLabel, entry => `<button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button>`)}
+        ${(groups.openRemarks || []).length ? `<details class="month-close-work-list red" open><summary>Открытые критические замечания · ${(groups.openRemarks || []).length}</summary><p>Если устранить замечание сейчас невозможно, инженер обязан написать конкретную причину. После сохранения оно останется в списке отложенных, но не войдёт в критический счётчик.</p>${(groups.openRemarks || []).map(entry => `<article class="month-critical-row"><strong>${escapeHtml(remarkLabel(entry))}</strong><textarea rows="2" data-month-defer-reason placeholder="Почему замечание сейчас не выполняется?"></textarea><div><button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button><button type="button" class="secondary" data-defer-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Сохранить причину и не учитывать</button></div></article>`).join("")}</details>` : ""}
+        ${(groups.deferredRemarks || []).length ? `<details class="month-close-work-list yellow"><summary>Обоснованно отложенные замечания · ${(groups.deferredRemarks || []).length}</summary><p>Они остаются открытыми и видимыми, но временно исключены из критического счётчика.</p>${(groups.deferredRemarks || []).map(entry => `<article><strong>${escapeHtml(remarkLabel(entry))}</strong><span>Причина: ${escapeHtml(entry.deferReason || "Не указана")}</span><small>${escapeHtml(entry.deferredByName || "Инженер")}${entry.deferredAt ? ` · ${escapeHtml(dateTimeHuman(entry.deferredAt))}` : ""}</small><div><button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button><button type="button" class="secondary" data-resume-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Вернуть в критический счётчик</button></div></article>`).join("")}</details>` : ""}
         ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
         ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Листы ППР для переноса · ${transferEntries.length}</summary><p>Заявки не входят в закрытие месяца. Отметьте только листы ППР и укажите причину.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Незавершённых листов ППР для переноса нет.</div>`}
       </div>
@@ -17537,6 +17543,27 @@ async function loadMonthClosePanel() {
     host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
     host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));
     host.querySelector("[data-month-refresh]")?.addEventListener("click", loadMonthClosePanel);
+    host.querySelectorAll("[data-defer-month-remark]").forEach(button => button.addEventListener("click", () => {
+      const reason = button.closest(".month-critical-row")?.querySelector("[data-month-defer-reason]")?.value?.trim() || "";
+      if (!reason) {
+        window.alert("Напишите конкретную причину, почему замечание сейчас не выполняется.");
+        return;
+      }
+      runButtonOperation(button, async () => {
+        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action: "defer-remark", reason, recordKey: button.dataset.recordKey || "", remarkId: button.dataset.remarkId || "" }) });
+        if (response.state) mergeRealtimePatch(response.state);
+        await loadMonthClosePanel();
+      }, "Сохраняем…");
+    }));
+    host.querySelectorAll("[data-resume-month-remark]").forEach(button => button.addEventListener("click", () => {
+      const reason = window.prompt("Почему замечание возвращается в критический контроль?")?.trim();
+      if (!reason) return;
+      runButtonOperation(button, async () => {
+        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action: "resume-remark", reason, recordKey: button.dataset.recordKey || "", remarkId: button.dataset.remarkId || "" }) });
+        if (response.state) mergeRealtimePatch(response.state);
+        await loadMonthClosePanel();
+      }, "Возвращаем…");
+    }));
     host.querySelectorAll("[data-open-month-remark]").forEach(button => button.addEventListener("click", () => {
       const [equipmentId, nodeIndex, date] = String(button.dataset.recordKey || "").split(":");
       if (!equipmentId || !nodeIndex || !date) return;

@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v599-photo-role-compatibility-1";
+const APP_VERSION = fs.readFileSync(path.join(root, "app.js"), "utf8").match(/const APP_VERSION = "([^"]+)"/)?.[1] || "";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {

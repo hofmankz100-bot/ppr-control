@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v600-pause-scroll-confirmations-1";
+const SERVER_VERSION = "v601-ppr-reasons-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2086,9 +2086,20 @@ function monthCloseReadiness(db, month) {
   const [year, monthNumber] = month.split("-").map(Number);
   const endMs = Date.UTC(year, monthNumber, 1);
   const openRemarks = [];
+  const deferredRemarks = [];
   Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
     if (!recordKey.includes(`:${month}-`)) return;
-    ensureRemarkEntriesServer(record?.to || {}).filter(item => !item.resolved).forEach(item => openRemarks.push({ id: item.id || "", recordKey, text: String(item.text || "").slice(0, 300) }));
+    ensureRemarkEntriesServer(record?.to || {}).filter(item => !item.resolved).forEach(item => {
+      const summary = {
+        id: item.id || "",
+        recordKey,
+        text: String(item.text || "").slice(0, 300),
+        deferReason: String(item.deferReason || "").slice(0, 1000),
+        deferredAt: item.deferredAt || "",
+        deferredByName: item.deferredByName || ""
+      };
+      (summary.deferReason ? deferredRemarks : openRemarks).push(summary);
+    });
   });
   const activeBreakdowns = (db.downtimes || []).filter(item => {
     if (!item || item.deleted || item.type === "production") return false;
@@ -2096,7 +2107,23 @@ function monthCloseReadiness(db, month) {
     const ended = item.endedAt ? Date.parse(item.endedAt) : Date.now();
     return Number.isFinite(started) && started < endMs && ended >= startMs && !item.endedAt;
   }).map(item => ({ id: item.id || "", equipment: item.equipment || "Оборудование", reason: item.reason || item.comment || "Аварийная остановка" }));
-  const incompletePpr = Object.entries(db.pprSheets || {}).filter(([key, sheet]) => key.includes(month) && sheet && !sheet.engineerApprovedAt && (sheet.rows || []).length).map(([key]) => ({ id: key }));
+  const incompletePpr = Object.entries(db.pprSheets || {})
+    .filter(([key, sheet]) => key.includes(month) && sheet && !sheet.engineerApprovedAt && (sheet.rows || []).some(row => String(row?.work || "").trim()))
+    .map(([key, sheet]) => {
+      const works = (sheet.rows || []).filter(row => String(row?.work || "").trim());
+      const equipment = [...new Set(works.map(row => String(row?.equipment || "").trim()).filter(Boolean))];
+      const nodes = [...new Set(works.map(row => String(row?.node || "").trim()).filter(Boolean))];
+      const workNames = [...new Set(works.map(row => String(row?.work || "").trim()).filter(Boolean))];
+      const subject = [equipment.join(", "), nodes.join(", ")].filter(Boolean).join(" · ") || "Оборудование по графику";
+      return {
+        id: key,
+        date: sheet.date || key,
+        equipment,
+        nodes,
+        works: workNames.slice(0, 5),
+        label: `${subject} · ${sheet.date || key}${workNames.length ? ` · ${workNames.slice(0, 2).join("; ")}${workNames.length > 2 ? ` (+${workNames.length - 2})` : ""}` : ""}`
+      };
+    });
   const criticalCount = openRemarks.length + activeBreakdowns.length;
   const warningCount = incompletePpr.length;
   const readinessPercent = Math.max(0, 100 - Math.min(criticalCount * 15, 60) - Math.min(warningCount * 5, 40));
@@ -2106,7 +2133,7 @@ function monthCloseReadiness(db, month) {
     criticalCount,
     warningCount,
     greenCount: Math.max(0, 3 - Number(Boolean(openRemarks.length)) - Number(Boolean(activeBreakdowns.length)) - Number(Boolean(incompletePpr.length))),
-    groups: { openRemarks, activeBreakdowns, incompletePpr },
+    groups: { openRemarks, deferredRemarks, activeBreakdowns, incompletePpr },
     productionStopsExcluded: (db.downtimes || []).filter(item => item?.type === "production" && String(item.startedAt || "").slice(0, 7) === month).length,
     calculatedAt: new Date().toISOString()
   };
@@ -5594,7 +5621,7 @@ async function handleApi(req, res, pathname, url) {
     const month = validMonthKey(body.month);
     const action = String(body.action || "");
     const reason = String(body.reason || "").trim().slice(0, 2000);
-    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen"]);
+    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen", "defer-remark", "resume-remark"]);
     if (!month || !allowedActions.has(action) || !reason) { sendJson(res, 400, { ok: false, error: !month ? "month_invalid" : !reason ? "reason_required" : "month_close_action_invalid" }); return true; }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
@@ -5604,6 +5631,20 @@ async function handleApi(req, res, pathname, url) {
       const history = Array.isArray(previous.history) ? previous.history.slice() : [];
       const now = new Date().toISOString();
       const actor = { id: String(req.authUser?.id || ""), name: String(req.authUser?.name || "Сотрудник"), role: String(req.authUser?.role || ""), area: String(req.authUser?.area || "") };
+      if (action === "defer-remark" || action === "resume-remark") {
+        const recordKey = String(body.recordKey || "").trim();
+        const remarkId = String(body.remarkId || "").trim();
+        if (!recordKey.includes(`:${month}-`) || !remarkId) return { error: "remark_invalid" };
+        const remark = ensureRemarkEntriesServer(db.checks?.[recordKey]?.to).find(item => String(item.id || "") === remarkId);
+        if (!remark || remark.resolved) return { error: "remark_not_open" };
+        if (action === "defer-remark") {
+          Object.assign(remark, { deferReason: reason, deferredAt: now, deferredById: actor.id, deferredByName: actor.name, deferredByRole: actor.role });
+        } else {
+          Object.assign(remark, { deferReason: "", deferredAt: "", deferredById: "", deferredByName: "", deferredByRole: "", deferResumedAt: now, deferResumedByName: actor.name, deferResumeReason: reason });
+        }
+        writeDb(db, { action: action.replaceAll("-", "_"), user: req.authUser, targetId: `${recordKey}|${remarkId}`, targetLabel: remark.text || "Замечание", reason });
+        return { closure: db.monthlyClosures[month] || null, readiness: monthCloseReadiness(db, month), state: { checks: db.checks } };
+      }
       let closure = { ...previous, month, history, areaConfirmations: Array.isArray(previous.areaConfirmations) ? previous.areaConfirmations.slice() : [] };
       if (action === "confirm-area") {
         const area = String(actor.role === "editor" ? (body.area || actor.area || "Общий участок") : (actor.area || "Общий участок")).trim().slice(0, 200);
