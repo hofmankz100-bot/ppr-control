@@ -13150,6 +13150,26 @@ body.editor-profile #createTmcRequestButton.request-alert,
   .qr-action-mobile{display:inline}
 }
 
+.factory-score-explanation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--text);
+}
+
+.factory-score-explanation span,
+.factory-score-explanation b {
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: var(--panel);
+}
+
 img.photo-load-failed {
   min-height: 72px;
   padding: 12px;

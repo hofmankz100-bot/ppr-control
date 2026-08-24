@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v608-remove-push-diagnostics-1";
+const APP_VERSION = "v609-factory-index-fix-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15831,6 +15831,15 @@ function dateYearMonth(value) {
   return { year: date.getFullYear(), month: date.getMonth() };
 }
 
+function downtimeOverlapMsForMonth(item, year, monthIndex) {
+  const startedAt = Date.parse(item?.startedAt || "");
+  const endedAt = item?.endedAt ? Date.parse(item.endedAt) : Date.now();
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return 0;
+  const monthStart = new Date(year, monthIndex, 1).getTime();
+  const monthEnd = new Date(year, monthIndex + 1, 1).getTime();
+  return Math.max(0, Math.min(endedAt, monthEnd) - Math.max(startedAt, monthStart));
+}
+
 function annualRepairEvents(year = directorAnnualYear()) {
   const events = [];
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
@@ -15914,16 +15923,23 @@ function directorAnnualStats(year = directorAnnualYear()) {
     if (resolved?.year === year) months[resolved.month].repairsClosed += 1;
     if (event.type === "breakdown" && created?.year === year) months[created.month].breakdowns += 1;
   });
+  const currentDate = new Date();
+  if (currentDate.getFullYear() === year) {
+    months[currentDate.getMonth()].openWorks = repairEvents.filter(event => event.type === "remark" && event.open && operationalItemEnabled(event, todayISO())).length;
+  }
   downtimes().forEach(item => {
-    if (!operationalItemEnabled(item, item.startedAt)) return;
+    if (!operationalItemEnabled(item, item.startedAt) || !operationalItemEnabled(item, todayISO())) return;
     const created = dateYearMonth(item.startedAt || "");
-    if (created?.year !== year) return;
-    months[created.month].stops += 1;
-    months[created.month].downtimeMs += downtimeDurationMs(item);
-    if (item.type !== "production") {
-      months[created.month].reliabilityStops += 1;
-      months[created.month].reliabilityDowntimeMs += downtimeDurationMs(item);
+    if (created?.year === year) {
+      months[created.month].stops += 1;
+      if (item.type !== "production") months[created.month].reliabilityStops += 1;
     }
+    months.forEach((month, monthIndex) => {
+      const overlapMs = downtimeOverlapMsForMonth(item, year, monthIndex);
+      if (!overlapMs) return;
+      month.downtimeMs += overlapMs;
+      if (item.type !== "production") month.reliabilityDowntimeMs += overlapMs;
+    });
   });
   const today = todayISO();
   const activeEquipment = allEquipment().filter(eq => eq.area !== "Резерв" && !linkedCraneJournalForEquipment(eq) && !linkedForkliftJournalForEquipment(eq));
@@ -16150,18 +16166,22 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
   `;
 }
 
-function directorFactoryReliabilityScore(month) {
+function directorFactoryReliabilityDetails(month) {
   const frozenScore = Number(state.monthlyClosures?.[month.monthKey]?.snapshot?.factoryReliabilityScore);
-  if (Number.isFinite(frozenScore)) return Math.max(0, Math.min(100, Math.round(frozenScore)));
+  if (Number.isFinite(frozenScore)) return { score: Math.max(0, Math.min(100, Math.round(frozenScore))), frozen: true, penalties: {} };
   const downtimeHours = Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000;
-  const openWorks = Math.max(month.repairsCreated - month.repairsClosed, 0);
+  const openWorks = Number.isFinite(month.openWorks) ? Number(month.openWorks) : Math.max(month.repairsCreated - month.repairsClosed, 0);
   const qrPercent = month.qrPlan ? month.qrDone / month.qrPlan * 100 : 100;
   const downtimePenalty = Math.min(Math.round(downtimeHours / 125 * 45), 45);
   const stopPenalty = Math.min(Number(month.reliabilityStops ?? month.stops) * 4, 20);
   const openPenalty = Math.min(openWorks * 5, 25);
-  const breakdownPenalty = Math.min(month.breakdowns * 3, 10);
   const qrPenalty = Math.min(Math.round((100 - qrPercent) * 0.25), 25);
-  return Math.max(0, Math.min(100, 100 - downtimePenalty - stopPenalty - openPenalty - breakdownPenalty - qrPenalty));
+  const score = Math.max(0, Math.min(100, 100 - downtimePenalty - stopPenalty - openPenalty - qrPenalty));
+  return { score, frozen: false, downtimeHours, openWorks, qrPercent, penalties: { downtime: downtimePenalty, stops: stopPenalty, open: openPenalty, qr: qrPenalty } };
+}
+
+function directorFactoryReliabilityScore(month) {
+  return directorFactoryReliabilityDetails(month).score;
 }
 
 function reliabilityBand(score) {
@@ -16805,15 +16825,16 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
   const current = stats.months[monthIndex];
   const previous = stats.months[Math.max(monthIndex - 1, 0)];
   const currentScore = directorFactoryReliabilityScore(current);
+  const currentDetails = directorFactoryReliabilityDetails(current);
   const previousScore = directorFactoryReliabilityScore(previous);
   const scoreDiff = currentScore - previousScore;
-  const totalOpen = stats.months.reduce((sum, item) => sum + Math.max(item.repairsCreated - item.repairsClosed, 0), 0);
+  const totalOpen = Number.isFinite(current.openWorks) ? current.openWorks : Math.max(current.repairsCreated - current.repairsClosed, 0);
   const bestWorker = stats.workers.find(worker => worker.kpd !== null);
   const bars = stats.months.map((month, index) => {
     const score = directorFactoryReliabilityScore(month);
     const prevScore = index ? directorFactoryReliabilityScore(stats.months[index - 1]) : score;
     const diff = score - prevScore;
-    const downtimeHours = Math.round(month.downtimeMs / 3600000 * 10) / 10;
+    const downtimeHours = Math.round(Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000 * 10) / 10;
     const band = reliabilityBand(score);
     const qrPercent = month.qrPlan ? Math.round(month.qrDone / month.qrPlan * 100) : 0;
     return `
@@ -16823,7 +16844,7 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         </div>
         <b>${escapeHtml(month.label)}</b>
         <span class="${diff > 0 ? "up" : diff < 0 ? "down" : ""}">${index ? diff === 0 ? "=" : `${diff > 0 ? "+" : ""}${diff}` : "старт"}</span>
-        <small>${downtimeHours ? `${downtimeHours}ч` : "0ч"} · QR ${qrPercent}% · ${month.repairsClosed}/${month.repairsCreated}</small>
+        <small>${downtimeHours ? `${downtimeHours}ч` : "0ч"} · QR ${qrPercent}% · открыто ${Number.isFinite(month.openWorks) ? month.openWorks : Math.max(month.repairsCreated - month.repairsClosed, 0)}</small>
       </div>
     `;
   }).join("");
@@ -16841,13 +16862,14 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
           <span>${scoreDiff === 0 ? "без изменений" : scoreDiff > 0 ? `рост +${scoreDiff}` : `падение ${scoreDiff}`}</span>
         </div>
       </div>
+      ${currentDetails.frozen ? "" : `<div class="factory-score-explanation"><strong>Расчёт месяца:</strong><span>Простой −${currentDetails.penalties.downtime}</span><span>Аварийные остановки −${currentDetails.penalties.stops}</span><span>Открытые замечания −${currentDetails.penalties.open}</span><span>Невыполненные QR −${currentDetails.penalties.qr}</span><b>100 − ${Object.values(currentDetails.penalties).join(" − ")} = ${currentScore}</b></div>`}
       <div class="factory-graph">${bars}</div>
       <div class="factory-graph-help">
         <strong>Как читать график:</strong>
         <span>Высокая колонка - месяц прошёл хорошо.</span>
         <span>Зелёный - норма, жёлтый - внимание, красный - риск.</span>
         <span>+ / - под месяцем показывает рост или падение к прошлому месяцу.</span>
-        <span>Нижняя строка: часы простоя · процент QR-обхода · закрыто/создано работ.</span>
+        <span>Нижняя строка: аварийный простой · процент QR-обхода · реально открытые замечания.</span>
       </div>
       <div class="factory-graph-legend">
         <span class="green"></span>85-100 хорошо

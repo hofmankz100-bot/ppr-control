@@ -1676,9 +1676,14 @@ test("authorized users can close remarks for several employees with or without p
 
 test("production stops do not reduce the factory reliability score", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(client, /if \(item\.type !== "production"\) \{[\s\S]*?reliabilityStops[\s\S]*?reliabilityDowntimeMs/);
+  assert.match(client, /if \(item\.type !== "production"\) months\[created\.month\]\.reliabilityStops \+= 1/);
+  assert.match(client, /if \(item\.type !== "production"\) month\.reliabilityDowntimeMs \+= overlapMs/);
   assert.match(client, /month\.reliabilityDowntimeMs \?\? month\.downtimeMs/);
   assert.match(client, /month\.reliabilityStops \?\? month\.stops/);
+  assert.match(client, /function downtimeOverlapMsForMonth/);
+  assert.match(client, /Number\.isFinite\(month\.openWorks\)/);
+  assert.doesNotMatch(client, /const breakdownPenalty/);
+  assert.match(client, /factory-score-explanation/);
 });
 
 test("month closing API remains compatible but its panel is removed from the report", () => {
