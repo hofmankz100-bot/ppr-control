@@ -1689,7 +1689,9 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /\(100 - qrPercent\) \* 0\.2/);
   assert.match(client, /factory-score-explanation/);
   assert.match(client, /const isFutureMonth =/);
-  assert.match(client, /Месяц ещё не наступил/);
+  assert.match(client, /future-baseline/);
+  assert.match(client, /<strong>100%<\/strong>/);
+  assert.doesNotMatch(client, /Старт месяца/);
   assert.match(client, /индекс текущего месяца/);
   assert.doesNotMatch(client, /\+ \/ - под месяцем показывает рост или падение/);
 });

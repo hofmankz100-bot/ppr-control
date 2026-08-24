@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v611-clear-factory-chart-1";
+const APP_VERSION = "v612-future-month-baseline-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -16834,10 +16834,11 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
   const bars = stats.months.map((month, index) => {
     const isFutureMonth = stats.year > now.getFullYear() || (stats.year === now.getFullYear() && index > now.getMonth());
     if (isFutureMonth) return `
-      <div class="factory-month no-data">
-        <div class="factory-bar-wrap"><strong>Нет данных</strong></div>
+      <div class="factory-month green future-baseline">
+        <div class="factory-bar-wrap">
+          <div class="factory-score-bar" style="height:100%"><strong>100%</strong></div>
+        </div>
         <b>${escapeHtml(month.label)}</b>
-        <small>Месяц ещё не наступил</small>
       </div>
     `;
     const score = directorFactoryReliabilityScore(month);
