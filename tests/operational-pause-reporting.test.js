@@ -46,7 +46,10 @@ test("quick app resume checks only the version and restores stale realtime", () 
   assert.match(source, /const RESUME_SYNC_AFTER_MS = 60000/);
   assert.match(source, /if \(document\.visibilityState === "hidden"\)[\s\S]*?appHiddenAt = Date\.now\(\)/);
   assert.match(source, /function resumeRealtimeQuietly\(awayMs = 0\)/);
-  assert.match(source, /socketStale = socketOpen && awayMs >= 5000/);
+  assert.match(source, /socketConnecting = Boolean\(realtimeSocket && realtimeSocket\.readyState === WebSocket\.CONNECTING\)/);
+  assert.match(source, /socketStale = awayMs >= 5000 && \(socketConnecting \|\| \(socketOpen/);
+  assert.match(source, /eventsConnecting = Boolean\(realtimeEventSource && realtimeEventSource\.readyState === EventSource\.CONNECTING\)/);
+  assert.match(source, /eventsStale = awayMs >= 5000 && eventsConnecting/);
   assert.match(source, /resumeRealtimeQuietly\(awayMs\)/);
   assert.match(source, /pollRealtimeStateVersion\(true\)/);
   assert.match(source, /now - lastRealtimeVersionPollAt < 15000/);
