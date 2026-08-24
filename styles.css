@@ -7803,31 +7803,8 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
   gap: 8px;
 }
 
-.system-load-card {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 14px;
-  border: 1px solid var(--line);
-  border-left: 6px solid #16a34a;
-  border-radius: 12px;
-  background: #fff;
-  padding: 14px;
-}
-.system-load-card.yellow { border-left-color: #d97706; }
-.system-load-card.red { border-left-color: #dc2626; }
-.system-load-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.system-load-head strong, .system-load-head span { display: block; }
-.system-load-head span { color: var(--muted); font-size: 12px; font-weight: 800; }
-.system-load-head i { width: min(220px, 42%); height: 9px; overflow: hidden; border-radius: 999px; background: #e5edf1; }
-.system-load-head i::after { content: ""; display: block; width: var(--load); height: 100%; background: #16a34a; }
-.system-load-card.yellow .system-load-head i::after { background: #d97706; }
-.system-load-card.red .system-load-head i::after { background: #dc2626; }
-.system-load-stats { display: flex; flex-wrap: wrap; gap: 7px; }
-.system-load-stats span { border-radius: 999px; background: #eef4f7; padding: 6px 9px; font-size: 12px; }
-.system-load-card p { margin: 0; color: var(--muted); font-size: 13px; }
-.system-load-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.system-load-actions button { border: 0; border-radius: 8px; background: #14324a; color: #fff; padding: 9px 12px; font-weight: 800; }
-.system-load-actions button.secondary { background: #e8eef3; color: #14324a; }
+.director-admin-shortcuts { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.director-admin-shortcuts button { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--brand); color: #fff; padding: 10px 16px; font: inherit; font-weight: 800; }
 
 .system-broadcast-notice {
   position: fixed;
@@ -7855,8 +7832,7 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
 @media (max-width: 680px) {
   .system-broadcast-notice { top: 66px; align-items: stretch; flex-direction: column; }
   .system-broadcast-notice > div:last-child { display: grid; grid-template-columns: 1fr 1fr; }
-  .system-load-head { align-items: stretch; flex-direction: column; }
-  .system-load-head i { width: 100%; }
+  .director-admin-shortcuts button { width: 100%; }
 }
 
 .director-users-head {
@@ -14505,7 +14481,6 @@ html[data-theme="dark"] .pull-refresh-indicator {
     color: #e9edef;
   }
 
-  html[data-theme="dark"] .system-load-card,
   html[data-theme="dark"] .director-users,
   html[data-theme="dark"] .order-create-form,
   html[data-theme="dark"] .order-card,
@@ -14520,17 +14495,12 @@ html[data-theme="dark"] .pull-refresh-indicator {
     box-shadow: none;
   }
 
-  html[data-theme="dark"] .system-load-head span,
-  html[data-theme="dark"] .system-load-card p,
   html[data-theme="dark"] .order-history small {
     color: #aebac1;
   }
 
-  html[data-theme="dark"] .system-load-head i,
-  html[data-theme="dark"] .system-load-stats span,
   html[data-theme="dark"] .order-card header span,
   html[data-theme="dark"] .order-filters button,
-  html[data-theme="dark"] .system-load-actions button.secondary,
   html[data-theme="dark"] .order-create-form textarea,
   html[data-theme="dark"] .order-complete-form textarea,
   html[data-theme="dark"] .order-complete-form input,

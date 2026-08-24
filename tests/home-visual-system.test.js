@@ -39,7 +39,8 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.work-permit-paper/);
   assert.match(styles, /html\[data-theme="dark"\] \.global-reminder-panel/);
   assert.match(styles, /html\[data-theme="dark"\] \.director-reminder-row\.yellow/);
-  assert.match(styles, /html\[data-theme="dark"\] \.system-load-card/);
+  assert.doesNotMatch(app, /renderSystemLoadAdmin|Нагрузка приложения|data-print-system-report|data-broadcast-print/);
+  assert.equal((app.match(/data-open-admin-maintenance>Корзина и восстановление/g) || []).length, 1);
   assert.match(styles, /html\[data-theme="dark"\] \.director-users/);
   assert.match(styles, /html\[data-theme="dark"\] \.order-create-form/);
   assert.match(styles, /html\[data-theme="dark"\] \.work-permit-safety-item/);

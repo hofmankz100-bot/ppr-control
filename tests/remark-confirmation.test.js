@@ -1080,7 +1080,7 @@ test("admin maintenance keeps an immutable audit and a recoverable trash", () =>
   assert.doesNotMatch(client, /data-admin-catalog-form/);
   assert.doesNotMatch(client, /Конструктор справочников/);
   assert.doesNotMatch(client, /Сохранить справочники/);
-  assert.match(client, /\["forms", "activity", "settings"\]/);
+  assert.match(client, /\["forms", "activity", "settings", "monitoring"\]/);
   assert.match(client, /adminMaintenanceTab: "trash"/);
   assert.match(client, /current\.adminMaintenanceTab \|\| "trash"/);
   assert.doesNotMatch(client, /Сохранить названия ролей/);
@@ -1844,7 +1844,7 @@ test("administration keeps four primary tabs and only useful technical tools", (
   assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(4/);
   assert.match(appSource, /primaryAdminTabs = new Set\(\["trash", "backups", "audit", "report"\]\)/);
   assert.match(appSource, /class="admin-technical-tools"/);
-  for (const tab of ["guide", "broadcasts", "settings", "transfer", "access", "automation", "archives", "integrity", "monitoring"]) {
+  for (const tab of ["guide", "broadcasts", "settings", "transfer", "access", "automation", "archives", "integrity"]) {
     assert.match(appSource, new RegExp(`data-admin-maintenance-tab="${tab}"`));
   }
   assert.doesNotMatch(appSource, /data-admin-maintenance-tab="forms"/);
@@ -2095,7 +2095,7 @@ test("PPR completion records the actual performer and resolution comment", () =>
 
 test("organization settings and role-name editor are no longer accessible", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(clientSource, /\["forms", "activity", "settings"\]/);
+  assert.match(clientSource, /\["forms", "activity", "settings", "monitoring"\]/);
   assert.match(clientSource, /maintenanceTabs\?\.querySelector\('\[data-admin-maintenance-tab="settings"\]'\)\?\.remove/);
   assert.doesNotMatch(clientSource, /data-role-label=/);
   assert.doesNotMatch(clientSource, /Вернуть стандартные названия/);

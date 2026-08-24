@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v604-fast-access-1";
+const APP_VERSION = "v605-admin-shortcut-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11779,7 +11779,6 @@ function renderEquipment() {
       ${profile?.role === "editor" ? `<button type="button" data-create-equipment>+ Создать оборудование</button>` : ""}
       ${canEditAnnualPpr() ? `<button type="button" class="desktop-annual-ppr-button" data-open-annual-ppr>Годовой график ППР</button>` : ""}
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
-      ${profile?.role === "editor" ? `<button type="button" data-open-admin-maintenance>Корзина и восстановление</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
       <strong>${new Date(current.year, current.month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</strong>
       ${editorSchedule ? `<button type="button" data-equipment-month="next">›</button>` : ""}
@@ -11788,7 +11787,6 @@ function renderEquipment() {
   monthBar.querySelector("[data-create-equipment]")?.addEventListener("click", openCreateEquipmentDialog);
   monthBar.querySelector("[data-open-annual-ppr]")?.addEventListener("click", () => openAnnualPprSchedule());
   monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
-  monthBar.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
     current.month -= 1;
     if (current.month < 0) {
@@ -17929,30 +17927,7 @@ function renderDirector() {
     await loadRemoteUsers();
     renderDirector();
   }, "Обновляем..."));
-  ui.directorPanel.querySelector("[data-print-system-report]")?.addEventListener("click", printSystemArchiveReport);
-  ui.directorPanel.querySelector("[data-broadcast-print]")?.addEventListener("click", event => {
-    if (!window.confirm("Показать всем сотрудникам уведомление о необходимости распечатать или сохранить отчёт?")) return;
-    runButtonOperation(event.currentTarget, async () => {
-      state.systemBroadcasts ||= [];
-      state.systemBroadcasts.forEach(item => { item.active = false; item.updatedAt = new Date().toISOString(); });
-      state.systemBroadcasts.push({ id: `archive-${Date.now()}`, active: true, type: "print-archive", text: "Распечатайте или сохраните архивный отчёт ППР.", at: new Date().toISOString(), updatedAt: new Date().toISOString(), author: profile?.name || "Администратор" });
-      recordAudit("Отправил общее уведомление", "Всем сотрудникам", "", "Распечатать или сохранить архивный отчёт ППР");
-      saveState();
-      await publishStateNow();
-      renderDirector();
-      showAppToast("Уведомление отправлено всем сотрудникам.");
-    }, "Отправляем...");
-  });
-  ui.directorPanel.querySelector("[data-close-system-broadcast]")?.addEventListener("click", event => {
-    if (!window.confirm("Снять общее уведомление у всех сотрудников?")) return;
-    runButtonOperation(event.currentTarget, async () => {
-      state.systemBroadcasts ||= [];
-      state.systemBroadcasts.forEach(item => { item.active = false; item.updatedAt = new Date().toISOString(); });
-      saveState();
-      await publishStateNow();
-      renderDirector();
-    }, "Снимаем...");
-  });
+  ui.directorPanel.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
   ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area]").forEach(select => {
     select.addEventListener("change", event => {
       const row = event.currentTarget.closest("[data-user-key]");
@@ -18268,7 +18243,7 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
-  if (["forms", "activity", "settings"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "trash";
+  if (["forms", "activity", "settings", "monitoring"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "trash";
   const requestedTab = current.adminMaintenanceTab || "trash";
   let result;
   try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
@@ -18278,7 +18253,6 @@ async function renderAdminMaintenance() {
   const audit = visibleAdminAuditItems(rawAudit);
   const trash = Array.isArray(result.trash) ? result.trash : [];
   const alerts = Array.isArray(result.alerts) ? result.alerts : [];
-  const activeAlerts = alerts.filter(item => item.status === "active");
   const tab = current.adminMaintenanceTab || "trash";
   const pg = result.postgres || {};
   const monitor = result.monitoring || {};
@@ -18320,7 +18294,7 @@ async function renderAdminMaintenance() {
           <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
-          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" class="${tab === "monitoring" ? "active" : ""}" data-admin-maintenance-tab="monitoring">Система и сервер · ${activeAlerts.length}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button><button type="button" data-print-admin-maintenance>Печать / PDF</button>
+          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
         </div>
       </details>
     </div>
@@ -18453,7 +18427,6 @@ async function renderAdminMaintenance() {
       renderAdminMaintenance();
     }, "Создаём страховочную копию…");
   });
-  ui.adminMaintenancePanel.querySelector("[data-print-admin-maintenance]")?.addEventListener("click", () => printCurrentDocument(tab === "report" ? "Контрольный отчёт системы" : tab === "broadcasts" ? "Объявления сотрудникам" : tab === "settings" ? "Административные настройки" : tab === "transfer" ? "Перенос административных настроек" : tab === "access" ? "Права и учётные записи" : tab === "automation" ? "Автоматическое обслуживание" : tab === "activity" ? "События сотрудников" : tab === "backups" ? "Резервные копии" : tab === "archives" ? "Архив данных" : tab === "integrity" ? "Диагностика целостности данных" : tab === "monitoring" ? "Состояние системы" : tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"));
   ui.adminMaintenancePanel.querySelector("[data-refresh-system-report]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, renderAdminMaintenance, "Проверяем…"));
   ui.adminMaintenancePanel.querySelector("[data-config-package-file]")?.addEventListener("change", async event => {
     const file = event.currentTarget.files?.[0]; const preview = ui.adminMaintenancePanel.querySelector("[data-config-package-preview]"); const apply = ui.adminMaintenancePanel.querySelector("[data-import-config-package]"); pendingConfigPackage = null; apply.disabled = true;
@@ -19101,17 +19074,6 @@ function printSystemArchiveReport() {
   win.print();
 }
 
-function renderSystemLoadAdmin() {
-  const m = systemLoadMetrics();
-  const broadcast = latestSystemBroadcast();
-  return `<section class="system-load-card ${m.level}">
-    <div class="system-load-head"><div><strong>Нагрузка приложения</strong><span>${m.label} · ${m.score}%</span></div><i style="--load:${m.score}%"></i></div>
-    <div class="system-load-stats"><span>Данные <b>${formatStorageSize(m.bytes)}</b></span><span>Записи <b>${m.checks}</b></span><span>Фото <b>${m.photoCount}</b></span><span>Заявки <b>${m.requests}</b></span><span>Сотрудники <b>${m.users}</b></span></div>
-    <p>${m.level === "red" ? "Рекомендуется сформировать архивный отчёт и сохранить его." : "Система работает нормально. Отчёт можно подготовить в любое время."}</p>
-    <div class="system-load-actions"><button type="button" data-print-system-report>Распечатать отчёт</button><button type="button" class="secondary" data-broadcast-print>${broadcast ? "Обновить уведомление всем" : "Уведомить всех о печати"}</button>${broadcast ? '<button type="button" class="secondary" data-close-system-broadcast>Снять уведомление</button>' : ""}</div>
-  </section>`;
-}
-
 function renderSystemBroadcastNotice() {
   document.querySelector("#systemBroadcastNotice")?.remove();
   if (!profile || isEditorSession()) return;
@@ -19145,7 +19107,7 @@ function renderDirectorUsers() {
     .map(area => `<option value="${escapeHtml(area)}" ${selected === area ? "selected" : ""}>${escapeHtml(area)}</option>`)
     .join("")}`;
   return `
-    ${renderSystemLoadAdmin()}
+    ${profile?.role === "editor" ? `<div class="director-admin-shortcuts"><button type="button" data-open-admin-maintenance>Корзина и восстановление</button></div>` : ""}
     <div class="director-users">
       <div class="director-users-head">
         <strong>Зарегистрированные сотрудники</strong>
