@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v607-remove-admin-guide-1";
+const APP_VERSION = "v608-remove-push-diagnostics-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -1250,62 +1250,6 @@ function appNotificationPermissionButton() {
   if (state === "failed") return `<span class="notification-support-status">Push не подключился; внутренние уведомления работают</span>`;
   return `<button type="button" id="enableAppNotificationsButton" class="enable-app-notifications">🔔 Включить уведомления</button>`;
 }
-
-function pushDeviceStatusText(device = {}) {
-  const updated = Date.parse(device.updatedAt || "");
-  if (!Number.isFinite(updated)) return "дата неизвестна";
-  const ageDays = Math.floor((Date.now() - updated) / 86400000);
-  return ageDays <= 0 ? "связь сегодня" : ageDays === 1 ? "связь вчера" : `связь ${ageDays} дн. назад`;
-}
-
-async function openPushDiagnostics() {
-  document.querySelector("#pushDiagnosticsModal")?.remove();
-  const modal = document.createElement("div");
-  modal.id = "pushDiagnosticsModal";
-  modal.className = "push-diagnostics-modal";
-  modal.innerHTML = `<section><header><div><strong>Push-устройства</strong><span>Загрузка...</span></div><button type="button" data-close-push-diagnostics>×</button></header></section>`;
-  document.body.append(modal);
-  modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
-  try {
-    const result = await apiJson("/api/push/status", { timeout: 10000 });
-    const devices = Array.isArray(result.devices) ? result.devices : [];
-    modal.querySelector("section").innerHTML = `
-      <header>
-        <div><strong>Push-устройства</strong><span>Подключено: ${devices.length}</span></div>
-        <button type="button" data-close-push-diagnostics>×</button>
-      </header>
-      <div class="push-device-list">
-        ${devices.length ? devices.map(device => `
-          <article>
-            <div>
-              <strong>${escapeHtml(device.name)}</strong>
-              <span>${escapeHtml(ROLE_ACCESS[device.role]?.label || device.role || "Без роли")}${device.area ? ` · ${escapeHtml(device.area)}` : ""}</span>
-              <small>${escapeHtml(pushDeviceStatusText(device))} · личный счётчик ${Number(device.badgeCount || 0)}</small>
-              <small>Замечания ${Number(device.counts?.remarks || 0)} · ППР ${Number(device.counts?.ppr || 0)} · Простои ${Number(device.counts?.downtimes || 0)}</small>
-              <small>${escapeHtml(device.device || "Устройство не определено")}</small>
-            </div>
-            <button type="button" data-test-push-device="${escapeHtml(device.id)}">Проверить</button>
-          </article>
-        `).join("") : `<p class="empty-state">Ни одно устройство ещё не подключило push.</p>`}
-      </div>
-    `;
-    modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
-    modal.querySelectorAll("[data-test-push-device]").forEach(button => button.addEventListener("click", event => {
-      runButtonOperation(event.currentTarget, async () => {
-        await apiJson("/api/push/test", {
-          method: "POST",
-          body: JSON.stringify({ id: event.currentTarget.dataset.testPushDevice }),
-          timeout: 15000
-        });
-        showAppToast("Тестовое уведомление отправлено.", "ok");
-      }, "Отправка...");
-    }));
-  } catch {
-    modal.querySelector("section").innerHTML = `<header><strong>Push-устройства</strong><button type="button" data-close-push-diagnostics>×</button></header><p class="empty-state">Не удалось загрузить состояние push.</p>`;
-    modal.querySelector("[data-close-push-diagnostics]")?.addEventListener("click", () => modal.remove());
-  }
-}
-
 
 async function openStorageDiagnostics() {
   document.querySelector("#storageDiagnosticsModal")?.remove();
@@ -18294,7 +18238,7 @@ async function renderAdminMaintenance() {
           <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
-          <button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
+          <button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
         </div>
       </details>
     </div>
@@ -18307,7 +18251,6 @@ async function renderAdminMaintenance() {
   maintenanceTabs?.querySelector("[data-admin-preview-role]")?.addEventListener("change", event => setEditorPreviewRole(event.currentTarget.value));
   maintenanceTabs?.querySelector("[data-admin-preview-area]")?.addEventListener("change", event => setEditorPreviewArea(event.currentTarget.value));
   maintenanceTabs?.querySelector("[data-admin-language]")?.addEventListener("change", event => saveProfileLanguage(event.currentTarget.value));
-  maintenanceTabs?.querySelector("[data-open-push-diagnostics]")?.addEventListener("click", openPushDiagnostics);
   maintenanceTabs?.querySelector("[data-open-storage-diagnostics]")?.addEventListener("click", openStorageDiagnostics);
   maintenanceTabs?.querySelector("[data-clear-recorded-data]")?.addEventListener("click", event => confirmClearRecordedData(event.currentTarget));
   if (tab === "instructionLog") {

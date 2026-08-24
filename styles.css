@@ -11814,8 +11814,7 @@ body.editor-profile #createTmcRequestButton.request-alert,
   box-shadow: 0 24px 70px rgba(15, 23, 42, .3);
 }
 
-.push-diagnostics-modal header,
-.push-device-list article {
+.push-diagnostics-modal header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -11832,28 +11831,13 @@ body.editor-profile #createTmcRequestButton.request-alert,
   font-size: .9rem;
 }
 
-.push-diagnostics-modal header div,
-.push-device-list article div {
+.push-diagnostics-modal header div {
   display: grid;
   gap: 4px;
 }
 
-.push-diagnostics-modal header span,
-.push-device-list span,
-.push-device-list small {
+.push-diagnostics-modal header span {
   color: var(--muted, #64748b);
-}
-
-.push-device-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.push-device-list article {
-  padding: 13px;
-  border: 1px solid var(--line, #dbe3ec);
-  border-radius: 14px;
 }
 
 .storage-diagnostics-grid {

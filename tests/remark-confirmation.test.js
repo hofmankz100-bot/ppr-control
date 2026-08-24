@@ -1849,6 +1849,7 @@ test("administration keeps four primary tabs and only useful technical tools", (
   }
   assert.doesNotMatch(appSource, /Инструкция администратора/);
   assert.doesNotMatch(appSource, /data-admin-maintenance-tab="guide"/);
+  assert.doesNotMatch(appSource, /data-open-push-diagnostics|openPushDiagnostics|Push-устройства/);
   assert.doesNotMatch(appSource, /data-admin-maintenance-tab="forms"/);
   assert.doesNotMatch(appSource, /data-admin-maintenance-tab="activity"/);
   assert.match(stylesSource, /@media \(max-width: 1180px\)[\s\S]*repeat\(2/);
