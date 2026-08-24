@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v614-instant-realtime-resume-1";
+const APP_VERSION = "v615-resume-without-reload-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -421,7 +421,6 @@ let pushProfileSyncKey = "";
 let requestSearchTimer = null;
 let renderTimer = null;
 let backgroundRenderPending = false;
-let serviceWorkerUpdateReady = false;
 let appHiddenAt = 0;
 let lastResumeProfileRefreshAt = 0;
 const RESUME_SYNC_AFTER_MS = 60000;
@@ -20087,21 +20086,12 @@ window.addEventListener("unhandledrejection", event => {
   reportClientError(event.reason?.message || String(event.reason || "Unhandled promise rejection"));
 });
 
-window.addEventListener("online", () => {
-  flushPendingWork();
-  syncRemoteChanges();
-});
-
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     appHiddenAt = Date.now();
     return;
   }
   if (document.visibilityState !== "visible") return;
-  if (serviceWorkerUpdateReady && !isUserEditingForm()) {
-    window.location.reload();
-    return;
-  }
   const now = Date.now();
   const awayMs = appHiddenAt ? Math.max(0, now - appHiddenAt) : 0;
   appHiddenAt = 0;
@@ -20129,9 +20119,6 @@ document.addEventListener("focusout", () => {
   }, 800);
 });
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    serviceWorkerUpdateReady = true;
-  });
   window.addEventListener("load", () => {
     refreshStaleAssetCache();
     navigator.serviceWorker.register("/sw.js")

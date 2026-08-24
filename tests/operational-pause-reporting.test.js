@@ -53,4 +53,7 @@ test("quick app resume checks only the version and restores stale realtime", () 
   assert.match(source, /awayMs >= RESUME_SYNC_AFTER_MS && now - lastResumeProfileRefreshAt/);
   const visibilityHandler = source.slice(source.indexOf('window.addEventListener("visibilitychange"'), source.indexOf('window.addEventListener("pointerdown"'));
   assert.doesNotMatch(visibilityHandler, /syncRemoteChanges\(\)/);
+  assert.doesNotMatch(visibilityHandler, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(source, /serviceWorkerUpdateReady/);
+  assert.equal(source.match(/window\.addEventListener\("online"/g)?.length, 1);
 });
