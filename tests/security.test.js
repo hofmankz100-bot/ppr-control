@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v597-employee-audit-photo-metrics-1";
+const APP_VERSION = "v598-role-scoped-node-access-1";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -72,6 +72,38 @@ test("production API requires a server session and rate-limits failed logins", a
     approved: true,
     pendingApproval: false
   };
+  const areaOperator = {
+    id: "security-area-operator",
+    name: "Area Operator",
+    employeeId: "area-operator",
+    phone: "70000000003",
+    passwordHash: passwordHash("operator-password"),
+    role: "operator",
+    area: "Test shop",
+    approved: true,
+    pendingApproval: false
+  };
+  const otherAreaOperator = {
+    id: "security-other-area-operator",
+    name: "Other Area Operator",
+    employeeId: "other-area-operator",
+    phone: "70000000004",
+    passwordHash: passwordHash("other-password"),
+    role: "operator",
+    area: "Other shop",
+    approved: true,
+    pendingApproval: false
+  };
+  const restrictedDirector = {
+    id: "security-director",
+    name: "Restricted Director",
+    employeeId: "restricted-director",
+    phone: "70000000005",
+    passwordHash: passwordHash("director-password"),
+    role: "director",
+    approved: true,
+    pendingApproval: false
+  };
   fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify({
     checks: {},
     requests: {},
@@ -79,7 +111,7 @@ test("production API requires a server session and rate-limits failed logins", a
     catalog: { equipment: { "1": { name: "Test press", area: "Test shop", nodes: ["Main"], editingEnabled: false } } },
     downtimes: [],
     attendanceSessions: [worker, restrictedWorker].map(user => ({ userKey: user.id, startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() })),
-    users: [editor, worker, restrictedWorker]
+    users: [editor, worker, restrictedWorker, areaOperator, otherAreaOperator, restrictedDirector]
   }));
   const port = await reservePort();
   const qrPort = await reservePort();
@@ -138,6 +170,63 @@ test("production API requires a server session and rate-limits failed logins", a
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
+    const loginCookie = async (identifier, password) => {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+        body: JSON.stringify({ identifier, password })
+      });
+      assert.equal(response.status, 200);
+      return response.headers.get("set-cookie").split(";")[0];
+    };
+    const areaOperatorCookie = await loginCookie(areaOperator.employeeId, "operator-password");
+    const otherAreaOperatorCookie = await loginCookie(otherAreaOperator.employeeId, "other-password");
+    const directorCookie = await loginCookie(restrictedDirector.employeeId, "director-password");
+    const nodeHeaders = cookieValue => ({
+      cookie: cookieValue,
+      "content-type": "application/json",
+      "x-app-version": APP_VERSION,
+      "x-client-protocol": CLIENT_PROTOCOL_VERSION
+    });
+    const allowedNodeUpdate = await fetch(`${baseUrl}/api/node-update`, {
+      method: "PUT",
+      headers: nodeHeaders(areaOperatorCookie),
+      body: JSON.stringify({
+        actionId: "area-node-update",
+        clientId: "security-test",
+        key: "1:0:2026-08-23",
+        record: { to: { commentLog: [] } },
+        user: { name: "Spoofed User", role: "editor" },
+        downtimes: [
+          { id: "allowed-area-stop", equipmentId: 1, nodeIndex: 0, area: "Test shop", equipment: "Test press", startedAt: new Date().toISOString(), endedAt: "", type: "breakdown", comment: "Area stop" },
+          { id: "foreign-stop", equipmentId: 2, nodeIndex: 0, area: "Other shop", equipment: "Foreign", startedAt: new Date().toISOString(), endedAt: "", type: "breakdown", comment: "Must be ignored" }
+        ]
+      })
+    });
+    assert.equal(allowedNodeUpdate.status, 200);
+    const nodeState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(nodeState.downtimes.some(item => item.id === "allowed-area-stop"), true);
+    assert.equal(nodeState.downtimes.some(item => item.id === "foreign-stop"), false);
+    assert.equal((await fetch(`${baseUrl}/api/node-update`, {
+      method: "PUT",
+      headers: nodeHeaders(otherAreaOperatorCookie),
+      body: JSON.stringify({ actionId: "other-area-denied", key: "1:0:2026-08-23", record: { to: { commentLog: [] } }, downtimes: [] })
+    })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/node-update`, {
+      method: "PUT",
+      headers: nodeHeaders(directorCookie),
+      body: JSON.stringify({ actionId: "director-node-denied", key: "1:0:2026-08-23", record: { to: { commentLog: [] } }, downtimes: [] })
+    })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/downtime-close`, {
+      method: "POST",
+      headers: nodeHeaders(otherAreaOperatorCookie),
+      body: JSON.stringify({ actionId: "other-area-close-denied", downtimeId: "allowed-area-stop", comment: "Should not close", actor: otherAreaOperator })
+    })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/downtime-close`, {
+      method: "POST",
+      headers: nodeHeaders(areaOperatorCookie),
+      body: JSON.stringify({ actionId: "area-close-allowed", downtimeId: "allowed-area-stop", comment: "Equipment started", actor: areaOperator })
+    })).status, 200);
     const grpDate = "2026-08-05";
     const saveGrpResult = payload => fetch(`${baseUrl}/api/qr-walk/grp-result`, {
       method: "POST",

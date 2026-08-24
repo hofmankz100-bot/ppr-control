@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v597-employee-audit-photo-metrics-1";
+const SERVER_VERSION = "v598-role-scoped-node-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4341,6 +4341,26 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+const NODE_CHECKLIST_ROLES = new Set([
+  "mechanic", "electrician", "welder", "turner", "forkliftDriver",
+  "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
+  "designEngineer", "mechanicalEngineer", "instrumentationEngineer",
+  "productionDirector", "generalDirector", "editor"
+]);
+
+function nodeMutationAccessServer(user = {}, catalogItem = {}) {
+  const role = String(user.role || "");
+  if (!NODE_CHECKLIST_ROLES.has(role)) return false;
+  if (["operator", "shop"].includes(role)) {
+    return Boolean(user.area && catalogItem.area && sameRemarkAreaServer(user.area, catalogItem.area));
+  }
+  if (role === "forkliftDriver") {
+    const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
+    return catalogItem.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(text);
+  }
+  return true;
+}
+
 const handleAdminUserPermissionsRoute = createAdminUserPermissionsRoute({
   adminPermissionKeys: ADMIN_PERMISSION_KEYS,
   enqueueStateWrite,
@@ -6545,6 +6565,11 @@ async function handleApi(req, res, pathname, url) {
       const downtime = (db.downtimes || []).find(item => item?.id === downtimeId && !item.deleted);
       if (!downtime) return { error: "downtime_not_found" };
       if (downtime.endedAt) return { error: "downtime_already_closed", downtime };
+      const catalogItem = db.catalog?.equipment?.[String(downtime.equipmentId)] || {
+        name: downtime.equipment || "",
+        area: downtime.area || ""
+      };
+      if (!nodeMutationAccessServer(registeredActor, catalogItem)) return { error: "downtime_access_denied" };
       const now = new Date().toISOString();
       downtime.endedAt = now;
       downtime.updatedAt = now;
@@ -6570,7 +6595,7 @@ async function handleApi(req, res, pathname, url) {
       };
     });
     if (result.error) {
-      const status = result.error === "downtime_not_found" ? 404 : result.error === "downtime_already_closed" ? 409 : result.error === "downtime_actor_invalid" ? 403 : 400;
+      const status = result.error === "downtime_not_found" ? 404 : result.error === "downtime_already_closed" ? 409 : ["downtime_actor_invalid", "downtime_access_denied"].includes(result.error) ? 403 : 400;
       sendJson(res, status, { ok: false, error: result.error, downtime: result.downtime || null });
       return true;
     }
@@ -7317,12 +7342,22 @@ async function handleApi(req, res, pathname, url) {
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      const [equipmentIdText, nodeIndexText] = recordKey.split(":");
+      const equipmentId = Number(equipmentIdText);
+      const nodeIndex = Number(nodeIndexText);
+      const catalogItem = db.catalog?.equipment?.[String(equipmentId)] || {};
+      if (!Number.isSafeInteger(equipmentId) || !Number.isInteger(nodeIndex) || !nodeMutationAccessServer(req.authUser, catalogItem)) {
+        return { error: "node_access_denied" };
+      }
       const beforeRemarkKeys = openRemarkKeysServer(db);
       const beforeActiveDowntimeIds = new Set((db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt).map(item => item.id));
       const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
       db.checks ||= {};
       db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
-      db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
+      const nodeDowntimes = Array.isArray(body.downtimes)
+        ? body.downtimes.filter(item => Number(item?.equipmentId) === equipmentId && Number(item?.nodeIndex) === nodeIndex)
+        : [];
+      db.downtimes = mergeArrayById(db.downtimes, nodeDowntimes);
       const patch = {
         checks: db.checks[recordKey] ? { [recordKey]: db.checks[recordKey] } : {},
         downtimes: db.downtimes || []
@@ -7334,7 +7369,7 @@ async function handleApi(req, res, pathname, url) {
           action: "node_update",
           actionId,
           clientId: String(body.clientId || ""),
-          user: body.user || null,
+          user: req.authUser || null,
           recordKey
         });
       }
@@ -7353,6 +7388,10 @@ async function handleApi(req, res, pathname, url) {
       const newDowntimes = (db.downtimes || []).filter(item => item && !item.deleted && !item.endedAt && !beforeActiveDowntimeIds.has(item.id));
       return { actionId, changed, origin: body.clientId || "api", patch, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarkKeys, newRemarks, newDowntimes };
     });
+    if (result.error) {
+      sendJson(res, 403, { ok: false, error: result.error });
+      return true;
+    }
     const stateVersion = result.changed
       ? broadcastState(result.origin, result.actionId, result.patch, true)
       : realtimeStateVersion();
