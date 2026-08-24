@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v615-resume-without-reload-1";
+const APP_VERSION = "v616-cross-browser-resume-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -423,6 +423,7 @@ let renderTimer = null;
 let backgroundRenderPending = false;
 let appHiddenAt = 0;
 let lastResumeProfileRefreshAt = 0;
+let lastResumeHandledAt = 0;
 const RESUME_SYNC_AFTER_MS = 60000;
 const RESUME_PROFILE_REFRESH_MS = 300000;
 const userApprovalDrafts = new Map();
@@ -20086,13 +20087,11 @@ window.addEventListener("unhandledrejection", event => {
   reportClientError(event.reason?.message || String(event.reason || "Unhandled promise rejection"));
 });
 
-window.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") {
-    appHiddenAt = Date.now();
-    return;
-  }
-  if (document.visibilityState !== "visible") return;
+function handleAppResume() {
+  if (document.visibilityState === "hidden") return;
   const now = Date.now();
+  if (now - lastResumeHandledAt < 500) return;
+  lastResumeHandledAt = now;
   const awayMs = appHiddenAt ? Math.max(0, now - appHiddenAt) : 0;
   appHiddenAt = 0;
   resetAppNotificationsForOpen();
@@ -20104,7 +20103,17 @@ window.addEventListener("visibilitychange", () => {
     refreshAuthenticatedProfile();
     pollRemoteUsers(true);
   }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    appHiddenAt = Date.now();
+    return;
+  }
+  handleAppResume();
 });
+window.addEventListener("pagehide", () => { appHiddenAt = Date.now(); });
+window.addEventListener("pageshow", event => { if (event.persisted) handleAppResume(); });
 
 window.addEventListener("pointerdown", unlockNotificationAudio, { once: true, passive: true });
 window.addEventListener("keydown", unlockNotificationAudio, { once: true });

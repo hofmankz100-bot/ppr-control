@@ -51,9 +51,15 @@ test("quick app resume checks only the version and restores stale realtime", () 
   assert.match(source, /pollRealtimeStateVersion\(true\)/);
   assert.match(source, /now - lastRealtimeVersionPollAt < 15000/);
   assert.match(source, /awayMs >= RESUME_SYNC_AFTER_MS && now - lastResumeProfileRefreshAt/);
-  const visibilityHandler = source.slice(source.indexOf('window.addEventListener("visibilitychange"'), source.indexOf('window.addEventListener("pointerdown"'));
-  assert.doesNotMatch(visibilityHandler, /syncRemoteChanges\(\)/);
-  assert.doesNotMatch(visibilityHandler, /window\.location\.reload\(\)/);
+  assert.match(source, /document\.addEventListener\("visibilitychange"/);
+  assert.doesNotMatch(source, /window\.addEventListener\("visibilitychange"/);
+  assert.match(source, /function handleAppResume\(\)/);
+  const resumeHandler = source.slice(source.indexOf("function handleAppResume()"), source.indexOf('document.addEventListener("visibilitychange"'));
+  assert.doesNotMatch(resumeHandler, /syncRemoteChanges\(\)/);
+  assert.doesNotMatch(resumeHandler, /window\.location\.reload\(\)/);
+  assert.match(source, /now - lastResumeHandledAt < 500/);
+  assert.match(source, /window\.addEventListener\("pagehide"/);
+  assert.match(source, /window\.addEventListener\("pageshow", event => \{ if \(event\.persisted\) handleAppResume\(\); \}\)/);
   assert.doesNotMatch(source, /serviceWorkerUpdateReady/);
   assert.equal(source.match(/window\.addEventListener\("online"/g)?.length, 1);
 });
