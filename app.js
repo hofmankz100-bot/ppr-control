@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v617-reconnect-frozen-realtime-1";
+const APP_VERSION = "v618-problem-nodes-breakdowns-only-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -17248,8 +17248,9 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
   const openRemarks = remarkItems
     .filter(item => item.open)
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const breakdownDowntimeItems = downtimeItems.filter(item => item.type !== "production");
   const problemMap = new Map();
-  [...createdRemarks, ...downtimeItems].forEach(item => {
+  [...createdRemarks, ...breakdownDowntimeItems].forEach(item => {
     const keyValue = `${item.area || ""}|${item.equipment || ""}|${item.node || ""}`;
     const currentItem = problemMap.get(keyValue) || {
       area: item.area || "",

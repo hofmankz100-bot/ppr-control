@@ -1694,6 +1694,9 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.doesNotMatch(client, /Старт месяца/);
   assert.match(client, /индекс текущего месяца/);
   assert.doesNotMatch(client, /\+ \/ - под месяцем показывает рост или падение/);
+  assert.match(client, /const breakdownDowntimeItems = downtimeItems\.filter\(item => item\.type !== "production"\)/);
+  assert.match(client, /\[\.\.\.createdRemarks, \.\.\.breakdownDowntimeItems\]\.forEach/);
+  assert.doesNotMatch(client, /\[\.\.\.createdRemarks, \.\.\.downtimeItems\]\.forEach/);
 });
 
 test("month closing API remains compatible but its panel is removed from the report", () => {
