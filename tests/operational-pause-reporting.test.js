@@ -41,3 +41,13 @@ test("background synchronization preserves the open journal scroll position", ()
   assert.match(source, /const scrollYBeforeRender = window\.scrollY;[\s\S]*?render\(\);[\s\S]*?restoreBackgroundScroll/);
   assert.match(source, /requestAnimationFrame\([\s\S]*?requestAnimationFrame\(restore\)/);
 });
+
+test("quick app resume avoids redundant full synchronization", () => {
+  assert.match(source, /const RESUME_SYNC_AFTER_MS = 60000/);
+  assert.match(source, /if \(document\.visibilityState === "hidden"\)[\s\S]*?appHiddenAt = Date\.now\(\)/);
+  assert.match(source, /if \(awayMs < RESUME_SYNC_AFTER_MS\) return/);
+  assert.match(source, /pollRealtimeStateVersion\(true\)/);
+  assert.match(source, /now - lastRealtimeVersionPollAt < 15000/);
+  const visibilityHandler = source.slice(source.indexOf('window.addEventListener("visibilitychange"'), source.indexOf('window.addEventListener("pointerdown"'));
+  assert.doesNotMatch(visibilityHandler, /syncRemoteChanges\(\)/);
+});

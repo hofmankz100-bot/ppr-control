@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v612-future-month-baseline-1";
+const APP_VERSION = "v613-quiet-app-resume-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -410,6 +410,7 @@ let lastRemoteUsersPollAt = 0;
 const REALTIME_VERSION_KEY = "ppr-realtime-state-version-v1";
 let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
+let lastRealtimeVersionPollAt = 0;
 let realtimeChangesLoadPromise = null;
 let remoteStateLoadPromise = null;
 let appNotificationKeys = new Set();
@@ -421,6 +422,10 @@ let requestSearchTimer = null;
 let renderTimer = null;
 let backgroundRenderPending = false;
 let serviceWorkerUpdateReady = false;
+let appHiddenAt = 0;
+let lastResumeProfileRefreshAt = 0;
+const RESUME_SYNC_AFTER_MS = 60000;
+const RESUME_PROFILE_REFRESH_MS = 300000;
 const userApprovalDrafts = new Map();
 let tmcRequestSubmitting = false;
 const engineerRequestSaveTimers = new Map();
@@ -2566,8 +2571,11 @@ async function syncRemoteChanges(expectedVersion = "") {
   return realtimeChangesLoadPromise;
 }
 
-async function pollRealtimeStateVersion() {
+async function pollRealtimeStateVersion(force = false) {
   if (realtimeVersionPollInFlight) return;
+  const now = Date.now();
+  if (!force && now - lastRealtimeVersionPollAt < 15000) return;
+  lastRealtimeVersionPollAt = now;
   realtimeVersionPollInFlight = true;
   try {
     const health = await apiJson("/api/health", { timeout: 5000 });
@@ -20068,15 +20076,30 @@ window.addEventListener("online", () => {
 });
 
 window.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    if (serviceWorkerUpdateReady && !isUserEditingForm()) {
-      window.location.reload();
-      return;
-    }
-    resetAppNotificationsForOpen();
+  if (document.visibilityState === "hidden") {
+    appHiddenAt = Date.now();
+    return;
+  }
+  if (document.visibilityState !== "visible") return;
+  if (serviceWorkerUpdateReady && !isUserEditingForm()) {
+    window.location.reload();
+    return;
+  }
+  const now = Date.now();
+  const awayMs = appHiddenAt ? Math.max(0, now - appHiddenAt) : 0;
+  appHiddenAt = 0;
+  resetAppNotificationsForOpen();
+  const hasPendingWork = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
+  const socketAlive = Boolean(realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN);
+  const eventsAlive = Boolean(realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN);
+  if (hasPendingWork) flushPendingWork();
+  else if (!socketAlive && !eventsAlive) connectRealtime();
+  startRealtimePoll();
+  if (awayMs < RESUME_SYNC_AFTER_MS) return;
+  pollRealtimeStateVersion(true);
+  if (now - lastResumeProfileRefreshAt >= RESUME_PROFILE_REFRESH_MS) {
+    lastResumeProfileRefreshAt = now;
     refreshAuthenticatedProfile();
-    flushPendingWork();
-    syncRemoteChanges();
     pollRemoteUsers(true);
   }
 });
