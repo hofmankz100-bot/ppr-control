@@ -49,6 +49,7 @@ test("individual permissions only activate when enabled and unexpired", () => {
 test("admin permission allowlist contains only supported individual capabilities", () => {
   assert.equal(ADMIN_PERMISSION_KEYS.has("instructionEdit"), true);
   assert.equal(ADMIN_PERMISSION_KEYS.has("remarkGlobalConfirm"), true);
+  assert.equal(ADMIN_PERMISSION_KEYS.has("remarkDefer"), true);
   assert.equal(ADMIN_PERMISSION_KEYS.has("monthCloseManage"), false);
-  assert.equal(ADMIN_PERMISSION_KEYS.size, 9);
+  assert.equal(ADMIN_PERMISSION_KEYS.size, 10);
 });

@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v601-ppr-reasons-1";
+const SERVER_VERSION = "v602-warning-reasons-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5621,7 +5621,7 @@ async function handleApi(req, res, pathname, url) {
     const month = validMonthKey(body.month);
     const action = String(body.action || "");
     const reason = String(body.reason || "").trim().slice(0, 2000);
-    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen", "defer-remark", "resume-remark"]);
+    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen"]);
     if (!month || !allowedActions.has(action) || !reason) { sendJson(res, 400, { ok: false, error: !month ? "month_invalid" : !reason ? "reason_required" : "month_close_action_invalid" }); return true; }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
@@ -5631,20 +5631,6 @@ async function handleApi(req, res, pathname, url) {
       const history = Array.isArray(previous.history) ? previous.history.slice() : [];
       const now = new Date().toISOString();
       const actor = { id: String(req.authUser?.id || ""), name: String(req.authUser?.name || "Сотрудник"), role: String(req.authUser?.role || ""), area: String(req.authUser?.area || "") };
-      if (action === "defer-remark" || action === "resume-remark") {
-        const recordKey = String(body.recordKey || "").trim();
-        const remarkId = String(body.remarkId || "").trim();
-        if (!recordKey.includes(`:${month}-`) || !remarkId) return { error: "remark_invalid" };
-        const remark = ensureRemarkEntriesServer(db.checks?.[recordKey]?.to).find(item => String(item.id || "") === remarkId);
-        if (!remark || remark.resolved) return { error: "remark_not_open" };
-        if (action === "defer-remark") {
-          Object.assign(remark, { deferReason: reason, deferredAt: now, deferredById: actor.id, deferredByName: actor.name, deferredByRole: actor.role });
-        } else {
-          Object.assign(remark, { deferReason: "", deferredAt: "", deferredById: "", deferredByName: "", deferredByRole: "", deferResumedAt: now, deferResumedByName: actor.name, deferResumeReason: reason });
-        }
-        writeDb(db, { action: action.replaceAll("-", "_"), user: req.authUser, targetId: `${recordKey}|${remarkId}`, targetLabel: remark.text || "Замечание", reason });
-        return { closure: db.monthlyClosures[month] || null, readiness: monthCloseReadiness(db, month), state: { checks: db.checks } };
-      }
       let closure = { ...previous, month, history, areaConfirmations: Array.isArray(previous.areaConfirmations) ? previous.areaConfirmations.slice() : [] };
       if (action === "confirm-area") {
         const area = String(actor.role === "editor" ? (body.area || actor.area || "Общий участок") : (actor.area || "Общий участок")).trim().slice(0, 200);
@@ -6774,7 +6760,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score", "defer", "resume-deferred"]);
     const allowedRoles = new Set([
       "mechanic", "electrician", "welder", "turner", "forkliftDriver",
       "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
@@ -6808,6 +6794,7 @@ async function handleApi(req, res, pathname, url) {
         return { error: "attendance_required" };
       }
       const canCloseForEmployees = actor.role === "editor" || activeUserPermission(registeredActor, "remarkMultiClose");
+      const canDefer = actor.role === "editor" || activeUserPermission(registeredActor, "remarkDefer");
       if (action === "delete") {
         if (actor.role !== "editor") return { error: "remark_delete_forbidden" };
         item.commentLog = (Array.isArray(item.commentLog) ? item.commentLog : []).filter(entry => entry?.id !== remarkId);
@@ -6837,7 +6824,7 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         };
       }
-      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score", "close-with-score"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score", "close-with-score", "defer", "resume-deferred"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
@@ -6880,6 +6867,39 @@ async function handleApi(req, res, pathname, url) {
         remark.resolutionLeadKey ||= actor.key;
         remark.resolutionLeadName ||= actor.name;
         remark.resolutionStartedAt ||= now;
+        remark.deferReason = "";
+        remark.deferredAt = "";
+        remark.deferredById = "";
+        remark.deferredByName = "";
+        remark.deferredByRole = "";
+      }
+
+      if (action === "defer") {
+        if (!canDefer) return { error: "remark_defer_forbidden" };
+        const reason = String(body.reason || "").trim().slice(0, 2000);
+        if (!reason) return { error: "reason_required" };
+        remark.deferReason = reason;
+        remark.deferredAt = now;
+        remark.deferredById = actor.id || "";
+        remark.deferredByName = actor.name;
+        remark.deferredByRole = actor.role;
+        remark.resolutionEvents.push({ id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`, action: "deferred", actorKey: actor.key, name: actor.name, role: actor.role, reason, at: now });
+        pushTitle = "Записана причина неустранения";
+        pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
+      }
+
+      if (action === "resume-deferred") {
+        if (!canDefer) return { error: "remark_defer_forbidden" };
+        const reason = String(body.reason || "").trim().slice(0, 2000);
+        if (!reason) return { error: "reason_required" };
+        remark.resolutionEvents.push({ id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`, action: "defer-resumed", actorKey: actor.key, name: actor.name, role: actor.role, reason, previousReason: remark.deferReason || "", at: now });
+        remark.deferReason = "";
+        remark.deferredAt = "";
+        remark.deferredById = "";
+        remark.deferredByName = "";
+        remark.deferredByRole = "";
+        pushTitle = "Предупреждение возвращено в учёт";
+        pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
       }
 
       if (action === "add") {
@@ -6976,6 +6996,11 @@ async function handleApi(req, res, pathname, url) {
         if (partInstalled && !partDescription) return { error: "remark_part_description_required" };
         const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
         const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
+        remark.deferReason = "";
+        remark.deferredAt = "";
+        remark.deferredById = "";
+        remark.deferredByName = "";
+        remark.deferredByRole = "";
         remark.resolved = false;
         remark.resolvedAt = "";
         remark.resolutionPendingConfirmation = true;

@@ -15,22 +15,33 @@ test("unfinished PPR entries expose equipment nodes works and date", () => {
   assert.match(client, /entry\.label \|\| `ППР на/);
 });
 
-test("engineer can defer an open critical remark with a required reason", () => {
-  assert.match(server, /"defer-remark", "resume-remark"/);
-  assert.match(server, /deferReason: reason, deferredAt: now/);
-  assert.match(client, /Почему замечание сейчас не выполняется\?/);
-  assert.match(client, /action: "defer-remark"/);
+test("an individually authorized employee can record a non-resolution reason", () => {
+  assert.match(server, /"defer", "resume-deferred"/);
+  assert.match(server, /activeUserPermission\(registeredActor, "remarkDefer"\)/);
+  assert.match(server, /remark_defer_forbidden/);
+  assert.match(server, /remark\.deferReason = reason/);
+  assert.match(server, /remark\.deferredAt = now/);
+  assert.match(client, /Указывать причину неустранения/);
+  assert.match(client, /Причина неустранения/);
+  assert.match(client, /publishRemarkCollaborationAction\([^\n]+"defer"/);
 });
 
-test("deferred remarks stay visible but are excluded from critical counters", () => {
-  assert.match(server, /summary\.deferReason \? deferredRemarks : openRemarks/);
-  assert.match(server, /groups: \{ openRemarks, deferredRemarks, activeBreakdowns, incompletePpr \}/);
-  assert.match(client, /обоснованно отложено и не считается/);
-  assert.match(client, /Вернуть в критический счётчик/);
+test("reasoned remarks stay in warnings but leave KPI and main counters", () => {
+  assert.match(client, /function countedOpenRemarkEntries[\s\S]*?!remarkDeferred\(entry\)/);
+  assert.match(client, /data-defer-open-remark/);
+  assert.match(client, /data-resume-open-remark/);
+  assert.match(client, /Причина записана/);
+  assert.match(client, /if \(remarkDeferred\(entry\)\) return;/);
 });
 
-test("defer reason editor remains readable on phones and in dark theme", () => {
-  assert.match(styles, /\.month-critical-row textarea/);
-  assert.match(styles, /html\[data-theme="dark"\] \.month-critical-row textarea/);
-  assert.match(styles, /\.month-critical-row>div button\{width:100%/);
+test("warning reason remains readable in dark theme", () => {
+  assert.match(styles, /\.open-remark-item\.deferred-remark/);
+  assert.match(styles, /\.open-remark-defer-summary/);
+  assert.match(styles, /html\[data-theme="dark"\][\s\S]*?\.open-remark-defer-summary/);
+});
+
+test("smart month closing is no longer rendered in the engineer report", () => {
+  const renderer = client.slice(client.indexOf("function renderEngineerReport"), client.indexOf("function openEngineerReport"));
+  assert.doesNotMatch(renderer, /monthClosePanelHtml|loadMonthClosePanel|Умное закрытие месяца/);
+  assert.match(renderer, /engineerMonthlyReportHtml/);
 });

@@ -1681,12 +1681,13 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /month\.reliabilityStops \?\? month\.stops/);
 });
 
-test("smart month closing is private to the primary administrator", () => {
+test("month closing API remains compatible but its panel is removed from the report", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(client, /function canManageMonthClose[^\n]+return isPrimaryAdminEngineer\(user\)/);
-  assert.match(client, /Умное закрытие месяца/);
+  const renderer = client.slice(client.indexOf("function renderEngineerReport"), client.indexOf("function openEngineerReport"));
+  assert.doesNotMatch(renderer, /Умное закрытие месяца|monthClosePanelHtml|loadMonthClosePanel/);
   assert.match(client, /data-month-close-conditional/);
   assert.match(client, /data-month-close-full/);
   assert.match(client, /data-month-reopen/);
@@ -1707,12 +1708,9 @@ test("smart month closing is private to the primary administrator", () => {
   const readinessSource = server.slice(server.indexOf("function monthCloseReadiness"), server.indexOf("function publicState"));
   assert.doesNotMatch(readinessSource, /db\.requests|openRequests/);
   assert.match(client, /Заявки на закупку здесь не учитываются/);
-  assert.match(client, /data-open-month-remark/);
-  assert.match(client, /current\.scrollToRemarkId = button\.dataset\.remarkId/);
   assert.match(server, /pathname === "\/api\/month-close" && req\.method === "GET"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
   assert.match(server, /pathname === "\/api\/month-close" && req\.method === "POST"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
-  assert.match(client, /canManageMonthClose\(\) \? monthClosePanelHtml\(\) : ""/);
-  assert.match(client, /canManageMonthClose\(\) \? monthClosePanelHtml\(current\.engineerReportMonth\) : ""/);
+  assert.doesNotMatch(renderer, /canManageMonthClose|monthClosePanelHtml/);
   assert.match(server, /function resetMonthClosePermissionsOnce[\s\S]*?delete user\.permissionOverrides\.monthCloseManage/);
   assert.match(server, /monthClosePermissionResetVersion === "all-users-v1"/);
   assert.match(styles, /\.month-close-panel/);

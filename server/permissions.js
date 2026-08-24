@@ -29,6 +29,7 @@ const ADMIN_PERMISSION_KEYS = new Set([
   "instructionEdit",
   "journalPrint",
   "remarkMultiClose",
+  "remarkDefer",
   "aggregateJournalCorrect",
   "remarkGlobalConfirm",
   "orderJournalManage"

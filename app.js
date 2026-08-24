@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v601-ppr-reasons-1";
+const APP_VERSION = "v602-warning-reasons-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -283,6 +283,7 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 }
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
+function canDeferRemarks(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkDefer"); }
 function canManageMonthClose(user = authenticatedProfile || profile || {}) { return isPrimaryAdminEngineer(user); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canManageOrderJournal(user = authenticatedProfile || profile || {}) {
@@ -6175,6 +6176,14 @@ function openRemarkEntries(item = {}) {
   return ensureRemarkEntries(item).filter(entry => !entry.resolved);
 }
 
+function remarkDeferred(entry = {}) {
+  return Boolean(!entry.resolved && String(entry.deferReason || "").trim());
+}
+
+function countedOpenRemarkEntries(item = {}) {
+  return openRemarkEntries(item).filter(entry => !remarkDeferred(entry));
+}
+
 function commonHallRemarkEntries(item = {}) {
   return openRemarkEntries(item).filter(entry => !entry.resolutionPendingConfirmation);
 }
@@ -9351,7 +9360,7 @@ function canOpenEquipmentDate(date) {
 }
 
 function hasOpenCommentRecord(rec) {
-  return ["to"].some(kind => openRemarkEntries(rec?.[kind] || {}).length > 0);
+  return ["to"].some(kind => countedOpenRemarkEntries(rec?.[kind] || {}).length > 0);
 }
 
 function isActiveRequestSignal(req) {
@@ -9391,7 +9400,7 @@ function hasOpenCommentEquipment(equipmentId) {
 }
 
 function openCommentCount() {
-  return allOpenCommentTargets().length;
+  return allOpenCommentTargets().filter(target => !target.deferred).length;
 }
 
 function remarksSectionLabel() {
@@ -9430,7 +9439,11 @@ function allOpenCommentTargets() {
           confirmationLabel: remarkConfirmationLabel(entry, eq),
           canConfirm: canCurrentUserConfirmRemark(entry, eq),
           returnedToRework: Boolean(entry.resolutionReturnedAt && !entry.resolutionPendingConfirmation),
-          returnReason: entry.resolutionReturnReason || ""
+          returnReason: entry.resolutionReturnReason || "",
+          deferred: remarkDeferred(entry),
+          deferReason: entry.deferReason || "",
+          deferredAt: entry.deferredAt || "",
+          deferredByName: entry.deferredByName || ""
         }));
     });
   const gpmTargets = Object.values(gpmStore().events || {})
@@ -9481,17 +9494,18 @@ function openAllRemarkCards() {
   overlay.innerHTML = `
     <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>К устранению: ${targets.length}</span></div>
+        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>Учитывается: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · с причиной неустранения: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
         <button type="button" data-close-open-remarks>Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
         ${targets.map((target, index) => `
-          <article class="open-remark-item ${target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
+          <article class="open-remark-item ${target.deferred ? "deferred-remark" : target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
             <header>
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
-              <span class="open-remark-status">${target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
+              <span class="open-remark-status">${target.deferred ? "Причина записана" : target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
             </header>
             <p>${userTextWithRussianHtml(target.text)}</p>
+            ${target.deferred ? `<div class="open-remark-defer-summary"><strong>Причина неустранения</strong><p>${userTextWithRussianHtml(target.deferReason)}</p><small>${escapeHtml(target.deferredByName || "Сотрудник с доступом")}${target.deferredAt ? ` · ${escapeHtml(dateTimeHuman(target.deferredAt))}` : ""}</small></div>` : ""}
             ${target.pendingConfirmation ? `
               <div class="open-remark-confirmation-summary">
                 <strong>Устранил: ${escapeHtml(target.submittedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(target.submittedAt))}</strong>
@@ -9508,6 +9522,8 @@ function openAllRemarkCards() {
               <small>${escapeHtml(target.author)}</small>
               ${target.kind !== "gpm" && canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
               ${target.kind !== "gpm" && canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
+              ${target.kind !== "gpm" && canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
+              ${target.kind !== "gpm" && target.deferred && canDeferRemarks() ? `<button type="button" class="secondary" data-resume-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Вернуть в учёт</button>` : ""}
               ${target.kind === "gpm" && !target.pendingConfirmation && target.canResolve ? `<button type="button" data-gpm-warning-resolve="${escapeHtml(target.remarkId)}">Записать устранение</button>` : ""}
               ${target.kind === "gpm" && target.pendingConfirmation && target.canConfirm ? `<button type="button" data-gpm-warning-confirm="${escapeHtml(target.remarkId)}">Подтвердить и допустить</button>` : ""}
               ${target.kind !== "gpm" ? `<button type="button" data-open-remark-card data-gpm-id="" data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>` : ""}
@@ -9552,6 +9568,25 @@ function openAllRemarkCards() {
     showAppToast(`Предупреждение закрыто. Баллы получат: ${decision.performerNames.join(", ")}.`, "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Закрываем...")));
+  overlay.querySelectorAll("[data-defer-open-remark]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    if (!canDeferRemarks()) return;
+    const previous = allOpenCommentTargets().find(target => target.remarkId === button.dataset.remarkId)?.deferReason || "";
+    const reason = window.prompt("Почему замечание сейчас невозможно устранить? Причина останется в предупреждении.", previous)?.trim();
+    if (!reason) return;
+    await publishRemarkCollaborationAction(Number(button.dataset.equipmentId), Number(button.dataset.nodeIndex), button.dataset.date || todayISO(), "defer", { remarkId: button.dataset.remarkId || "", reason });
+    close();
+    showAppToast("Причина сохранена. Предупреждение осталось открытым, но исключено из счётчиков и отчётов.", "ok");
+    window.setTimeout(() => openAllRemarkCards(), 50);
+  }, "Сохраняем...")));
+  overlay.querySelectorAll("[data-resume-open-remark]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+    if (!canDeferRemarks()) return;
+    const reason = window.prompt("Почему предупреждение возвращается в учёт?")?.trim();
+    if (!reason) return;
+    await publishRemarkCollaborationAction(Number(button.dataset.equipmentId), Number(button.dataset.nodeIndex), button.dataset.date || todayISO(), "resume-deferred", { remarkId: button.dataset.remarkId || "", reason });
+    close();
+    showAppToast("Предупреждение снова учитывается в счётчиках и отчётах.", "ok");
+    window.setTimeout(() => openAllRemarkCards(), 50);
+  }, "Возвращаем...")));
   overlay.querySelectorAll("[data-gpm-warning-resolve]").forEach(button => button.addEventListener("click", async () => {
     const entry = gpmStore().events[button.dataset.gpmWarningResolve];
     const comment = String(button.closest(".open-remark-item")?.querySelector("[data-gpm-warning-comment]")?.value || "").trim();
@@ -11731,11 +11766,12 @@ function renderEquipment() {
   current.month = today.getMonth();
   current.year = today.getFullYear();
   const count = openCommentCount();
+  const warningCount = allOpenCommentTargets().length;
   updateRoleBadges();
   ui.alertCounter.innerHTML = `<span>${escapeHtml(remarksSectionLabel())}</span><strong>${count}</strong>`;
   ui.alertCounter.classList.toggle("request-alert", count > 0);
-  ui.alertCounter.classList.toggle("clickable", count > 0);
-  ui.alertCounter.title = count > 0 ? `Открыть все ${remarksSectionLabel().toLowerCase()} отдельными карточками` : "Открытых замечаний нет";
+  ui.alertCounter.classList.toggle("clickable", warningCount > 0);
+  ui.alertCounter.title = warningCount > 0 ? `Открыть все ${remarksSectionLabel().toLowerCase()} отдельными карточками` : "Открытых замечаний нет";
   ui.equipmentList.innerHTML = "";
   const equipment = visibleEquipment();
   if (!equipment.length) {
@@ -12397,7 +12433,7 @@ function renderNodeWalkthrough(eq) {
   eq.nodes.forEach((nodeName, index) => {
     const item = getRecord(eq.id, index, current.date)?.to || blankKind();
     const activeStop = activeDowntime(eq.id, index);
-    const hasUnresolvedRemark = openRemarkEntries(item).length > 0;
+    const hasUnresolvedRemark = countedOpenRemarkEntries(item).length > 0;
     const nodeDone = isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key);
     const operationalPause = activeOperationalPause(eq, index, current.date);
     if (selectedNodeIndex === null) {
@@ -12869,8 +12905,10 @@ function nodeWalkStatusText(item) {
   if (item.productionDirectorApproved && !item.accountingWrittenOff && !item.done) return "Подтверждено директором производства. Ждёт ответственного";
   if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "Установка подтверждена. Ждёт директора производства";
   if (item.mechanicFixed && !item.resolved) return "Устранено. Ждёт подтверждения начальника цеха/инженера";
-  const openRemarks = openRemarkEntries(item).length;
+  const openRemarks = countedOpenRemarkEntries(item).length;
   if (openRemarks) return `Открытых замечаний: ${openRemarks}`;
+  const deferredRemarks = openRemarkEntries(item).filter(remarkDeferred).length;
+  if (deferredRemarks) return `Причина неустранения записана: ${deferredRemarks}`;
   if (item.resolved) return commentResolutionText(item) || "Замечания закрыты";
   if (String(item.nodeDraftText || "").trim() || item.commentPhoto) return "Черновик сохранён. Нажмите «Отправить»";
   if (hasAnyComment(item)) return "Замечания закрыты";
@@ -13141,7 +13179,7 @@ function directorOpenRemarks() {
     const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
     const eq = equipmentById(Number(equipmentIdRaw));
     const item = rec?.to;
-    if (!eq || !item || item.resolved || !hasAnyComment(item)) return;
+    if (!eq || !item || !countedOpenRemarkEntries(item).length) return;
     if (!operationalControlEnabled(eq, Number(nodeIndexRaw), date)) return;
     result.push({
       equipmentId: eq.id,
@@ -15870,6 +15908,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
     if (!eq || !item) return;
     visibleCommentEntries(item).forEach(entry => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
+      if (remarkDeferred(entry)) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
       if (!operationalControlEnabled(eq, Number(nodeIndexRaw), createdAt)) return;
       const created = dateYearMonth(createdAt);
@@ -17134,6 +17173,7 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     if (!eq || !item) return;
     visibleCommentEntries(item).forEach(entry => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
+      if (remarkDeferred(entry)) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
       if (!operationalControlEnabled(eq, Number(nodeIndexRaw), createdAt)) return;
       const resolvedAt = entry.resolved ? entry.resolvedAt || "" : "";
@@ -17485,11 +17525,6 @@ async function loadMonthClosePanel() {
     const status = closure.status || "open";
     const groups = readiness.groups || {};
     const item = (tone, title, count, text) => `<article class="month-close-check ${tone}"><b>${Number(count || 0)}</b><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div></article>`;
-    const remarkLabel = entry => {
-      const [equipmentId, nodeIndex, date] = String(entry.recordKey || "").split(":");
-      const eq = equipmentById(Number(equipmentId));
-      return `${eq?.name || `Оборудование ${equipmentId}`} · ${eq?.nodes?.[Number(nodeIndex)] || `Узел ${Number(nodeIndex) + 1}`} · ${date || month}: ${entry.text || "Замечание"}`;
-    };
     const transferEntries = (groups.incompletePpr || []).map(entry => ({
       key: `ppr:${entry.id}`,
       kind: "ppr",
@@ -17508,8 +17543,6 @@ async function loadMonthClosePanel() {
         ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
       </div>
       <div class="month-close-work-lists">
-        ${(groups.openRemarks || []).length ? `<details class="month-close-work-list red" open><summary>Открытые критические замечания · ${(groups.openRemarks || []).length}</summary><p>Если устранить замечание сейчас невозможно, инженер обязан написать конкретную причину. После сохранения оно останется в списке отложенных, но не войдёт в критический счётчик.</p>${(groups.openRemarks || []).map(entry => `<article class="month-critical-row"><strong>${escapeHtml(remarkLabel(entry))}</strong><textarea rows="2" data-month-defer-reason placeholder="Почему замечание сейчас не выполняется?"></textarea><div><button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button><button type="button" class="secondary" data-defer-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Сохранить причину и не учитывать</button></div></article>`).join("")}</details>` : ""}
-        ${(groups.deferredRemarks || []).length ? `<details class="month-close-work-list yellow"><summary>Обоснованно отложенные замечания · ${(groups.deferredRemarks || []).length}</summary><p>Они остаются открытыми и видимыми, но временно исключены из критического счётчика.</p>${(groups.deferredRemarks || []).map(entry => `<article><strong>${escapeHtml(remarkLabel(entry))}</strong><span>Причина: ${escapeHtml(entry.deferReason || "Не указана")}</span><small>${escapeHtml(entry.deferredByName || "Инженер")}${entry.deferredAt ? ` · ${escapeHtml(dateTimeHuman(entry.deferredAt))}` : ""}</small><div><button type="button" data-open-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Открыть карточку</button><button type="button" class="secondary" data-resume-month-remark data-record-key="${escapeHtml(entry.recordKey || "")}" data-remark-id="${escapeHtml(entry.id || "")}">Вернуть в критический счётчик</button></div></article>`).join("")}</details>` : ""}
         ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
         ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Листы ППР для переноса · ${transferEntries.length}</summary><p>Заявки не входят в закрытие месяца. Отметьте только листы ППР и укажите причину.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Незавершённых листов ППР для переноса нет.</div>`}
       </div>
@@ -17543,40 +17576,6 @@ async function loadMonthClosePanel() {
     host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
     host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));
     host.querySelector("[data-month-refresh]")?.addEventListener("click", loadMonthClosePanel);
-    host.querySelectorAll("[data-defer-month-remark]").forEach(button => button.addEventListener("click", () => {
-      const reason = button.closest(".month-critical-row")?.querySelector("[data-month-defer-reason]")?.value?.trim() || "";
-      if (!reason) {
-        window.alert("Напишите конкретную причину, почему замечание сейчас не выполняется.");
-        return;
-      }
-      runButtonOperation(button, async () => {
-        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action: "defer-remark", reason, recordKey: button.dataset.recordKey || "", remarkId: button.dataset.remarkId || "" }) });
-        if (response.state) mergeRealtimePatch(response.state);
-        await loadMonthClosePanel();
-      }, "Сохраняем…");
-    }));
-    host.querySelectorAll("[data-resume-month-remark]").forEach(button => button.addEventListener("click", () => {
-      const reason = window.prompt("Почему замечание возвращается в критический контроль?")?.trim();
-      if (!reason) return;
-      runButtonOperation(button, async () => {
-        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action: "resume-remark", reason, recordKey: button.dataset.recordKey || "", remarkId: button.dataset.remarkId || "" }) });
-        if (response.state) mergeRealtimePatch(response.state);
-        await loadMonthClosePanel();
-      }, "Возвращаем…");
-    }));
-    host.querySelectorAll("[data-open-month-remark]").forEach(button => button.addEventListener("click", () => {
-      const [equipmentId, nodeIndex, date] = String(button.dataset.recordKey || "").split(":");
-      if (!equipmentId || !nodeIndex || !date) return;
-      current.equipmentId = Number(equipmentId);
-      current.nodeIndex = Number(nodeIndex);
-      current.nodeDetailIndex = Number(nodeIndex);
-      current.date = date;
-      current.kind = "to";
-      current.scrollToCommentNode = Number(nodeIndex);
-      current.scrollToRemarkId = button.dataset.remarkId || "";
-      current.returnToRemarkListAfterResolve = false;
-      show("checklist");
-    }));
   } catch {
     if (host) { host.className = "empty-state"; host.textContent = "Не удалось проверить готовность месяца. Обновите страницу."; }
   }
@@ -17595,15 +17594,11 @@ function renderEngineerReport() {
     : "Общий индекс надёжности предприятия";
   if (controls) controls.hidden = !detailed;
   if (!detailed) {
-    ui.engineerReportPanel.innerHTML = `${canManageMonthClose() ? monthClosePanelHtml() : ""}<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
-    ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; loadMonthClosePanel(); });
-    loadMonthClosePanel();
+    ui.engineerReportPanel.innerHTML = `<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
     return;
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
-  ui.engineerReportPanel.innerHTML = `${canManageMonthClose() ? monthClosePanelHtml(current.engineerReportMonth) : ""}${engineerMonthlyReportHtml(current.engineerReportMonth)}`;
-  ui.engineerReportPanel.querySelector("[data-month-close-month]")?.addEventListener("change", event => { current.engineerReportMonth = event.currentTarget.value; if (ui.engineerReportMonth) ui.engineerReportMonth.value = event.currentTarget.value; loadMonthClosePanel(); });
-  loadMonthClosePanel();
+  ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
   ui.engineerReportPanel.querySelector("#serviceCostArea")?.addEventListener("change", event => {
     current.serviceCostArea = event.currentTarget.value;
     current.serviceCostEquipmentId = "";
@@ -18273,7 +18268,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["monthCloseManage","Закрытие и повторное открытие месяца"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"],["orderJournalManage","Создание и подтверждение распоряжений"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["remarkDefer","Указывать причину неустранения"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"],["orderJournalManage","Создание и подтверждение распоряжений"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
 }
@@ -19098,7 +19093,7 @@ function printSystemArchiveReport() {
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentId] = recordKey.split(":");
     const eq = equipmentById(Number(equipmentId));
-    openRemarkEntries(rec?.to || {}).forEach(entry => openRemarks.push({ equipment: eq?.name || equipmentId, area: eq?.area || "", text: entry.text || entry.comment || "" }));
+    countedOpenRemarkEntries(rec?.to || {}).forEach(entry => openRemarks.push({ equipment: eq?.name || equipmentId, area: eq?.area || "", text: entry.text || entry.comment || "" }));
   });
   const rows = (items, columns) => items.map(item => `<tr>${columns.map(column => `<td>${escapeHtml(column(item))}</td>`).join("")}</tr>`).join("");
   const win = window.open("", "_blank");
