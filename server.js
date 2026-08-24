@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v598-role-scoped-node-access-1";
+const SERVER_VERSION = "v599-photo-role-compatibility-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -702,7 +702,48 @@ async function persistPhotoToPostgres(fileName, mimeType, bytes) {
      SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
     [fileName, mimeType, bytes]
   );
+  await postgresPool.flushMirrors?.();
   return true;
+}
+
+async function readPhotoFromPostgres(fileName) {
+  if (!postgresPool) return null;
+  const nodes = Array.isArray(postgresPool.nodes) ? postgresPool.nodes : [];
+  if (!nodes.length) {
+    const result = await postgresPool.query(
+      "SELECT mime_type, payload FROM ppr_photos WHERE file_name = $1 LIMIT 1",
+      [fileName]
+    );
+    return result.rows[0] || null;
+  }
+  const indexes = typeof postgresPool.orderedIndexes === "function"
+    ? postgresPool.orderedIndexes()
+    : nodes.map((_, index) => index);
+  for (const index of indexes) {
+    const node = nodes[index];
+    if (!node?.pool) continue;
+    try {
+      const result = await node.pool.query(
+        "SELECT mime_type, payload FROM ppr_photos WHERE file_name = $1 LIMIT 1",
+        [fileName]
+      );
+      postgresPool.markSuccess?.(index);
+      if (!result.rows[0]?.payload) continue;
+      const row = result.rows[0];
+      if (index !== postgresPool.activeIndex) {
+        await postgresPool.query(
+          `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,now())
+           ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=now()`,
+          [fileName, row.mime_type, row.payload]
+        );
+        await postgresPool.flushMirrors?.();
+      }
+      return row;
+    } catch (error) {
+      postgresPool.markFailure?.(index, error);
+    }
+  }
+  return null;
 }
 
 async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
@@ -4046,6 +4087,7 @@ function shgrpSectionADescriptorServer(source = "") {
 }
 
 function shgrpSectionARoleAllowedServer(profile = {}) {
+  if (String(profile.role || "") === "editor") return true;
   if (engineerPermissionRoleServer(profile) === "engineer") return true;
   return ["mechanic", "electrician"].includes(permissionBaseRoleServer(profile.role));
 }
@@ -5236,6 +5278,11 @@ async function handleApi(req, res, pathname, url) {
     }
     await stateWriteQueue.catch(() => {});
     const db = readDb();
+    const qrCatalogItem = db.catalog?.equipment?.[String(equipmentId)];
+    if (!qrCatalogItem || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
+      sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
+      return true;
+    }
     const checks = {};
     const prefix = `${equipmentId}:`;
     const suffix = `:${date}`;
@@ -5306,6 +5353,10 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/qr-walk/grp-result" && req.method === "POST") {
+    if (!shgrpSectionARoleAllowedServer(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "grp_role_forbidden" });
+      return true;
+    }
     const body = await readBody(req).catch(() => ({}));
     const date = String(body.date || "");
     const shift = String(body.shift || "");
@@ -5390,6 +5441,10 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const qrCatalogItem = readDb().catalog?.equipment?.[String(equipmentId)];
+    if (!qrCatalogItem || !Array.isArray(qrCatalogItem.nodes) || !qrCatalogItem.nodes[nodeIndex] || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
+      sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
+      return true;
+    }
     const expectedQrToken = String(qrCatalogItem?.qrTokens?.[nodeIndex] || "").trim();
     if (expectedQrToken && expectedQrToken !== String(body.qrToken || "").trim()) {
       sendJson(res, 410, { ok: false, error: "node_qr_replaced" });
@@ -5464,9 +5519,9 @@ async function handleApi(req, res, pathname, url) {
         receivedAt: now,
         byRole: role,
         byName: String(req.authUser?.name || "").slice(0, 200),
-        area: String(body.area || "").slice(0, 200),
-        equipment: String(body.equipment || "").slice(0, 200),
-        node: String(body.node || "").slice(0, 300)
+        area: String(qrCatalogItem.area || "").slice(0, 200),
+        equipment: String(qrCatalogItem.name || "").slice(0, 200),
+        node: String(qrCatalogItem.nodes[nodeIndex] || "").slice(0, 300)
         ,customJournal: body.customJournal && typeof body.customJournal === "object" ? JSON.parse(JSON.stringify(body.customJournal)) : null
       };
       const journalIndex = db.qrWalkJournal.findIndex(item => item?.id === journalEntry.id);
@@ -5962,13 +6017,10 @@ async function handleApi(req, res, pathname, url) {
     } catch {
       if (postgresPool) {
         try {
-          const stored = await postgresPool.query(
-            "SELECT mime_type, payload FROM ppr_photos WHERE file_name = $1 LIMIT 1",
-            [fileName]
-          );
-          if (stored.rows[0]?.payload) {
-            data = Buffer.from(stored.rows[0].payload);
-            mimeType = String(stored.rows[0].mime_type || mimeType);
+          const stored = await readPhotoFromPostgres(fileName);
+          if (stored?.payload) {
+            data = Buffer.from(stored.payload);
+            mimeType = String(stored.mime_type || mimeType);
             fs.mkdirSync(photosDir, { recursive: true });
             fs.promises.writeFile(file, data).catch(() => {});
           }

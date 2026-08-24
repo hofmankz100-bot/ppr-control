@@ -117,8 +117,12 @@ class MultiPostgres {
     return chosen.result;
   }
 
-  async end() {
+  async flushMirrors() {
     await Promise.allSettled([...this.mirrorJobs]);
+  }
+
+  async end() {
+    await this.flushMirrors();
     await Promise.allSettled(this.nodes.map(node => node.pool.end()));
   }
 }

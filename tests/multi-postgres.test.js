@@ -39,6 +39,27 @@ test("a write succeeds when at least one database is available", async () => {
   assert.equal(cluster.status().active, "supabase");
 });
 
+test("flushMirrors waits until delayed database mirrors finish", async () => {
+  let releaseMirror;
+  let mirrored = false;
+  const mirrorGate = new Promise(resolve => { releaseMirror = resolve; });
+  const cluster = new MultiPostgres([
+    fakeNode("primary", async () => ({ rows: [] })),
+    fakeNode("mirror", async () => {
+      await mirrorGate;
+      mirrored = true;
+      return { rows: [] };
+    })
+  ]);
+
+  await cluster.query("INSERT INTO ppr_photos(file_name) VALUES($1)", ["photo.png"]);
+  assert.equal(mirrored, false);
+  const flushed = cluster.flushMirrors();
+  releaseMirror();
+  await flushed;
+  assert.equal(mirrored, true);
+});
+
 test("duplicate database URLs are ignored", () => {
   assert.deepEqual(configuredDatabases({
     DATABASE_URL: "postgres://same",

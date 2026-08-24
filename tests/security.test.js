@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
-const APP_VERSION = "v598-role-scoped-node-access-1";
+const APP_VERSION = "v599-photo-role-compatibility-1";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -104,14 +104,32 @@ test("production API requires a server session and rate-limits failed logins", a
     approved: true,
     pendingApproval: false
   };
+  const specialistUsers = [
+    ["welder", "Security Welder", "welder-password"],
+    ["turner", "Security Turner", "turner-password"],
+    ["forkliftDriver", "Security Forklift", "forklift-password"],
+    ["engineer", "Security Engineer", "engineer-password"]
+  ].map(([role, name, password], index) => ({
+    id: `security-${role}`,
+    name,
+    employeeId: `security-${role}`,
+    phone: `7000000010${index}`,
+    passwordHash: passwordHash(password),
+    role,
+    approved: true,
+    pendingApproval: false
+  }));
   fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify({
     checks: {},
     requests: {},
     inventory: {},
-    catalog: { equipment: { "1": { name: "Test press", area: "Test shop", nodes: ["Main"], editingEnabled: false } } },
+    catalog: { equipment: {
+      "1": { name: "Test press", area: "Test shop", nodes: ["Main"], editingEnabled: false },
+      "2": { name: "Вилочные погрузчики", area: "Transport", equipmentKind: "forklift", nodes: ["Forklift 1"], editingEnabled: false }
+    } },
     downtimes: [],
     attendanceSessions: [worker, restrictedWorker].map(user => ({ userKey: user.id, startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() })),
-    users: [editor, worker, restrictedWorker, areaOperator, otherAreaOperator, restrictedDirector]
+    users: [editor, worker, restrictedWorker, areaOperator, otherAreaOperator, restrictedDirector, ...specialistUsers]
   }));
   const port = await reservePort();
   const qrPort = await reservePort();
@@ -182,12 +200,59 @@ test("production API requires a server session and rate-limits failed logins", a
     const areaOperatorCookie = await loginCookie(areaOperator.employeeId, "operator-password");
     const otherAreaOperatorCookie = await loginCookie(otherAreaOperator.employeeId, "other-password");
     const directorCookie = await loginCookie(restrictedDirector.employeeId, "director-password");
+    const specialistCookies = Object.fromEntries(await Promise.all(specialistUsers.map(async user => [
+      user.role,
+      await loginCookie(user.employeeId, `${user.role.replace("forkliftDriver", "forklift")}-password`)
+    ])));
     const nodeHeaders = cookieValue => ({
       cookie: cookieValue,
       "content-type": "application/json",
       "x-app-version": APP_VERSION,
       "x-client-protocol": CLIENT_PROTOCOL_VERSION
     });
+    const qrStatusUrl = `${baseUrl}/api/qr-walk/status?equipmentId=1&date=2026-08-23&shift=day&group=operational`;
+    assert.equal((await fetch(qrStatusUrl, { headers: nodeHeaders(areaOperatorCookie) })).status, 200);
+    assert.equal((await fetch(qrStatusUrl, { headers: nodeHeaders(otherAreaOperatorCookie) })).status, 403);
+    const technicalQrStatusUrl = `${baseUrl}/api/qr-walk/status?equipmentId=1&date=2026-08-23&shift=day&group=technical`;
+    for (const role of ["welder", "turner", "engineer"]) {
+      assert.equal((await fetch(technicalQrStatusUrl, { headers: nodeHeaders(specialistCookies[role]) })).status, 200, `${role} must access equipment checks`);
+    }
+    assert.equal((await fetch(technicalQrStatusUrl, { headers: nodeHeaders(specialistCookies.forkliftDriver) })).status, 403);
+    const forkliftQrStatusUrl = `${baseUrl}/api/qr-walk/status?equipmentId=2&date=2026-08-23&shift=day&group=technical`;
+    assert.equal((await fetch(forkliftQrStatusUrl, { headers: nodeHeaders(specialistCookies.forkliftDriver) })).status, 200);
+    const qrMarkBody = {
+      actionId: "area-qr-mark",
+      clientId: "security-test",
+      equipmentId: 1,
+      nodeIndex: 0,
+      date: "2026-08-23",
+      shift: "day",
+      group: "operational",
+      area: "Spoofed shop",
+      equipment: "Spoofed equipment",
+      node: "Spoofed node"
+    };
+    assert.equal((await fetch(`${baseUrl}/api/qr-walk/mark`, {
+      method: "POST",
+      headers: nodeHeaders(otherAreaOperatorCookie),
+      body: JSON.stringify(qrMarkBody)
+    })).status, 403);
+    const allowedQrMark = await fetch(`${baseUrl}/api/qr-walk/mark`, {
+      method: "POST",
+      headers: nodeHeaders(areaOperatorCookie),
+      body: JSON.stringify(qrMarkBody)
+    });
+    assert.equal(allowedQrMark.status, 200);
+    const qrJournalState = await fetch(`${baseUrl}/api/qr-walk/journal?date=2026-08-23`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const qrJournalRow = qrJournalState.entries.find(item => item.id === "1:0:2026-08-23:operational:day");
+    assert.equal(qrJournalRow.area, "Test shop");
+    assert.equal(qrJournalRow.equipment, "Test press");
+    assert.notEqual(qrJournalRow.node, "Spoofed node");
+    assert.equal((await fetch(`${baseUrl}/api/qr-walk/mark`, {
+      method: "POST",
+      headers: nodeHeaders(directorCookie),
+      body: JSON.stringify({ ...qrMarkBody, group: "technical", actionId: "director-qr-denied" })
+    })).status, 400);
     const allowedNodeUpdate = await fetch(`${baseUrl}/api/node-update`, {
       method: "PUT",
       headers: nodeHeaders(areaOperatorCookie),
