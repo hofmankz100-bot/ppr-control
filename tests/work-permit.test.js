@@ -81,10 +81,10 @@ test("dangerous admin requests use idempotency receipts and friendly bad request
   assert.match(app, /Сервер не принял данные/);
 });
 
-test("admin receives a final stages 18 to 25 completion notice", () => {
-  assert.match(server, /admin-stages-18-25-complete-v1/);
-  assert.match(server, /Административные этапы 18–25 завершены/);
-  assert.match(server, /roles: \["editor"\]/);
+test("obsolete administrative completion notice is permanently removed", () => {
+  assert.match(server, /systemBroadcasts\.filter\(item => item\?\.id !== "admin-stages-18-25-complete-v1"\)/);
+  assert.doesNotMatch(server, /Административные этапы 18–25 завершены/);
+  assert.doesNotMatch(server, /Финальная версия проверена: формы, инструкции/);
 });
 
 test("people are selected once and reused in related fields", () => {

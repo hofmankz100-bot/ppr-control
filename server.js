@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v605-admin-shortcut-1";
+const SERVER_VERSION = "v606-remove-obsolete-notice-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -507,21 +507,7 @@ function normalizeDb(db) {
   restoreGasQrCatalog(db);
   restorePress2400Catalog(db);
   db.systemBroadcasts ||= [];
-  if (!db.systemBroadcasts.some(item => item.id === "admin-stages-18-25-complete-v1")) {
-    db.systemBroadcasts.unshift({
-      id: "admin-stages-18-25-complete-v1",
-      title: "Административные этапы 18–25 завершены",
-      text: "Финальная версия проверена: формы, инструкции, исправления, хранилище, резервные копии, защита повторных запросов, телефонная и компьютерная версии.",
-      priority: "important",
-      roles: ["editor"],
-      active: true,
-      createdAt: new Date().toISOString(),
-      startsAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
-      author: "Система",
-      readBy: []
-    });
-  }
+  db.systemBroadcasts = db.systemBroadcasts.filter(item => item?.id !== "admin-stages-18-25-complete-v1");
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
