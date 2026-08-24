@@ -1968,10 +1968,10 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /publishRemarkCollaborationAction\(message\.equipmentId, message\.nodeIndex, message\.date, "close-no-score"/);
 });
 
-test("requests are printable documents and never reduce factory status", () => {
+test("removed requests leave confirmations visible and never reduce factory status", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?Заявки — только документы: создать, распечатать или отправить/);
-  assert.match(clientSource, /Заявки не требуют подтверждения и не влияют на состояние завода/);
+  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?Подтверждение устранённых замечаний/);
+  assert.doesNotMatch(clientSource, /Заявки — только документы|Заявки не требуют подтверждения/);
   assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?const draft = buildMobileTmcRequestDraft\(\)[\s\S]*?archiveTmcRequestAfterOutput/);
   assert.match(clientSource, /const emergencyRequests = 0/);
   const reminders = clientSource.slice(clientSource.indexOf("function directorReminderItems"), clientSource.indexOf("function globalControlEquipment"));

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v599-photo-role-compatibility-1";
+const APP_VERSION = "v600-pause-scroll-confirmations-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -1280,7 +1280,7 @@ async function openPushDiagnostics() {
               <strong>${escapeHtml(device.name)}</strong>
               <span>${escapeHtml(ROLE_ACCESS[device.role]?.label || device.role || "Без роли")}${device.area ? ` · ${escapeHtml(device.area)}` : ""}</span>
               <small>${escapeHtml(pushDeviceStatusText(device))} · личный счётчик ${Number(device.badgeCount || 0)}</small>
-              <small>Замечания ${Number(device.counts?.remarks || 0)} · ППР ${Number(device.counts?.ppr || 0)} · Заявки ${Number(device.counts?.requests || 0)} · Простои ${Number(device.counts?.downtimes || 0)}</small>
+              <small>Замечания ${Number(device.counts?.remarks || 0)} · ППР ${Number(device.counts?.ppr || 0)} · Простои ${Number(device.counts?.downtimes || 0)}</small>
               <small>${escapeHtml(device.device || "Устройство не определено")}</small>
             </div>
             <button type="button" data-test-push-device="${escapeHtml(device.id)}">Проверить</button>
@@ -3723,6 +3723,24 @@ function activeOperationalPause(equipmentOrId, nodeIndex = null, date = todayISO
   return nodePause ? { ...nodePause, scope: "node" } : null;
 }
 
+function operationalControlEnabled(equipmentOrId, nodeIndex = null, date = todayISO()) {
+  return !activeOperationalPause(equipmentOrId, Number.isInteger(nodeIndex) ? nodeIndex : null, date);
+}
+
+function operationalItemEnabled(item, date = "") {
+  const eq = equipmentById(Number(item?.equipmentId))
+    || allEquipment().find(candidate => String(candidate.name || "").trim() === String(item?.equipment || "").trim()
+      && (!item?.area || String(candidate.area || "").trim() === String(item.area || "").trim()));
+  if (!eq) return true;
+  const rawNodeIndex = item?.nodeIndex;
+  let nodeIndex = rawNodeIndex !== null && rawNodeIndex !== undefined && rawNodeIndex !== "" && Number.isInteger(Number(rawNodeIndex))
+    ? Number(rawNodeIndex)
+    : -1;
+  if (nodeIndex < 0 && item?.node) nodeIndex = eq.nodes.findIndex(node => String(node).trim() === String(item.node).trim());
+  const controlDate = String(date || item?.date || item?.startedAt || item?.createdAt || todayISO()).slice(0, 10);
+  return operationalControlEnabled(eq, nodeIndex >= 0 ? nodeIndex : null, controlDate);
+}
+
 function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
   if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(Number(equipmentId));
@@ -3742,12 +3760,12 @@ function setOperationalPause(equipmentId, nodeIndex, paused, reason = "") {
       reason: String(reason || "").trim(),
       changedBy: profile?.name || authenticatedProfile?.name || "Администратор"
     });
-    recordAudit("Временно остановил", targetName, String(reason || "").trim(), "ППР и просрочки приостановлены");
+    recordAudit("Временно остановил", targetName, String(reason || "").trim(), "ППР, обходы, отчёты и индекс состояния завода приостановлены");
   } else {
     if (!active) return true;
     active.endedAt = now;
     active.endedBy = profile?.name || authenticatedProfile?.name || "Администратор";
-    recordAudit("Возобновил работу", targetName, "", "ППР и контроль сроков включены");
+    recordAudit("Возобновил работу", targetName, "", "ППР, обходы, отчёты и индекс состояния завода снова включены");
   }
   item.updatedAt = now;
   saveState();
@@ -10124,6 +10142,18 @@ function isUserEditingForm() {
   return Boolean(active && active !== document.body && active.matches?.("input, textarea, select, [contenteditable='true']"));
 }
 
+function restoreBackgroundScroll(view, scrollX, scrollY) {
+  if (current.view !== view) return;
+  const restore = () => {
+    if (current.view === view) window.scrollTo({ left: scrollX, top: scrollY, behavior: "auto" });
+  };
+  restore();
+  window.requestAnimationFrame(() => {
+    restore();
+    window.requestAnimationFrame(restore);
+  });
+}
+
 function scheduleRender(delay = 80) {
   if (isUserEditingForm()) {
     backgroundRenderPending = true;
@@ -10135,7 +10165,11 @@ function scheduleRender(delay = 80) {
   renderTimer = window.setTimeout(() => {
     renderTimer = null;
     backgroundRenderPending = false;
+    const viewBeforeRender = current.view;
+    const scrollXBeforeRender = window.scrollX;
+    const scrollYBeforeRender = window.scrollY;
     render();
+    restoreBackgroundScroll(viewBeforeRender, scrollXBeforeRender, scrollYBeforeRender);
   }, delay);
 }
 
@@ -12927,7 +12961,7 @@ function nodeReminderItems(nodeName, equipmentName = "") {
 }
 
 function renderRequests() {
-  ui.subtitle.textContent = "Заявки";
+  ui.subtitle.textContent = "Подтверждения";
   if (!canOpenRequestRole(current.requestRole)) current.requestRole = defaultRequestRole();
   renderRolePersonalInbox();
   const list = document.querySelector("#requestList");
@@ -12936,9 +12970,9 @@ function renderRequests() {
   const all = allRequests();
   const visible = all.filter(req => requestAllowedByUser(req));
   if (MANUAL_REQUEST_WORKFLOW) {
-    ui.requestsMeta.textContent = "Заявки — только документы: создать, распечатать или отправить";
+    ui.requestsMeta.textContent = "Подтверждение устранённых замечаний";
     if (ui.requestSearchInput) ui.requestSearchInput.value = "";
-    list.innerHTML = `<div class="empty-state">Заявки не требуют подтверждения и не влияют на состояние завода. Создавайте и печатайте их через кнопку «Создать заявку».</div>`;
+    list.innerHTML = "";
     applyLanguage();
     queueTranslateVisiblePage();
     return;
@@ -13088,7 +13122,9 @@ function renderOrders() {
 
 function directorTodayWalk(eq, group = "technical") {
   const shift = currentWalkShift();
-  const rows = eq.nodes.map((_, index) => state.checks?.[key(eq.id, index, shift.date)] || null);
+  const rows = eq.nodes.map((_, index) => index)
+    .filter(index => operationalControlEnabled(eq, index, shift.date))
+    .map(index => state.checks?.[key(eq.id, index, shift.date)] || null);
   const done = rows.filter(rec => isNodeShiftChecked(rec, shift.key, group)).length;
   return { done, total: rows.length, shift, group, complete: rows.length > 0 && done === rows.length };
 }
@@ -13106,6 +13142,7 @@ function directorOpenRemarks() {
     const eq = equipmentById(Number(equipmentIdRaw));
     const item = rec?.to;
     if (!eq || !item || item.resolved || !hasAnyComment(item)) return;
+    if (!operationalControlEnabled(eq, Number(nodeIndexRaw), date)) return;
     result.push({
       equipmentId: eq.id,
       equipment: eq.name,
@@ -13322,8 +13359,10 @@ function annualPprFacts(year) {
 function annualPprRows(year) {
   const record = annualPprYearRecord(year);
   return allEquipment()
-    .filter(eq => eq.area !== "Резерв")
-    .flatMap(eq => eq.nodes.map((node, nodeIndex) => {
+    .filter(eq => eq.area !== "Резерв" && operationalControlEnabled(eq, null, todayISO()))
+    .flatMap(eq => eq.nodes.map((node, nodeIndex) => ({ node, nodeIndex }))
+      .filter(({ nodeIndex }) => operationalControlEnabled(eq, nodeIndex, todayISO()))
+      .map(({ node, nodeIndex }) => {
       const nodeKey = annualPprNodeKey(eq, node);
       const saved = record.overrides?.[nodeKey] || {};
       const automatic = annualPprAutomaticPlan(eq, node, year);
@@ -13605,7 +13644,10 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = activeEquipment.flatMap(eq => {
+      if (!operationalControlEnabled(eq, null, date)) return [];
       const plan = recommendedMaintenanceForDate(eq, date);
+      const nodeIndex = plan ? eq.nodes.findIndex(node => node === plan.node) : -1;
+      if (plan && nodeIndex >= 0 && !operationalControlEnabled(eq, nodeIndex, date)) return [];
       return plan ? [{
         equipmentId: eq.id,
         equipment: eq.name,
@@ -14184,10 +14226,11 @@ function bindPprCalendarControls(container, rerender) {
 }
 
 function directorCalendarItems(equipment = allEquipment()) {
-  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
+  const activeEquipment = equipment.filter(eq => eq.area !== "Резерв" && operationalControlEnabled(eq, null, todayISO()));
   const maintenance = activeEquipment
     .map(eq => ({ eq, plan: directorRecommendedMaintenance(eq) }))
-    .filter(item => item.plan.daysUntil === 0)
+    .filter(item => item.plan.daysUntil === 0
+      && operationalControlEnabled(item.eq, item.eq.nodes.findIndex(node => node === item.plan.node), item.plan.dueDate))
     .map(({ eq, plan }) => ({
       type: "maintenance",
       icon: pprJournalCompletion(eq, todayISO(), plan.node).complete ? "✅" : "⏰",
@@ -14200,8 +14243,10 @@ function directorCalendarItems(equipment = allEquipment()) {
 
 function directorReminderItems(equipment = allEquipment()) {
   const items = [];
-  equipment.filter(eq => eq.area !== "Резерв").forEach(eq => {
+  equipment.filter(eq => eq.area !== "Резерв" && operationalControlEnabled(eq, null, todayISO())).forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
+    const nodeIndex = eq.nodes.findIndex(node => node === plan.node);
+    if (nodeIndex >= 0 && !operationalControlEnabled(eq, nodeIndex, plan.dueDate)) return;
     const journalComplete = pprJournalCompletion(eq, plan.dueDate, plan.node).complete;
     if (plan.daysUntil <= 2 && !journalComplete) {
       items.push({
@@ -14216,7 +14261,7 @@ function directorReminderItems(equipment = allEquipment()) {
 }
 
 function globalControlEquipment() {
-  return visibleEquipment().filter(eq => eq.area !== "Резерв");
+  return visibleEquipment().filter(eq => eq.area !== "Резерв" && operationalControlEnabled(eq, null, todayISO()));
 }
 
 function readPersonalRemarkMessageIds() {
@@ -14631,6 +14676,16 @@ function gpmEquipmentList(kind = "") {
     .filter(item => item && !item.deleted)
     .filter(item => !kind || gpmItemKind(item) === kind)
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+}
+
+function gpmOperationalControlEnabled(item, date = todayISO()) {
+  const sourceEquipmentId = Number(item?.sourceEquipmentId || 0);
+  if (!sourceEquipmentId) return true;
+  const sourceNodeIndex = item?.sourceNodeIndex !== null && item?.sourceNodeIndex !== undefined
+    && item.sourceNodeIndex !== "" && Number.isInteger(Number(item.sourceNodeIndex))
+    ? Number(item.sourceNodeIndex)
+    : null;
+  return operationalControlEnabled(sourceEquipmentId, sourceNodeIndex, date);
 }
 
 function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
@@ -15598,6 +15653,7 @@ function directorEquipmentHealth(eq) {
   const emergencyRequests = 0;
   const since = Date.now() - 30 * 86400000;
   const repairs = downtimes().filter(item =>
+    operationalItemEnabled(item, item.startedAt) &&
     item.type !== "production" &&
     (Number(item.equipmentId) === eq.id || (!item.equipmentId && item.area === eq.area)) &&
     Date.parse(item.startedAt || "") >= since
@@ -15815,6 +15871,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
     visibleCommentEntries(item).forEach(entry => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
+      if (!operationalControlEnabled(eq, Number(nodeIndexRaw), createdAt)) return;
       const created = dateYearMonth(createdAt);
       const resolved = dateYearMonth(entry.resolved ? entry.resolvedAt || "" : "");
       const confirmed = dateYearMonth(entry.confirmedAt || "");
@@ -15853,6 +15910,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
   });
   downtimes().forEach(item => {
     if (item.type === "production") return;
+    if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     const resolved = dateYearMonth(item.endedAt || "");
     if (created?.year !== year && resolved?.year !== year) return;
@@ -15886,6 +15944,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
     if (event.type === "breakdown" && created?.year === year) months[created.month].breakdowns += 1;
   });
   downtimes().forEach(item => {
+    if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     if (created?.year !== year) return;
     months[created.month].stops += 1;
@@ -15908,18 +15967,20 @@ function directorAnnualStats(year = directorAnnualYear()) {
       const dueShiftKeys = walkShiftKeysDueForDate(date);
       if (!dueShiftKeys.length) continue;
       activeEquipment.forEach(eq => {
-        months[month].qrPlan += eq.nodes.length * dueShiftKeys.length;
-        eq.nodes.forEach((_, nodeIndex) => {
+        const activeNodeIndexes = eq.nodes.map((_, nodeIndex) => nodeIndex)
+          .filter(nodeIndex => operationalControlEnabled(eq, nodeIndex, date));
+        months[month].qrPlan += activeNodeIndexes.length * dueShiftKeys.length;
+        activeNodeIndexes.forEach(nodeIndex => {
           const rec = getRecord(eq.id, nodeIndex, date);
           months[month].qrDone += dueShiftKeys.filter(shiftKey => Boolean(nodeShiftRecord(rec?.to || {}, shiftKey, "technical")?.done)).length;
         });
       });
-      craneEquipment.forEach(item => {
+      craneEquipment.filter(item => gpmOperationalControlEnabled(item, date)).forEach(item => {
         months[month].craneShiftQrPlan += dueShiftKeys.length;
         months[month].craneShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
           && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
       });
-      forkliftEquipment.forEach(item => {
+      forkliftEquipment.filter(item => gpmOperationalControlEnabled(item, date)).forEach(item => {
         months[month].forkliftShiftQrPlan += dueShiftKeys.length;
         months[month].forkliftShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
           && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
@@ -15927,11 +15988,14 @@ function directorAnnualStats(year = directorAnnualYear()) {
     }
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     if (monthKey <= today.slice(0, 7)) {
-      months[month].craneMonthlyQrPlan += craneEquipment.length;
-      months[month].craneMonthlyQrDone += craneEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
+      const monthControlDate = monthKey === today.slice(0, 7) ? today : `${monthKey}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+      const activeCranes = craneEquipment.filter(item => gpmOperationalControlEnabled(item, monthControlDate));
+      const activeForklifts = forkliftEquipment.filter(item => gpmOperationalControlEnabled(item, monthControlDate));
+      months[month].craneMonthlyQrPlan += activeCranes.length;
+      months[month].craneMonthlyQrDone += activeCranes.filter(item => craneInspections.some(entry => entry.gpmId === item.id
         && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
-      months[month].forkliftMonthlyQrPlan += forkliftEquipment.length;
-      months[month].forkliftMonthlyQrDone += forkliftEquipment.filter(item => craneInspections.some(entry => entry.gpmId === item.id
+      months[month].forkliftMonthlyQrPlan += activeForklifts.length;
+      months[month].forkliftMonthlyQrDone += activeForklifts.filter(item => craneInspections.some(entry => entry.gpmId === item.id
         && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
     }
     // Ежесменный QR кран-балки контролируется и хранится в журнале,
@@ -17071,6 +17135,7 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     visibleCommentEntries(item).forEach(entry => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       const createdAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
+      if (!operationalControlEnabled(eq, Number(nodeIndexRaw), createdAt)) return;
       const resolvedAt = entry.resolved ? entry.resolvedAt || "" : "";
       const createdPeriod = dateYearMonth(createdAt);
       const resolvedPeriod = dateYearMonth(resolvedAt);
@@ -17104,11 +17169,13 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     });
   });
   const downtimeItems = downtimes()
+    .filter(item => operationalItemEnabled(item, item.startedAt))
     .map(item => ({ ...item, monthMs: downtimeOverlapMs(item, year, month) }))
     .filter(item => item.monthMs > 0)
     .sort((a, b) => b.monthMs - a.monthMs || String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
   const doneRequests = allRequests()
     .filter(req => req.mechanicInstalled || req.done)
+    .filter(req => operationalItemEnabled(req, req.updatedAt || req.createdAt || req.date))
     .filter(req => String(req.updatedAt || req.createdAt || req.date || "").slice(0, 7) === key)
     .map(req => ({
       number: req.requestNumber || req.id || "",
@@ -17137,7 +17204,8 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
           markedByRole: row.markedByRole || "",
           markedAt: row.markedAt || ""
         }))
-        .filter(row => row.work);
+        .filter(row => row.work)
+        .filter(row => operationalItemEnabled(row, date));
       return { date, sheet, works, completion: pprSheetCompletion(date) };
     })
     .filter(item => item.works.length)
