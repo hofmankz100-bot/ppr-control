@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v606-remove-obsolete-notice-1";
+const APP_VERSION = "v607-remove-admin-guide-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18243,7 +18243,7 @@ async function renderAdminMaintenance() {
   if (!ui.adminMaintenancePanel || profile?.role !== "editor") return;
   ui.subtitle.textContent = "Корзина и восстановление";
   ui.adminMaintenancePanel.innerHTML = `<div class="empty-state">Загружаем защищённый журнал…</div>`;
-  if (["forms", "activity", "settings", "monitoring"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "trash";
+  if (["forms", "activity", "settings", "monitoring", "guide"].includes(current.adminMaintenanceTab)) current.adminMaintenanceTab = "trash";
   const requestedTab = current.adminMaintenanceTab || "trash";
   let result;
   try { result = await apiJson(`/api/admin/maintenance?tab=${encodeURIComponent(requestedTab)}`, { timeout: 20000 }); }
@@ -18294,7 +18294,7 @@ async function renderAdminMaintenance() {
           <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
-          <button type="button" class="${tab === "guide" ? "active" : ""}" data-admin-maintenance-tab="guide">Инструкция</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
+          <button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-push-diagnostics>Push-устройства</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
         </div>
       </details>
     </div>
@@ -18310,10 +18310,6 @@ async function renderAdminMaintenance() {
   maintenanceTabs?.querySelector("[data-open-push-diagnostics]")?.addEventListener("click", openPushDiagnostics);
   maintenanceTabs?.querySelector("[data-open-storage-diagnostics]")?.addEventListener("click", openStorageDiagnostics);
   maintenanceTabs?.querySelector("[data-clear-recorded-data]")?.addEventListener("click", event => confirmClearRecordedData(event.currentTarget));
-  const guideTabButton = maintenanceTabs?.querySelector('[data-admin-maintenance-tab="guide"]');
-  if (guideTabButton && !maintenanceTabs.querySelector('[data-admin-maintenance-tab="instructionLog"]')) {
-    guideTabButton.insertAdjacentHTML("afterend", `<button type="button" class="${tab === "instructionLog" ? "active" : ""}" data-admin-maintenance-tab="instructionLog">Ознакомления · ${instructionAcknowledgements.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button>`);
-  }
   if (tab === "instructionLog") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Журнал ознакомления с инструкциями</strong><span>Записей: ${instructionAcknowledgements.length}</span></div><div class="admin-instruction-log">${instructionAcknowledgements.length ? instructionAcknowledgements.map(item => `<article><div><strong>${escapeHtml(item.actorName || "Сотрудник")}</strong><span>${escapeHtml(item.employeeId || item.role || "")}</span></div><div><b>${escapeHtml(item.instructionTitle || item.instructionId || "Инструкция")}</b><small>${escapeHtml(dateTimeHuman(item.acknowledgedAt))}</small></div></article>`).join("") : `<div class="empty-state">Подтверждений ознакомления пока нет.</div>`}</div>`;
@@ -18322,20 +18318,7 @@ async function renderAdminMaintenance() {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Хранилище и безопасная очистка</strong><span>${escapeHtml(sizeText)}</span></div><div class="system-monitor-grid"><article><strong>PostgreSQL</strong><b>${pg.connected ? "Подключён" : "Недоступен"}</b><span>Размер ${escapeHtml(sizeText)}</span></article><article><strong>Использование лимита</strong><b>${Number(monitor.postgres?.usagePercent || 0)}%</b><span>Предупреждение от 70%</span></article><article><strong>Архивировать старше</strong><b>${Number(archivePreview.days || 180)} дней</b><span>${Object.values(archivePreview.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0)} записей доступно</span></article><article><strong>Корзина</strong><b>${trash.filter(item => item.canRestore).length}</b><span>Можно восстановить до окончательной очистки</span></article></div><div class="admin-guide-grid"><article><strong>Предпросмотр очистки</strong><p>Сначала откройте диагностику и убедитесь, какие записи будут затронуты.</p><button type="button" data-guide-open-tab="integrity">Проверить данные</button></article><article><strong>Архивация</strong><p>Переносит старые данные в защищённый архив, не уничтожая рабочие журналы.</p><button type="button" data-guide-open-tab="archives">Открыть архивы</button></article><article><strong>Политика резервных копий</strong><p>14 дней — все автоматические копии, затем одна в неделю до 8 недель и одна в месяц до 12 месяцев. Ручные копии не удаляются.</p><b>К удалению сейчас: ${Number(backupRetention.deleteCount || 0)}</b><button type="button" data-apply-backup-retention ${Number(backupRetention.deleteCount || 0) ? "" : "disabled"}>Применить политику</button></article><article><strong>Корзина</strong><p>Удалённые записи можно восстановить до истечения срока хранения.</p><button type="button" data-guide-open-tab="trash">Открыть корзину</button></article></div>`;
   }
-  if (tab === "guide") {
-    const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
-    if (sheet) sheet.innerHTML = `
-      <div class="aggregate-sheet-head"><strong>Инструкция администратора</strong><span>Этап 18</span></div>
-      <div class="admin-guide-grid">
-        <article><strong>1. Сотрудники и доступы</strong><p>Создавайте карточки, меняйте роль и участок, сбрасывайте пароль и снимайте блокировку. Перед удалением проверяйте ФИО и табельный номер.</p><button type="button" data-admin-open-users>Открыть сотрудников</button></article>
-        <article><strong>2. Оборудование и QR</strong><p>Редактируйте оборудование и узлы, печатайте QR и проверяйте маршруты. Удаление узла сохраняет старый журнал.</p><button type="button" data-admin-open-equipment>Открыть оборудование</button></article>
-        <article><strong>3. Наряд и инструкции</strong><p>Документы инструкций изменяются только администратором. Старые подтверждения и печатные наряды сохраняются.</p><button type="button" data-admin-open-instructions>Открыть наряд</button></article>
-        <article><strong>4. Исправление ошибок</strong><p>Сначала создайте резервную копию. Для опасного действия укажите причину и подтвердите пароль. Не очищайте рабочие данные без проверки архива.</p></article>
-        <article><strong>5. Контроль системы</strong><p>Красный статус требует немедленной проверки; жёлтый — внимания. Проверяйте PostgreSQL, последнюю копию, память и ошибки API.</p><button type="button" data-guide-open-tab="report">Открыть контроль</button></article>
-        <article><strong>6. Корзина и восстановление</strong><p>Обычное удаление можно отменить. Окончательная очистка создаёт страховочную копию и требует повторного подтверждения.</p><button type="button" data-guide-open-tab="trash">Открыть корзину</button></article>
-      </div>
-      <div class="admin-guide-emergency"><strong>Если появилась ошибка {"detail":"Bad Request"}</strong><ol><li>Не нажимайте опасную кнопку повторно много раз.</li><li>Обновите страницу и проверьте интернет.</li><li>Откройте «Контроль» и «Журнал действий».</li><li>Если запись уже появилась в журнале — повторять действие не нужно.</li></ol></div>`;
-  }  if (tab === "backups") {
+  if (tab === "backups") {
     const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
     if (sheet) sheet.innerHTML = `
       <div class="aggregate-sheet-head"><strong>Резервные копии и восстановление</strong><span>${dateTimeHuman(new Date().toISOString())}</span></div>
