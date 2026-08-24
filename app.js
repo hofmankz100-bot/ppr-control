@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v609-factory-index-fix-1";
+const APP_VERSION = "v610-balanced-factory-index-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -16172,10 +16172,13 @@ function directorFactoryReliabilityDetails(month) {
   const downtimeHours = Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000;
   const openWorks = Number.isFinite(month.openWorks) ? Number(month.openWorks) : Math.max(month.repairsCreated - month.repairsClosed, 0);
   const qrPercent = month.qrPlan ? month.qrDone / month.qrPlan * 100 : 100;
-  const downtimePenalty = Math.min(Math.round(downtimeHours / 125 * 45), 45);
-  const stopPenalty = Math.min(Number(month.reliabilityStops ?? month.stops) * 4, 20);
-  const openPenalty = Math.min(openWorks * 5, 25);
-  const qrPenalty = Math.min(Math.round((100 - qrPercent) * 0.25), 25);
+  // Four independent factors share the scale without letting one category
+  // collapse the whole index. Production stops and deferred remarks are
+  // already excluded while monthly downtime is split by actual overlap.
+  const downtimePenalty = Math.min(Math.round(downtimeHours / 250 * 30), 30);
+  const stopPenalty = Math.min(Number(month.reliabilityStops ?? month.stops) * 2, 10);
+  const openPenalty = Math.min(openWorks, 15);
+  const qrPenalty = Math.min(Math.round((100 - qrPercent) * 0.2), 20);
   const score = Math.max(0, Math.min(100, 100 - downtimePenalty - stopPenalty - openPenalty - qrPenalty));
   return { score, frozen: false, downtimeHours, openWorks, qrPercent, penalties: { downtime: downtimePenalty, stops: stopPenalty, open: openPenalty, qr: qrPenalty } };
 }

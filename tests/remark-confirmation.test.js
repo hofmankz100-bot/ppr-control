@@ -1683,6 +1683,10 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /function downtimeOverlapMsForMonth/);
   assert.match(client, /Number\.isFinite\(month\.openWorks\)/);
   assert.doesNotMatch(client, /const breakdownPenalty/);
+  assert.match(client, /downtimeHours \/ 250 \* 30/);
+  assert.match(client, /reliabilityStops \?\? month\.stops\) \* 2/);
+  assert.match(client, /const openPenalty = Math\.min\(openWorks, 15\)/);
+  assert.match(client, /\(100 - qrPercent\) \* 0\.2/);
   assert.match(client, /factory-score-explanation/);
 });
 
