@@ -6,7 +6,6 @@ function createAdminDashboardRoute(dependencies = {}) {
     adminArchiveSelection,
     adminAutomationSnapshot,
     adminDiagnosticWithin,
-    adminUserOperationalSummary,
     backupRetentionDeleteIds,
     dataIntegrityReport,
     getPostgresConnected,
@@ -103,16 +102,28 @@ function createAdminDashboardRoute(dependencies = {}) {
         };
       })
       : [];
-    const operationalReferenceCache = new Map();
+    const now = Date.now();
+    const activeSessionsByUser = new Map();
+    (db.authSessions || []).forEach(session => {
+      if (Date.parse(session.expiresAt || "") <= now) return;
+      const userId = String(session.userId || "");
+      if (!userId) return;
+      const sessions = activeSessionsByUser.get(userId) || [];
+      sessions.push({ createdAt: session.createdAt || "", expiresAt: session.expiresAt || "", ip: session.ip || "", userAgent: session.userAgent || "" });
+      activeSessionsByUser.set(userId, sessions);
+    });
     const access = ["all", "access"].includes(requestedTab)
-      ? (db.users || []).map(user => ({
-        ...userPublic(user),
-        loginDiagnostics: userLoginDiagnostics(db, user),
-        operationalSummary: adminUserOperationalSummary(db, user, operationalReferenceCache),
-        instructionEditorCount: Object.values(db.workPermitInstructions || {})
-          .filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key))))
-          .length
-      }))
+      ? (db.users || []).map(user => {
+        const sessions = activeSessionsByUser.get(String(user.id || "")) || [];
+        return {
+          ...userPublic(user),
+          loginDiagnostics: userLoginDiagnostics(db, user),
+          operationalSummary: { lightweight: true, activeSessions: sessions.length, sessions, history: [], linked: {}, lastActivityAt: user.lastLoginAt || "" },
+          instructionEditorCount: Object.values(db.workPermitInstructions || {})
+            .filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key))))
+            .length
+        };
+      })
       : [];
     const integrity = ["all", "integrity", "report"].includes(requestedTab)
       ? dataIntegrityReport(db)

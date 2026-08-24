@@ -33,13 +33,14 @@ function createHarness(database = {}) {
   return { handler, responses, calls, summaryCaches, database };
 }
 
-test("access summaries reuse one request-local reference cache", async () => {
-  const database = { adminTrash: [], adminAlerts: [], adminConfig: {}, users: [{ id: "one" }, { id: "two" }] };
-  const { handler, summaryCaches } = createHarness(database);
+test("access tab avoids full production-history scans and reuses active sessions", async () => {
+  const database = { adminTrash: [], adminAlerts: [], adminConfig: {}, users: [{ id: "one" }, { id: "two" }], authSessions: [{ userId: "one", expiresAt: "2099-01-01T00:00:00.000Z", userAgent: "phone" }] };
+  const { handler, summaryCaches, responses } = createHarness(database);
   await handler({ method: "GET", authUser: { role: "editor" } }, {}, "/api/admin/maintenance", new URL("https://example.test/api/admin/maintenance?tab=access"));
-  assert.equal(summaryCaches.length, 2);
-  assert.equal(summaryCaches[0], summaryCaches[1]);
-  assert.equal(summaryCaches[0] instanceof Map, true);
+  assert.equal(summaryCaches.length, 0);
+  assert.equal(responses[0].payload.access[0].operationalSummary.lightweight, true);
+  assert.equal(responses[0].payload.access[0].operationalSummary.activeSessions, 1);
+  assert.equal(responses[0].payload.access[1].operationalSummary.activeSessions, 0);
 });
 
 test("admin dashboard route ignores unrelated requests and protects access", async () => {
