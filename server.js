@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v602-warning-reasons-1";
+const SERVER_VERSION = "v603-auto-resume-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -6760,7 +6760,7 @@ async function handleApi(req, res, pathname, url) {
     const recordKey = String(body.key || "").trim();
     const action = String(body.action || "").trim();
     const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score", "defer", "resume-deferred"]);
+    const allowedActions = new Set(["start", "add", "remove", "update", "resolve", "confirm", "return", "delete", "admin-close", "admin-repair-close", "admin-edit-resolved", "close-no-score", "close-with-score", "defer"]);
     const allowedRoles = new Set([
       "mechanic", "electrician", "welder", "turner", "forkliftDriver",
       "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
@@ -6824,7 +6824,7 @@ async function handleApi(req, res, pathname, url) {
           recordKey
         };
       }
-      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score", "close-with-score", "defer", "resume-deferred"].includes(action)) return { error: "remark_awaiting_confirmation" };
+      if (remark.resolutionPendingConfirmation && !["confirm", "return", "admin-close", "admin-repair-close", "close-no-score", "close-with-score", "defer"].includes(action)) return { error: "remark_awaiting_confirmation" };
       if (!remark.resolutionPendingConfirmation && ["confirm", "return"].includes(action)) return { error: "remark_not_awaiting_confirmation" };
       const now = new Date().toISOString();
       const before = JSON.stringify(record);
@@ -6885,20 +6885,6 @@ async function handleApi(req, res, pathname, url) {
         remark.deferredByRole = actor.role;
         remark.resolutionEvents.push({ id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`, action: "deferred", actorKey: actor.key, name: actor.name, role: actor.role, reason, at: now });
         pushTitle = "Записана причина неустранения";
-        pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
-      }
-
-      if (action === "resume-deferred") {
-        if (!canDefer) return { error: "remark_defer_forbidden" };
-        const reason = String(body.reason || "").trim().slice(0, 2000);
-        if (!reason) return { error: "reason_required" };
-        remark.resolutionEvents.push({ id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`, action: "defer-resumed", actorKey: actor.key, name: actor.name, role: actor.role, reason, previousReason: remark.deferReason || "", at: now });
-        remark.deferReason = "";
-        remark.deferredAt = "";
-        remark.deferredById = "";
-        remark.deferredByName = "";
-        remark.deferredByRole = "";
-        pushTitle = "Предупреждение возвращено в учёт";
         pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
       }
 

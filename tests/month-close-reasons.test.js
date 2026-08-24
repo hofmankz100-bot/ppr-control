@@ -16,7 +16,7 @@ test("unfinished PPR entries expose equipment nodes works and date", () => {
 });
 
 test("an individually authorized employee can record a non-resolution reason", () => {
-  assert.match(server, /"defer", "resume-deferred"/);
+  assert.match(server, /"close-with-score", "defer"/);
   assert.match(server, /activeUserPermission\(registeredActor, "remarkDefer"\)/);
   assert.match(server, /remark_defer_forbidden/);
   assert.match(server, /remark\.deferReason = reason/);
@@ -29,7 +29,7 @@ test("an individually authorized employee can record a non-resolution reason", (
 test("reasoned remarks stay in warnings but leave KPI and main counters", () => {
   assert.match(client, /function countedOpenRemarkEntries[\s\S]*?!remarkDeferred\(entry\)/);
   assert.match(client, /data-defer-open-remark/);
-  assert.match(client, /data-resume-open-remark/);
+  assert.doesNotMatch(client, /data-resume-open-remark|resume-deferred|Вернуть в учёт/);
   assert.match(client, /Причина записана/);
   assert.match(client, /if \(remarkDeferred\(entry\)\) return;/);
 });

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v602-warning-reasons-1";
+const APP_VERSION = "v603-auto-resume-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -9523,7 +9523,6 @@ function openAllRemarkCards() {
               ${target.kind !== "gpm" && canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
               ${target.kind !== "gpm" && canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
               ${target.kind !== "gpm" && canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
-              ${target.kind !== "gpm" && target.deferred && canDeferRemarks() ? `<button type="button" class="secondary" data-resume-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Вернуть в учёт</button>` : ""}
               ${target.kind === "gpm" && !target.pendingConfirmation && target.canResolve ? `<button type="button" data-gpm-warning-resolve="${escapeHtml(target.remarkId)}">Записать устранение</button>` : ""}
               ${target.kind === "gpm" && target.pendingConfirmation && target.canConfirm ? `<button type="button" data-gpm-warning-confirm="${escapeHtml(target.remarkId)}">Подтвердить и допустить</button>` : ""}
               ${target.kind !== "gpm" ? `<button type="button" data-open-remark-card data-gpm-id="" data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>` : ""}
@@ -9578,15 +9577,6 @@ function openAllRemarkCards() {
     showAppToast("Причина сохранена. Предупреждение осталось открытым, но исключено из счётчиков и отчётов.", "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Сохраняем...")));
-  overlay.querySelectorAll("[data-resume-open-remark]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-    if (!canDeferRemarks()) return;
-    const reason = window.prompt("Почему предупреждение возвращается в учёт?")?.trim();
-    if (!reason) return;
-    await publishRemarkCollaborationAction(Number(button.dataset.equipmentId), Number(button.dataset.nodeIndex), button.dataset.date || todayISO(), "resume-deferred", { remarkId: button.dataset.remarkId || "", reason });
-    close();
-    showAppToast("Предупреждение снова учитывается в счётчиках и отчётах.", "ok");
-    window.setTimeout(() => openAllRemarkCards(), 50);
-  }, "Возвращаем...")));
   overlay.querySelectorAll("[data-gpm-warning-resolve]").forEach(button => button.addEventListener("click", async () => {
     const entry = gpmStore().events[button.dataset.gpmWarningResolve];
     const comment = String(button.closest(".open-remark-item")?.querySelector("[data-gpm-warning-comment]")?.value || "").trim();
