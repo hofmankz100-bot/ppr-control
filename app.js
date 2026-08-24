@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v610-balanced-factory-index-1";
+const APP_VERSION = "v611-clear-factory-chart-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -16824,19 +16824,23 @@ function renderWorkerRating() {
 }
 
 function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
-  const monthIndex = Math.min(new Date().getMonth(), 11);
+  const now = new Date();
+  const monthIndex = Math.min(now.getMonth(), 11);
   const current = stats.months[monthIndex];
-  const previous = stats.months[Math.max(monthIndex - 1, 0)];
   const currentScore = directorFactoryReliabilityScore(current);
   const currentDetails = directorFactoryReliabilityDetails(current);
-  const previousScore = directorFactoryReliabilityScore(previous);
-  const scoreDiff = currentScore - previousScore;
   const totalOpen = Number.isFinite(current.openWorks) ? current.openWorks : Math.max(current.repairsCreated - current.repairsClosed, 0);
   const bestWorker = stats.workers.find(worker => worker.kpd !== null);
   const bars = stats.months.map((month, index) => {
+    const isFutureMonth = stats.year > now.getFullYear() || (stats.year === now.getFullYear() && index > now.getMonth());
+    if (isFutureMonth) return `
+      <div class="factory-month no-data">
+        <div class="factory-bar-wrap"><strong>Нет данных</strong></div>
+        <b>${escapeHtml(month.label)}</b>
+        <small>Месяц ещё не наступил</small>
+      </div>
+    `;
     const score = directorFactoryReliabilityScore(month);
-    const prevScore = index ? directorFactoryReliabilityScore(stats.months[index - 1]) : score;
-    const diff = score - prevScore;
     const downtimeHours = Math.round(Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000 * 10) / 10;
     const band = reliabilityBand(score);
     const qrPercent = month.qrPlan ? Math.round(month.qrDone / month.qrPlan * 100) : 0;
@@ -16846,7 +16850,6 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
           <div class="factory-score-bar" style="height:${score}%"><strong>${score}</strong></div>
         </div>
         <b>${escapeHtml(month.label)}</b>
-        <span class="${diff > 0 ? "up" : diff < 0 ? "down" : ""}">${index ? diff === 0 ? "=" : `${diff > 0 ? "+" : ""}${diff}` : "старт"}</span>
         <small>${downtimeHours ? `${downtimeHours}ч` : "0ч"} · QR ${qrPercent}% · открыто ${Number.isFinite(month.openWorks) ? month.openWorks : Math.max(month.repairsCreated - month.repairsClosed, 0)}</small>
       </div>
     `;
@@ -16862,7 +16865,7 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         </div>
         <div class="factory-current-score ${reliabilityBand(currentScore)}">
           <strong>${currentScore}</strong>
-          <span>${scoreDiff === 0 ? "без изменений" : scoreDiff > 0 ? `рост +${scoreDiff}` : `падение ${scoreDiff}`}</span>
+          <span>индекс текущего месяца</span>
         </div>
       </div>
       ${currentDetails.frozen ? "" : `<div class="factory-score-explanation"><strong>Расчёт месяца:</strong><span>Простой −${currentDetails.penalties.downtime}</span><span>Аварийные остановки −${currentDetails.penalties.stops}</span><span>Открытые замечания −${currentDetails.penalties.open}</span><span>Невыполненные QR −${currentDetails.penalties.qr}</span><b>100 − ${Object.values(currentDetails.penalties).join(" − ")} = ${currentScore}</b></div>`}
@@ -16871,7 +16874,7 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
         <strong>Как читать график:</strong>
         <span>Высокая колонка - месяц прошёл хорошо.</span>
         <span>Зелёный - норма, жёлтый - внимание, красный - риск.</span>
-        <span>+ / - под месяцем показывает рост или падение к прошлому месяцу.</span>
+        <span>В каждой колонке показан только индекс выбранного месяца.</span>
         <span>Нижняя строка: аварийный простой · процент QR-обхода · реально открытые замечания.</span>
       </div>
       <div class="factory-graph-legend">

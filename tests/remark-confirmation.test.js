@@ -1688,6 +1688,10 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.match(client, /const openPenalty = Math\.min\(openWorks, 15\)/);
   assert.match(client, /\(100 - qrPercent\) \* 0\.2/);
   assert.match(client, /factory-score-explanation/);
+  assert.match(client, /const isFutureMonth =/);
+  assert.match(client, /Месяц ещё не наступил/);
+  assert.match(client, /индекс текущего месяца/);
+  assert.doesNotMatch(client, /\+ \/ - под месяцем показывает рост или падение/);
 });
 
 test("month closing API remains compatible but its panel is removed from the report", () => {

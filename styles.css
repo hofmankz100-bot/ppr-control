@@ -2215,7 +2215,7 @@ html[data-theme="dark"] td { border-color:var(--line); }
 
 .factory-month {
   display: grid;
-  grid-template-rows: 210px auto auto auto;
+  grid-template-rows: 210px auto auto;
   gap: 5px;
   min-width: 64px;
   text-align: center;
@@ -2260,8 +2260,17 @@ html[data-theme="dark"] td { border-color:var(--line); }
   font-weight: 900;
 }
 
-.factory-month span.up { color: #15803d; }
-.factory-month span.down { color: #dc2626; }
+.factory-month.no-data .factory-bar-wrap {
+  align-items: center;
+  border-style: dashed;
+  background: var(--soft);
+  color: var(--muted);
+}
+
+.factory-month.no-data .factory-bar-wrap strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
 
 .factory-month small {
   color: #607785;
