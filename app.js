@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v613-quiet-app-resume-1";
+const APP_VERSION = "v614-instant-realtime-resume-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -2614,9 +2614,10 @@ function connectRealtimeSocket() {
   if (!("WebSocket" in window)) return false;
   if (realtimeSocket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(realtimeSocket.readyState)) return true;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  realtimeSocket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-  realtimeSocket.onmessage = event => handleRealtimeMessage(event.data);
-  realtimeSocket.onopen = () => {
+  const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+  realtimeSocket = socket;
+  socket.onmessage = event => handleRealtimeMessage(event.data);
+  socket.onopen = () => {
     lastRealtimeMessageAt = Date.now();
     pollRemoteUsers(true);
     if (realtimeEventSource) {
@@ -2625,10 +2626,11 @@ function connectRealtimeSocket() {
     }
     if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
   };
-  realtimeSocket.onerror = () => {
-    try { realtimeSocket?.close(); } catch {}
+  socket.onerror = () => {
+    try { socket.close(); } catch {}
   };
-  realtimeSocket.onclose = () => {
+  socket.onclose = () => {
+    if (realtimeSocket !== socket) return;
     realtimeSocket = null;
     connectRealtimeEvents();
     clearTimeout(realtimeReconnectTimer);
@@ -2639,6 +2641,21 @@ function connectRealtimeSocket() {
 
 function connectRealtime() {
   if (!connectRealtimeSocket()) connectRealtimeEvents();
+}
+
+function resumeRealtimeQuietly(awayMs = 0) {
+  const socketOpen = Boolean(realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN);
+  const socketStale = socketOpen && awayMs >= 5000 && Date.now() - lastRealtimeMessageAt > 20000;
+  if (socketStale) {
+    try { realtimeSocket.close(); } catch {}
+    realtimeSocket = null;
+  }
+  const eventsOpen = Boolean(realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN);
+  if (!socketOpen || socketStale || !eventsOpen) connectRealtime();
+  startRealtimePoll();
+  // This request compares only the lightweight state version. The interface
+  // is re-rendered only when the server confirms that data actually changed.
+  pollRealtimeStateVersion(true);
 }
 
 function startRealtimePoll() {
@@ -20090,14 +20107,9 @@ window.addEventListener("visibilitychange", () => {
   appHiddenAt = 0;
   resetAppNotificationsForOpen();
   const hasPendingWork = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
-  const socketAlive = Boolean(realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN);
-  const eventsAlive = Boolean(realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN);
   if (hasPendingWork) flushPendingWork();
-  else if (!socketAlive && !eventsAlive) connectRealtime();
-  startRealtimePoll();
-  if (awayMs < RESUME_SYNC_AFTER_MS) return;
-  pollRealtimeStateVersion(true);
-  if (now - lastResumeProfileRefreshAt >= RESUME_PROFILE_REFRESH_MS) {
+  resumeRealtimeQuietly(awayMs);
+  if (awayMs >= RESUME_SYNC_AFTER_MS && now - lastResumeProfileRefreshAt >= RESUME_PROFILE_REFRESH_MS) {
     lastResumeProfileRefreshAt = now;
     refreshAuthenticatedProfile();
     pollRemoteUsers(true);
