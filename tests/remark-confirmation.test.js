@@ -2121,3 +2121,19 @@ test("organization settings and role-name editor are no longer accessible", () =
   assert.doesNotMatch(clientSource, /data-role-label=/);
   assert.doesNotMatch(clientSource, /Вернуть стандартные названия/);
 });
+
+test("engineer PPR report groups completed work compactly", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  const start = clientSource.indexOf("function engineerMonthlyReportHtml");
+  const end = clientSource.indexOf("function monthClosePanelHtml", start);
+  const reportSource = clientSource.slice(start, end);
+  assert.match(reportSource, /class="engineer-ppr-table"/);
+  assert.match(reportSource, /class="engineer-ppr-progress">\$\{completed\}\/\$\{item\.works\.length\}/);
+  assert.match(reportSource, /<summary>Показать работы<\/summary>/);
+  assert.match(reportSource, /const performers = \[\.\.\.new Set/);
+  assert.match(reportSource, /const equipmentGroups = new Map/);
+  assert.doesNotMatch(reportSource, /Работы и исполнители/);
+  assert.match(styles, /\.engineer-ppr-status\.accepted/);
+  assert.match(styles, /html\[data-theme="dark"\] \.engineer-ppr-progress/);
+});

@@ -2541,6 +2541,97 @@ html[data-theme="dark"] td { border-color:var(--line); }
   font-weight: 800;
 }
 
+.engineer-ppr-table {
+  table-layout: auto;
+}
+
+.engineer-ppr-table th:nth-child(1),
+.engineer-ppr-table th:nth-child(2),
+.engineer-ppr-table th:nth-child(3),
+.engineer-ppr-table td:nth-child(1),
+.engineer-ppr-table td:nth-child(2),
+.engineer-ppr-table td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.engineer-ppr-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.engineer-ppr-status.accepted {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.engineer-ppr-status.waiting {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.engineer-ppr-status.active {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.engineer-ppr-progress {
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.engineer-ppr-equipment-list {
+  display: grid;
+  gap: 5px;
+}
+
+.engineer-ppr-equipment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.engineer-ppr-equipment span {
+  overflow-wrap: anywhere;
+}
+
+.engineer-ppr-equipment strong {
+  color: #0f5d63;
+}
+
+.engineer-ppr-details {
+  margin-top: 8px;
+}
+
+.engineer-ppr-details summary {
+  color: #0f5d63;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.engineer-ppr-details ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid #dbe3ef;
+  list-style: none;
+}
+
+.engineer-ppr-details li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 5px;
+}
+
+.engineer-ppr-details small {
+  color: #64748b;
+}
+
 .engineer-report-empty {
   text-align: center;
   color: #64748b;
@@ -14009,6 +14100,38 @@ html[data-theme="dark"] .pull-refresh-indicator {
     border-color: #2a3942;
     background: #111b21;
     color: #e9edef;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-progress {
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-status.accepted {
+    background: #153e2b;
+    color: #a7f3d0;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-status.waiting {
+    background: #493716;
+    color: #fde68a;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-status.active {
+    background: #17384b;
+    color: #bae6fd;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-equipment strong,
+  html[data-theme="dark"] .engineer-ppr-details summary {
+    color: #53bdeb;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-details ul {
+    border-color: #2a3942;
+  }
+
+  html[data-theme="dark"] .engineer-ppr-details small {
+    color: #aebac1;
   }
 
   html[data-theme="dark"] .qr-walk-journal-sheet,

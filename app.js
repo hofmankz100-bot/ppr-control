@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v618-problem-nodes-breakdowns-only-1";
+const APP_VERSION = "v619-compact-ppr-report-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -17302,16 +17302,50 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   const pprRows = engineerReportRows(
     stats.pprSheets,
     "За выбранный месяц листы ППР не заполнялись",
-    item => `
-      <tr>
-        <td>${escapeHtml(dateHuman(item.date))}</td>
-        <td>${item.completion.complete ? "Принято инженером" : item.completion.awaitingApproval ? "Ожидает приёмки" : "В работе"}</td>
-        <td>${item.works.length}</td>
-        <td>${escapeHtml(item.works.map(work => `${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"} ${work.equipment || "Оборудование"}${work.node ? ` / ${work.node}` : ""}: ${work.work}${work.markedByName ? ` — ${work.markedByName}` : ""}`).join("; "))}</td>
-        <td>${escapeHtml(item.sheet?.plannedByName || item.sheet?.updatedByName || "-")}</td>
-        <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} · ${dateTimeHuman(item.sheet.approvedAt)}` : "-")}</td>
-      </tr>
-    `
+    item => {
+      const isWorkComplete = work => work.mark === "done" || work.mark === "na";
+      const completed = item.works.filter(isWorkComplete).length;
+      const performers = [...new Set(item.works.map(work => work.markedByName).filter(Boolean))];
+      const equipmentGroups = new Map();
+      item.works.forEach(work => {
+        const equipment = work.equipment || "Оборудование";
+        const key = `${equipment}\u0000${work.node || ""}`;
+        const group = equipmentGroups.get(key) || { equipment, node: work.node || "", total: 0, completed: 0 };
+        group.total += 1;
+        if (isWorkComplete(work)) group.completed += 1;
+        equipmentGroups.set(key, group);
+      });
+      const equipmentSummary = [...equipmentGroups.values()].map(group => `
+        <div class="engineer-ppr-equipment">
+          <span>${escapeHtml(group.equipment)}${group.node ? ` · ${escapeHtml(group.node)}` : ""}</span>
+          <strong>${group.completed}/${group.total}</strong>
+        </div>
+      `).join("");
+      const workDetails = item.works.map(work => `
+        <li>
+          <span class="engineer-ppr-work-mark">${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"}</span>
+          <span>${escapeHtml(work.work || "Работа не указана")}${work.markedByName ? ` <small>— ${escapeHtml(work.markedByName)}</small>` : ""}</span>
+        </li>
+      `).join("");
+      const status = item.completion.complete ? "accepted" : item.completion.awaitingApproval ? "waiting" : "active";
+      const statusLabel = status === "accepted" ? "Принято" : status === "waiting" ? "Ожидает приёмки" : "В работе";
+      return `
+        <tr>
+          <td>${escapeHtml(dateHuman(item.date))}</td>
+          <td><span class="engineer-ppr-status ${status}">${statusLabel}</span></td>
+          <td><strong class="engineer-ppr-progress">${completed}/${item.works.length}</strong></td>
+          <td>
+            <div class="engineer-ppr-equipment-list">${equipmentSummary || "—"}</div>
+            <details class="engineer-ppr-details">
+              <summary>Показать работы</summary>
+              <ul>${workDetails}</ul>
+            </details>
+          </td>
+          <td>${performers.length ? performers.map(name => escapeHtml(name)).join(", ") : "—"}</td>
+          <td>${escapeHtml(item.sheet?.approvedByName ? `${item.sheet.approvedByName} · ${dateTimeHuman(item.sheet.approvedAt)}` : "—")}</td>
+        </tr>
+      `;
+    }
   );
   const happenedItems = [
     ...stats.downtimeItems.map(item => ({
@@ -17470,7 +17504,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </section>
       <section class="engineer-report-block">
         <h3>Листы планового обслуживания ППР</h3>
-        <table><thead><tr><th>Дата</th><th>Статус</th><th>Работ</th><th>Работы и исполнители</th><th>План составил</th><th>Принял инженер</th></tr></thead><tbody>${pprRows}</tbody></table>
+        <table class="engineer-ppr-table"><thead><tr><th>Дата</th><th>Статус</th><th>Выполнено</th><th>Оборудование</th><th>Исполнители</th><th>Принял инженер</th></tr></thead><tbody>${pprRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>3. Что осталось в работе</h3>
@@ -17645,7 +17679,8 @@ function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
     .engineer-report-note{border:1px solid #cbd5e1;background:#f8fafc;border-radius:8px;padding:10px;margin:12px 0}.engineer-report-note strong{display:block;margin-bottom:4px}
     table{width:100%;border-collapse:collapse;page-break-inside:auto}th,td{border:1px solid #cbd5e1;padding:6px 7px;font-size:11px;vertical-align:top}th{background:#e2e8f0;text-align:left}.engineer-report-empty{text-align:center;color:#64748b}
     .engineer-report-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px;font-weight:700}.engineer-report-block{page-break-inside:auto}
-    @media print{body{margin:10mm}.engineer-report-block{break-inside:auto}.engineer-report-summary{grid-template-columns:repeat(3,1fr)}.engineer-report-year-strip{grid-template-columns:repeat(3,1fr)}}
+    .engineer-ppr-equipment{display:flex;justify-content:space-between;gap:8px}.engineer-ppr-equipment-list{display:grid;gap:4px}.engineer-ppr-status,.engineer-ppr-progress{font-weight:700}.engineer-ppr-details{display:none}
+    @media print{body{margin:10mm}.engineer-report-block{break-inside:auto}.engineer-report-summary{grid-template-columns:repeat(3,1fr)}.engineer-report-year-strip{grid-template-columns:repeat(3,1fr)}.engineer-ppr-details{display:none}}
   </style></head><body>${html}<script>window.onload=()=>{window.print();};<\/script></body></html>`);
   finalizeJournalPopup(popup);
 }
