@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v630-public-gpm-defects-1";
+const APP_VERSION = "v631-fresh-gpm-operators-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15478,9 +15478,22 @@ function renderGpmJournal() {
       showAppToast("Карточка перемещена в корзину и исключена из QR-счётчиков.", "ok");
     }, "Проверяем пароль…");
   });
-  ui.gpmPanel.querySelector("[data-gpm-edit]")?.addEventListener("click", () => {
-    current.gpmAdminEditorOpen = true;
-    renderGpmJournal();
+  ui.gpmPanel.querySelector("[data-gpm-edit]")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    setButtonBusy(button, true, "Обновляем операторов…");
+    try {
+      // A newly approved operator must be assignable immediately. The GPM
+      // picker is rendered from the local user cache, so refresh it before
+      // opening the form instead of waiting for the background poll.
+      await loadRemoteUsers();
+      current.gpmAdminEditorOpen = true;
+      renderGpmJournal();
+    } catch (error) {
+      console.error("GPM operator list refresh failed", error);
+      window.alert(error?.message || "Не удалось обновить список операторов.");
+    } finally {
+      if (button.isConnected) setButtonBusy(button, false);
+    }
   });
   ui.gpmPanel.querySelectorAll("[data-gpm-print-qr]").forEach(button => button.addEventListener("click", () => {
     printGpmQr(selected, button.dataset.gpmPrintQr);
