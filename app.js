@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v623-protect-gpm-delete-1";
+const APP_VERSION = "v624-distinguish-gpm-records-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15087,7 +15087,9 @@ function gpmOfficialShiftJournalHtml(item, inspections = []) {
       return `<article class="gpm-official-sheet ${monthlyInspection ? "gpm-official-monthly" : "gpm-official-shift"}">
         <div class="gpm-official-appendix">Приложение 14 к Правилам обеспечения промышленной безопасности<br>при эксплуатации грузоподъёмных механизмов</div>
         <h4>ВАХТЕННЫЙ ЖУРНАЛ</h4>
-        ${monthlyInspection ? `<div class="gpm-monthly-inspection-banner">${forklift ? "ПЛАНОВОЕ ТО ПОГРУЗЧИКА · КАРЩИК / ИНЖЕНЕР · ЕДИНЫЙ QR" : "ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR"}</div>` : ""}
+        <div class="gpm-monthly-inspection-banner ${monthlyInspection ? "monthly" : "shift"}">${monthlyInspection
+          ? (forklift ? "ПЛАНОВОЕ ТО ПОГРУЗЧИКА · КАРЩИК / ИНЖЕНЕР · ЕДИНЫЙ QR" : "ВЕРХНИЙ QR · ПЛАНОВОЕ ТО ЭЛЕКТРОМЕХАНИКА")
+          : (forklift ? "ЕДИНЫЙ QR · ЕЖЕСМЕННЫЙ ОСМОТР ВОДИТЕЛЯ" : "НИЖНИЙ QR · ЕЖЕСМЕННЫЙ ОСМОТР МАШИНИСТА")}</div>
         <div class="gpm-official-meta">
           <span><b>Организация:</b> ТОО Aluminium of Kazakhstan</span>
           <span><b>Цех (участок):</b> ${escapeHtml(item.location || "—")}</span>

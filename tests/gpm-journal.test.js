@@ -211,10 +211,15 @@ test("only an administrator can delete a GPM card after server password verifica
 
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
   assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
-  assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);
+  assert.match(app, /ВЕРХНИЙ QR · ПЛАНОВОЕ ТО ЭЛЕКТРОМЕХАНИКА/);
   assert.match(app, /gpm-official-monthly/);
   assert.match(styles, /\.gpm-monthly-inspection-banner/);
   assert.match(styles, /printing-gpm-journal \.gpm-monthly-inspection-banner/);
+});
+
+test("shift and monthly crane records have unmistakably different QR headings", () => {
+  assert.match(app, /ВЕРХНИЙ QR · ПЛАНОВОЕ ТО ЭЛЕКТРОМЕХАНИКА/);
+  assert.match(app, /НИЖНИЙ QR · ЕЖЕСМЕННЫЙ ОСМОТР МАШИНИСТА/);
 });
 
 test("the official crane shift journal prints the resolution comment and its audit details", () => {
