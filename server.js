@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v639-forklift-permissions-1";
+const SERVER_VERSION = "v640-delete-no-score-remarks-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4396,6 +4396,36 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+function purgeClosedWithoutScoreRemarksServer(db = {}) {
+  let changed = false;
+  for (const record of Object.values(db.checks || {})) {
+    const item = record?.to;
+    if (!item || !Array.isArray(item.commentLog)) continue;
+    const removed = item.commentLog.filter(entry => entry?.closedWithoutScore);
+    if (!removed.length) continue;
+    const removedIds = new Set(removed.map(entry => String(entry?.id || "")));
+    item.commentLog = item.commentLog.filter(entry => !entry?.closedWithoutScore && !removedIds.has(String(entry?.id || "")));
+    if (!item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim())) {
+      item.comment = "";
+      item.commentPhoto = "";
+      item.commentOwnerName = "";
+      item.commentOwnerRole = "";
+      item.commentUpdatedAt = "";
+      item.resolved = false;
+      item.resolvedAt = "";
+      item.resolvedByName = "";
+      item.resolvedByRole = "";
+      item.resolvedComment = "";
+      item.resolvedPhoto = "";
+      item.confirmedAt = "";
+    }
+    syncItemRemarkSummaryServer(item);
+    changed = true;
+  }
+  if (changed) db.checks = compactCheckRecordsServer(db.checks || {});
+  return changed;
+}
+
 function gpmOperationalControlEnabledServer(db = {}, item = {}) {
   const equipmentId = String(Number(item?.sourceEquipmentId || 0));
   if (equipmentId === "0") return true;
@@ -6370,6 +6400,7 @@ async function handleApi(req, res, pathname, url) {
       if (acceptOperational && body.walkShiftCleanupVersion) clearLegacyWalkCompletionsServer(db);
       if (acceptOperational) {
         db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
+        purgeClosedWithoutScoreRemarksServer(db);
         if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
         db.requests = TMC_REQUESTS_DISABLED ? {} : mergeObjectRecordsByFreshness(db.requests, body.requests);
         removeJournalRequestsServer(db);
@@ -6935,6 +6966,7 @@ async function handleApi(req, res, pathname, url) {
       let clearParticipants = [];
       let pushTitle = "ALKZ — совместное устранение";
       let pushBody = "Обновлена общая карточка замечания";
+      let deleteWithoutScore = false;
       const actorIsParticipant = participants.some(participant => participant.key === actor.key);
       const actorPermissionRole = permissionBaseRoleServer(actor.role);
       const canManage = ["editor", "engineer", "shop"].includes(actorPermissionRole) || remark.resolutionLeadKey === actor.key;
@@ -7134,38 +7166,9 @@ async function handleApi(req, res, pathname, url) {
         if (!canCloseForEmployees) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
         if (!reason) return { error: "remark_resolution_text_required" };
-        remark.resolved = true;
-        remark.resolvedAt = now;
-        remark.resolvedDurationMs = 0;
-        remark.resolvedByKey = "";
-        remark.resolvedByName = "";
-        remark.resolvedByRole = "";
-        remark.resolvedComment = reason;
-        remark.resolvedPhoto = "";
-        remark.closedWithoutScore = true;
-        remark.closedWithoutScoreAt = now;
-        remark.closedWithoutScoreByKey = actor.key;
-        remark.closedWithoutScoreByName = actor.name;
-        remark.closedWithoutScoreByRole = actor.role;
-        remark.resolutionPendingConfirmation = false;
-        remark.resolutionParticipants = [];
-        remark.resolutionCompletedParticipants = [];
-        remark.closedForParticipants = [];
-        remark.confirmedAt = now;
-        remark.confirmedByKey = actor.key;
-        remark.confirmedByName = actor.name;
-        remark.confirmedByRole = actor.role;
-        remark.resolutionEvents.push({
-          id: `resolution-event:${Date.now()}:${crypto.randomBytes(3).toString("hex")}`,
-          action: "closed-no-score",
-          actorKey: actor.key,
-          name: actor.name,
-          role: actor.role,
-          reason,
-          at: now
-        });
+        deleteWithoutScore = true;
         clearParticipants = participants;
-        pushTitle = "Предупреждение закрыто без баллов";
+        pushTitle = "Предупреждение удалено без баллов";
         pushBody = `${actor.name}: ${reason.slice(0, 120)}`;
       }
 
@@ -7486,13 +7489,31 @@ async function handleApi(req, res, pathname, url) {
           gasJournalIds: Object.keys(grpGasJournalPatch)
         });
       }
-      remark.resolutionParticipants = participants;
+      if (deleteWithoutScore) {
+        item.commentLog = (item.commentLog || []).filter(entry => String(entry?.id || "") !== remarkId);
+        if (!item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim())) {
+          item.comment = "";
+          item.commentPhoto = "";
+          item.commentOwnerName = "";
+          item.commentOwnerRole = "";
+          item.commentUpdatedAt = "";
+          item.resolved = false;
+          item.resolvedAt = "";
+          item.resolvedByName = "";
+          item.resolvedByRole = "";
+          item.resolvedComment = "";
+          item.resolvedPhoto = "";
+          item.confirmedAt = "";
+        }
+      } else {
+        remark.resolutionParticipants = participants;
+      }
       syncItemRemarkSummaryServer(item);
       item.updatedAt = now;
       record.updatedAt = now;
       const changed = before !== JSON.stringify(record);
       const actionId = String(body.actionId || "");
-      if (changed) writeDb(db, { action: `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey });
+      if (changed) writeDb(db, { action: deleteWithoutScore ? "remark_deleted_without_score" : `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey, remarkId, reason: deleteWithoutScore ? String(body.reason || "").trim().slice(0, 2000) : "" });
       const patch = {
         checks: { [recordKey]: record },
         ...(Object.keys(grpGasJournalPatch).length ? { gasJournal: grpGasJournalPatch } : {}),

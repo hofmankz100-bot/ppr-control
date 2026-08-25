@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v639-forklift-permissions-1";
+const APP_VERSION = "v640-delete-no-score-remarks-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -6140,7 +6140,7 @@ const REMARK_COLLABORATION_FIELDS = [
 
 function ensureRemarkEntries(item = {}) {
   const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
-    .filter(entry => entry && !isDowntimeCommentEntry(entry) && String(entry.text || entry.photo || "").trim());
+    .filter(entry => entry && !entry.closedWithoutScore && !isDowntimeCommentEntry(entry) && String(entry.text || entry.photo || "").trim());
   entries.forEach(entry => {
     entry.id ||= stableRemarkId(entry);
     if (typeof entry.resolved !== "boolean") entry.resolved = Boolean(item.resolved);
@@ -9533,7 +9533,7 @@ function openAllRemarkCards() {
       { remarkId: button.dataset.remarkId || "", reason: decision.reason, performerKeys: decision.performerKeys }
     );
     close();
-    showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
+    showAppToast("Предупреждение удалено без начисления баллов.", "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
   }, "Закрываем...")));
   overlay.querySelectorAll("[data-close-remark-with-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
@@ -9645,7 +9645,7 @@ function askAdminRemarkClose(withScore = false) {
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
         <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
-        <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Запись закроется без начисления баллов. Укажите только причину — сотрудника выбирать не требуется."}</p>
+        <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Предупреждение будет полностью удалено без начисления баллов. В журнале действий останется только причина удаления."}</p>
         ${withScore ? `<fieldset class="admin-close-performers"><legend>Кому начислить баллы</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>` : ""}
         <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
         <div class="downtime-type-error" data-admin-close-error></div>

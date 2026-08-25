@@ -1675,21 +1675,23 @@ test("authorized users can close remarks for several employees with or without p
   assert.match(client, /function askAdminRemarkClose\(withScore = false\)/);
   assert.doesNotMatch(client, /Почему закрываем предупреждение без начисления баллов/);
   assert.match(client, /overlay\.querySelectorAll\("\[data-close-remark-no-score\]"\)/);
-  assert.match(client, /if \(item\?\.closedWithoutScore\) return \[\]/);
+  assert.match(client, /!entry\.closedWithoutScore && !isDowntimeCommentEntry\(entry\)/);
   assert.match(server, /if \(action === "close-no-score"\)/);
   assert.match(server, /canCloseForEmployees = actor\.role === "editor" \|\| activeUserPermission\(registeredActor, "remarkMultiClose"\)/);
   assert.match(server, /const performerKeys = \[\.\.\.new Set/);
-  assert.match(server, /remark\.resolutionCompletedParticipants = \[\]/);
+  assert.match(server, /deleteWithoutScore = true/);
   assert.match(server, /if \(action === "close-with-score"\)/);
   assert.match(server, /remark\.resolutionCompletedParticipants = performers/);
   assert.match(client, /data-admin-close-performer value=/);
   assert.match(client, /performerKeys: decision\.performerKeys/);
   assert.match(client, /remarkMultiClose","Закрытие замечаний за нескольких сотрудников/);
   assert.match(server, /ADMIN_PERMISSION_KEYS[\s\S]*?remarkMultiClose/);
-  assert.match(client, /сотрудника выбирать не требуется/);
+  assert.match(client, /Предупреждение будет полностью удалено без начисления баллов/);
   const noScoreServer = server.slice(server.indexOf('if (action === "close-no-score")'), server.indexOf('if (action === "close-with-score")'));
   assert.doesNotMatch(noScoreServer, /performerKeys|performerUsers/);
-  assert.match(noScoreServer, /remark\.resolutionParticipants = \[\]/);
+  assert.match(noScoreServer, /deleteWithoutScore = true/);
+  assert.match(server, /action: deleteWithoutScore \? "remark_deleted_without_score"/);
+  assert.match(server, /function purgeClosedWithoutScoreRemarksServer/);
   assert.match(styles, /\.send-kind-overlay\s*\{[\s\S]*?z-index:\s*5000/);
   assert.match(styles, /\.send-kind-dialog\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 32px\)/);
   assert.match(styles, /@media \(max-width:\s*560px\)[\s\S]*?\.send-kind-dialog/);
@@ -2067,15 +2069,12 @@ test("order journal is separate, permission controlled, and scores every selecte
   assert.doesNotMatch(clientSource, /window\.open\("", "_blank", "noopener,noreferrer"\)/);
 });
 
-test("aggregate journal corrections reassign the scorer and preserve no-score closures", () => {
+test("aggregate journal corrections reassign the scorer while no-score warnings are deleted", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.doesNotMatch(clientSource, /if \(entry\.closedWithoutScore\) return/);
-  assert.match(clientSource, /closedWithoutScore: Boolean\(entry\.closedWithoutScore\)/);
-  assert.match(clientSource, /Закрыто без баллов\. Причина:/);
-  assert.match(clientSource, /Закрыл без баллов:/);
+  assert.match(clientSource, /!entry\.closedWithoutScore && !isDowntimeCommentEntry\(entry\)/);
   assert.match(clientSource, /item\.resolved && !item\.closedWithoutScore/);
-  assert.match(serverSource, /remark\.closedWithoutScoreByRole = actor\.role/);
+  assert.match(serverSource, /action: deleteWithoutScore \? "remark_deleted_without_score"/);
   assert.match(clientSource, /data-correct-resolved-remark/);
   assert.match(clientSource, /Комментарий исправил/);
   assert.match(serverSource, /action === "admin-edit-resolved"/);
