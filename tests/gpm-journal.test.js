@@ -273,6 +273,15 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /function gpmIsResponsible\(item\)/);
 });
 
+test("the server enforces GPM roles instead of trusting hidden client buttons", () => {
+  assert.match(server, /function authorizedGpmSyncPayload\(db = \{\}, incoming = \{\}, user = \{\}\)/);
+  assert.match(server, /const canManage = baseRole === "editor" \|\| manager/);
+  assert.match(server, /if \(next\.deleted === true && current\?\.deleted !== true\)/);
+  assert.match(server, /approves && isEngineer/);
+  assert.match(server, /resolves && isRepairer/);
+  assert.match(server, /managers: baseRole === "editor"/);
+});
+
 test("admin can grant and revoke GPM editor access by unique employee account", () => {
   assert.match(app, /function gpmManagerForm\(\)/);
   assert.match(app, /function saveGpmManagerForm\(form\)/);

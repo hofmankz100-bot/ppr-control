@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v624-distinguish-gpm-records-1";
+const SERVER_VERSION = "v625-gpm-server-permissions-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4396,6 +4396,86 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
+  const stored = db.gpmJournal || { equipment: {}, inspections: {}, events: {}, managers: {} };
+  const actorKey = resolutionUserKeyServer(user);
+  const rawRole = String(user.role || "");
+  const baseRole = permissionBaseRoleServer(rawRole);
+  const manager = Object.values(stored.managers || {}).some(grant => grant?.active && String(grant.userKey || "") === actorKey);
+  const canManage = baseRole === "editor" || manager;
+  const isEngineer = baseRole === "editor" || baseRole === "engineer";
+  const isRepairer = ["editor", "engineer"].includes(baseRole) || ["mechanic", "electrician", "welder", "turner", "forkliftDriver"].includes(rawRole);
+  const equipment = {};
+  if (canManage) {
+    Object.entries(incoming?.equipment || {}).forEach(([id, raw]) => {
+      if (!raw || typeof raw !== "object") return;
+      const current = stored.equipment?.[id];
+      const next = { ...raw };
+      if (current?.deleted === true) {
+        next.deleted = true;
+        next.deletedAt = current.deletedAt || "";
+        next.deletedByName = current.deletedByName || "";
+      }
+      if (next.deleted === true && current?.deleted !== true) {
+        next.deleted = false;
+        next.deletedAt = current?.deletedAt || "";
+        next.deletedByName = current?.deletedByName || "";
+      }
+      equipment[id] = next;
+    });
+  }
+  const itemFor = id => equipment[id] || stored.equipment?.[id];
+  const inspectionAllowed = entry => {
+    const item = itemFor(String(entry?.gpmId || ""));
+    if (!item || item.deleted) return false;
+    if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
+    if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(rawRole)) return true;
+    const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
+    if (["operator", "forkliftDriver"].includes(rawRole)) return !assigned.length || assigned.includes(actorKey);
+    return assigned.includes(actorKey) || String(item.inspectorKey || "") === actorKey;
+  };
+  const inspections = {};
+  Object.entries(incoming?.inspections || {}).forEach(([id, entry]) => {
+    const current = stored.inspections?.[id];
+    if (!entry || typeof entry !== "object" || entry.deleted === true && current?.deleted !== true) return;
+    if (String(entry.authorKey || "") !== actorKey && baseRole !== "editor") return;
+    if (inspectionAllowed(entry)) inspections[id] = entry;
+  });
+  const events = {};
+  Object.entries(incoming?.events || {}).forEach(([id, entry]) => {
+    if (!entry || typeof entry !== "object") return;
+    const current = stored.events?.[id];
+    const item = itemFor(String(entry.gpmId || current?.gpmId || ""));
+    if (!item || item.deleted || entry.deleted === true && current?.deleted !== true) return;
+    const approves = Boolean(entry.approvedAt) && String(entry.approvedAt) !== String(current?.approvedAt || "");
+    const resolves = Boolean(entry.resolutionComment) && String(entry.resolutionComment) !== String(current?.resolutionComment || "");
+    const inspection = { ...(stored.inspections?.[entry.inspectionId] || {}), ...(incoming?.inspections?.[entry.inspectionId] || {}) };
+    const ownsEvent = String(entry.authorKey || "") === actorKey && inspectionAllowed(inspection);
+    if (approves && isEngineer && current) {
+      events[id] = { ...current,
+        approvedAt: entry.approvedAt, approvedByKey: actorKey, approvedByName: String(user.name || ""),
+        engineerName: String(user.name || ""), decision: "allowed", status: "approved", updatedAt: entry.updatedAt
+      };
+    } else if (resolves && isRepairer && current) {
+      events[id] = { ...current,
+        resolutionComment: entry.resolutionComment, resolvedAt: entry.resolvedAt, resolvedByKey: actorKey,
+        resolvedByName: String(user.name || ""), resolvedByRole: String(user.role || ""),
+        partInstalled: entry.partInstalled === true, partDescription: String(entry.partDescription || "").slice(0, 1000),
+        partPhotos: Array.isArray(entry.partPhotos) ? entry.partPhotos.slice(0, 10) : [], status: "awaitingEngineer", updatedAt: entry.updatedAt
+      };
+    } else if (!current && ownsEvent || baseRole === "editor" && !approves && !resolves) {
+      events[id] = entry;
+    }
+  });
+  return {
+    equipment,
+    inspections,
+    events,
+    managers: baseRole === "editor" ? (incoming?.managers || {}) : {},
+    managerMigrationVersion: stored.managerMigrationVersion || incoming?.managerMigrationVersion || ""
+  };
+}
+
 const NODE_CHECKLIST_ROLES = new Set([
   "mechanic", "electrician", "welder", "turner", "forkliftDriver",
   "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
@@ -6266,12 +6346,13 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
         db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
+        const allowedGpm = authorizedGpmSyncPayload(db, body.gpmJournal, req.authUser);
         db.gpmJournal = {
-          equipment: mergeObjectRecordsByFreshness(db.gpmJournal?.equipment, body.gpmJournal?.equipment),
-          inspections: mergeObjectRecordsByFreshness(db.gpmJournal?.inspections, body.gpmJournal?.inspections),
-          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, body.gpmJournal?.events),
-          managers: mergeObjectRecordsByFreshness(db.gpmJournal?.managers, body.gpmJournal?.managers),
-          managerMigrationVersion: db.gpmJournal?.managerMigrationVersion || body.gpmJournal?.managerMigrationVersion || ""
+          equipment: mergeObjectRecordsByFreshness(db.gpmJournal?.equipment, allowedGpm.equipment),
+          inspections: mergeObjectRecordsByFreshness(db.gpmJournal?.inspections, allowedGpm.inspections),
+          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, allowedGpm.events),
+          managers: mergeObjectRecordsByFreshness(db.gpmJournal?.managers, allowedGpm.managers),
+          managerMigrationVersion: allowedGpm.managerMigrationVersion
         };
         db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.turningJournal = mergeObjectRecordsByFreshness(db.turningJournal, body.turningJournal);
