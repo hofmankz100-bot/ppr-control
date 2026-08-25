@@ -168,6 +168,14 @@ test("both crane QR inspections print in the monthly shift journal without a sep
   assert.doesNotMatch(app, /Ежемесячный журнал · верхний QR, ПТО и ремонты/);
 });
 
+test("shift and upper QR records from the same date share one official journal sheet", () => {
+  assert.match(app, /const isMonthlyEntry = entry =>/);
+  assert.match(app, /const unpairedMonthlyEntries = monthlyEntries\.filter/);
+  assert.match(app, /monthlyEntry: isMonthlyEntry\(entry\)/);
+  assert.match(app, /const resultEntry = monthlyEntry\?\.defects && !entry\?\.defects \? monthlyEntry : entry/);
+  assert.match(app, /monthlyEntry\?\.authorName/);
+});
+
 test("crane journal is compact and responsible persons print separately", () => {
   assert.match(app, /data-gpm-print-responsibles/);
   assert.match(app, /function printGpmResponsibles\(\)/);
@@ -210,7 +218,7 @@ test("only an administrator can delete a GPM card after server password verifica
 });
 
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
-  assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
+  assert.match(app, /const monthlyInspection = isMonthlyEntry\(entry\)/);
   assert.match(app, /ВЕРХНИЙ QR · ПЛАНОВОЕ ТО ЭЛЕКТРОМЕХАНИКА/);
   assert.match(app, /gpm-official-monthly/);
   assert.match(styles, /\.gpm-monthly-inspection-banner/);
