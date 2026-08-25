@@ -200,6 +200,16 @@ test("crane journal prints from an isolated document without application layout"
   assert.doesNotMatch(app, /function printGpmJournal\(\) \{[\s\S]*?document\.body\.classList\.add\("printing-gpm-journal"\)/);
 });
 
+test("a GPM manager can safely delete a test crane card and its active records", () => {
+  assert.match(app, /data-gpm-delete-card>Удалить карточку/);
+  assert.match(app, /function deleteGpmEquipmentCard\(item\)/);
+  assert.match(app, /if \(!item\?\.id \|\| !gpmCanManage\(\)\) return false/);
+  assert.match(app, /item\.deleted = true/);
+  assert.match(app, /entry\?\.gpmId !== item\.id/);
+  assert.match(app, /recordAudit\("Удалил карточку ГПМ"/);
+  assert.match(app, /Карточка удалена из журнала и QR-счётчиков/);
+});
+
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {
   assert.match(app, /const monthlyInspection = entry\?\.inspectionType === "monthly"/);
   assert.match(app, /ЕЖЕМЕСЯЧНЫЙ ОСМОТР ЭЛЕКТРОМЕХАНИКОМ · ВЕРХНИЙ QR/);

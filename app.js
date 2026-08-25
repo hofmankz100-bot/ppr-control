@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v621-qr-active-shift-date-1";
+const APP_VERSION = "v622-delete-gpm-card-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15004,7 +15004,7 @@ function gpmEquipmentForm(item = {}) {
           ? `<label><span>Следующее Плановое ТО</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
           : `<label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>`}
       </div>
-      <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button></div>
+      <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button>${item.id ? `<button type="button" class="danger" data-gpm-delete-card>Удалить карточку</button>` : ""}</div>
     </form>`;
 }
 
@@ -15328,6 +15328,35 @@ function saveGpmEquipmentForm(form) {
   saveState();
 }
 
+function deleteGpmEquipmentCard(item) {
+  if (!item?.id || !gpmCanManage()) return false;
+  const kindLabel = gpmItemKind(item) === "forklift" ? "погрузчика" : "кран-балки";
+  if (!window.confirm(`Удалить карточку ${kindLabel} «${item.name}»? Она исчезнет из рабочих списков и QR-счётчиков.`)) return false;
+  const now = new Date().toISOString();
+  item.deleted = true;
+  item.deletedAt = now;
+  item.deletedByName = profile?.name || "";
+  item.updatedAt = now;
+  Object.values(gpmStore().inspections || {}).forEach(entry => {
+    if (entry?.gpmId !== item.id) return;
+    entry.deleted = true;
+    entry.deletedAt = now;
+    entry.updatedAt = now;
+  });
+  Object.values(gpmStore().events || {}).forEach(entry => {
+    if (entry?.gpmId !== item.id) return;
+    entry.deleted = true;
+    entry.deletedAt = now;
+    entry.updatedAt = now;
+  });
+  recordAudit("Удалил карточку ГПМ", item.name || item.id);
+  current.selectedGpmId = "";
+  current.gpmSourceEquipmentId = 0;
+  current.gpmAdminEditorOpen = false;
+  saveState();
+  return true;
+}
+
 function printGpmJournal() {
   if (!current.selectedGpmId) return window.alert(current.gpmJournalKind === "forklift" ? "Сначала выберите вилочный погрузчик." : "Сначала выберите ГПМ.");
   const item = gpmEquipmentList().find(entry => entry.id === current.selectedGpmId);
@@ -15398,6 +15427,11 @@ function renderGpmJournal() {
   ui.gpmPanel.querySelector("[data-gpm-cancel-edit]")?.addEventListener("click", () => {
     current.gpmAdminEditorOpen = false;
     renderGpmJournal();
+  });
+  ui.gpmPanel.querySelector("[data-gpm-delete-card]")?.addEventListener("click", () => {
+    if (!deleteGpmEquipmentCard(selected)) return;
+    renderGpmJournal();
+    showAppToast("Карточка удалена из журнала и QR-счётчиков.", "ok");
   });
   ui.gpmPanel.querySelector("[data-gpm-edit]")?.addEventListener("click", () => {
     current.gpmAdminEditorOpen = true;
