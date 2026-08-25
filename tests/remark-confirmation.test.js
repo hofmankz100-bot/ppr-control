@@ -2157,3 +2157,12 @@ test("engineer PPR report groups completed work compactly", () => {
   assert.match(styles, /\.engineer-ppr-status\.accepted/);
   assert.match(styles, /html\[data-theme="dark"\] \.engineer-ppr-progress/);
 });
+
+test("closing without score replaces the check record on every realtime client", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /deleteWithoutScore \? \{ replaceCheckKeys: \[recordKey\] \} : \{\}/);
+  assert.match(clientSource, /Array\.isArray\(remote\.replaceCheckKeys\)/);
+  assert.match(clientSource, /state\.checks\[recordKey\] = compactCheckRecords/);
+  assert.match(clientSource, /delete state\.checks\[recordKey\]/);
+});

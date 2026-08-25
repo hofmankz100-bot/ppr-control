@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v640-delete-no-score-remarks-1";
+const SERVER_VERSION = "v641-realtime-remark-delete-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -7516,6 +7516,7 @@ async function handleApi(req, res, pathname, url) {
       if (changed) writeDb(db, { action: deleteWithoutScore ? "remark_deleted_without_score" : `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey, remarkId, reason: deleteWithoutScore ? String(body.reason || "").trim().slice(0, 2000) : "" });
       const patch = {
         checks: { [recordKey]: record },
+        ...(deleteWithoutScore ? { replaceCheckKeys: [recordKey] } : {}),
         ...(Object.keys(grpGasJournalPatch).length ? { gasJournal: grpGasJournalPatch } : {}),
         ...(Object.keys(compressorJournalPatch).length ? { compressorJournal: compressorJournalPatch } : {}),
         ...(action === "resolve" || action === "confirm" || action === "return"

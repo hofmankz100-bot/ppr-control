@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v640-delete-no-score-remarks-1";
+const APP_VERSION = "v641-realtime-remark-delete-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -2469,6 +2469,13 @@ function mergeRealtimePatch(remote = {}) {
   stateDataVersion += 1;
   if (remote.checks) {
     state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
+    (Array.isArray(remote.replaceCheckKeys) ? remote.replaceCheckKeys : []).forEach(recordKey => {
+      if (Object.prototype.hasOwnProperty.call(remote.checks, recordKey) && remote.checks[recordKey]) {
+        state.checks[recordKey] = compactCheckRecords({ [recordKey]: remote.checks[recordKey] })[recordKey];
+      } else {
+        delete state.checks[recordKey];
+      }
+    });
   }
   if (TMC_REQUESTS_DISABLED) state.requests = {};
   else if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
