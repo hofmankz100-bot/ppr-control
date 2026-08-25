@@ -270,6 +270,9 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /return "craneOperator"/);
   assert.match(app, /Только QR-обход назначенных кран-балок/);
   assert.match(server, /target\.craneOnly = craneOnly/);
+  assert.match(app, /craneOnly: role === "operator" && user\.craneOnly === true/);
+  assert.match(app, /craneOnly: role === "operator" && row\.querySelector\("\[data-access-crane-only\]"\)\?\.checked === true/);
+  assert.match(app, /await loadRemoteUsers\(\);\s*current\.gpmAdminEditorOpen = true;/);
   assert.match(app, /function gpmIsResponsible\(item\)/);
   assert.match(app, /function renderCraneOperatorHome\(\)/);
   assert.match(app, /Назначенных кран-балок пока нет/);

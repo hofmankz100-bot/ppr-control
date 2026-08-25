@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v631-fresh-gpm-operators-1";
+const APP_VERSION = "v632-crane-operator-access-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18143,6 +18143,7 @@ function renderDirector() {
             // The selected workshop is part of the employee profile, not only
             // of operator/shop access. Keep it when the job role changes.
             area,
+            craneOnly: role === "operator" && user.craneOnly === true,
             actionId: nextActionId(),
             clientId: CLIENT_ID
           })
@@ -18611,7 +18612,7 @@ async function renderAdminMaintenance() {
       window.alert(error.message || "Не удалось изменить режим оператора кран-балки.");
     }
   }));
-  ui.adminMaintenancePanel.querySelectorAll("[data-access-save-role]").forEach(button => button.addEventListener("click", async () => { const row = button.closest("[data-access-row]"); await runButtonOperation(button, async () => { await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role: row.querySelector("[data-access-role]").value, area: row.querySelector("[data-access-area]").value.trim() }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Сохраняем…"); }));
+  ui.adminMaintenancePanel.querySelectorAll("[data-access-save-role]").forEach(button => button.addEventListener("click", async () => { const row = button.closest("[data-access-row]"); await runButtonOperation(button, async () => { const role = row.querySelector("[data-access-role]").value; await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role, area: row.querySelector("[data-access-area]").value.trim(), craneOnly: role === "operator" && row.querySelector("[data-access-crane-only]")?.checked === true }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Сохраняем…"); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-qr]").forEach(input => input.addEventListener("change", async () => { try { await apiJson("/api/qr-walk/journal-access", { method: "POST", body: JSON.stringify({ userId: input.dataset.accessQr, enabled: input.checked }) }); } catch (error) { input.checked = !input.checked; window.alert(error.message || "Не удалось изменить доступ."); } }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-unlock]").forEach(button => button.addEventListener("click", async () => { await runButtonOperation(button, async () => { await apiJson("/api/users/unlock", { method: "POST", body: JSON.stringify({ id: button.dataset.accessUnlock }) }); renderAdminMaintenance(); }, "Разблокируем…"); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-toggle]").forEach(button => button.addEventListener("click", async () => { const disabled = button.dataset.disabled === "true"; const reason = window.prompt(disabled ? "Укажите причину отключения доступа:" : "Укажите причину включения доступа:")?.trim(); if (!reason) return; const password = window.prompt("Введите пароль администратора:"); if (!password) return; await runButtonOperation(button, async () => { await apiJson("/api/admin/access", { method: "POST", body: JSON.stringify({ userId: button.dataset.accessToggle, disabled, reason, password }) }); renderAdminMaintenance(); }, disabled ? "Отключаем…" : "Включаем…"); }));
