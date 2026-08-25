@@ -826,7 +826,8 @@ test("admin can move any equipment to trash and restore it with its journal", ()
   assert.match(client, /profile\?\.role === "editor" \? `<button[^`]*data-delete-equipment/);
   assert.match(client, /\/api\/admin\/equipment\/delete/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/delete"/);
-  assert.match(server, /body\.builtIn === true/);
+  assert.match(server, /if \(!existing\) return \{ error: "equipment_not_found" \}/);
+  assert.doesNotMatch(server, /body\.builtIn === true/);
   assert.match(server, /type: "equipment"/);
   assert.match(server, /snapshot: \{[\s\S]*catalogItem: \{ \.\.\.item \},[\s\S]*gpmItems:[\s\S]*gpmInspections:[\s\S]*gpmEvents:/);
   assert.match(maintenanceRoute, /item\.type === "equipment"/);

@@ -86,6 +86,30 @@ test("GPM card deletion is server-side, password protected and moved to trash", 
   assert.equal(responses[0].payload.ok, true);
 });
 
+test("linked GPM card cannot be deleted separately from its equipment", async () => {
+  const database = {
+    catalog: { equipment: { 7: { id: 7, name: "Кран", nodes: ["Осмотр"] } } },
+    gpmJournal: { equipment: { crane1: { id: "crane1", sourceEquipmentId: 7, name: "Кран" } }, inspections: {}, events: {} }
+  };
+  const { handler, responses, audits, broadcasts } = createHarness(database);
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { gpmId: "crane1", reason: "Удаление", password: "secret" } }, {}, "/api/admin/gpm/delete");
+  assert.deepEqual(responses[0], { status: 409, payload: { ok: false, error: "gpm_card_linked_to_equipment" } });
+  assert.equal(database.gpmJournal.equipment.crane1.deleted, undefined);
+  assert.deepEqual(audits, []);
+  assert.deepEqual(broadcasts, []);
+});
+
+test("equipment deletion rejects an unknown id instead of creating a false trash record", async () => {
+  const database = { catalog: { equipment: {} }, gpmJournal: { equipment: {}, inspections: {}, events: {} } };
+  const { handler, responses, audits, broadcasts } = createHarness(database);
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 9999, reason: "Удаление", password: "secret" } }, {}, "/api/admin/equipment/delete");
+  assert.deepEqual(responses[0], { status: 404, payload: { ok: false, error: "equipment_not_found" } });
+  assert.equal(database.catalog.equipment[9999], undefined);
+  assert.equal(database.adminTrash, undefined);
+  assert.deepEqual(audits, []);
+  assert.deepEqual(broadcasts, []);
+});
+
 test("node addition rejects duplicates and then assigns a QR identity", async () => {
   const database = { catalog: { equipment: { 6: { nodes: ["Редуктор"] } } } };
   const { handler, responses, audits, broadcasts } = createHarness(database);

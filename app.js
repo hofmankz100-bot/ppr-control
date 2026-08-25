@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v641-realtime-remark-delete-1";
+const APP_VERSION = "v642-equipment-lifecycle-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15460,7 +15460,12 @@ async function deleteGpmEquipmentCard(item) {
   if (!reason) return false;
   const password = window.prompt("Введите пароль администратора:");
   if (!password) return false;
-  const result = await apiJson("/api/admin/gpm/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ gpmId: item.id, reason, password }) });
+  const sourceEquipment = Number(item.sourceEquipmentId || 0) > 0 ? equipmentById(Number(item.sourceEquipmentId)) : null;
+  const endpoint = sourceEquipment ? "/api/admin/equipment/delete" : "/api/admin/gpm/delete";
+  const payload = sourceEquipment
+    ? { equipmentId: sourceEquipment.id, reason, password }
+    : { gpmId: item.id, reason, password };
+  const result = await apiJson(endpoint, { method: "POST", timeout: 60000, body: JSON.stringify(payload) });
   if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
   if (!result?.ok) throw new Error(result?.error || "gpm_delete_failed");
   current.selectedGpmId = "";

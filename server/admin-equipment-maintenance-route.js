@@ -28,6 +28,9 @@ function createAdminEquipmentMaintenanceRoute({
       const db = readDb();
       const item = db.gpmJournal?.equipment?.[gpmId];
       if (!item || item.deleted === true) return { error: "gpm_card_not_found" };
+      if (Number.isSafeInteger(Number(item.sourceEquipmentId)) && Number(item.sourceEquipmentId) > 0) {
+        return { error: "gpm_card_linked_to_equipment" };
+      }
       const linkedInspections = Object.values(db.gpmJournal?.inspections || {})
         .filter(entry => String(entry?.gpmId || "") === gpmId)
         .map(entry => ({ ...entry }));
@@ -68,7 +71,7 @@ function createAdminEquipmentMaintenanceRoute({
       writeDb(db, { action: "gpm_card_moved_to_trash", user: req.authUser, targetType: "gpm", targetId: gpmId, targetLabel: item.name, reason });
       return { state: publicState(db) };
     });
-    if (result.error) { sendJson(res, 404, { ok: false, error: result.error }); return true; }
+    if (result.error) { sendJson(res, result.error === "gpm_card_linked_to_equipment" ? 409 : 404, { ok: false, error: result.error }); return true; }
     const stateVersion = broadcastState("gpm-card-deleted", "", result.state, true);
     sendJson(res, 200, { ok: true, state: result.state, stateVersion });
     return true;
@@ -88,16 +91,9 @@ function createAdminEquipmentMaintenanceRoute({
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const existing = db.catalog.equipment[equipmentId];
+      if (!existing) return { error: "equipment_not_found" };
       if (existing?.deleted === true) return { error: "equipment_already_deleted" };
-      const requestedNodes = Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [];
-      const item = existing || {
-        id: equipmentId,
-        builtIn: body.builtIn === true,
-        name: String(body.equipment || "").trim().slice(0, 200) || `Оборудование ${equipmentId}`,
-        area: String(body.area || "").trim().slice(0, 200),
-        nodes: requestedNodes
-      };
-      if (!existing) db.catalog.equipment[equipmentId] = item;
+      const item = existing;
       const deletedAt = new Date().toISOString();
       const linkedGpm = Object.values(db.gpmJournal?.equipment || {}).filter(entry => Number(entry?.sourceEquipmentId || 0) === equipmentId);
       const linkedGpmIds = new Set(linkedGpm.map(entry => String(entry?.id || "")).filter(Boolean));
@@ -110,7 +106,8 @@ function createAdminEquipmentMaintenanceRoute({
       item.deleted = true;
       item.deletedAt = deletedAt;
       item.deletedByName = String(req.authUser?.name || "Администратор");
-      linkedGpm.forEach(entry => { entry.deleted = true; entry.deletedAt = deletedAt; });
+      item.updatedAt = deletedAt;
+      linkedGpm.forEach(entry => { entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt; });
       Object.values(db.gpmJournal?.inspections || {}).forEach(entry => {
         if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
         entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
