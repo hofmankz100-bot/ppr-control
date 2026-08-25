@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v634-single-crane-journal-1";
+const APP_VERSION = "v635-node-qr-print-separation-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4975,26 +4975,29 @@ function printNodeQrCode(eq, nodeIndex) {
   win.document.write(`<!doctype html>
     <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</title>
     <style>
-      body{margin:0;background:#eef3f6;font-family:Arial,sans-serif;color:#132f42}
-      .sheet{width:120mm;min-height:170mm;margin:18px auto;background:#fff;padding:14mm;box-sizing:border-box;border:1px solid #d7e3e9}
-      .top{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:#526a77;margin-bottom:16px}
-      .head{border-bottom:2px solid #14324a;padding-bottom:10px;margin-bottom:12px}
-      h1{font-size:22px;margin:0 0 8px} p{margin:4px 0;font-size:14px;line-height:1.35}
-      .qr{display:grid;place-items:center;margin:14px 0}.qr img{width:92mm;height:92mm}
-      .hint{font-weight:700;color:#14324a}
-      .code{font-family:Consolas,monospace;font-size:20px;font-weight:800;letter-spacing:1px;text-align:center;border:1px dashed #9fb2bd;padding:10px;margin-top:10px}
-      .link{font-size:9px;color:#6b7d86;word-break:break-all;margin-top:8px}
+      @page{size:A4 portrait;margin:8mm}
+      *{box-sizing:border-box}
+      body{margin:0;background:#eef3f6;font-family:Arial,sans-serif;color:#111827}
+      .sheet{width:94.5mm;height:136mm;margin:18px auto;background:#fff;padding:5mm;border:2px solid #111827;border-radius:8px;display:grid;grid-template-rows:auto auto 1fr auto auto auto;align-items:center;text-align:center;overflow:hidden}
+      .top{font-size:7pt;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .head{min-height:18mm;display:grid;place-items:center;align-content:center}
+      h1{font-size:15pt;margin:0 0 1mm;text-transform:uppercase} p{margin:1mm 0;font-size:9pt;line-height:1.2}
+      .head p{font-weight:800}.head p:first-of-type,.head p:nth-of-type(2){display:none}
+      .qr{display:grid;place-items:center;margin:1mm 0}.qr img{width:80mm;height:80mm;image-rendering:pixelated}
+      .hint{font-size:8pt;font-weight:700;color:#4b5563}
+      .code{font-family:Consolas,monospace;font-size:18pt;font-weight:900;letter-spacing:.5px;text-align:center}
+      .link{font-size:7pt;font-weight:700;color:#374151;overflow-wrap:anywhere;max-height:9mm;overflow:hidden}
       .actions{position:sticky;bottom:0;background:#eef3f6;padding:10px;text-align:center}
       button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:800}
       .qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border-radius:50%;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:10}
       @media(max-width:700px){
         body{padding-top:72px}
-        .sheet{width:min(120mm,calc(100vw - 24px));min-height:0;margin:0 auto 24px;padding:8mm}
-        .qr img{width:min(92mm,100%);height:auto;aspect-ratio:1}
+        .sheet{width:min(94.5mm,calc(100vw - 24px));height:auto;min-height:136mm;margin:0 auto 24px}
+        .qr img{width:min(80mm,100%);height:auto;aspect-ratio:1}
         .actions{display:none}
         .qr-back{display:block}
       }
-      @media print{body{background:#fff;padding-top:0}.sheet{margin:0;border:0}.actions,.qr-back{display:none!important}}
+      @media print{body{background:#fff;padding-top:0}.sheet{margin:0}.actions,.qr-back{display:none!important}}
     </style></head><body>
       <button type="button" class="qr-back" aria-label="Назад" title="Назад" onclick="if(window.opener&&!window.opener.closed){window.close()}else if(history.length>1){history.back()}else{location.href='/' }">‹</button>
       <div class="sheet">
@@ -5023,7 +5026,7 @@ function qrPopupMobileCss() {
   return `.qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border:0;border-radius:50%;background:#14324a;color:#fff;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:20}@media(max-width:700px){body{padding-top:72px!important}.actions{display:none!important}.qr-back{display:block}}@media print{.qr-back{display:none!important}}`;
 }
 
-async function rotateAndPrintNodeQr(equipmentId, nodeIndex) {
+async function rotateNodeQr(equipmentId, nodeIndex) {
   const eq = equipmentById(Number(equipmentId));
   const nodeName = eq?.nodes?.[Number(nodeIndex)] || "";
   if (!eq || !nodeName || !isEditorSession()) return;
@@ -5036,7 +5039,7 @@ async function rotateAndPrintNodeQr(equipmentId, nodeIndex) {
   state.catalog.equipment ||= {};
   state.catalog.equipment[String(equipmentId)] = { ...(state.catalog.equipment[String(equipmentId)] || {}), ...(result.item || {}) };
   persistStateLocally(state);
-  printNodeQrCode(equipmentById(Number(equipmentId)), Number(nodeIndex));
+  showAppToast("QR обновлён. Для печати нажмите отдельную кнопку «Печатать QR».", "ok");
 }
 
 function printEquipmentQrCodes(eq) {
@@ -12453,7 +12456,7 @@ function renderNodeWalkthrough(eq) {
         if (input) input.value = nodeName;
       });
       row.querySelector("[data-rotate-node-qr]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-        await rotateAndPrintNodeQr(eq.id, index);
+        await rotateNodeQr(eq.id, index);
         renderNodeWalkthrough(equipmentById(eq.id));
       }, "Обновляем..."));
       row.querySelector("[data-print-node-qr]")?.addEventListener("click", () => printNodeQrCode(eq, index));

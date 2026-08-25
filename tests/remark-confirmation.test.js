@@ -735,6 +735,9 @@ test("admin can rotate one node QR without changing other node indexes", () => {
   assert.match(client, /data-rotate-node-qr/);
   assert.match(client, /function currentNodeQrMatches\(parsed = \{\}\)/);
   assert.match(client, /api\/admin\/equipment\/node-qr-rotate/);
+  assert.match(client, /async function rotateNodeQr\(equipmentId, nodeIndex\)/);
+  assert.doesNotMatch(client, /persistStateLocally\(state\);\s*printNodeQrCode\(/);
+  assert.match(client, /QR обновлён\. Для печати нажмите отдельную кнопку/);
   assert.match(equipmentQrRoute, /pathname !== "\/api\/admin\/equipment\/node-qr-rotate"/);
   assert.match(equipmentQrRoute, /randomBytes\(12\)\.toString\("hex"\)/);
   assert.match(serverSource, /error: "node_qr_replaced"/);
@@ -752,6 +755,10 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /@media\(max-width:700px\)/);
   assert.match(client, /\.actions\{display:none\}/);
   assert.match(client, /meta name="viewport" content="width=device-width,initial-scale=1"><title>QR -/);
+  assert.match(client, /\.sheet\{width:94\.5mm;height:136mm/);
+  assert.match(client, /\.qr img\{width:80mm;height:80mm/);
+  assert.match(client, /@page\{size:A4 portrait;margin:8mm\}/);
+  assert.match(client, /@media print\{body\{background:#fff;padding-top:0\}\.sheet\{margin:0\}/);
 });
 
 test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
