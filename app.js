@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v636-employee-search-1";
+const APP_VERSION = "v637-forklift-qr-print-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11824,6 +11824,7 @@ function renderEquipment() {
       const modernForkliftEquipment = linkedForkliftJournalForEquipment(eq);
       const modernShiftJournal = Boolean(modernCraneEquipment || modernForkliftEquipment);
       const allCraneQrCount = modernCraneEquipment ? gpmEquipmentList("gpm").length * 2 : 0;
+      const allForkliftQrCount = modernForkliftEquipment ? gpmEquipmentList("forklift").length : 0;
       const equipmentOperationalPause = modernShiftJournal ? null : activeOperationalPause(eq, null, todayISO());
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
@@ -11838,6 +11839,8 @@ function renderEquipment() {
               <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
               ${isEditorSession() ? linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "gpm"
                 ? `<button type="button" class="equipment-qr-print-button" data-print-all-gpm-qr>${allCraneQrCount} QR кран-балок<br><small>По 2 на каждый кран</small></button>`
+                : linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "forklift"
+                  ? `<button type="button" class="equipment-qr-print-button" data-print-all-forklift-qr>${allForkliftQrCount} QR погрузчиков<br><small>По одному · A4 по 4</small></button>`
                 : !gpmEquipment ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : "" : ""}
             </div>
           </div>
@@ -11888,6 +11891,10 @@ function renderEquipment() {
       tr.querySelector("[data-print-all-gpm-qr]")?.addEventListener("click", event => {
         event.stopPropagation();
         printAllGpmQrCodes();
+      });
+      tr.querySelector("[data-print-all-forklift-qr]")?.addEventListener("click", event => {
+        event.stopPropagation();
+        printAllForkliftQrCodes();
       });
       tr.querySelector("[data-toggle-equipment-pause]")?.addEventListener("click", event => {
         const pause = activeOperationalPause(eq);
@@ -14874,7 +14881,7 @@ function printGpmQr(item, mode = "shift") {
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
   const qr = gpmQrImageUrl(item, monthly ? "monthly" : "shift");
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;text-align:center;color:#111}main{max-width:175mm;margin:auto;border:3px solid ${monthly ? "#b45309" : "#176b78"};border-radius:18px;padding:14mm}h1{font-size:25px;margin:0 0 8px}.kind{font-size:21px;font-weight:900;color:${monthly ? "#b45309" : "#176b78"}}img{width:min(125mm,100%);height:auto;aspect-ratio:1}.meta{font-size:18px;font-weight:700}.hint{font-size:15px}.actions{margin-top:16px}${qrPopupMobileCss()}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}<main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · QR НАВЕРХУ" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">Отсканируйте QR камерой телефона. ${forklift ? "Откроется вахтенный журнал погрузчика." : "Журнал откроется автоматически."}</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR ${escapeHtml(item.name)}</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;text-align:center;color:#111;background:#e5e7eb}main{width:94.5mm;height:136mm;margin:18px auto;border:2px solid ${monthly ? "#b45309" : "#176b78"};border-radius:10px;padding:4mm;overflow:hidden}h1{font-size:13pt;margin:0}.kind{font-size:10pt;font-weight:900;color:${monthly ? "#b45309" : "#176b78"};margin:1mm 0}img{display:block;width:min(88mm,100%);height:auto;aspect-ratio:1;margin:1mm auto}.meta{min-height:9mm;margin:1mm 0;font-size:8.5pt;font-weight:700}.hint{font-size:8pt;font-weight:700;color:#4b5563}.actions{margin-top:16px}${qrPopupMobileCss()}@media(max-width:700px){main{width:min(94.5mm,calc(100vw - 24px));height:auto;min-height:136mm;margin:0 auto 18px}}@media print{body{background:#fff}main{margin:0}.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}<main><h1>${escapeHtml(item.name)}</h1><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">${forklift ? "ЕДИНЫЙ QR ПОГРУЗЧИКА" : monthly ? "ЕЖЕМЕСЯЧНЫЙ ОСМОТР · ВЕРХНИЙ QR" : "ЕЖЕСМЕННЫЙ ОСМОТР"}</p><img src="${qr}" alt="QR"><p class="hint">${forklift ? "Ежесменный осмотр + Плановое ТО" : "Отсканируйте QR камерой телефона"}</p></main><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   win.document.close();
 }
 
@@ -14905,6 +14912,17 @@ function printAllGpmQrCodes(items = gpmEquipmentList("gpm")) {
   const win = window.open("", "_blank");
   if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${cards.length} QR кран-балок</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.page{height:281mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;break-after:page;page-break-after:always}.page:last-of-type{break-after:auto;page-break-after:auto}.card{border:2px solid #176b78;border-radius:10px;padding:4mm;text-align:center;overflow:hidden}.card.monthly{border-color:#b45309}.card h2{margin:0;font-size:13pt}.meta{min-height:9mm;margin:1mm 0;font-size:8.5pt;font-weight:700}.kind{margin:1mm 0;font-size:10pt;font-weight:900}.monthly .kind{color:#b45309}.shift .kind{color:#176b78}.card img{display:block;width:min(88mm,100%);height:auto;aspect-ratio:1;margin:1mm auto}.note{margin:0;font-size:9pt;font-weight:800}.actions{text-align:center;padding:8px}${qrPopupMobileCss()}@media(max-width:700px){.page{width:auto;height:auto;margin:0 10px;display:block}.card{margin-bottom:12px}}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}${pages.map(page => `<section class="page">${page.map(card => `<article class="card ${card.mode}"><h2>${escapeHtml(card.item.name)}</h2><p class="meta">${escapeHtml(card.item.location || "")} · ${escapeHtml(card.item.capacity || "")}</p><p class="kind">${card.title}</p><img src="${gpmQrImageUrl(card.item, card.mode)}" alt="${card.title}"><p class="note">${card.note}</p></article>`).join("")}</section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать ${cards.length} QR</button></div></body></html>`);
+  win.document.close();
+}
+
+function printAllForkliftQrCodes(items = gpmEquipmentList("forklift")) {
+  const forklifts = items.filter(item => item && !item.deleted);
+  if (!forklifts.length) return window.alert("Сначала добавьте вилочные погрузчики в журнал.");
+  const pages = [];
+  for (let index = 0; index < forklifts.length; index += 4) pages.push(forklifts.slice(index, index + 4));
+  const win = window.open("", "_blank");
+  if (!win) return window.alert("Разрешите всплывающие окна для печати QR.");
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${forklifts.length} QR погрузчиков</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#111}.page{height:281mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5mm;break-after:page;page-break-after:always}.page:last-of-type{break-after:auto;page-break-after:auto}.card{border:2px solid #176b78;border-radius:10px;padding:4mm;text-align:center;overflow:hidden}.card h2{margin:0;font-size:13pt}.meta{min-height:9mm;margin:1mm 0;font-size:8.5pt;font-weight:700}.kind{margin:1mm 0;font-size:10pt;font-weight:900;color:#176b78}.card img{display:block;width:min(88mm,100%);height:auto;aspect-ratio:1;margin:1mm auto}.note{margin:0;font-size:9pt;font-weight:800}.actions{text-align:center;padding:8px}${qrPopupMobileCss()}@media(max-width:700px){.page{width:auto;height:auto;margin:0 10px;display:block}.card{margin-bottom:12px}}@media print{.actions{display:none}}</style></head><body>${qrPopupBackButtonHtml()}${pages.map(page => `<section class="page">${page.map(item => `<article class="card"><h2>${escapeHtml(item.name)}</h2><p class="meta">${escapeHtml(item.location || "")} · ${escapeHtml(item.capacity || "")}</p><p class="kind">ЕДИНЫЙ QR ПОГРУЗЧИКА</p><img src="${gpmQrImageUrl(item, "shift")}" alt="Единый QR погрузчика"><p class="note">Ежесменный осмотр + Плановое ТО</p></article>`).join("")}</section>`).join("")}<div class="actions"><button onclick="window.print()">Печатать ${forklifts.length} QR</button></div></body></html>`);
   win.document.close();
 }
 
@@ -15212,7 +15230,7 @@ function gpmDetailHtml(item) {
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2><p>Зав. № ${escapeHtml(item.serialNumber || "—")} · Рег. № ${escapeHtml(item.registrationNumber || "—")} · ${escapeHtml(item.capacity || "грузоподъёмность не указана")}</p></div>
         <strong class="gpm-status ${status.key}">${status.label}</strong>
       </div>
-      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift"><span class="qr-action-desktop">Печатать ежесменный QR</span><span class="qr-action-mobile">Показать ежесменный QR</span></button>${forklift ? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly"><span class="qr-action-desktop">Печатать верхний QR Планового ТО</span><span class="qr-action-mobile">Показать верхний QR Планового ТО</span></button>`}</div>` : ""}
+      ${gpmCanManage() ? `<div class="gpm-qr-print-actions no-print"><button type="button" data-gpm-print-qr="shift"><span class="qr-action-desktop">${forklift ? "Печатать единый QR осмотра и Планового ТО" : "Печатать ежесменный QR"}</span><span class="qr-action-mobile">${forklift ? "Показать единый QR" : "Показать ежесменный QR"}</span></button>${forklift ? "" : `<button type="button" class="secondary" data-gpm-print-qr="monthly"><span class="qr-action-desktop">Печатать верхний QR Планового ТО</span><span class="qr-action-mobile">Показать верхний QR Планового ТО</span></button>`}</div>` : ""}
       <div class="gpm-responsibles">
         <div><span>Эксплуатация</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey) || "Не назначен")}</strong></div>
         <div><span>Исправное состояние</span><strong>${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey) || "Не назначен")}</strong></div>

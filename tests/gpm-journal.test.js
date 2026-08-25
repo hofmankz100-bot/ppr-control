@@ -415,6 +415,14 @@ test("forklifts use one QR for shift inspection and monthly maintenance", () => 
   assert.match(app, /forkliftMonthlyQrDone/);
   assert.match(app, /погрузчики: Плановое ТО/);
   assert.match(app, /!linkedForkliftJournalForEquipment\(eq\)/);
+  assert.match(app, /Печатать единый QR осмотра и Планового ТО/);
+  assert.match(app, /data-print-all-forklift-qr/);
+  assert.match(app, /function printAllForkliftQrCodes\(items = gpmEquipmentList\("forklift"\)\)/);
+  assert.match(app, /ЕДИНЫЙ QR ПОГРУЗЧИКА/);
+  assert.match(app, /Ежесменный осмотр \+ Плановое ТО/);
+  assert.match(app, /printAllForkliftQrCodes\(\)/);
+  assert.match(app, /main\{width:94\.5mm;height:136mm/);
+  assert.match(app, /@media print\{body\{background:#fff\}main\{margin:0\}/);
   assert.match(app, /gpmItemKind\(item\) === "forklift"\s*\? \[\{ item, type: "forkliftMonthlyQr", label: "Плановое ТО"/);
   assert.match(app, /journalKind === "gpm" \? `[\s\S]{0,180}Следующее частичное освидетельствование/);
   assert.match(app, /\$\{forklift \? "" : `[\s\S]{0,180}Частичное освидетельствование/);
