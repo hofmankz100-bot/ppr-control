@@ -168,6 +168,15 @@ test("both crane QR inspections print in the monthly shift journal without a sep
   assert.doesNotMatch(app, /Ежемесячный журнал · верхний QR, ПТО и ремонты/);
 });
 
+test("forklift driver gets a minimal assigned-equipment screen", () => {
+  assert.match(app, /function isForkliftDriverProfile\(user = profile \|\| \{\}\)/);
+  assert.match(app, /if \(isForkliftDriverProfile\(\)\) return view === "equipment" \|\| \(view === "gpm" && Boolean\(current\.gpmScanMode\)\)/);
+  assert.match(app, /gpmEquipmentList\("forklift"\)\.filter\(item =>/);
+  assert.match(app, /inspectorKeys\.includes\(key\) && gpmOperationalControlEnabled\(item, todayISO\(\)\)/);
+  assert.match(app, /data-forklift-driver-scan/);
+  assert.match(app, /Карточки оборудования, журналы других сотрудников, печать QR и настройки здесь не показываются/);
+});
+
 test("shift and upper QR records from the same date share one official journal sheet", () => {
   assert.match(app, /const isMonthlyEntry = entry =>/);
   assert.match(app, /const unpairedMonthlyEntries = monthlyEntries\.filter/);

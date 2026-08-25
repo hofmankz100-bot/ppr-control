@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v637-forklift-qr-print-1";
+const APP_VERSION = "v638-forklift-driver-screen-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3488,6 +3488,10 @@ function homeViewForProfile(role = profile?.role) {
   return "equipment";
 }
 
+function isForkliftDriverProfile(user = profile || {}) {
+  return [user?.role, user?.jobRole, user?.editorPreviewRole].includes("forkliftDriver");
+}
+
 function resetCurrentForProfile() {
   current.view = homeViewForProfile(profile?.role);
   current.requestRole = defaultRequestRole(profile?.role);
@@ -3503,6 +3507,7 @@ function roleAccess() {
 
 function canOpenView(view) {
   if (profile?.role === "operator" && profile?.craneOnly === true) return view === "craneOperator" || (view === "gpm" && Boolean(current.gpmScanMode));
+  if (isForkliftDriverProfile()) return view === "equipment" || (view === "gpm" && Boolean(current.gpmScanMode));
   if (view === "welding") return isProfileReady();
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return isProfileReady();
@@ -9718,6 +9723,7 @@ function canDecideProductionWork(item, trade, actor = weldingActor()) {
 function applyProductionWorkerVisibility() {
   const limited = isProductionWorkerProfile();
   document.body.classList.toggle("production-worker-profile", limited);
+  document.body.classList.toggle("forklift-driver-profile", isForkliftDriverProfile());
 }
 
 function weldingRecords() {
@@ -11728,6 +11734,25 @@ function renderEquipment() {
       <button type="button" data-open-production-work>Открыть производственные работы</button>
     </section>`;
     ui.equipmentList.querySelector("[data-open-production-work]")?.addEventListener("click", () => show("welding"));
+    return;
+  }
+  if (isForkliftDriverProfile()) {
+    const key = gpmUserKey();
+    const assigned = gpmEquipmentList("forklift").filter(item => {
+      const inspectorKeys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
+      return inspectorKeys.includes(key) && gpmOperationalControlEnabled(item, todayISO());
+    });
+    ui.subtitle.textContent = "Вилочные погрузчики";
+    ui.equipmentList.innerHTML = `<section class="forklift-driver-home">
+      <header><span>Рабочее место карщика</span><h1>Назначенные погрузчики</h1><p>Осмотр и Плановое ТО открываются только единым QR-кодом на погрузчике.</p></header>
+      <button type="button" class="forklift-driver-scan" data-forklift-driver-scan>Сканировать QR погрузчика</button>
+      <div class="forklift-driver-assigned">${assigned.length ? assigned.map(item => {
+        const status = gpmStatus(item);
+        return `<article><span class="gpm-status-dot ${status.key}"></span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.location || "Место не указано")} · ${escapeHtml(status.label)}</small></div></article>`;
+      }).join("") : `<div class="empty-state">Вам пока не назначен ни один работающий погрузчик. Обратитесь к администратору.</div>`}</div>
+      <small class="forklift-driver-hint">Карточки оборудования, журналы других сотрудников, печать QR и настройки здесь не показываются.</small>
+    </section>`;
+    ui.equipmentList.querySelector("[data-forklift-driver-scan]")?.addEventListener("click", () => ui.qrWalkButton?.click());
     return;
   }
   ui.subtitle.textContent = "Оборудование";
