@@ -533,6 +533,46 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(gpmWrite.status, 200);
     const gpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(gpmState.gpmJournal.equipment["gpm:1"].name, "Test crane");
+    const gpmActorKey = `id:${editor.id}`;
+    const gpmInspection = {
+      id: "inspection-security-1", gpmId: "gpm:1", inspectionType: "monthly",
+      authorKey: gpmActorKey, authorName: editor.name, updatedAt: "2026-08-25T10:00:00.000Z"
+    };
+    const gpmDefect = {
+      id: "event-security-1", gpmId: "gpm:1", inspectionId: gpmInspection.id,
+      type: "defect", comment: "Исходный дефект", authorKey: gpmActorKey,
+      authorName: editor.name, updatedAt: "2026-08-25T10:00:00.000Z"
+    };
+    const syncGpmSecurity = (actionId, inspections, events) => fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({ actionId, clientId: "gpm-security-test", gpmJournal: { equipment: {}, inspections, events } })
+    });
+    assert.equal((await syncGpmSecurity("gpm-defect-create", { [gpmInspection.id]: gpmInspection }, { [gpmDefect.id]: gpmDefect })).status, 200);
+    assert.equal((await syncGpmSecurity("gpm-premature-approval", {}, {
+      [gpmDefect.id]: { ...gpmDefect, approvedAt: "2026-08-25T10:01:00.000Z", updatedAt: "2026-08-25T10:01:00.000Z" }
+    })).status, 200);
+    let protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(Boolean(protectedGpmState.gpmJournal.events[gpmDefect.id].approvedAt), false);
+    assert.equal((await syncGpmSecurity("gpm-resolution", {}, {
+      [gpmDefect.id]: { ...gpmDefect, resolutionComment: "Устранено", resolvedAt: "2026-08-25T10:02:00.000Z", updatedAt: "2026-08-25T10:02:00.000Z" }
+    })).status, 200);
+    protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const resolvedGpmDefect = protectedGpmState.gpmJournal.events[gpmDefect.id];
+    assert.equal((await syncGpmSecurity("gpm-valid-approval", {}, {
+      [gpmDefect.id]: { ...resolvedGpmDefect, approvedAt: "2026-08-25T10:03:00.000Z", updatedAt: "2026-08-25T10:03:00.000Z" }
+    })).status, 200);
+    protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    const approvedGpmDefect = protectedGpmState.gpmJournal.events[gpmDefect.id];
+    assert.equal(approvedGpmDefect.comment, "Исходный дефект");
+    assert.equal(approvedGpmDefect.resolutionComment, "Устранено");
+    assert.equal(Boolean(approvedGpmDefect.approvedAt), true);
+    assert.equal((await syncGpmSecurity("gpm-approved-rewrite", {}, {
+      [gpmDefect.id]: { ...approvedGpmDefect, comment: "Переписанный дефект", resolutionComment: "Повторное устранение", updatedAt: "2026-08-25T10:04:00.000Z" }
+    })).status, 200);
+    protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.equal(protectedGpmState.gpmJournal.events[gpmDefect.id].comment, "Исходный дефект");
+    assert.equal(protectedGpmState.gpmJournal.events[gpmDefect.id].resolutionComment, "Устранено");
     assert.equal((await fetch(`${baseUrl}/api/export/all`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
 
     for (let index = 0; index < 15; index += 1) {

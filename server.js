@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v627-gpm-trash-live-sync-1";
+const SERVER_VERSION = "v628-gpm-event-state-guard-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4451,19 +4451,19 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
     const resolves = Boolean(entry.resolutionComment) && String(entry.resolutionComment) !== String(current?.resolutionComment || "");
     const inspection = { ...(stored.inspections?.[entry.inspectionId] || {}), ...(incoming?.inspections?.[entry.inspectionId] || {}) };
     const ownsEvent = String(entry.authorKey || "") === actorKey && inspectionAllowed(inspection);
-    if (approves && isEngineer && current) {
+    if (approves && isEngineer && current && !current.approvedAt && Boolean(current.resolutionComment)) {
       events[id] = { ...current,
         approvedAt: entry.approvedAt, approvedByKey: actorKey, approvedByName: String(user.name || ""),
         engineerName: String(user.name || ""), decision: "allowed", status: "approved", updatedAt: entry.updatedAt
       };
-    } else if (resolves && isRepairer && current) {
+    } else if (resolves && isRepairer && current && !current.approvedAt) {
       events[id] = { ...current,
         resolutionComment: entry.resolutionComment, resolvedAt: entry.resolvedAt, resolvedByKey: actorKey,
         resolvedByName: String(user.name || ""), resolvedByRole: String(user.role || ""),
         partInstalled: entry.partInstalled === true, partDescription: String(entry.partDescription || "").slice(0, 1000),
         partPhotos: Array.isArray(entry.partPhotos) ? entry.partPhotos.slice(0, 10) : [], status: "awaitingEngineer", updatedAt: entry.updatedAt
       };
-    } else if (!current && ownsEvent || baseRole === "editor" && !approves && !resolves) {
+    } else if (!current && ownsEvent) {
       events[id] = entry;
     }
   });

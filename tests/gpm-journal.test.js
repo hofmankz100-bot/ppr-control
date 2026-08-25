@@ -279,6 +279,10 @@ test("the server enforces GPM roles instead of trusting hidden client buttons", 
   assert.match(server, /if \(next\.deleted === true && current\?\.deleted !== true\)/);
   assert.match(server, /approves && isEngineer/);
   assert.match(server, /resolves && isRepairer/);
+  assert.match(server, /approves && isEngineer && current && !current\.approvedAt && Boolean\(current\.resolutionComment\)/);
+  assert.match(server, /resolves && isRepairer && current && !current\.approvedAt/);
+  assert.match(server, /else if \(!current && ownsEvent\)/);
+  assert.doesNotMatch(server, /baseRole === "editor" && !approves && !resolves/);
   assert.match(server, /managers: baseRole === "editor"/);
 });
 
