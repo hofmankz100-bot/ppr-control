@@ -72,6 +72,56 @@ test("admin maintenance requires exact purge confirmation before backup", async 
   assert.deepEqual(events, []);
 });
 
+test("admin maintenance restores a GPM card with its inspections and events", async () => {
+  const database = {
+    users: [],
+    gpmJournal: {
+      equipment: { crane1: { id: "crane1", name: "Кран", deleted: true } },
+      inspections: { i1: { id: "i1", gpmId: "crane1", deleted: true } },
+      events: { e1: { id: "e1", gpmId: "crane1", deleted: true } },
+      managers: {}
+    },
+    adminTrash: [{
+      id: "trash-gpm",
+      type: "gpm",
+      targetId: "crane1",
+      label: "Кран",
+      snapshot: {
+        gpmItem: { id: "crane1", name: "Кран" },
+        gpmInspections: [{ id: "i1", gpmId: "crane1" }],
+        gpmEvents: [{ id: "e1", gpmId: "crane1" }]
+      }
+    }]
+  };
+  const { handler, responses } = createHarness(database);
+  await handler(adminRequest({ action: "restore", trashId: "trash-gpm" }), {}, "/api/admin/maintenance");
+  assert.equal(database.gpmJournal.equipment.crane1.deleted, false);
+  assert.equal(database.gpmJournal.inspections.i1.deleted, false);
+  assert.equal(database.gpmJournal.events.e1.deleted, false);
+  assert.deepEqual(responses[0], { status: 200, payload: { ok: true, restored: true } });
+});
+
+test("admin maintenance permanently removes a deleted GPM card and linked history", async () => {
+  const database = {
+    users: [],
+    gpmJournal: {
+      equipment: { crane1: { id: "crane1", deleted: true } },
+      inspections: { i1: { id: "i1", gpmId: "crane1", deleted: true } },
+      events: { e1: { id: "e1", gpmId: "crane1", deleted: true } },
+      managers: {}
+    },
+    adminTrash: [{ id: "trash-gpm", type: "gpm", targetId: "crane1", label: "Кран" }]
+  };
+  const { handler, responses, events } = createHarness(database);
+  await handler(adminRequest({ action: "purge", trashId: "trash-gpm", confirm: "УДАЛИТЬ НАВСЕГДА" }), {}, "/api/admin/maintenance");
+  assert.equal(database.gpmJournal.equipment.crane1, undefined);
+  assert.equal(database.gpmJournal.inspections.i1, undefined);
+  assert.equal(database.gpmJournal.events.e1, undefined);
+  assert.deepEqual(database.adminTrash, []);
+  assert.deepEqual(events[0], { type: "backup", label: "before-trash-purge" });
+  assert.deepEqual(responses[0], { status: 200, payload: { ok: true, purged: true } });
+});
+
 test("admin maintenance backs up and permanently removes deleted equipment", async () => {
   const database = {
     users: [],

@@ -70,6 +70,9 @@ test("GPM card deletion is server-side, password protected and moved to trash", 
   assert.equal(database.gpmJournal.inspections.i1.deleted, true);
   assert.equal(database.gpmJournal.events.e1.deleted, true);
   assert.equal(database.adminTrash[0].type, "gpm");
+  assert.equal(database.adminTrash[0].snapshot.gpmItem.deleted, undefined);
+  assert.equal(database.adminTrash[0].snapshot.gpmInspections[0].id, "i1");
+  assert.equal(database.adminTrash[0].snapshot.gpmEvents[0].id, "e1");
   assert.equal(audits[0].action, "gpm_card_moved_to_trash");
   assert.deepEqual(broadcasts[0].slice(0, 2), ["gpm-card-deleted", ""]);
   assert.equal(responses[0].payload.ok, true);

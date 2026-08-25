@@ -68,6 +68,42 @@ function createAdminMaintenanceRoute(dependencies = {}) {
             if (!gpm?.id) return;
             db.gpmJournal.equipment[gpm.id] = { ...gpm, deleted: false, deletedAt: "", restoredAt };
           });
+        } else if (item.type === "gpm") {
+          const snapshot = item.snapshot || {};
+          const gpmItem = snapshot.gpmItem;
+          const gpmId = String(item.targetId || gpmItem?.id || "").trim();
+          if (!gpmId || !gpmItem) return { error: "restore_snapshot_invalid" };
+          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
+          db.gpmJournal.equipment ||= {};
+          db.gpmJournal.inspections ||= {};
+          db.gpmJournal.events ||= {};
+          const active = db.gpmJournal.equipment[gpmId];
+          if (active && active.deleted !== true) return { error: "restore_conflict" };
+          const restoredAt = new Date(now()).toISOString();
+          db.gpmJournal.equipment[gpmId] = {
+            ...gpmItem,
+            id: gpmId,
+            deleted: false,
+            deletedAt: "",
+            deletedByName: "",
+            restoredAt,
+            updatedAt: restoredAt
+          };
+          const restoreLinked = (target, snapshots) => {
+            (snapshots || []).forEach(entry => {
+              if (!entry?.id || String(entry.gpmId || "") !== gpmId) return;
+              target[entry.id] = { ...entry, deleted: false, deletedAt: "", restoredAt, updatedAt: restoredAt };
+            });
+            Object.values(target).forEach(entry => {
+              if (String(entry?.gpmId || "") !== gpmId) return;
+              entry.deleted = false;
+              entry.deletedAt = "";
+              entry.restoredAt = restoredAt;
+              entry.updatedAt = restoredAt;
+            });
+          };
+          restoreLinked(db.gpmJournal.inspections, snapshot.gpmInspections);
+          restoreLinked(db.gpmJournal.events, snapshot.gpmEvents);
         } else {
           return { error: "restore_type_not_supported" };
         }
@@ -109,6 +145,17 @@ function createAdminMaintenanceRoute(dependencies = {}) {
             if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) {
               delete db.gpmJournal.equipment[id];
             }
+          });
+        } else if (item.type === "gpm") {
+          const gpmId = String(item.targetId || item.snapshot?.gpmItem?.id || "").trim();
+          if (!gpmId) return { error: "restore_snapshot_invalid" };
+          if (db.gpmJournal?.equipment?.[gpmId]?.deleted === true) {
+            delete db.gpmJournal.equipment[gpmId];
+          }
+          [db.gpmJournal?.inspections, db.gpmJournal?.events].forEach(collection => {
+            Object.keys(collection || {}).forEach(id => {
+              if (String(collection[id]?.gpmId || "") === gpmId) delete collection[id];
+            });
           });
         }
         db.adminTrash = (db.adminTrash || []).filter(entry => entry.id !== trashId);

@@ -28,6 +28,13 @@ function createAdminEquipmentMaintenanceRoute({
       const db = readDb();
       const item = db.gpmJournal?.equipment?.[gpmId];
       if (!item || item.deleted === true) return { error: "gpm_card_not_found" };
+      const linkedInspections = Object.values(db.gpmJournal?.inspections || {})
+        .filter(entry => String(entry?.gpmId || "") === gpmId)
+        .map(entry => ({ ...entry }));
+      const linkedEvents = Object.values(db.gpmJournal?.events || {})
+        .filter(entry => String(entry?.gpmId || "") === gpmId)
+        .map(entry => ({ ...entry }));
+      const gpmSnapshot = { ...item };
       const deletedAt = new Date().toISOString();
       item.deleted = true;
       item.deletedAt = deletedAt;
@@ -52,7 +59,11 @@ function createAdminEquipmentMaintenanceRoute({
         expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
         deletedById: String(req.authUser?.id || ""),
         deletedByName: String(req.authUser?.name || "Администратор"),
-        snapshot: { gpmItem: { ...item } }
+        snapshot: {
+          gpmItem: gpmSnapshot,
+          gpmInspections: linkedInspections,
+          gpmEvents: linkedEvents
+        }
       });
       writeDb(db, { action: "gpm_card_moved_to_trash", user: req.authUser, targetType: "gpm", targetId: gpmId, targetLabel: item.name, reason });
       return { state: publicState(db) };
