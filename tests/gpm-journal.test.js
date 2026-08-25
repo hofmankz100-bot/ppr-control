@@ -21,7 +21,7 @@ test("the common phone scanner opens shift and monthly crane inspections for an 
   assert.match(app, /const url = new URL\(raw, location\.origin\)/);
   assert.match(app, /parseGpmQrValue\(url\.searchParams\.get\("gpmQr"\) \|\| ""\)/);
   assert.match(app, /const gpmParsed = parseGpmQrScanValue\(value\)/);
-  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\)\)/);
+  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\) && !gpmCanReportDefect\(item\)\)/);
   assert.match(app, /if \(parsed\.kind === "gpm"\)/);
   assert.match(app, /current\.gpmScanMode = parsed\.mode/);
 });
@@ -273,10 +273,16 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /function gpmIsResponsible\(item\)/);
   assert.match(app, /function renderCraneOperatorHome\(\)/);
   assert.match(app, /Назначенных кран-балок пока нет/);
-  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\)\)/);
+  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\) && !gpmCanReportDefect\(item\)\)/);
   assert.match(app, /data\.getAll\("inspectorKeys"\)/);
   assert.match(app, /Можно выбрать несколько\. Без назначения операторский QR недоступен\./);
   assert.match(server, /eligibleInspectors = new Map/);
+  assert.match(app, /function gpmCanReportDefect\(item\)/);
+  assert.match(app, /inspectionType: recordedInspectionType/);
+  assert.match(server, /entry\?\.inspectionType === "defectReport"/);
+  assert.match(app, /entry\.type === "defect" && !entry\.approvedAt\)/);
+  assert.match(app, /entry\.authorKey, item\.inspectorKey/);
+  assert.match(app, /Сообщение о неисправности по QR/);
 });
 
 test("the server enforces GPM roles instead of trusting hidden client buttons", () => {

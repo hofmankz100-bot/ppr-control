@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v629-gpm-operator-access-1";
+const SERVER_VERSION = "v630-public-gpm-defects-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4439,6 +4439,11 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
   const inspectionAllowed = entry => {
     const item = itemFor(String(entry?.gpmId || ""));
     if (!item || item.deleted) return false;
+    const defectReport = entry?.inspectionType === "defectReport"
+      && entry?.decision === "prohibited"
+      && String(entry?.defects || "").trim()
+      && Array.isArray(entry?.points) && entry.points.some(point => point === false);
+    if (defectReport) return true;
     if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
     if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(rawRole)) return true;
     const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];

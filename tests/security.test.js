@@ -553,16 +553,29 @@ test("production API requires a server session and rate-limits failed logins", a
       id, gpmId: "gpm:1", inspectionType: "shift", authorKey,
       points: [true], decision: "allowed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
-    const syncAsOperator = (operatorCookie, actionId, inspection) => fetch(`${baseUrl}/api/state`, {
+    const syncAsOperator = (operatorCookie, actionId, inspection, events = {}) => fetch(`${baseUrl}/api/state`, {
       method: "PUT",
       headers: { cookie: operatorCookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
-      body: JSON.stringify({ actionId, clientId: "operator-access-test", gpmJournal: { equipment: {}, inspections: { [inspection.id]: inspection }, events: {} } })
+      body: JSON.stringify({ actionId, clientId: "operator-access-test", gpmJournal: { equipment: {}, inspections: { [inspection.id]: inspection }, events } })
     });
     assert.equal((await syncAsOperator(assignedOperatorCookie, "assigned-operator-inspection", operatorInspection("assigned-inspection", `id:${areaOperator.id}`))).status, 200);
     assert.equal((await syncAsOperator(otherOperatorCookie, "other-operator-inspection", operatorInspection("forbidden-inspection", `id:${otherAreaOperator.id}`))).status, 200);
+    const publicDefectInspection = {
+      ...operatorInspection("public-defect-inspection", `id:${otherAreaOperator.id}`),
+      inspectionType: "defectReport", points: [false], defects: "Обнаружена неисправность",
+      decision: "prohibited"
+    };
+    const publicDefectEvent = {
+      id: "public-defect-event", gpmId: "gpm:1", inspectionId: publicDefectInspection.id,
+      type: "defect", defects: publicDefectInspection.defects, authorKey: `id:${otherAreaOperator.id}`,
+      authorName: otherAreaOperator.name, status: "open", decision: "prohibited", updatedAt: new Date().toISOString()
+    };
+    assert.equal((await syncAsOperator(otherOperatorCookie, "public-defect-report", publicDefectInspection, { [publicDefectEvent.id]: publicDefectEvent })).status, 200);
     const operatorAccessState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.ok(operatorAccessState.gpmJournal.inspections["assigned-inspection"]);
     assert.equal(operatorAccessState.gpmJournal.inspections["forbidden-inspection"], undefined);
+    assert.equal(operatorAccessState.gpmJournal.inspections["public-defect-inspection"].defects, "Обнаружена неисправность");
+    assert.equal(operatorAccessState.gpmJournal.events[publicDefectEvent.id].status, "open");
     const gpmActorKey = `id:${editor.id}`;
     const gpmInspection = {
       id: "inspection-security-1", gpmId: "gpm:1", inspectionType: "monthly",

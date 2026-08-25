@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v629-gpm-operator-access-1";
+const APP_VERSION = "v630-public-gpm-defects-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -5113,7 +5113,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         return false;
       }
       const scanMode = gpmItemKind(item) === "forklift" ? "forklift" : gpmParsed.mode;
-      if (!gpmCanInspect(item, scanMode)) {
+      if (!gpmCanInspect(item, scanMode) && !gpmCanReportDefect(item)) {
         if (statusEl) statusEl.textContent = gpmItemKind(item) === "forklift" ? "Этот погрузчик вам не назначен" : "Этот кран вам не назначен";
         return false;
       }
@@ -9422,12 +9422,13 @@ function allOpenCommentTargets() {
         }));
     });
   const gpmTargets = Object.values(gpmStore().events || {})
-    .filter(entry => entry && !entry.deleted && entry.type === "defect" && !entry.approvedAt && !entry.resolutionComment)
+    .filter(entry => entry && !entry.deleted && entry.type === "defect" && !entry.approvedAt)
     .flatMap(entry => {
       const item = gpmStore().equipment?.[entry.gpmId];
       if (!item || item.deleted) return [];
+      const assignedKeys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys : [];
       const canSee = gpmCanManage() || gpmCanRepair() || gpmIsEngineer(item)
-        || [item.inspectorKey, item.operationResponsibleKey, item.conditionResponsibleKey].includes(gpmUserKey());
+        || [entry.authorKey, item.inspectorKey, item.operationResponsibleKey, item.conditionResponsibleKey, ...assignedKeys].includes(gpmUserKey());
       if (!canSee) return [];
       return [{
         equipmentId: 0,
@@ -9440,7 +9441,7 @@ function allOpenCommentTargets() {
         author: entry.authorName || "Автоматическая запись QR",
         areaName: item.location || "ГПМ",
         equipmentName: item.name || "Кран",
-        nodeName: entry.inspectionType === "monthly" ? "Плановое ТО" : "Ежесменный QR-осмотр",
+        nodeName: entry.inspectionType === "monthly" ? "Плановое ТО" : entry.inspectionType === "defectReport" ? "Сообщение о неисправности по QR" : "Ежесменный QR-осмотр",
         at: entry.createdAt || entry.updatedAt || "",
         pendingConfirmation: Boolean(entry.resolutionComment && !entry.approvedAt),
         submittedAt: entry.resolvedAt || "",
@@ -14698,7 +14699,7 @@ function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
   const dueShiftKeys = walkShiftKeysDueForDate(date);
   const inspections = Object.values(gpmStore().inspections || {})
     .filter(entry => entry && craneIds.has(String(entry.gpmId || "")));
-  const shiftDone = inspections.filter(entry => entry.inspectionType !== "monthly"
+  const shiftDone = inspections.filter(entry => entry.inspectionType === "shift"
     && String(entry.shiftDate || "") === date
     && dueShiftKeys.includes(entry.shiftKey === "night" ? "night" : "day")).length;
   const monthlyDone = inspections.filter(entry => entry.inspectionType === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
@@ -14747,6 +14748,10 @@ function gpmCanInspect(item, mode = "") {
   if (gpmItemKind(item) === "forklift" && [profile?.role, profile?.jobRole].includes("forkliftDriver")) return assignedKeys.includes(key);
   if (profile?.role === "operator") return assignedKeys.includes(key);
   return assignedKeys.includes(key) || item?.inspectorKey === key;
+}
+
+function gpmCanReportDefect(item) {
+  return isProfileReady() && Boolean(item && !item.deleted);
 }
 
 function gpmInspectorDisplayNames(item = {}) {
@@ -14845,7 +14850,7 @@ async function handleIncomingGpmQr() {
     return true;
   }
   const scanMode = gpmItemKind(item) === "forklift" ? "forklift" : parsed.mode;
-  if (!gpmCanInspect(item, scanMode)) {
+  if (!gpmCanInspect(item, scanMode) && !gpmCanReportDefect(item)) {
     clearIncomingGpmQr();
     window.alert(gpmItemKind(item) === "forklift" ? "Этот погрузчик вам не назначен." : "Этот кран вам не назначен.");
     show(homeViewForProfile(profile?.role), false);
@@ -15216,7 +15221,8 @@ function gpmDetailHtml(item) {
 function gpmQrInspectionScreenHtml(item) {
   const forklift = gpmItemKind(item) === "forklift";
   const status = gpmStatus(item);
-  if (!gpmCanInspect(item, current.gpmScanMode)) return `
+  const canInspect = gpmCanInspect(item, current.gpmScanMode);
+  if (!canInspect && !gpmCanReportDefect(item)) return `
     <section class="gpm-detail gpm-scan-only">
       <div class="gpm-detail-head">
         <div><span>${escapeHtml(item.location || "Место не указано")}</span><h2>${escapeHtml(item.name)}</h2></div>
@@ -15239,6 +15245,7 @@ function gpmQrInspectionScreenHtml(item) {
           <div class="qr-result-actions">
             ${gpmCanInspect(item, "shift") ? `<button type="button" class="qr-good-button" data-forklift-shift-inspection>Ежесменный обход</button>` : ""}
             ${gpmCanInspect(item, "monthly") ? `<button type="button" class="qr-remark-button" data-forklift-monthly-inspection>Плановое ТО</button>` : ""}
+            ${!gpmCanInspect(item, "shift") ? `<button type="button" class="qr-remark-button" data-gpm-open-remark>! Сообщить о неисправности</button>` : ""}
             <button type="button" class="qr-rescan-button" data-gpm-rescan>Сканировать заново</button>
             <button type="button" class="qr-finish-button" data-gpm-finish>Отмена</button>
           </div>
@@ -15248,7 +15255,7 @@ function gpmQrInspectionScreenHtml(item) {
           <h2>${escapeHtml(item.name)}</h2>
           <p class="qr-result-node">${forklift ? "Проверка состояния вилочного погрузчика" : "Проверка состояния кран-балки"}</p>
           <div class="qr-result-actions">
-            <button type="button" class="qr-good-button" data-gpm-all-good>✓ Всё хорошо</button>
+            ${canInspect && !gpmOpenDefects(item).length ? `<button type="button" class="qr-good-button" data-gpm-all-good>✓ Всё хорошо</button>` : ""}
             <button type="button" class="qr-remark-button" data-gpm-open-remark>! Есть замечание</button>
             <button type="button" class="qr-rescan-button" data-gpm-rescan>Сканировать заново</button>
             <button type="button" class="qr-finish-button" data-gpm-finish>Завершить обход</button>
@@ -15263,14 +15270,17 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "", im
   const now = new Date().toISOString();
   const shift = currentWalkShift();
   const monthKey = shift.date.slice(0, 7);
-  const id = inspectionType === "monthly" ? `gpm-inspection:${item.id}:monthly:${monthKey}` : `gpm-inspection:${item.id}:${shift.date}:${shift.key}`;
+  const recordedInspectionType = hasDefect ? "defectReport" : inspectionType;
+  const id = hasDefect
+    ? `gpm-defect-inspection:${item.id}:${Date.now()}:${Math.random().toString(16).slice(2)}`
+    : inspectionType === "monthly" ? `gpm-inspection:${item.id}:monthly:${monthKey}` : `gpm-inspection:${item.id}:${shift.date}:${shift.key}`;
   const previous = gpmStore().inspections[id] || {};
   // One immutable journal entry per shift (or per month for the upper QR).
   // A repeated scan is successful but must not overwrite the saved result.
   if (previous.id && previous.deleted !== true) return true;
   const decision = hasDefect ? "prohibited" : "allowed";
-  gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
-  if (inspectionType === "monthly") {
+  gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
+  if (!hasDefect && inspectionType === "monthly") {
     item.lastMonthlyInspectionDate = shift.date;
     item.nextMonthlyInspectionDate = gpmDatePlusMonth(shift.date);
     if (gpmItemKind(item) === "forklift") item.nextMaintenanceDate = item.nextMonthlyInspectionDate;
@@ -15279,7 +15289,7 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "", im
     const eventId = `gpm-event:${id}`;
     const oldEvent = gpmStore().events[eventId] || {};
     const resolvedNow = immediateResolution.enabled === true && String(immediateResolution.comment || "").trim();
-    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType, type: "defect", completedDate: shift.date, result: resolvedNow ? "Устранено во время осмотра; ожидает подтверждения инженера" : "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: resolvedNow ? "awaitingEngineer" : "open", resolutionComment: resolvedNow ? String(immediateResolution.comment).trim() : "", resolvedAt: resolvedNow ? now : "", resolvedByKey: resolvedNow ? gpmUserKey() : "", resolvedByName: resolvedNow ? (profile?.name || "") : "", resolvedByRole: resolvedNow ? (profile?.role || "") : "", resolvedDuringInspection: Boolean(resolvedNow), createdAt: oldEvent.createdAt || now, updatedAt: now };
+    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, type: "defect", completedDate: shift.date, result: resolvedNow ? "Устранено во время осмотра; ожидает подтверждения инженера" : "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: resolvedNow ? "awaitingEngineer" : "open", resolutionComment: resolvedNow ? String(immediateResolution.comment).trim() : "", resolvedAt: resolvedNow ? now : "", resolvedByKey: resolvedNow ? gpmUserKey() : "", resolvedByName: resolvedNow ? (profile?.name || "") : "", resolvedByRole: resolvedNow ? (profile?.role || "") : "", resolvedDuringInspection: Boolean(resolvedNow), createdAt: oldEvent.createdAt || now, updatedAt: now };
   }
   item.operationStatus = hasDefect || gpmOpenDefects(item).length ? "prohibited" : "allowed";
   item.updatedAt = now;
