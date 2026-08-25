@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v635-node-qr-print-separation-1";
+const APP_VERSION = "v636-employee-search-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18072,6 +18072,26 @@ function renderDirector() {
   updateDirectorBadge();
   ui.directorMeta.textContent = `Ожидают подтверждения: ${pendingUserApprovalCount()}. Всего сотрудников: ${loadUsers().length}`;
   ui.directorPanel.innerHTML = renderDirectorUsers();
+  const userSearch = ui.directorPanel.querySelector("[data-director-user-search]");
+  const filterDirectorUsers = () => {
+    const query = String(userSearch?.value || "").trim().toLocaleLowerCase("ru-RU");
+    const digits = query.replace(/\D/g, "");
+    let visible = 0;
+    ui.directorPanel.querySelectorAll("[data-director-user-row]").forEach(row => {
+      const haystack = String(row.dataset.userSearch || "");
+      const matches = !query || haystack.includes(query) || Boolean(digits && haystack.includes(digits));
+      row.hidden = !matches;
+      if (matches) visible += 1;
+    });
+    const empty = ui.directorPanel.querySelector("[data-director-user-search-empty]");
+    if (empty) empty.hidden = visible > 0 || !query;
+    current.directorUserSearch = query;
+  };
+  if (userSearch) {
+    userSearch.value = current.directorUserSearch || "";
+    userSearch.addEventListener("input", filterDirectorUsers);
+    filterDirectorUsers();
+  }
 
   ui.directorPanel.querySelectorAll("[data-whatsapp-user]").forEach(link => {
     link.addEventListener("click", event => {
@@ -19277,6 +19297,7 @@ function renderDirectorUsers() {
         <strong>Зарегистрированные сотрудники</strong>
         <button type="button" class="mini-action" data-refresh-users>Обновить список</button>
       </div>
+      <label class="director-user-search"><span>Поиск сотрудника</span><input type="search" inputmode="search" autocomplete="off" data-director-user-search placeholder="Введите имя, телефон или табельный номер"></label>
       ${profile?.role === "editor" && pendingCount ? `<div class="empty-state request-alert">Новые регистрации ждут подтверждения: ${pendingCount}</div>` : ""}
       ${users.length ? users.map(user => {
         const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
@@ -19297,7 +19318,7 @@ function renderDirectorUsers() {
           login?.passwordUpdatedBy ? `Изменил: ${login.passwordUpdatedBy}` : ""
         ].filter(Boolean).join(" · ");
         return `
-        <div class="director-user-row ${pending ? "pending-user" : ""}" data-user-key="${escapeHtml(userKey)}">
+        <div class="director-user-row ${pending ? "pending-user" : ""}" data-director-user-row data-user-search="${escapeHtml(`${user.name || ""} ${user.phone || ""} ${cleanPhone(user.phone)} ${user.employeeId || ""}`.toLocaleLowerCase("ru-RU"))}" data-user-key="${escapeHtml(userKey)}">
           <span>${escapeHtml(user.name || "")}</span>
           <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
@@ -19317,6 +19338,7 @@ function renderDirectorUsers() {
         </div>
       `;
       }).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
+      <div class="empty-state" data-director-user-search-empty hidden>Сотрудник не найден. Проверьте имя или номер телефона.</div>
     </div>
   `;
 }

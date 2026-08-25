@@ -7969,6 +7969,33 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
   padding: 8px;
 }
 
+.director-user-search {
+  display: grid;
+  gap: 5px;
+}
+
+.director-user-search span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.director-user-search input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 10px 12px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.director-user-search input:focus {
+  border-color: var(--brand);
+  outline: 3px solid color-mix(in srgb, var(--brand) 20%, transparent);
+}
+
 .director-crane-picker {
   grid-column: 1 / -1;
   display: grid;
@@ -14472,6 +14499,7 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .admin-access-list select,
   html[data-theme="dark"] .admin-user-permissions input,
   html[data-theme="dark"] .admin-user-permissions select,
+  html[data-theme="dark"] .director-user-search input,
   html[data-theme="dark"] .director-user-row input,
   html[data-theme="dark"] .director-user-row select {
     border-color: #3b4a54;

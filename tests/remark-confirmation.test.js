@@ -761,6 +761,20 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /@media print\{body\{background:#fff;padding-top:0\}\.sheet\{margin:0\}/);
 });
 
+test("registered employees can be searched by name phone or employee number", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(client, /data-director-user-search/);
+  assert.match(client, /Введите имя, телефон или табельный номер/);
+  assert.match(client, /data-director-user-row data-user-search=/);
+  assert.match(client, /const filterDirectorUsers = \(\) =>/);
+  assert.match(client, /const digits = query\.replace\(\/\\D\/g, ""\)/);
+  assert.match(client, /row\.hidden = !matches/);
+  assert.match(client, /Сотрудник не найден/);
+  assert.match(css, /\.director-user-search input/);
+  assert.match(css, /html\[data-theme="dark"\] \.director-user-search input/);
+});
+
 test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /function finalizeJournalPopup\(popup, requestedTitle = ""\)/);
