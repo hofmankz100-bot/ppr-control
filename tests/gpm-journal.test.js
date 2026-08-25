@@ -200,14 +200,13 @@ test("crane journal prints from an isolated document without application layout"
   assert.doesNotMatch(app, /function printGpmJournal\(\) \{[\s\S]*?document\.body\.classList\.add\("printing-gpm-journal"\)/);
 });
 
-test("a GPM manager can safely delete a test crane card and its active records", () => {
+test("only an administrator can delete a GPM card after server password verification", () => {
   assert.match(app, /data-gpm-delete-card>Удалить карточку/);
-  assert.match(app, /function deleteGpmEquipmentCard\(item\)/);
-  assert.match(app, /if \(!item\?\.id \|\| !gpmCanManage\(\)\) return false/);
-  assert.match(app, /item\.deleted = true/);
-  assert.match(app, /entry\?\.gpmId !== item\.id/);
-  assert.match(app, /recordAudit\("Удалил карточку ГПМ"/);
-  assert.match(app, /Карточка удалена из журнала и QR-счётчиков/);
+  assert.match(app, /async function deleteGpmEquipmentCard\(item\)/);
+  assert.match(app, /profile\?\.role !== "editor"/);
+  assert.match(app, /Введите пароль администратора/);
+  assert.match(app, /\/api\/admin\/gpm\/delete/);
+  assert.match(app, /Карточка перемещена в корзину и исключена из QR-счётчиков/);
 });
 
 test("monthly upper-QR entry is unmistakably marked as an electromechanic inspection", () => {

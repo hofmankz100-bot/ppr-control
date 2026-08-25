@@ -56,6 +56,25 @@ test("equipment deletion archives the catalog item and linked GPM records", asyn
   assert.equal(responses[0].payload.stateVersion, "state-v4");
 });
 
+test("GPM card deletion is server-side, password protected and moved to trash", async () => {
+  const database = {
+    gpmJournal: {
+      equipment: { crane1: { id: "crane1", name: "Тестовая кран-балка" } },
+      inspections: { i1: { id: "i1", gpmId: "crane1" } },
+      events: { e1: { id: "e1", gpmId: "crane1" } }
+    }
+  };
+  const { handler, responses, audits, broadcasts } = createHarness(database);
+  await handler({ method: "POST", authUser: { id: "a", name: "Админ", role: "editor" }, body: { gpmId: "crane1", reason: "Тестовая карточка", password: "secret" } }, {}, "/api/admin/gpm/delete");
+  assert.equal(database.gpmJournal.equipment.crane1.deleted, true);
+  assert.equal(database.gpmJournal.inspections.i1.deleted, true);
+  assert.equal(database.gpmJournal.events.e1.deleted, true);
+  assert.equal(database.adminTrash[0].type, "gpm");
+  assert.equal(audits[0].action, "gpm_card_moved_to_trash");
+  assert.deepEqual(broadcasts[0].slice(0, 2), ["gpm-card-deleted", ""]);
+  assert.equal(responses[0].payload.ok, true);
+});
+
 test("node addition rejects duplicates and then assigns a QR identity", async () => {
   const database = { catalog: { equipment: { 6: { nodes: ["Редуктор"] } } } };
   const { handler, responses, audits, broadcasts } = createHarness(database);

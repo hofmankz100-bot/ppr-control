@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v622-delete-gpm-card-1";
+const APP_VERSION = "v623-protect-gpm-delete-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -15004,7 +15004,7 @@ function gpmEquipmentForm(item = {}) {
           ? `<label><span>Следующее Плановое ТО</span><input name="nextMonthlyInspectionDate" type="date" value="${escapeHtml(gpmMonthlyDueDate(item))}"></label>`
           : `<label><span>Следующее плановое ТО</span><input name="nextMaintenanceDate" type="date" value="${escapeHtml(item.nextMaintenanceDate || "")}"></label>`}
       </div>
-      <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button>${item.id ? `<button type="button" class="danger" data-gpm-delete-card>Удалить карточку</button>` : ""}</div>
+      <div class="gpm-form-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" data-gpm-cancel-edit>Отмена</button>${item.id && profile?.role === "editor" ? `<button type="button" class="danger" data-gpm-delete-card>Удалить карточку</button>` : ""}</div>
     </form>`;
 }
 
@@ -15328,32 +15328,20 @@ function saveGpmEquipmentForm(form) {
   saveState();
 }
 
-function deleteGpmEquipmentCard(item) {
-  if (!item?.id || !gpmCanManage()) return false;
+async function deleteGpmEquipmentCard(item) {
+  if (!item?.id || profile?.role !== "editor") return false;
   const kindLabel = gpmItemKind(item) === "forklift" ? "погрузчика" : "кран-балки";
   if (!window.confirm(`Удалить карточку ${kindLabel} «${item.name}»? Она исчезнет из рабочих списков и QR-счётчиков.`)) return false;
-  const now = new Date().toISOString();
-  item.deleted = true;
-  item.deletedAt = now;
-  item.deletedByName = profile?.name || "";
-  item.updatedAt = now;
-  Object.values(gpmStore().inspections || {}).forEach(entry => {
-    if (entry?.gpmId !== item.id) return;
-    entry.deleted = true;
-    entry.deletedAt = now;
-    entry.updatedAt = now;
-  });
-  Object.values(gpmStore().events || {}).forEach(entry => {
-    if (entry?.gpmId !== item.id) return;
-    entry.deleted = true;
-    entry.deletedAt = now;
-    entry.updatedAt = now;
-  });
-  recordAudit("Удалил карточку ГПМ", item.name || item.id);
+  const reason = window.prompt("Укажите причину удаления:", "Тестовая карточка")?.trim();
+  if (!reason) return false;
+  const password = window.prompt("Введите пароль администратора:");
+  if (!password) return false;
+  const result = await apiJson("/api/admin/gpm/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ gpmId: item.id, reason, password }) });
+  if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+  if (!result?.ok) throw new Error(result?.error || "gpm_delete_failed");
   current.selectedGpmId = "";
   current.gpmSourceEquipmentId = 0;
   current.gpmAdminEditorOpen = false;
-  saveState();
   return true;
 }
 
@@ -15428,10 +15416,12 @@ function renderGpmJournal() {
     current.gpmAdminEditorOpen = false;
     renderGpmJournal();
   });
-  ui.gpmPanel.querySelector("[data-gpm-delete-card]")?.addEventListener("click", () => {
-    if (!deleteGpmEquipmentCard(selected)) return;
-    renderGpmJournal();
-    showAppToast("Карточка удалена из журнала и QR-счётчиков.", "ok");
+  ui.gpmPanel.querySelector("[data-gpm-delete-card]")?.addEventListener("click", event => {
+    runButtonOperation(event.currentTarget, async () => {
+      if (!await deleteGpmEquipmentCard(selected)) return;
+      renderGpmJournal();
+      showAppToast("Карточка перемещена в корзину и исключена из QR-счётчиков.", "ok");
+    }, "Проверяем пароль…");
   });
   ui.gpmPanel.querySelector("[data-gpm-edit]")?.addEventListener("click", () => {
     current.gpmAdminEditorOpen = true;

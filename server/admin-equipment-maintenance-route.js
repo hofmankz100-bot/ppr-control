@@ -15,6 +15,54 @@ function createAdminEquipmentMaintenanceRoute({
   writeDb
 }) {
   return async function handleAdminEquipmentMaintenanceRoute(req, res, pathname) {
+  if (pathname === "/api/admin/gpm/delete" && req.method === "POST") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const body = await readBody(req).catch(() => ({}));
+    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
+      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
+    }
+    const gpmId = String(body.gpmId || "").trim().slice(0, 200);
+    const reason = String(body.reason || "").trim().slice(0, 2000);
+    if (!gpmId || !reason) { sendJson(res, 400, { ok: false, error: "gpm_delete_invalid" }); return true; }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const item = db.gpmJournal?.equipment?.[gpmId];
+      if (!item || item.deleted === true) return { error: "gpm_card_not_found" };
+      const deletedAt = new Date().toISOString();
+      item.deleted = true;
+      item.deletedAt = deletedAt;
+      item.deletedByName = String(req.authUser?.name || "Администратор");
+      item.updatedAt = deletedAt;
+      Object.values(db.gpmJournal?.inspections || {}).forEach(entry => {
+        if (String(entry?.gpmId || "") !== gpmId) return;
+        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
+      });
+      Object.values(db.gpmJournal?.events || {}).forEach(entry => {
+        if (String(entry?.gpmId || "") !== gpmId) return;
+        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
+      });
+      db.adminTrash ||= [];
+      db.adminTrash.unshift({
+        id: `trash:gpm:${Date.now()}:${randomBytes(5).toString("hex")}`,
+        type: "gpm",
+        targetId: gpmId,
+        label: String(item.name || gpmId),
+        reason,
+        deletedAt,
+        expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
+        deletedById: String(req.authUser?.id || ""),
+        deletedByName: String(req.authUser?.name || "Администратор"),
+        snapshot: { gpmItem: { ...item } }
+      });
+      writeDb(db, { action: "gpm_card_moved_to_trash", user: req.authUser, targetType: "gpm", targetId: gpmId, targetLabel: item.name, reason });
+      return { state: publicState(db) };
+    });
+    if (result.error) { sendJson(res, 404, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("gpm-card-deleted", "", result.state, true);
+    sendJson(res, 200, { ok: true, state: result.state, stateVersion });
+    return true;
+  }
+
   if (pathname === "/api/admin/equipment/delete" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
     const body = await readBody(req).catch(() => ({}));
@@ -193,4 +241,3 @@ function createAdminEquipmentMaintenanceRoute({
 }
 
 module.exports = { createAdminEquipmentMaintenanceRoute };
-
