@@ -271,6 +271,12 @@ test("GPM configuration rights are assigned separately from job role and approva
   assert.match(app, /Только QR-обход назначенных кран-балок/);
   assert.match(server, /target\.craneOnly = craneOnly/);
   assert.match(app, /function gpmIsResponsible\(item\)/);
+  assert.match(app, /function renderCraneOperatorHome\(\)/);
+  assert.match(app, /Назначенных кран-балок пока нет/);
+  assert.match(app, /if \(!gpmCanInspect\(item, scanMode\)\)/);
+  assert.match(app, /data\.getAll\("inspectorKeys"\)/);
+  assert.match(app, /Можно выбрать несколько\. Без назначения операторский QR недоступен\./);
+  assert.match(server, /eligibleInspectors = new Map/);
 });
 
 test("the server enforces GPM roles instead of trusting hidden client buttons", () => {

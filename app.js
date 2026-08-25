@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v628-gpm-event-state-guard-1";
+const APP_VERSION = "v629-gpm-operator-access-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -681,7 +681,6 @@ function ensureGpmUi() {
     const section = document.createElement("section");
     section.id = "craneOperatorScreen";
     section.className = "view gpm-screen";
-    section.innerHTML = `<div class="empty-state"><h1>Обход кран-балки</h1><p>Отсканируйте QR-код на назначенной кран-балке. Форма обхода откроется автоматически.</p><strong>Журналы заполняются автоматически и оператору не показываются.</strong></div>`;
     document.querySelector(".screen")?.append(section);
   }
 }
@@ -3503,7 +3502,7 @@ function roleAccess() {
 }
 
 function canOpenView(view) {
-  if (profile?.role === "operator" && profile?.craneOnly === true) return ["craneOperator", "gpm"].includes(view);
+  if (profile?.role === "operator" && profile?.craneOnly === true) return view === "craneOperator" || (view === "gpm" && Boolean(current.gpmScanMode));
   if (view === "welding") return isProfileReady();
   if (view === "directorControl") return ["director", "editor"].includes(profile?.role);
   if (view === "engineerReport") return isProfileReady();
@@ -10201,6 +10200,7 @@ function render() {
   if (current.view === "qrWalkJournal") renderQrWalkJournal();
   if (current.view === "adminMaintenance") renderAdminMaintenance();
   if (current.view === "gpm") renderGpmJournal();
+  if (current.view === "craneOperator") renderCraneOperatorHome();
   if (current.view === "welding") renderWeldingJournal();
   if (current.view === "workPermit") {
     const workPermitProfile = authenticatedProfile || profile || {};
@@ -14740,12 +14740,12 @@ function gpmCanInspect(item, mode = "") {
   if (gpmIsAdmin() || gpmIsEngineer(item) || gpmIsResponsible(item)) return true;
   if (gpmItemKind(item) === "forklift" && ["forklift", "shift", "monthly"].includes(mode)) {
     const forkliftKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-    return [profile?.role, profile?.jobRole].includes("forkliftDriver") && (!forkliftKeys.length || forkliftKeys.includes(key));
+    return [profile?.role, profile?.jobRole].includes("forkliftDriver") && forkliftKeys.includes(key);
   }
   if (mode === "monthly" && isElectromechanicRole(profile?.role)) return true;
   const assignedKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-  if (gpmItemKind(item) === "forklift" && [profile?.role, profile?.jobRole].includes("forkliftDriver")) return !assignedKeys.length || assignedKeys.includes(key);
-  if (profile?.role === "operator") return !assignedKeys.length || assignedKeys.includes(key);
+  if (gpmItemKind(item) === "forklift" && [profile?.role, profile?.jobRole].includes("forkliftDriver")) return assignedKeys.includes(key);
+  if (profile?.role === "operator") return assignedKeys.includes(key);
   return assignedKeys.includes(key) || item?.inspectorKey === key;
 }
 
@@ -14753,6 +14753,33 @@ function gpmInspectorDisplayNames(item = {}) {
   const keys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys : [];
   const names = keys.map(key => gpmAssignmentDisplayName(key)).filter(Boolean);
   return names.join(", ") || String(item.inspectorNames || gpmAssignmentDisplayName(item.inspectorKey) || "");
+}
+
+function gpmEligibleInspectorUsers(kind = "gpm") {
+  return gpmUsers().filter(user => kind === "forklift"
+    ? [user.role, user.jobRole].includes("forkliftDriver")
+    : user.role === "operator");
+}
+
+function renderCraneOperatorHome() {
+  const screen = document.querySelector("#craneOperatorScreen");
+  if (!screen) return;
+  const key = gpmUserKey();
+  const cranes = gpmEquipmentList("gpm").filter(item => {
+    const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
+    return assigned.includes(key);
+  });
+  screen.innerHTML = `
+    <div class="empty-state gpm-operator-home">
+      <h1>Обход кран-балки</h1>
+      <p>Отсканируйте нижний QR-код на назначенной кран-балке. Журнал заполнится автоматически.</p>
+      <strong>${cranes.length ? `Доступно кран-балок: ${cranes.length}` : "Назначенных кран-балок пока нет"}</strong>
+      ${cranes.length ? `<div class="gpm-operator-assigned-list">${cranes.map(item => {
+        const status = gpmStatus(item);
+        return `<div><span class="gpm-status-dot ${status.key}"></span><p><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.location || "Без участка")} · Назначен вам · ${escapeHtml(status.label)}</small></p></div>`;
+      }).join("")}</div>` : ""}
+      <small>Карточки и служебные журналы оператору не показываются.</small>
+    </div>`;
 }
 
 function gpmCanRepair() {
@@ -14817,9 +14844,16 @@ async function handleIncomingGpmQr() {
     window.alert("Кран по этому QR не найден. Обратитесь к ответственному за журнал ГПМ.");
     return true;
   }
+  const scanMode = gpmItemKind(item) === "forklift" ? "forklift" : parsed.mode;
+  if (!gpmCanInspect(item, scanMode)) {
+    clearIncomingGpmQr();
+    window.alert(gpmItemKind(item) === "forklift" ? "Этот погрузчик вам не назначен." : "Этот кран вам не назначен.");
+    show(homeViewForProfile(profile?.role), false);
+    return true;
+  }
   current.selectedGpmId = item.id;
   current.gpmJournalKind = gpmItemKind(item);
-  current.gpmScanMode = gpmItemKind(item) === "forklift" ? "forklift" : parsed.mode;
+  current.gpmScanMode = scanMode;
   current.gpmInspectionStep = gpmItemKind(item) === "forklift" ? "mode" : "decision";
   clearIncomingGpmQr();
   show("gpm", false);
@@ -14982,6 +15016,8 @@ function gpmEquipmentForm(item = {}) {
   const sourceEquipmentId = Number(item.sourceEquipmentId || current.gpmSourceEquipmentId || 0);
   const journalKind = item.id ? gpmItemKind(item) : current.gpmJournalKind === "forklift" ? "forklift" : "gpm";
   const journalName = journalKind === "forklift" ? "вилочный погрузчик" : "ГПМ";
+  const selectedInspectorKeys = new Set(Array.isArray(item.inspectorKeys) ? item.inspectorKeys : []);
+  const eligibleInspectors = gpmEligibleInspectorUsers(journalKind);
   return `
     <form class="gpm-admin-form" data-gpm-equipment-form data-gpm-id="${escapeHtml(item.id || "")}">
       <h3>${item.id ? `Настройка: ${journalName}` : `Добавить: ${journalName}`}</h3>
@@ -14995,7 +15031,13 @@ function gpmEquipmentForm(item = {}) {
         <label><span>Год изготовления</span><input name="manufactureYear" inputmode="numeric" value="${escapeHtml(item.manufactureYear || "")}"></label>
         <label><span>Ответственный за эксплуатацию</span><input name="operationResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.operationResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
         <label><span>Ответственный за исправное состояние</span><input name="conditionResponsibleKey" value="${escapeHtml(gpmAssignmentDisplayName(item.conditionResponsibleKey))}" placeholder="Введите Ф.И.О. вручную"></label>
-        <label><span>${journalKind === "forklift" ? "Водители погрузчика" : "Операторы кран-балки"}</span><input name="inspectorNames" value="${escapeHtml(gpmInspectorDisplayNames(item))}" placeholder="Ф.И.О. зарегистрированных ${journalKind === "forklift" ? "водителей" : "операторов"} через запятую"><small>После назначения обход доступен только указанным сотрудникам.</small></label>
+        <fieldset class="gpm-inspector-picker"><legend>${journalKind === "forklift" ? "Водители погрузчика" : "Операторы кран-балки"}</legend>
+          ${eligibleInspectors.length ? eligibleInspectors.map(user => {
+            const key = gpmUserKey(user);
+            return `<label><input type="checkbox" name="inspectorKeys" value="${escapeHtml(key)}" ${selectedInspectorKeys.has(key) ? "checked" : ""}><span>${escapeHtml(user.name || user.employeeId || "Сотрудник")}</span></label>`;
+          }).join("") : `<p>Нет зарегистрированных сотрудников с нужной должностью.</p>`}
+          <small>Можно выбрать несколько. Без назначения операторский QR недоступен.</small>
+        </fieldset>
         <label><span>Инженеры с доступом</span><input name="engineerNames" value="${escapeHtml(gpmEngineerDisplayNames(item))}" placeholder="Введите Ф.И.О. через запятую"></label>
         ${journalKind === "gpm" ? `
           <label><span>Следующее частичное освидетельствование</span><input name="nextPartialDate" type="date" value="${escapeHtml(item.nextPartialDate || "")}"></label>
@@ -15223,6 +15265,9 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "", im
   const monthKey = shift.date.slice(0, 7);
   const id = inspectionType === "monthly" ? `gpm-inspection:${item.id}:monthly:${monthKey}` : `gpm-inspection:${item.id}:${shift.date}:${shift.key}`;
   const previous = gpmStore().inspections[id] || {};
+  // One immutable journal entry per shift (or per month for the upper QR).
+  // A repeated scan is successful but must not overwrite the saved result.
+  if (previous.id && previous.deleted !== true) return true;
   const decision = hasDefect ? "prohibited" : "allowed";
   gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
   if (inspectionType === "monthly") {
@@ -15283,12 +15328,9 @@ function saveGpmEquipmentForm(form) {
     const user = gpmUsers().find(entry => String(entry.name || "").trim().localeCompare(name, undefined, { sensitivity: "accent" }) === 0);
     return user ? gpmUserKey(user) : "";
   }).filter(Boolean);
-  const inspectorNames = String(data.get("inspectorNames") || "").trim();
-  const enteredInspectorNames = inspectorNames.split(/[,;\n]+/).map(value => value.trim()).filter(Boolean);
-  const inspectorKeys = enteredInspectorNames.map(name => {
-    const user = gpmUsers().find(entry => String(entry.name || "").trim().localeCompare(name, undefined, { sensitivity: "accent" }) === 0 && (current.gpmJournalKind === "forklift" ? [entry.role, entry.jobRole].includes("forkliftDriver") : entry.role === "operator"));
-    return user ? gpmUserKey(user) : "";
-  }).filter(Boolean);
+  const allowedInspectorKeys = new Set(gpmEligibleInspectorUsers(current.gpmJournalKind).map(gpmUserKey));
+  const inspectorKeys = [...new Set(data.getAll("inspectorKeys").map(String).filter(key => allowedInspectorKeys.has(key)))];
+  const inspectorNames = inspectorKeys.map(gpmUserName).filter(Boolean).join(", ");
   if (sourceEquipmentId) {
     Object.values(gpmStore().equipment).forEach(item => {
       if (item?.id !== id && Number(item?.sourceEquipmentId || 0) === sourceEquipmentId) {
@@ -15328,6 +15370,7 @@ function saveGpmEquipmentForm(form) {
   current.gpmSourceEquipmentId = 0;
   current.gpmAdminEditorOpen = false;
   saveState();
+  return true;
 }
 
 async function deleteGpmEquipmentCard(item) {
@@ -15411,7 +15454,7 @@ function renderGpmJournal() {
   });
   ui.gpmPanel.querySelector("[data-gpm-equipment-form]")?.addEventListener("submit", event => {
     event.preventDefault();
-    saveGpmEquipmentForm(event.currentTarget);
+    if (!saveGpmEquipmentForm(event.currentTarget)) return;
     renderGpmJournal();
   });
   ui.gpmPanel.querySelector("[data-gpm-cancel-edit]")?.addEventListener("click", () => {

@@ -524,7 +524,11 @@ test("production API requires a server session and rate-limits failed logins", a
         actionId: "gpm-sync-test",
         clientId: "test-client",
         gpmJournal: {
-          equipment: { "gpm:1": { id: "gpm:1", name: "Test crane", updatedAt: new Date().toISOString() } },
+          equipment: { "gpm:1": {
+            id: "gpm:1", name: "Test crane", equipmentKind: "gpm",
+            inspectorKeys: [`id:${areaOperator.id}`, "id:forged-operator"],
+            inspectorNames: `${areaOperator.name}, Forged Operator`, updatedAt: new Date().toISOString()
+          } },
           inspections: {},
           events: {}
         }
@@ -533,10 +537,38 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(gpmWrite.status, 200);
     const gpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(gpmState.gpmJournal.equipment["gpm:1"].name, "Test crane");
+    assert.deepEqual(gpmState.gpmJournal.equipment["gpm:1"].inspectorKeys, [`id:${areaOperator.id}`]);
+    assert.equal(gpmState.gpmJournal.equipment["gpm:1"].inspectorNames, areaOperator.name);
+    const loginOperator = async (identifier, password) => {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST", headers: { "content-type": "application/json", "x-app-version": APP_VERSION },
+        body: JSON.stringify({ identifier, password })
+      });
+      assert.equal(response.status, 200);
+      return response.headers.get("set-cookie").split(";")[0];
+    };
+    const assignedOperatorCookie = await loginOperator(areaOperator.employeeId, "operator-password");
+    const otherOperatorCookie = await loginOperator(otherAreaOperator.employeeId, "other-password");
+    const operatorInspection = (id, authorKey) => ({
+      id, gpmId: "gpm:1", inspectionType: "shift", authorKey,
+      points: [true], decision: "allowed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
+    const syncAsOperator = (operatorCookie, actionId, inspection) => fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { cookie: operatorCookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
+      body: JSON.stringify({ actionId, clientId: "operator-access-test", gpmJournal: { equipment: {}, inspections: { [inspection.id]: inspection }, events: {} } })
+    });
+    assert.equal((await syncAsOperator(assignedOperatorCookie, "assigned-operator-inspection", operatorInspection("assigned-inspection", `id:${areaOperator.id}`))).status, 200);
+    assert.equal((await syncAsOperator(otherOperatorCookie, "other-operator-inspection", operatorInspection("forbidden-inspection", `id:${otherAreaOperator.id}`))).status, 200);
+    const operatorAccessState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(operatorAccessState.gpmJournal.inspections["assigned-inspection"]);
+    assert.equal(operatorAccessState.gpmJournal.inspections["forbidden-inspection"], undefined);
     const gpmActorKey = `id:${editor.id}`;
     const gpmInspection = {
       id: "inspection-security-1", gpmId: "gpm:1", inspectionType: "monthly",
-      authorKey: gpmActorKey, authorName: editor.name, updatedAt: "2026-08-25T10:00:00.000Z"
+      authorKey: gpmActorKey, authorName: editor.name, points: [true, false],
+      defects: "Исходный осмотр", decision: "prohibited",
+      createdAt: "2026-08-25T10:00:00.000Z", updatedAt: "2026-08-25T10:00:00.000Z"
     };
     const gpmDefect = {
       id: "event-security-1", gpmId: "gpm:1", inspectionId: gpmInspection.id,
@@ -549,10 +581,21 @@ test("production API requires a server session and rate-limits failed logins", a
       body: JSON.stringify({ actionId, clientId: "gpm-security-test", gpmJournal: { equipment: {}, inspections, events } })
     });
     assert.equal((await syncGpmSecurity("gpm-defect-create", { [gpmInspection.id]: gpmInspection }, { [gpmDefect.id]: gpmDefect })).status, 200);
+    assert.equal((await syncGpmSecurity("gpm-inspection-rewrite", {
+      [gpmInspection.id]: {
+        ...gpmInspection, authorKey: "id:forged-author", authorName: "Другой сотрудник",
+        points: [true, true], defects: "Переписанный осмотр", decision: "allowed",
+        createdAt: "2026-08-25T10:05:00.000Z", updatedAt: "2026-08-25T10:05:00.000Z"
+      }
+    }, {})).status, 200);
+    let protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.deepEqual(protectedGpmState.gpmJournal.inspections[gpmInspection.id].points, [true, false]);
+    assert.equal(protectedGpmState.gpmJournal.inspections[gpmInspection.id].defects, "Исходный осмотр");
+    assert.equal(protectedGpmState.gpmJournal.inspections[gpmInspection.id].authorKey, gpmActorKey);
     assert.equal((await syncGpmSecurity("gpm-premature-approval", {}, {
       [gpmDefect.id]: { ...gpmDefect, approvedAt: "2026-08-25T10:01:00.000Z", updatedAt: "2026-08-25T10:01:00.000Z" }
     })).status, 200);
-    let protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    protectedGpmState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
     assert.equal(Boolean(protectedGpmState.gpmJournal.events[gpmDefect.id].approvedAt), false);
     assert.equal((await syncGpmSecurity("gpm-resolution", {}, {
       [gpmDefect.id]: { ...gpmDefect, resolutionComment: "Устранено", resolvedAt: "2026-08-25T10:02:00.000Z", updatedAt: "2026-08-25T10:02:00.000Z" }

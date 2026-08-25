@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v628-gpm-event-state-guard-1";
+const SERVER_VERSION = "v629-gpm-operator-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4421,6 +4421,17 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
         next.deletedAt = current?.deletedAt || "";
         next.deletedByName = current?.deletedByName || "";
       }
+      const forklift = next.equipmentKind === "forklift";
+      const eligibleInspectors = new Map((db.users || [])
+        .filter(candidate => candidate?.approved !== false && candidate?.pendingApproval !== true)
+        .filter(candidate => forklift
+          ? [candidate.role, candidate.jobRole].includes("forkliftDriver")
+          : candidate.role === "operator")
+        .map(candidate => [resolutionUserKeyServer(candidate), candidate]));
+      const requestedInspectorKeys = Array.isArray(next.inspectorKeys) ? next.inspectorKeys.map(String) : [];
+      next.inspectorKeys = [...new Set(requestedInspectorKeys.filter(key => eligibleInspectors.has(key)))];
+      next.inspectorKey = next.inspectorKeys[0] || "";
+      next.inspectorNames = next.inspectorKeys.map(key => String(eligibleInspectors.get(key)?.name || "").trim()).filter(Boolean).join(", ");
       equipment[id] = next;
     });
   }
@@ -4431,13 +4442,17 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
     if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
     if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(rawRole)) return true;
     const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-    if (["operator", "forkliftDriver"].includes(rawRole)) return !assigned.length || assigned.includes(actorKey);
+    if (["operator", "forkliftDriver"].includes(rawRole)) return assigned.includes(actorKey);
     return assigned.includes(actorKey) || String(item.inspectorKey || "") === actorKey;
   };
   const inspections = {};
   Object.entries(incoming?.inspections || {}).forEach(([id, entry]) => {
     const current = stored.inspections?.[id];
     if (!entry || typeof entry !== "object" || entry.deleted === true && current?.deleted !== true) return;
+    // A completed QR inspection is a journal record, not an editable draft.
+    // Repeated synchronization must be idempotent and must never rewrite its
+    // author, checklist, defect, decision or timestamps.
+    if (current) return;
     if (String(entry.authorKey || "") !== actorKey && baseRole !== "editor") return;
     if (inspectionAllowed(entry)) inspections[id] = entry;
   });

@@ -15042,3 +15042,12 @@ html[data-theme="dark"] .pull-refresh-indicator {
     color: #000 !important;
   }
 }
+.gpm-operator-home{max-width:720px;margin:24px auto;text-align:left}
+.gpm-operator-assigned-list{display:grid;gap:10px;margin:18px 0}
+.gpm-operator-assigned-list>div{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.gpm-operator-assigned-list p{display:grid;gap:4px;margin:0}
+.gpm-operator-assigned-list small{color:var(--muted)}
+.gpm-inspector-picker{display:grid;gap:8px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px}
+.gpm-inspector-picker label{display:flex;align-items:center;gap:9px;min-height:40px;padding:7px 9px;border-radius:9px;background:var(--panel)}
+.gpm-inspector-picker input{width:22px;height:22px;flex:0 0 auto}
+.gpm-inspector-picker small{color:var(--muted)}
