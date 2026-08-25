@@ -147,7 +147,10 @@ test("disabled crane calendar cells preserve the normal day-column width", () =>
 
 test("crane calendar cell shows separate shift and monthly QR inspection counters", () => {
   assert.match(app, /function gpmQrInspectionCounters\(date, items = gpmEquipmentList\("gpm"\)\)/);
-  assert.match(app, /shiftTotal: items\.length \* 2/);
+  assert.match(app, /const dueShiftKeys = walkShiftKeysDueForDate\(date\)/);
+  assert.match(app, /dueShiftKeys\.includes\(entry\.shiftKey === "night" \? "night" : "day"\)/);
+  assert.match(app, /shiftTotal: items\.length \* dueShiftKeys\.length/);
+  assert.doesNotMatch(app, /shiftTotal: items\.length \* 2/);
   assert.match(app, /monthlyTotal: items\.length/);
   assert.match(app, /Ежесменные <b>\$\{counters\.shiftDone\}\/\$\{counters\.shiftTotal\}<\/b>/);
   assert.match(app, /Ежемесячные <b>\$\{counters\.monthlyDone\}\/\$\{counters\.monthlyTotal\}<\/b>/);

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v619-compact-ppr-report-1";
+const APP_VERSION = "v620-qr-shift-counter-boundary-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -14693,13 +14693,16 @@ function gpmOperationalControlEnabled(item, date = todayISO()) {
 function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
   const craneIds = new Set(items.map(item => String(item.id)));
   const month = String(date || "").slice(0, 7);
+  const dueShiftKeys = walkShiftKeysDueForDate(date);
   const inspections = Object.values(gpmStore().inspections || {})
     .filter(entry => entry && craneIds.has(String(entry.gpmId || "")));
-  const shiftDone = inspections.filter(entry => entry.inspectionType !== "monthly" && String(entry.shiftDate || "") === date).length;
+  const shiftDone = inspections.filter(entry => entry.inspectionType !== "monthly"
+    && String(entry.shiftDate || "") === date
+    && dueShiftKeys.includes(entry.shiftKey === "night" ? "night" : "day")).length;
   const monthlyDone = inspections.filter(entry => entry.inspectionType === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
   return {
     shiftDone,
-    shiftTotal: items.length * 2,
+    shiftTotal: items.length * dueShiftKeys.length,
     monthlyDone,
     monthlyTotal: items.length
   };
