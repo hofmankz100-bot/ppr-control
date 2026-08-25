@@ -100,10 +100,25 @@ function createAdminEquipmentMaintenanceRoute({
       if (!existing) db.catalog.equipment[equipmentId] = item;
       const deletedAt = new Date().toISOString();
       const linkedGpm = Object.values(db.gpmJournal?.equipment || {}).filter(entry => Number(entry?.sourceEquipmentId || 0) === equipmentId);
+      const linkedGpmIds = new Set(linkedGpm.map(entry => String(entry?.id || "")).filter(Boolean));
+      const linkedGpmInspections = Object.values(db.gpmJournal?.inspections || {})
+        .filter(entry => linkedGpmIds.has(String(entry?.gpmId || "")))
+        .map(entry => ({ ...entry }));
+      const linkedGpmEvents = Object.values(db.gpmJournal?.events || {})
+        .filter(entry => linkedGpmIds.has(String(entry?.gpmId || "")))
+        .map(entry => ({ ...entry }));
       item.deleted = true;
       item.deletedAt = deletedAt;
       item.deletedByName = String(req.authUser?.name || "Администратор");
       linkedGpm.forEach(entry => { entry.deleted = true; entry.deletedAt = deletedAt; });
+      Object.values(db.gpmJournal?.inspections || {}).forEach(entry => {
+        if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
+        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
+      });
+      Object.values(db.gpmJournal?.events || {}).forEach(entry => {
+        if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
+        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
+      });
       db.adminTrash ||= [];
       db.adminTrash.unshift({
         id: `trash:equipment:${Date.now()}:${randomBytes(5).toString("hex")}`,
@@ -115,7 +130,12 @@ function createAdminEquipmentMaintenanceRoute({
         expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
         deletedById: String(req.authUser?.id || ""),
         deletedByName: String(req.authUser?.name || "Администратор"),
-        snapshot: { catalogItem: { ...item }, gpmItems: linkedGpm.map(entry => ({ ...entry })) }
+        snapshot: {
+          catalogItem: { ...item },
+          gpmItems: linkedGpm.map(entry => ({ ...entry })),
+          gpmInspections: linkedGpmInspections,
+          gpmEvents: linkedGpmEvents
+        }
       });
       writeDb(db, { action: "equipment_moved_to_trash", user: req.authUser, targetType: "equipment", targetId: String(equipmentId), targetLabel: item.name, reason });
       return { state: publicState(db) };

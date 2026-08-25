@@ -2,12 +2,14 @@
 
 function createAdminMaintenanceRoute(dependencies = {}) {
   const {
+    broadcastState,
     createManualBackup,
     enqueueStateWrite,
     passwordMatches,
     readBody,
     readDb,
     sendJson,
+    publicState,
     writeDb,
     allowPasswordlessTestAuth = false,
     now = () => Date.now()
@@ -68,6 +70,21 @@ function createAdminMaintenanceRoute(dependencies = {}) {
             if (!gpm?.id) return;
             db.gpmJournal.equipment[gpm.id] = { ...gpm, deleted: false, deletedAt: "", restoredAt };
           });
+          const linkedGpmIds = new Set((snapshot.gpmItems || []).map(gpm => String(gpm?.id || "")).filter(Boolean));
+          const restoreEquipmentLinked = (target, snapshots) => {
+            (snapshots || []).forEach(entry => {
+              if (!entry?.id || !linkedGpmIds.has(String(entry.gpmId || ""))) return;
+              target[entry.id] = { ...entry, deleted: false, deletedAt: "", restoredAt, updatedAt: restoredAt };
+            });
+            Object.values(target).forEach(entry => {
+              if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
+              entry.deleted = false; entry.deletedAt = ""; entry.restoredAt = restoredAt; entry.updatedAt = restoredAt;
+            });
+          };
+          db.gpmJournal.inspections ||= {};
+          db.gpmJournal.events ||= {};
+          restoreEquipmentLinked(db.gpmJournal.inspections, snapshot.gpmInspections);
+          restoreEquipmentLinked(db.gpmJournal.events, snapshot.gpmEvents);
         } else if (item.type === "gpm") {
           const snapshot = item.snapshot || {};
           const gpmItem = snapshot.gpmItem;
@@ -117,7 +134,7 @@ function createAdminMaintenanceRoute(dependencies = {}) {
           targetLabel: item.label,
           reason: String(body.reason || "Восстановление из корзины")
         });
-        return { restored: true };
+        return { restored: true, targetType: item.type, state: typeof publicState === "function" ? publicState(db) : null };
       }
 
       if (action === "purge") {
@@ -127,6 +144,7 @@ function createAdminMaintenanceRoute(dependencies = {}) {
         createManualBackup("before-trash-purge");
         if (item.type === "equipment") {
           const equipmentId = Number(item.targetId);
+          const linkedGpmIds = new Set((item.snapshot?.gpmItems || []).map(gpm => String(gpm?.id || "")).filter(Boolean));
           if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) {
             if (item.snapshot?.catalogItem?.builtIn === true) {
               db.catalog.equipment[equipmentId] = {
@@ -143,8 +161,14 @@ function createAdminMaintenanceRoute(dependencies = {}) {
           Object.keys(db.gpmJournal?.equipment || {}).forEach(id => {
             const gpm = db.gpmJournal.equipment[id];
             if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) {
+              linkedGpmIds.add(String(gpm.id || id));
               delete db.gpmJournal.equipment[id];
             }
+          });
+          [db.gpmJournal?.inspections, db.gpmJournal?.events].forEach(collection => {
+            Object.keys(collection || {}).forEach(id => {
+              if (linkedGpmIds.has(String(collection[id]?.gpmId || ""))) delete collection[id];
+            });
           });
         } else if (item.type === "gpm") {
           const gpmId = String(item.targetId || item.snapshot?.gpmItem?.id || "").trim();
@@ -167,12 +191,23 @@ function createAdminMaintenanceRoute(dependencies = {}) {
           targetLabel: item.label,
           reason: String(body.reason || "Окончательное удаление")
         });
-        return { purged: true };
+        return { purged: true, targetType: item.type, state: typeof publicState === "function" ? publicState(db) : null };
       }
       return { error: "maintenance_action_invalid" };
     });
     if (result.error) sendJson(res, 400, { ok: false, error: result.error });
-    else sendJson(res, 200, { ok: true, ...result });
+    else {
+      const shouldBroadcast = ["equipment", "gpm"].includes(result.targetType) && result.state && typeof broadcastState === "function";
+      const stateVersion = shouldBroadcast
+        ? broadcastState(result.restored ? "trash-restored" : "trash-purged", "", result.state, true)
+        : "";
+      sendJson(res, 200, {
+        ok: true,
+        ...(result.restored ? { restored: true } : {}),
+        ...(result.purged ? { purged: true } : {}),
+        ...(stateVersion ? { stateVersion } : {})
+      });
+    }
     return true;
   };
 }

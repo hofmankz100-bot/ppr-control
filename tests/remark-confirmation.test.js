@@ -807,7 +807,7 @@ test("admin can move any equipment to trash and restore it with its journal", ()
   assert.match(server, /pathname === "\/api\/admin\/equipment\/delete"/);
   assert.match(server, /body\.builtIn === true/);
   assert.match(server, /type: "equipment"/);
-  assert.match(server, /snapshot: \{ catalogItem: \{ \.\.\.item \}, gpmItems:/);
+  assert.match(server, /snapshot: \{[\s\S]*catalogItem: \{ \.\.\.item \},[\s\S]*gpmItems:[\s\S]*gpmInspections:[\s\S]*gpmEvents:/);
   assert.match(maintenanceRoute, /item\.type === "equipment"/);
   assert.match(maintenanceRoute, /deleted: false/);
   assert.match(maintenanceRoute, /builtIn: true,/);
