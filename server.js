@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v638-forklift-driver-screen-1";
+const SERVER_VERSION = "v639-forklift-permissions-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4396,6 +4396,18 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+function gpmOperationalControlEnabledServer(db = {}, item = {}) {
+  const equipmentId = String(Number(item?.sourceEquipmentId || 0));
+  if (equipmentId === "0") return true;
+  const catalogItem = db.catalog?.equipment?.[equipmentId];
+  if (!catalogItem) return true;
+  const active = pause => Boolean(pause?.startedAt) && !pause?.endedAt;
+  if ((catalogItem.operationalPauses || []).some(active)) return false;
+  const nodeIndex = item?.sourceNodeIndex;
+  if (nodeIndex === null || nodeIndex === undefined || nodeIndex === "") return true;
+  return !(catalogItem.nodeOperationalPauses?.[String(nodeIndex)] || []).some(active);
+}
+
 function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
   const stored = db.gpmJournal || { equipment: {}, inspections: {}, events: {}, managers: {} };
   const actorKey = resolutionUserKeyServer(user);
@@ -4404,7 +4416,7 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
   const manager = Object.values(stored.managers || {}).some(grant => grant?.active && String(grant.userKey || "") === actorKey);
   const canManage = baseRole === "editor" || manager;
   const isEngineer = baseRole === "editor" || baseRole === "engineer";
-  const isRepairer = ["editor", "engineer"].includes(baseRole) || ["mechanic", "electrician", "welder", "turner", "forkliftDriver"].includes(rawRole);
+  const isRepairer = ["editor", "engineer"].includes(baseRole) || ["mechanic", "electrician", "welder", "turner"].includes(rawRole);
   const equipment = {};
   if (canManage) {
     Object.entries(incoming?.equipment || {}).forEach(([id, raw]) => {
@@ -4444,6 +4456,7 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
       && String(entry?.defects || "").trim()
       && Array.isArray(entry?.points) && entry.points.some(point => point === false);
     if (defectReport) return true;
+    if (!gpmOperationalControlEnabledServer(db, item)) return false;
     if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
     if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(rawRole)) return true;
     const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];

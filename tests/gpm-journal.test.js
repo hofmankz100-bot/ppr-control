@@ -172,7 +172,8 @@ test("forklift driver gets a minimal assigned-equipment screen", () => {
   assert.match(app, /function isForkliftDriverProfile\(user = profile \|\| \{\}\)/);
   assert.match(app, /if \(isForkliftDriverProfile\(\)\) return view === "equipment" \|\| \(view === "gpm" && Boolean\(current\.gpmScanMode\)\)/);
   assert.match(app, /gpmEquipmentList\("forklift"\)\.filter\(item =>/);
-  assert.match(app, /inspectorKeys\.includes\(key\) && gpmOperationalControlEnabled\(item, todayISO\(\)\)/);
+  assert.match(app, /return inspectorKeys\.includes\(key\)/);
+  assert.match(app, /Временно остановлен — осмотр отключён/);
   assert.match(app, /data-forklift-driver-scan/);
   assert.match(app, /Карточки оборудования, журналы других сотрудников, печать QR и настройки здесь не показываются/);
 });
@@ -316,6 +317,15 @@ test("the server enforces GPM roles instead of trusting hidden client buttons", 
   assert.match(server, /else if \(!current && ownsEvent\)/);
   assert.doesNotMatch(server, /baseRole === "editor" && !approves && !resolves/);
   assert.match(server, /managers: baseRole === "editor"/);
+  assert.doesNotMatch(server, /\["mechanic", "electrician", "welder", "turner", "forkliftDriver"\]\.includes\(rawRole\)/);
+  assert.match(server, /if \(!gpmOperationalControlEnabledServer\(db, item\)\) return false/);
+});
+
+test("paused GPM cannot be inspected and a forklift driver cannot resolve repairs", () => {
+  assert.match(app, /if \(!gpmOperationalControlEnabled\(item, todayISO\(\)\)\) return false/);
+  assert.match(app, /isResolutionExecutorRole\(profile\?\.role\) && !isForkliftDriverProfile\(\)/);
+  assert.match(server, /function gpmOperationalControlEnabledServer/);
+  assert.match(server, /const isRepairer = \["editor", "engineer"\]\.includes\(baseRole\) \|\| \["mechanic", "electrician", "welder", "turner"\]\.includes\(rawRole\)/);
 });
 
 test("admin can grant and revoke GPM editor access by unique employee account", () => {

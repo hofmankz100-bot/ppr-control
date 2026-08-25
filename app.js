@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v638-forklift-driver-screen-1";
+const APP_VERSION = "v639-forklift-permissions-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11740,16 +11740,17 @@ function renderEquipment() {
     const key = gpmUserKey();
     const assigned = gpmEquipmentList("forklift").filter(item => {
       const inspectorKeys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-      return inspectorKeys.includes(key) && gpmOperationalControlEnabled(item, todayISO());
+      return inspectorKeys.includes(key);
     });
     ui.subtitle.textContent = "Вилочные погрузчики";
     ui.equipmentList.innerHTML = `<section class="forklift-driver-home">
       <header><span>Рабочее место карщика</span><h1>Назначенные погрузчики</h1><p>Осмотр и Плановое ТО открываются только единым QR-кодом на погрузчике.</p></header>
       <button type="button" class="forklift-driver-scan" data-forklift-driver-scan>Сканировать QR погрузчика</button>
       <div class="forklift-driver-assigned">${assigned.length ? assigned.map(item => {
-        const status = gpmStatus(item);
+        const active = gpmOperationalControlEnabled(item, todayISO());
+        const status = active ? gpmStatus(item) : { key: "paused", label: "Временно остановлен — осмотр отключён" };
         return `<article><span class="gpm-status-dot ${status.key}"></span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.location || "Место не указано")} · ${escapeHtml(status.label)}</small></div></article>`;
-      }).join("") : `<div class="empty-state">Вам пока не назначен ни один работающий погрузчик. Обратитесь к администратору.</div>`}</div>
+      }).join("") : `<div class="empty-state">Вам пока не назначен ни один погрузчик. Обратитесь к администратору.</div>`}</div>
       <small class="forklift-driver-hint">Карточки оборудования, журналы других сотрудников, печать QR и настройки здесь не показываются.</small>
     </section>`;
     ui.equipmentList.querySelector("[data-forklift-driver-scan]")?.addEventListener("click", () => ui.qrWalkButton?.click());
@@ -14773,6 +14774,7 @@ function gpmIsResponsible(item) {
 
 function gpmCanInspect(item, mode = "") {
   const key = gpmUserKey();
+  if (!gpmOperationalControlEnabled(item, todayISO())) return false;
   if (gpmIsAdmin() || gpmIsEngineer(item) || gpmIsResponsible(item)) return true;
   if (gpmItemKind(item) === "forklift" && ["forklift", "shift", "monthly"].includes(mode)) {
     const forkliftKeys = Array.isArray(item?.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
@@ -14823,7 +14825,7 @@ function renderCraneOperatorHome() {
 }
 
 function gpmCanRepair() {
-  return gpmIsAdmin() || isResolutionExecutorRole(profile?.role);
+  return gpmIsAdmin() || (isResolutionExecutorRole(profile?.role) && !isForkliftDriverProfile());
 }
 
 function gpmQrValue(item, mode = "shift") {
