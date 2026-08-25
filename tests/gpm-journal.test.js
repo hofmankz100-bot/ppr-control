@@ -149,9 +149,12 @@ test("crane calendar cell shows separate shift and monthly QR inspection counter
   assert.match(app, /function gpmQrInspectionCounters\(date, items = gpmEquipmentList\("gpm"\)\)/);
   assert.match(app, /const dueShiftKeys = walkShiftKeysDueForDate\(date\)/);
   assert.match(app, /dueShiftKeys\.includes\(entry\.shiftKey === "night" \? "night" : "day"\)/);
-  assert.match(app, /shiftTotal: items\.length \* dueShiftKeys\.length/);
+  assert.match(app, /const activeItems = items\.filter\(item => gpmOperationalControlEnabled\(item, date\)\)/);
+  assert.match(app, /shiftTotal: activeItems\.length \* dueShiftKeys\.length/);
   assert.doesNotMatch(app, /shiftTotal: items\.length \* 2/);
-  assert.match(app, /monthlyTotal: items\.length/);
+  assert.match(app, /const activeShift = currentWalkShift\(\);\s+const today = new Date\(`\$\{activeShift\.date\}T12:00:00`\)/);
+  assert.match(app, /Текущая смена: \$\{dateHuman\(activeShift\.date\)\} · \$\{activeShift\.label\}/);
+  assert.match(app, /monthlyTotal: activeItems\.length/);
   assert.match(app, /Ежесменные <b>\$\{counters\.shiftDone\}\/\$\{counters\.shiftTotal\}<\/b>/);
   assert.match(app, /Ежемесячные <b>\$\{counters\.monthlyDone\}\/\$\{counters\.monthlyTotal\}<\/b>/);
 });

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v620-qr-shift-counter-boundary-1";
+const APP_VERSION = "v621-qr-active-shift-date-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -11728,7 +11728,8 @@ function renderEquipment() {
   }
   ui.subtitle.textContent = "Оборудование";
   const editorSchedule = false;
-  const today = new Date();
+  const activeShift = currentWalkShift();
+  const today = new Date(`${activeShift.date}T12:00:00`);
   current.month = today.getMonth();
   current.year = today.getFullYear();
   const count = openCommentCount();
@@ -11749,7 +11750,7 @@ function renderEquipment() {
   monthBar.innerHTML = `
     <div>
       <strong>График оборудования</strong>
-      <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Сегодня: ${today.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}`}</span>
+      <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Текущая смена: ${dateHuman(activeShift.date)} · ${activeShift.label}`}</span>
     </div>
     <div class="segmented">
       ${profile?.role === "editor" ? `<button type="button" data-create-equipment>+ Создать оборудование</button>` : ""}
@@ -11918,7 +11919,7 @@ function renderEquipment() {
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
         const baseClass = operationalPause ? "operational-paused-day" : summary.done === summary.total ? "completed-day" : "to";
-        td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${isTodayDate(date) ? "today-cell" : ""}`;
+          td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
         td.textContent = operationalPause ? "Пауза" : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
@@ -14691,7 +14692,8 @@ function gpmOperationalControlEnabled(item, date = todayISO()) {
 }
 
 function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
-  const craneIds = new Set(items.map(item => String(item.id)));
+  const activeItems = items.filter(item => gpmOperationalControlEnabled(item, date));
+  const craneIds = new Set(activeItems.map(item => String(item.id)));
   const month = String(date || "").slice(0, 7);
   const dueShiftKeys = walkShiftKeysDueForDate(date);
   const inspections = Object.values(gpmStore().inspections || {})
@@ -14702,9 +14704,9 @@ function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
   const monthlyDone = inspections.filter(entry => entry.inspectionType === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
   return {
     shiftDone,
-    shiftTotal: items.length * dueShiftKeys.length,
+    shiftTotal: activeItems.length * dueShiftKeys.length,
     monthlyDone,
-    monthlyTotal: items.length
+    monthlyTotal: activeItems.length
   };
 }
 
