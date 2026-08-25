@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v632-crane-operator-access-1";
+const APP_VERSION = "v633-operator-crane-onboarding-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18072,29 +18072,50 @@ function renderDirector() {
       const userKey = row?.dataset.userKey || "";
       if (!userKey) return;
       const draft = userApprovalDrafts.get(userKey) || {};
-      if (event.currentTarget.matches("[data-user-role]")) draft.role = event.currentTarget.value;
+      if (event.currentTarget.matches("[data-user-role]")) {
+        draft.role = event.currentTarget.value;
+        const picker = row.querySelector("[data-pending-crane-picker]");
+        if (picker) picker.classList.toggle("hidden", draft.role !== "operator");
+      }
       if (event.currentTarget.matches("[data-user-area]")) draft.area = event.currentTarget.value;
       userApprovalDrafts.set(userKey, draft);
     });
   });
+  ui.directorPanel.querySelectorAll("[data-pending-crane-id]").forEach(input => {
+    input.addEventListener("change", event => {
+      const row = event.currentTarget.closest("[data-user-key]");
+      const userKey = row?.dataset.userKey || "";
+      if (!userKey) return;
+      const draft = userApprovalDrafts.get(userKey) || {};
+      draft.assignedGpmIds = [...row.querySelectorAll("[data-pending-crane-id]:checked")].map(item => item.value);
+      userApprovalDrafts.set(userKey, draft);
+    });
+  });
   ui.directorPanel.querySelectorAll("[data-approve-user]").forEach(button => {
-    button.addEventListener("click", event => {
+    button.addEventListener("click", async event => {
       const userKey = event.currentTarget.dataset.approveUser || "";
       const users = loadUsers();
       const user = users.find(item => (item.id || item.employeeId || item.phone || item.name || "") === userKey);
-      if (!user || !window.confirm(`Подтвердить регистрацию: ${user.name || user.phone || ""}?`)) return;
+      if (!user) return;
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
+      const assignedGpmIds = [...(row?.querySelectorAll("[data-pending-crane-id]:checked") || [])].map(input => input.value);
       if (!role) {
         window.alert("Сначала назначьте должность сотрудника.");
         return;
       }
+      if (role === "operator" && !assignedGpmIds.length) {
+        window.alert("Выберите хотя бы одну кран-балку для оператора.");
+        return;
+      }
+      if (!window.confirm(`Подтвердить регистрацию и назначить сотрудника: ${user.name || user.phone || ""}?`)) return;
       user.approved = true;
       user.pendingApproval = false;
       user.registrationPending = false;
       user.status = "approved";
       user.role = role;
+      user.craneOnly = role === "operator";
       if (needsArea(role) && !area) {
         window.alert("Для этой должности сначала выберите участок.");
         return;
@@ -18103,17 +18124,22 @@ function renderDirector() {
       user.approvedAt = new Date().toISOString();
       user.approvedBy = profile?.name || "";
       userApprovalDrafts.delete(userKey);
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-      apiJson("/api/users", {
-        method: "POST",
-        body: JSON.stringify({
-          ...user,
-          actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
-          actionId: nextActionId(),
-          clientId: CLIENT_ID
-        })
-      }).then(loadRemoteUsers).catch(() => {});
-      renderDirector();
+      const approveButton = event.currentTarget;
+      await runButtonOperation(approveButton, async () => {
+        await apiJson("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            ...user,
+            assignedGpmIds,
+            actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
+            actionId: nextActionId(),
+            clientId: CLIENT_ID
+          })
+        });
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        await Promise.all([loadRemoteUsers(), loadRemoteState()]);
+        renderDirector();
+      }, "Подтверждаем…");
     });
   });
   ui.directorPanel.querySelectorAll("[data-save-user-role]").forEach(button => {
@@ -19238,6 +19264,10 @@ function renderDirectorUsers() {
       ${users.length ? users.map(user => {
         const userKey = String(user.id || user.employeeId || user.phone || user.name || "");
         const draft = userApprovalDrafts.get(userKey) || {};
+        const pending = user.approved === false || user.pendingApproval;
+        const selectedRole = draft.role ?? user.role ?? "";
+        const selectedCraneIds = new Set(Array.isArray(draft.assignedGpmIds) ? draft.assignedGpmIds : []);
+        const assignableCranes = pending ? gpmEquipmentList("gpm") : [];
         const login = user.loginDiagnostics || null;
         const loginWarnings = [
           login && !login.hasPassword ? "Пароль не задан" : "",
@@ -19250,18 +19280,19 @@ function renderDirectorUsers() {
           login?.passwordUpdatedBy ? `Изменил: ${login.passwordUpdatedBy}` : ""
         ].filter(Boolean).join(" · ");
         return `
-        <div class="director-user-row ${user.approved === false || user.pendingApproval ? "pending-user" : ""}" data-user-key="${escapeHtml(userKey)}">
+        <div class="director-user-row ${pending ? "pending-user" : ""}" data-user-key="${escapeHtml(userKey)}">
           <span>${escapeHtml(user.name || "")}</span>
           <span>Таб. № ${escapeHtml(user.employeeId || "не задан")}</span>
           <span>${escapeHtml(user.phone || "")}</span>
           ${isEditorSession() ? `
-            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(draft.role ?? user.role ?? "")}</select></label>
+            <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(selectedRole)}</select></label>
             <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
-          <span class="user-approval-status">${user.approved === false || user.pendingApproval ? "Ждёт подтверждения" : "Подтверждён"}</span>
+          ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Назначенные кран-балки</legend>${assignableCranes.length ? assignableCranes.map(item => `<label><input type="checkbox" data-pending-crane-id value="${escapeHtml(item.id)}" ${selectedCraneIds.has(String(item.id)) ? "checked" : ""}><span>${escapeHtml(item.name)}${item.location ? ` · ${escapeHtml(item.location)}` : ""}</span></label>`).join("") : `<small>Карточки кран-балок ещё не созданы.</small>`}<small>Можно выбрать несколько. Оператор увидит только назначенные краны.</small></fieldset>` : ""}
+          <span class="user-approval-status">${pending ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
-          ${profile?.role === "editor" && (user.approved === false || user.pendingApproval) ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить</button>` : ""}
+          ${profile?.role === "editor" && pending ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить и назначить</button>` : ""}
           ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность и участок</button>` : ""}
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
           ${isEditorSession() ? `<button type="button" class="mini-action" data-unlock-user-login="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Снять блокировку</button>` : ""}

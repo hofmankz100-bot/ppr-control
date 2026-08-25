@@ -309,6 +309,18 @@ test("admin can grant and revoke GPM editor access by unique employee account", 
   assert.match(server, /managerMigrationVersion !== "initial-maksut-v1"/);
 });
 
+test("operator approval assigns one or more crane beams in the same action", () => {
+  assert.match(app, /data-pending-crane-picker/);
+  assert.match(app, /data-pending-crane-id/);
+  assert.match(app, /Подтвердить и назначить/);
+  assert.match(app, /assignedGpmIds/);
+  assert.match(app, /user\.craneOnly = role === "operator"/);
+  assert.match(server, /operator_crane_required/);
+  assert.match(server, /nextUser\.craneOnly = true/);
+  assert.match(server, /item\.inspectorKeys = \[\.\.\.new Set/);
+  assert.match(styles, /\.director-crane-picker/);
+});
+
 test("GPM deadlines enter the common PPR reminders and open the separate journal", () => {
   assert.match(app, /gpmDueEntries\(\)\.forEach/);
   assert.match(app, /data-open-gpm-reminder/);

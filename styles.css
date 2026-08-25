@@ -7969,6 +7969,23 @@ body.production-worker-profile #workerRatingButton,body.production-worker-profil
   padding: 8px;
 }
 
+.director-crane-picker {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin: 2px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.director-crane-picker.hidden { display: none; }
+.director-crane-picker legend { padding: 0 6px; font-weight: 900; }
+.director-crane-picker label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.director-crane-picker input { width: 20px; height: 20px; flex: 0 0 auto; }
+.director-crane-picker small { grid-column: 1 / -1; color: var(--muted); }
+
 .mini-action {
   border: 0;
   border-radius: 7px;

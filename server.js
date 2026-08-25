@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v632-crane-operator-access-1";
+const SERVER_VERSION = "v633-operator-crane-onboarding-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -7742,6 +7742,9 @@ async function handleApi(req, res, pathname, url) {
       const name = String(user.name || "").trim();
       const actionId = String(user.actionId || "");
       const employeeId = String(user.employeeId || "").trim();
+      const requestedGpmIds = Array.isArray(user.assignedGpmIds)
+        ? cleanStringList(user.assignedGpmIds, 500)
+        : null;
       const sameUserForUpdate = item =>
         (user.id && item.id === user.id) ||
         (employeeId && item.employeeId === employeeId) ||
@@ -7785,7 +7788,6 @@ async function handleApi(req, res, pathname, url) {
         writeDb(db, { action: "user_moved_to_trash", actionId, clientId: String(user.clientId || ""), user: req.authUser, targetType: "user", targetId: target.id || target.employeeId || target.phone || "", targetLabel: target.name || name, reason: deleteReason });
         return { actionId, origin: user.clientId || "user", deletedUser: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "" } };
       }
-      db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
       const {
         passwordHash: ignoredPasswordHash,
         newPassword: ignoredNewPassword,
@@ -7793,6 +7795,7 @@ async function handleApi(req, res, pathname, url) {
         action: ignoredAction,
         actionId: ignoredActionId,
         clientId: ignoredClientId,
+        assignedGpmIds: ignoredAssignedGpmIds,
         ...safeUser
       } = user;
       if (existing?.role === "editor" && safeUser.role && safeUser.role !== "editor") {
@@ -7805,6 +7808,32 @@ async function handleApi(req, res, pathname, url) {
         employeeId: employeeId || existing?.employeeId || "",
         registeredAt: existing?.registeredAt || user.registeredAt || new Date().toISOString()
       };
+      const equipment = db.gpmJournal?.equipment || {};
+      const validGpmIds = requestedGpmIds && safeUser.role === "operator"
+        ? requestedGpmIds.filter(id => Object.entries(equipment).some(([itemId, item]) =>
+          item && !item.deleted && item.equipmentKind !== "forklift" && String(item.id || itemId) === String(id)))
+        : [];
+      if (requestedGpmIds && safeUser.role === "operator" && !validGpmIds.length) {
+        return { actionId, origin: user.clientId || "user", error: "operator_crane_required" };
+      }
+      db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
+      if (requestedGpmIds && safeUser.role === "operator") {
+        const operatorKey = resolutionUserKeyServer(nextUser);
+        const validSet = new Set(validGpmIds);
+        Object.entries(equipment).forEach(([itemId, item]) => {
+          if (!item || item.deleted || item.equipmentKind === "forklift" || !validSet.has(String(item.id || itemId))) return;
+          const keys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.map(String) : [];
+          item.inspectorKeys = [...new Set([...keys, operatorKey])];
+          item.inspectorKey = item.inspectorKeys[0] || "";
+          const names = item.inspectorKeys.map(key => key === operatorKey
+            ? String(nextUser.name || "").trim()
+            : String((db.users || []).find(candidate => resolutionUserKeyServer(candidate) === key)?.name || "").trim()).filter(Boolean);
+          item.inspectorNames = [...new Set(names)].join(", ");
+          item.updatedAt = new Date().toISOString();
+          item.updatedByName = String(req.authUser?.name || "Администратор");
+        });
+        nextUser.craneOnly = true;
+      }
       if (user.newPassword) nextUser.passwordHash = hashPassword(user.newPassword);
       delete nextUser.newPassword;
       db.users.push(nextUser);
