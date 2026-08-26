@@ -1490,11 +1490,13 @@ test("admin changes an employee role without losing the employee password", asyn
   const update = await fetch(`${baseUrl}/api/users/role`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id: "mechanic-1", role: "designEngineer", area: "", actionId: "role-update-test", clientId: "admin-test" })
+    body: JSON.stringify({ id: "mechanic-1", role: "designEngineer", area: "Цех А", areas: ["Цех А", "Другой цех", "Цех А"], actionId: "role-update-test", clientId: "admin-test" })
   });
   const updateBody = await update.json();
   assert.equal(update.status, 200, JSON.stringify(updateBody));
   assert.equal(updateBody.user.role, "designEngineer");
+  assert.equal(updateBody.user.area, "Цех А");
+  assert.deepEqual(updateBody.user.areas, ["Цех А", "Другой цех"]);
   const pushStatus = await fetch(`${baseUrl}/api/push/status`);
   const pushStatusBody = await pushStatus.json();
   assert.equal(pushStatus.status, 200, JSON.stringify(pushStatusBody));

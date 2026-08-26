@@ -14,8 +14,26 @@ test("employee access follows current equipment areas and refreshes without logo
   assert.match(app, /role,[\s\S]*?area,[\s\S]*?actionId: nextActionId\(\)/);
   assert.match(app, /function equipmentEmployeeArea\(eq = \{\}\)[\s\S]*?return name/);
   assert.match(app, /equipment\.filter\(eq => areaAllowed\(equipmentEmployeeArea\(eq\)\)\)/);
+  assert.match(app, /function userAreas\(user = \{\}\)/);
+  assert.match(app, /function userHasArea\(user = \{\}, area = ""\)/);
+  assert.match(app, /data-user-extra-area/);
+  assert.match(app, /data-access-extra-area/);
+  assert.match(server, /function normalizedUserAreasServer\(user = \{\}\)/);
+  assert.match(server, /function userHasAreaServer\(user = \{\}, area = ""\)/);
+  assert.match(server, /target\.areas = areas/);
+  assert.match(server, /userHasAreaServer\(req\.authUser, equipmentArea\)/);
   assert.match(app, /async function refreshAuthenticatedProfile\(\)[\s\S]*?\/api\/auth\/session[\s\S]*?previousAccess !== nextAccess[\s\S]*?resetCurrentForProfile\(\)/);
 
   const roleEndpoint = server.slice(server.indexOf('pathname === "/api/users/role"'), server.indexOf('pathname === "/api/users/password"'));
   assert.doesNotMatch(roleEndpoint, /db\.authSessions\s*=\s*\(db\.authSessions/);
+});
+
+test("one responsible employee can safely work in multiple workshops", () => {
+  assert.match(app, /const selectedAreas = new Set\(Array\.isArray\(draft\.areas\) \? draft\.areas : userAreas\(user\)\)/);
+  assert.match(app, /areas: \[\.\.\.new Set\(\[area, \.\.\.areas\]\.filter\(Boolean\)\)\]/);
+  assert.match(app, /if \(\["shop", "operator"\]\.includes\(profile\?\.role\)\) return userHasArea/);
+  assert.match(server, /const shopUsers = area \? users\.filter\([\s\S]*?userHasAreaServer\(user, area\)/);
+  assert.match(server, /if \(role === "shop"\) return userHasAreaServer\(profile, item\.area\)/);
+  assert.match(server, /if \(catalogRole === "shop"[\s\S]*?!userHasAreaServer\(req\.authUser, equipmentArea\)/);
+  assert.match(server, /nextUser\.areas = normalizedUserAreasServer\(nextUser\)/);
 });

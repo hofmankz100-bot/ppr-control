@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v643-permanent-warning-deletion-1";
+const APP_VERSION = "v644-multi-workshop-access-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -3432,8 +3432,8 @@ async function refreshAuthenticatedProfile() {
   try {
     const result = await apiJson("/api/auth/session", { timeout: 8000 });
     if (!result?.user) return false;
-    const previousAccess = `${authenticatedProfile.role || ""}|${authenticatedProfile.area || ""}`;
-    const nextAccess = `${result.user.role || ""}|${result.user.area || ""}`;
+    const previousAccess = `${authenticatedProfile.role || ""}|${userAreas(authenticatedProfile).join("|")}`;
+    const nextAccess = `${result.user.role || ""}|${userAreas(result.user).join("|")}`;
     authenticatedProfile = result.user;
     localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
     profile = activeProfileFromSession(authenticatedProfile);
@@ -3988,8 +3988,7 @@ function autofillNodeReminder(equipmentId, nodeIndex) {
 
 function areaAllowed(area) {
   if (!needsArea()) return true;
-  if (!profile?.area) return false;
-  return sameRemarkArea(area, profile.area);
+  return userHasArea(profile, area);
 }
 
 function visibleEquipment() {
@@ -5977,7 +5976,8 @@ function resolutionActor() {
     name: String(user.name || profile?.name || "Сотрудник"),
     role: permissionBaseRole(String(user.role || profile?.role || "")),
     jobRole: String(user.role || profile?.jobRole || profile?.role || ""),
-    area: String(user.area || profile?.area || "")
+    area: userAreas(user).at(0) || userAreas(profile).at(0) || "",
+    areas: userAreas(user).length ? userAreas(user) : userAreas(profile)
   };
 }
 
@@ -5989,7 +5989,8 @@ function resolutionParticipantFromUser(user = {}) {
     phone: String(user.phone || ""),
     name: String(user.name || "Сотрудник"),
     role: String(user.role || ""),
-    area: String(user.area || "")
+    area: userAreas(user).at(0) || "",
+    areas: userAreas(user)
   };
 }
 
@@ -6046,7 +6047,7 @@ function remarkNotificationVisibleToCurrentUser(item, eq = null) {
   const actor = resolutionActor();
   if (["shop", "operator"].includes(actor.role)) {
     const equipmentArea = String(eq?.area || item?.confirmationArea || "");
-    if (!equipmentArea || !sameRemarkArea(actor.area, equipmentArea)) return false;
+    if (!equipmentArea || !userHasArea(actor, equipmentArea)) return false;
   }
   const participants = resolutionParticipants(item);
   if (item?.resolutionPendingConfirmation) return canCurrentUserConfirmRemark(item, eq);
@@ -6095,10 +6096,21 @@ function sameRemarkArea(left = "", right = "") {
   return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
 }
 
+function userAreas(user = {}) {
+  const values = [user.area, ...(Array.isArray(user.areas) ? user.areas : [])]
+    .map(value => String(value || "").trim())
+    .filter(Boolean);
+  return [...new Map(values.map(value => [value.toLocaleLowerCase("ru-RU"), value])).values()];
+}
+
+function userHasArea(user = {}, area = "") {
+  return userAreas(user).some(value => sameRemarkArea(value, area));
+}
+
 function remarkConfirmationRule(entry = {}, eq = null) {
   const users = approvedRemarkUsers();
   const area = String(eq?.area || entry.confirmationArea || "");
-  const shopCandidates = area ? users.filter(user => user.role === "shop" && sameRemarkArea(user.area, area)) : [];
+  const shopCandidates = area ? users.filter(user => user.role === "shop" && userHasArea(user, area)) : [];
   if (shopCandidates.length) return { mode: "shop", role: "shop", area, candidates: shopCandidates };
   return { mode: "engineer", role: "engineer", area, candidates: users.filter(user => user.role === "engineer") };
 }
@@ -6107,7 +6119,7 @@ function canCurrentUserConfirmRemark(entry = {}, eq = null) {
   const actor = resolutionActor();
   const rule = remarkConfirmationRule(entry, eq);
   if (canConfirmRemarksAcrossShops()) return true;
-  if (rule.mode === "shop") return actor.role === "shop" && sameRemarkArea(actor.area, rule.area);
+  if (rule.mode === "shop") return actor.role === "shop" && userHasArea(actor, rule.area);
   if (rule.mode === "engineer") return actor.role === "engineer" || isPrimaryAdminEngineer();
   return false;
 }
@@ -9399,7 +9411,7 @@ function remarksSectionLabel() {
 
 function remarkVisibleToCurrentRole(eq) {
   if (!eq) return false;
-  if (["shop", "operator"].includes(profile?.role)) return Boolean(profile?.area) && sameRemarkArea(equipmentEmployeeArea(eq), profile.area);
+  if (["shop", "operator"].includes(profile?.role)) return userHasArea(profile, equipmentEmployeeArea(eq));
   if (["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role))) return true;
   return visibleEquipment().some(item => Number(item.id) === Number(eq.id));
 }
@@ -18160,7 +18172,7 @@ function renderDirector() {
     renderDirector();
   }, "Обновляем..."));
   ui.directorPanel.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
-  ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area]").forEach(select => {
+  ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area], [data-user-extra-area]").forEach(select => {
     select.addEventListener("change", event => {
       const row = event.currentTarget.closest("[data-user-key]");
       const userKey = row?.dataset.userKey || "";
@@ -18172,6 +18184,9 @@ function renderDirector() {
         if (picker) picker.classList.toggle("hidden", draft.role !== "operator");
       }
       if (event.currentTarget.matches("[data-user-area]")) draft.area = event.currentTarget.value;
+      if (event.currentTarget.matches("[data-user-extra-area]")) {
+        draft.areas = [...row.querySelectorAll("[data-user-extra-area]:checked")].map(input => input.value);
+      }
       userApprovalDrafts.set(userKey, draft);
     });
   });
@@ -18194,6 +18209,7 @@ function renderDirector() {
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
+      const areas = [...(row?.querySelectorAll("[data-user-extra-area]:checked") || [])].map(input => input.value);
       const assignedGpmIds = [...(row?.querySelectorAll("[data-pending-crane-id]:checked") || [])].map(input => input.value);
       if (!role) {
         window.alert("Сначала назначьте должность сотрудника.");
@@ -18215,6 +18231,7 @@ function renderDirector() {
         return;
       }
       user.area = needsArea(role) ? area : "";
+      user.areas = needsArea(role) ? [...new Set([area, ...areas].filter(Boolean))] : [];
       user.approvedAt = new Date().toISOString();
       user.approvedBy = profile?.name || "";
       userApprovalDrafts.delete(userKey);
@@ -18224,6 +18241,7 @@ function renderDirector() {
           method: "POST",
           body: JSON.stringify({
             ...user,
+            areas: user.areas,
             assignedGpmIds,
             actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
             actionId: nextActionId(),
@@ -18244,6 +18262,7 @@ function renderDirector() {
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
+      const areas = [...(row?.querySelectorAll("[data-user-extra-area]:checked") || [])].map(input => input.value);
       if (!user || !role) return;
       if (needsArea(permissionBaseRole(role)) && !area) {
         window.alert("Для этой должности сначала выберите участок.");
@@ -18263,6 +18282,7 @@ function renderDirector() {
             // The selected workshop is part of the employee profile, not only
             // of operator/shop access. Keep it when the job role changes.
             area,
+            areas: [...new Set([area, ...areas].filter(Boolean))],
             craneOnly: role === "operator" && user.craneOnly === true,
             actionId: nextActionId(),
             clientId: CLIENT_ID
@@ -18636,6 +18656,11 @@ async function renderAdminMaintenance() {
       label.className = "admin-crane-only-toggle no-print";
       label.innerHTML = `<input type="checkbox" data-access-crane-only ${user.craneOnly === true ? "checked" : ""}> Только QR-обход назначенных кран-балок`;
       button.before(label);
+      const areaPicker = document.createElement("fieldset");
+      areaPicker.className = "user-area-picker no-print";
+      const selectedAreas = new Set(userAreas(user));
+      areaPicker.innerHTML = `<legend>Все доступные участки</legend>${assignableEquipmentAreas().map(area => `<label><input type="checkbox" data-access-extra-area value="${escapeHtml(area)}" ${selectedAreas.has(area) ? "checked" : ""}><span>${escapeHtml(area)}</span></label>`).join("")}`;
+      button.before(areaPicker);
     });
   }
   if (tab === "report") {
@@ -18724,7 +18749,7 @@ async function renderAdminMaintenance() {
     const button = row?.querySelector("[data-access-save-role]");
     if (!row || !button) return;
     try {
-      await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role: row.querySelector("[data-access-role]").value, area: row.querySelector("[data-access-area]").value.trim(), craneOnly: input.checked }) });
+      await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role: row.querySelector("[data-access-role]").value, area: row.querySelector("[data-access-area]").value.trim(), areas: [...row.querySelectorAll("[data-access-extra-area]:checked")].map(item => item.value), craneOnly: input.checked }) });
       await loadRemoteUsers();
       renderAdminMaintenance();
     } catch (error) {
@@ -18732,7 +18757,7 @@ async function renderAdminMaintenance() {
       window.alert(error.message || "Не удалось изменить режим оператора кран-балки.");
     }
   }));
-  ui.adminMaintenancePanel.querySelectorAll("[data-access-save-role]").forEach(button => button.addEventListener("click", async () => { const row = button.closest("[data-access-row]"); await runButtonOperation(button, async () => { const role = row.querySelector("[data-access-role]").value; await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role, area: row.querySelector("[data-access-area]").value.trim(), craneOnly: role === "operator" && row.querySelector("[data-access-crane-only]")?.checked === true }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Сохраняем…"); }));
+  ui.adminMaintenancePanel.querySelectorAll("[data-access-save-role]").forEach(button => button.addEventListener("click", async () => { const row = button.closest("[data-access-row]"); await runButtonOperation(button, async () => { const role = row.querySelector("[data-access-role]").value; await apiJson("/api/users/role", { method: "POST", body: JSON.stringify({ id: button.dataset.accessSaveRole, role, area: row.querySelector("[data-access-area]").value.trim(), areas: [...row.querySelectorAll("[data-access-extra-area]:checked")].map(item => item.value), craneOnly: role === "operator" && row.querySelector("[data-access-crane-only]")?.checked === true }) }); await loadRemoteUsers(); renderAdminMaintenance(); }, "Сохраняем…"); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-qr]").forEach(input => input.addEventListener("change", async () => { try { await apiJson("/api/qr-walk/journal-access", { method: "POST", body: JSON.stringify({ userId: input.dataset.accessQr, enabled: input.checked }) }); } catch (error) { input.checked = !input.checked; window.alert(error.message || "Не удалось изменить доступ."); } }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-unlock]").forEach(button => button.addEventListener("click", async () => { await runButtonOperation(button, async () => { await apiJson("/api/users/unlock", { method: "POST", body: JSON.stringify({ id: button.dataset.accessUnlock }) }); renderAdminMaintenance(); }, "Разблокируем…"); }));
   ui.adminMaintenancePanel.querySelectorAll("[data-access-toggle]").forEach(button => button.addEventListener("click", async () => { const disabled = button.dataset.disabled === "true"; const reason = window.prompt(disabled ? "Укажите причину отключения доступа:" : "Укажите причину включения доступа:")?.trim(); if (!reason) return; const password = window.prompt("Введите пароль администратора:"); if (!password) return; await runButtonOperation(button, async () => { await apiJson("/api/admin/access", { method: "POST", body: JSON.stringify({ userId: button.dataset.accessToggle, disabled, reason, password }) }); renderAdminMaintenance(); }, disabled ? "Отключаем…" : "Включаем…"); }));
@@ -19361,6 +19386,7 @@ function renderDirectorUsers() {
         const draft = userApprovalDrafts.get(userKey) || {};
         const pending = user.approved === false || user.pendingApproval;
         const selectedRole = draft.role ?? user.role ?? "";
+        const selectedAreas = new Set(Array.isArray(draft.areas) ? draft.areas : userAreas(user));
         const selectedCraneIds = new Set(Array.isArray(draft.assignedGpmIds) ? draft.assignedGpmIds : []);
         const assignableCranes = pending ? gpmEquipmentList("gpm") : [];
         const login = user.loginDiagnostics || null;
@@ -19381,14 +19407,15 @@ function renderDirectorUsers() {
           <span>${escapeHtml(user.phone || "")}</span>
           ${isEditorSession() ? `
             <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(selectedRole)}</select></label>
-            <label class="user-access-field"><span>Участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
-          ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${user.area ? ` · ${escapeHtml(user.area)}` : ""}</span>`}
+            <label class="user-access-field"><span>Основной участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
+            <fieldset class="user-area-picker"><legend>Все доступные участки</legend>${assignableEquipmentAreas().map(area => `<label><input type="checkbox" data-user-extra-area value="${escapeHtml(area)}" ${selectedAreas.has(area) ? "checked" : ""}><span>${escapeHtml(area)}</span></label>`).join("")}<small>Основной участок также должен быть отмечен. Можно выбрать несколько.</small></fieldset>
+          ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${userAreas(user).length ? ` · ${escapeHtml(userAreas(user).join(", "))}` : ""}</span>`}
           ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Назначенные кран-балки</legend>${assignableCranes.length ? assignableCranes.map(item => `<label><input type="checkbox" data-pending-crane-id value="${escapeHtml(item.id)}" ${selectedCraneIds.has(String(item.id)) ? "checked" : ""}><span>${escapeHtml(item.name)}${item.location ? ` · ${escapeHtml(item.location)}` : ""}</span></label>`).join("") : `<small>Карточки кран-балок ещё не созданы.</small>`}<small>Можно выбрать несколько. Оператор увидит только назначенные краны.</small></fieldset>` : ""}
           <span class="user-approval-status">${pending ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
           ${profile?.role === "editor" && pending ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить и назначить</button>` : ""}
-          ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность и участок</button>` : ""}
+          ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность и участки</button>` : ""}
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
           ${isEditorSession() ? `<button type="button" class="mini-action" data-unlock-user-login="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Снять блокировку</button>` : ""}
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}

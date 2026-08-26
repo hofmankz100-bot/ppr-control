@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v643-permanent-warning-deletion-1";
+const SERVER_VERSION = "v644-multi-workshop-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -514,6 +514,10 @@ function normalizeDb(db) {
   db.operationalResetAt ||= "";
   db.walkShiftCleanupVersion ||= "";
   db.users ||= [];
+  db.users.forEach(user => {
+    user.areas = normalizedUserAreasServer(user);
+    user.area = user.areas[0] || "";
+  });
   if (db.gpmJournal.managerMigrationVersion !== "initial-maksut-v1") {
     const initialManager = db.users.find(user =>
       String(user?.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU") === "нурахунов махсут махмутович"
@@ -2193,12 +2197,12 @@ function subscriptionMatchesRemarkServer(db, subscriptionEntry, remarkRecord = {
     || ""
   ).trim();
   const role = permissionBaseRoleServer(String(profile.role || ""));
-  if (role === "shop") return Boolean(area && sameRemarkAreaServer(profile.area, area));
+  if (role === "shop") return Boolean(area && userHasAreaServer(profile, area));
   if (role === "engineer") return !(db.users || []).some(user =>
     user.approved !== false
     && user.pendingApproval !== true
     && permissionBaseRoleServer(user.role) === "shop"
-    && sameRemarkAreaServer(user.area, area)
+    && userHasAreaServer(user, area)
   );
   return false;
 }
@@ -2399,7 +2403,8 @@ function sanitizeResolutionParticipant(user = {}) {
     phone: String(user.phone || "").slice(0, 100),
     name: String(user.name || "Сотрудник").trim().slice(0, 200),
     role: String(user.role || "").trim().slice(0, 50),
-    area: String(user.area || "").trim().slice(0, 200)
+    area: normalizedUserAreasServer(user)[0] || "",
+    areas: normalizedUserAreasServer(user)
   };
 }
 
@@ -2498,6 +2503,17 @@ function sameRemarkAreaServer(left = "", right = "") {
   return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
 }
 
+function normalizedUserAreasServer(user = {}) {
+  const values = [user.area, ...(Array.isArray(user.areas) ? user.areas : [])]
+    .map(value => String(value || "").trim().slice(0, 200))
+    .filter(Boolean);
+  return [...new Map(values.map(value => [value.toLocaleLowerCase("ru-RU"), value])).values()];
+}
+
+function userHasAreaServer(user = {}, area = "") {
+  return normalizedUserAreasServer(user).some(value => sameRemarkAreaServer(value, area));
+}
+
 function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   const users = approvedResolutionUsersServer(db);
   const area = String(equipmentArea || remark.confirmationArea || "").trim().slice(0, 200);
@@ -2507,7 +2523,7 @@ function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
       || (engineerPermissionRoleServer(user) === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")))
     .map(sanitizeResolutionParticipant);
   const mergeUsers = (...groups) => [...new Map(groups.flat().map(user => [resolutionUserKeyServer(user), user])).values()];
-  const shopUsers = area ? users.filter(user => permissionBaseRoleServer(user.role) === "shop" && sameRemarkAreaServer(user.area, area)) : [];
+  const shopUsers = area ? users.filter(user => permissionBaseRoleServer(user.role) === "shop" && userHasAreaServer(user, area)) : [];
   if (shopUsers.length) return { mode: "shop", role: "shop", area, users: mergeUsers(shopUsers, globalUsers), globalUsers };
   return { mode: "engineer", role: "engineer", area, users: mergeUsers(users.filter(user => engineerPermissionRoleServer(user) === "engineer"), globalUsers), globalUsers };
 }
@@ -2516,7 +2532,7 @@ function actorCanConfirmRemarkServer(actor, remark, rule) {
   if (permissionBaseRoleServer(actor?.role) === "editor") return true;
   if ((rule.globalUsers || []).some(user => resolutionUserKeyServer(user) === resolutionUserKeyServer(actor))) return true;
   const role = engineerPermissionRoleServer(actor);
-  if (rule.mode === "shop") return role === "shop" && sameRemarkAreaServer(actor.area, rule.area);
+  if (rule.mode === "shop") return role === "shop" && userHasAreaServer(actor, rule.area);
   if (rule.mode === "engineer") return role === "engineer";
   return false;
 }
@@ -2721,7 +2737,7 @@ function activeDowntimeCountForSubscription(db, subscriptionEntry) {
   return (db.downtimes || []).filter(item => {
     if (!item || item.deleted || item.endedAt) return false;
     if (["engineer", "editor"].includes(role)) return true;
-    if (role === "shop") return sameRemarkAreaServer(profile.area, item.area);
+    if (role === "shop") return userHasAreaServer(profile, item.area);
     if (resolutionUserKeyServer(item.author || {
       id: item.authorId,
       employeeId: item.authorEmployeeId,
@@ -2768,7 +2784,8 @@ function currentPushEntry(db, entry = {}) {
       phone: String(currentUser.phone || savedProfile.phone || ""),
       name: String(currentUser.name || savedProfile.name || ""),
       role: String(currentUser.role || savedProfile.role || ""),
-      area: String(currentUser.area || savedProfile.area || "")
+      area: String(currentUser.area || savedProfile.area || ""),
+      areas: normalizedUserAreasServer(currentUser)
     }
   };
 }
@@ -2862,7 +2879,7 @@ async function sendDowntimePushNotifications(db, title, body, origin = "", parti
         : (() => {
             const role = permissionBaseRoleServer(entry.profile?.role);
             if (["engineer", "editor"].includes(role)) return true;
-            if (role === "shop") return Boolean(downtime?.area && sameRemarkAreaServer(entry.profile?.area, downtime.area));
+            if (role === "shop") return Boolean(downtime?.area && userHasAreaServer(entry.profile, downtime.area));
             const author = {
               id: downtime?.authorId,
               employeeId: downtime?.authorEmployeeId,
@@ -4616,7 +4633,7 @@ function nodeMutationAccessServer(user = {}, catalogItem = {}) {
   const role = String(user.role || "");
   if (!NODE_CHECKLIST_ROLES.has(role)) return false;
   if (["operator", "shop"].includes(role)) {
-    return Boolean(user.area && catalogItem.area && sameRemarkAreaServer(user.area, catalogItem.area));
+    return Boolean(catalogItem.area && userHasAreaServer(user, catalogItem.area));
   }
   if (role === "forkliftDriver") {
     const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
@@ -6304,7 +6321,6 @@ async function handleApi(req, res, pathname, url) {
       const authenticatedRole = String(req.authUser?.role || "");
       const catalogRole = permissionBaseRoleServer(authenticatedRole);
       const individualEquipmentEdit = activeUserPermission(req.authUser, "equipmentEdit");
-      const authenticatedArea = String(req.authUser?.area || "").trim();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const incomingCatalog = {};
@@ -6315,7 +6331,7 @@ async function handleApi(req, res, pathname, url) {
           const currentItem = db.catalog.equipment[equipmentId] || {};
           const equipmentArea = String(currentItem.area || rawItem.area || "").trim();
           const requestedArea = String(rawItem.area || currentItem.area || "").trim().slice(0, 200);
-          if (catalogRole === "shop" && !individualEquipmentEdit && (!authenticatedArea || equipmentArea !== authenticatedArea)) return;
+          if (catalogRole === "shop" && !individualEquipmentEdit && !userHasAreaServer(req.authUser, equipmentArea)) return;
           const hasEditingPermissionField = Object.prototype.hasOwnProperty.call(rawItem, "editingEnabled");
           const currentUpdatedAt = Date.parse(currentItem.updatedAt || "");
           const incomingUpdatedAt = Date.parse(rawItem.updatedAt || "");
@@ -7344,7 +7360,7 @@ async function handleApi(req, res, pathname, url) {
           user.approved !== false && user.pendingApproval !== true
           && permissionBaseRoleServer(user.role) === "shop"
           && String(user.name || "").trim().toLocaleLowerCase("ru-RU") === confirmerName
-          && (!equipmentArea || String(user.area || "").trim().toLocaleLowerCase("ru-RU") === equipmentArea.trim().toLocaleLowerCase("ru-RU"))
+          && (!equipmentArea || userHasAreaServer(user, equipmentArea))
         );
         if (performerMatches.length !== 1 || confirmerMatches.length !== 1) return { error: "remark_participant_invalid" };
         const performer = sanitizeResolutionParticipant(performerMatches[0]);
@@ -7729,6 +7745,7 @@ async function handleApi(req, res, pathname, url) {
     const body = await readBody(req);
     const role = String(body.role || "").trim();
     const area = String(body.area || "").trim();
+    const areas = normalizedUserAreasServer({ area, areas: Array.isArray(body.areas) ? body.areas : [] });
     const craneOnly = role === "operator" && body.craneOnly === true;
     if (!role || role === "warehouse") {
       sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
@@ -7744,7 +7761,8 @@ async function handleApi(req, res, pathname, url) {
       if (!target) return { error: "user_not_found" };
       if (target.role === "editor" && role !== "editor") return { error: "editor_role_protected" };
       target.role = role;
-      target.area = area;
+      target.area = areas[0] || "";
+      target.areas = areas;
       target.craneOnly = craneOnly;
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
@@ -7753,7 +7771,7 @@ async function handleApi(req, res, pathname, url) {
         action: "user_role_update",
         actionId: String(body.actionId || ""),
         clientId: String(body.clientId || ""),
-        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area, craneOnly }
+        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area: target.area, areas, craneOnly }
       });
       return { user: userPublic(target) };
     });
@@ -7911,6 +7929,8 @@ async function handleApi(req, res, pathname, url) {
         employeeId: employeeId || existing?.employeeId || "",
         registeredAt: existing?.registeredAt || user.registeredAt || new Date().toISOString()
       };
+      nextUser.areas = normalizedUserAreasServer(nextUser);
+      nextUser.area = nextUser.areas[0] || "";
       const equipment = db.gpmJournal?.equipment || {};
       const validGpmIds = requestedGpmIds && safeUser.role === "operator"
         ? requestedGpmIds.filter(id => Object.entries(equipment).some(([itemId, item]) =>
