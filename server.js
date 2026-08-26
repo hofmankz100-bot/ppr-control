@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v642-equipment-lifecycle-1";
+const SERVER_VERSION = "v643-permanent-warning-deletion-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -481,6 +481,9 @@ function normalizeDb(db) {
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
+  db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
+  removeReturnedLegacyWarningsServer(db);
+  applyRemarkDeletionTombstonesServer(db);
   if (!db.targetedCleanupVersions.compressorWalk20260810) {
     const testDate = "2026-08-10";
     Object.keys(db.checks).forEach(recordKey => {
@@ -4396,14 +4399,77 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+function remarkDeletionKeyServer(recordKey, remarkId) {
+  return `${String(recordKey || "")}\u0001${String(remarkId || "")}`;
+}
+
+function applyRemarkDeletionTombstonesServer(db = {}) {
+  const tombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
+  let changed = false;
+  for (const [recordKey, record] of Object.entries(db.checks || {})) {
+    const item = record?.to;
+    if (!item || !Array.isArray(item.commentLog)) continue;
+    const before = item.commentLog.length;
+    item.commentLog = item.commentLog.filter(entry => !tombstones[remarkDeletionKeyServer(recordKey, entry?.id)]);
+    if (item.commentLog.length === before) continue;
+    syncItemRemarkSummaryServer(item);
+    item.updatedAt = new Date().toISOString();
+    record.updatedAt = item.updatedAt;
+    changed = true;
+  }
+  if (changed) db.checks = compactCheckRecordsServer(db.checks || {});
+  return changed;
+}
+
+function removeReturnedLegacyWarningsServer(db = {}) {
+  const cleanupKey = "returnedLegacyWarnings20260826";
+  if (db.targetedCleanupVersions?.[cleanupKey]) return false;
+  const targets = [
+    { date: "2026-07-23", text: "ямага су жиналган жасалды" },
+    { date: "2026-07-24", text: "замена краник сварщик керек" },
+    { date: "2026-08-06", text: "стол жасау керек" }
+  ];
+  const normalize = value => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+  const removedAt = new Date().toISOString();
+  let changed = false;
+  db.remarkDeletionTombstones ||= {};
+  for (const [recordKey, record] of Object.entries(db.checks || {})) {
+    const item = record?.to;
+    if (!item || !Array.isArray(item.commentLog)) continue;
+    const kept = [];
+    for (const entry of item.commentLog) {
+      const date = String(entry?.at || recordKey.split(":").at(-1) || "").slice(0, 10);
+      const match = targets.some(target => target.date === date && normalize(entry?.text) === target.text);
+      if (!match) { kept.push(entry); continue; }
+      const remarkId = String(entry?.id || "");
+      if (remarkId) db.remarkDeletionTombstones[remarkDeletionKeyServer(recordKey, remarkId)] = removedAt;
+      changed = true;
+    }
+    if (kept.length !== item.commentLog.length) {
+      item.commentLog = kept;
+      syncItemRemarkSummaryServer(item);
+      item.updatedAt = removedAt;
+      record.updatedAt = removedAt;
+    }
+  }
+  db.targetedCleanupVersions ||= {};
+  db.targetedCleanupVersions[cleanupKey] = removedAt;
+  if (changed) db.checks = compactCheckRecordsServer(db.checks || {});
+  return changed;
+}
+
 function purgeClosedWithoutScoreRemarksServer(db = {}) {
   let changed = false;
-  for (const record of Object.values(db.checks || {})) {
+  db.remarkDeletionTombstones ||= {};
+  for (const [recordKey, record] of Object.entries(db.checks || {})) {
     const item = record?.to;
     if (!item || !Array.isArray(item.commentLog)) continue;
     const removed = item.commentLog.filter(entry => entry?.closedWithoutScore);
     if (!removed.length) continue;
     const removedIds = new Set(removed.map(entry => String(entry?.id || "")));
+    removedIds.forEach(remarkId => {
+      if (remarkId) db.remarkDeletionTombstones[remarkDeletionKeyServer(recordKey, remarkId)] = new Date().toISOString();
+    });
     item.commentLog = item.commentLog.filter(entry => !entry?.closedWithoutScore && !removedIds.has(String(entry?.id || "")));
     if (!item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim())) {
       item.comment = "";
@@ -7490,6 +7556,8 @@ async function handleApi(req, res, pathname, url) {
         });
       }
       if (deleteWithoutScore) {
+        db.remarkDeletionTombstones ||= {};
+        db.remarkDeletionTombstones[remarkDeletionKeyServer(recordKey, remarkId)] = now;
         item.commentLog = (item.commentLog || []).filter(entry => String(entry?.id || "") !== remarkId);
         if (!item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim())) {
           item.comment = "";

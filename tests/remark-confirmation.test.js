@@ -2167,3 +2167,14 @@ test("closing without score replaces the check record on every realtime client",
   assert.match(clientSource, /state\.checks\[recordKey\] = compactCheckRecords/);
   assert.match(clientSource, /delete state\.checks\[recordKey\]/);
 });
+
+test("deleted warnings cannot return from a stale device", () => {
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /db\.remarkDeletionTombstones/);
+  assert.match(serverSource, /function applyRemarkDeletionTombstonesServer/);
+  assert.match(serverSource, /remarkDeletionKeyServer\(recordKey, remarkId\)/);
+  assert.match(serverSource, /returnedLegacyWarnings20260826/);
+  assert.match(serverSource, /ямага су жиналган жасалды/);
+  assert.match(serverSource, /замена краник сварщик керек/);
+  assert.match(serverSource, /стол жасау керек/);
+});
