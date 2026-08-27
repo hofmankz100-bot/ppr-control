@@ -2,6 +2,7 @@
 
 function createAdminEquipmentMaintenanceRoute({
   broadcastState,
+  builtInEquipmentIds = new Set(),
   catalogNodeTombstone,
   enqueueStateWrite,
   normalizedAdminConfig,
@@ -29,7 +30,18 @@ function createAdminEquipmentMaintenanceRoute({
       const db = readDb();
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
-      const existing = db.catalog.equipment[equipmentId];
+      let existing = db.catalog.equipment[equipmentId];
+      if (!existing && builtInEquipmentIds.has(String(equipmentId))) {
+        existing = {
+          id: equipmentId,
+          name: String(body.equipment || `Оборудование ${equipmentId}`).trim().slice(0, 200),
+          area: String(body.area || "").trim().slice(0, 200),
+          nodes: Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [],
+          builtIn: true,
+          created: false
+        };
+        db.catalog.equipment[equipmentId] = existing;
+      }
       if (!existing) return { error: "equipment_not_found" };
       if (existing?.deleted === true) return { error: "equipment_already_deleted" };
       const item = existing;

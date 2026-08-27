@@ -4,12 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createAdminEquipmentMaintenanceRoute } = require("../server/admin-equipment-maintenance-route");
 
-function createHarness(database = {}) {
+function createHarness(database = {}, options = {}) {
   const responses = [];
   const audits = [];
   const broadcasts = [];
   const handler = createAdminEquipmentMaintenanceRoute({
     broadcastState: (...args) => { broadcasts.push(args); return "state-v4"; },
+    builtInEquipmentIds: options.builtInEquipmentIds || new Set(),
     catalogNodeTombstone: (item, node, meta) => { (item.deletedNodes ||= []).push({ node, ...meta }); },
     enqueueStateWrite: async task => task(),
     normalizedAdminConfig: () => ({ trashRetentionDays: 30 }),
@@ -61,6 +62,16 @@ test("equipment deletion rejects an unknown id instead of creating a false trash
   assert.equal(database.adminTrash, undefined);
   assert.deepEqual(audits, []);
   assert.deepEqual(broadcasts, []);
+});
+
+test("admin can delete a built-in equipment missing from the server catalog", async () => {
+  const database = { catalog: { equipment: {} } };
+  const { handler, responses } = createHarness(database, { builtInEquipmentIds: new Set(["20"]) });
+  await handler({ method: "POST", authUser: { id: "admin", name: "Админ", role: "editor" }, body: { equipmentId: 20, equipment: "оборудование 20", area: "Резерв", nodes: ["Основное оборудование"], reason: "Не используется", password: "secret" } }, {}, "/api/admin/equipment/delete");
+  assert.equal(responses[0].status, 200);
+  assert.equal(database.catalog.equipment[20].deleted, true);
+  assert.equal(database.catalog.equipment[20].builtIn, true);
+  assert.equal(database.adminTrash[0].targetId, "20");
 });
 
 test("node addition rejects duplicates and then assigns a QR identity", async () => {
