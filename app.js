@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v679-crane-journal-audit-1";
+const APP_VERSION = "v680-crane-prohibition-workflow-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11954,11 +11954,11 @@ function nestedCraneEquipmentCard(asset) {
   const status = craneTodayStatus(asset);
   const nodes = Array.isArray(asset.checklist) ? asset.checklist : [];
   const section = document.createElement("section");
-  section.className = `nested-crane-equipment ${asset.operationalPaused ? "inactive" : ""}`;
+  section.className = `nested-crane-equipment ${asset.operationalPaused ? "inactive" : ""} ${asset.operationStatus === "prohibited" ? "prohibited" : ""}`;
   section.innerHTML = `
     <header>
       <button type="button" class="nested-crane-title" data-crane-open><span>Вложенное оборудование</span><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.workshop)} · ${nodes.length} пунктов осмотра</small></button>
-      <div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div>
+      <div class="crane-counts">${asset.operationStatus === "prohibited" ? '<b class="prohibited">Эксплуатация запрещена</b>' : ""}<b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div>
     </header>
     <div class="nested-crane-actions"><button type="button" data-crane-shift>Нижний QR · осмотр</button><button type="button" data-crane-monthly>Верхний QR · ТО</button><button type="button" data-crane-journal>Вахтенный журнал</button><button type="button" data-crane-qr>Два QR-кода</button>${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}</div>
     <div class="nested-crane-nodes">${nodes.map((node, index) => `<button type="button" class="node-card nested-crane-node" data-crane-node="${index}"><div><strong>${escapeHtml(node.label)}</strong><span>Обычный узел кран-балки</span></div><div class="small-status">Открыть осмотр</div></button>`).join("") || '<div class="empty-state">Узлы ещё не добавлены</div>'}</div>`;
@@ -19179,7 +19179,7 @@ function openCraneInspection(asset, type = "shift") {
 
 function openCraneNodeDetails(asset) {
   const status = craneTodayStatus(asset);
-  const overlay = craneOverlay(asset.name, `<div class="crane-node-detail"><div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Ежесменный осмотр ${status.shiftDone ? "✓" : "не выполнен"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячное ТО ${status.monthlyDone ? "✓" : "не выполнено"}</b>` : ""}</div><div class="crane-node-detail-actions"><button data-shift>Нижний QR · ежесменный осмотр</button><button data-monthly>Верхний QR · ежемесячное ТО</button><button data-journal>Вахтенный журнал узла</button><button data-crane-qr>Показать и распечатать два QR</button>${craneBeamState.canManage ? '<button data-edit>Настроить узел</button>' : ""}</div></div>`);
+  const overlay = craneOverlay(asset.name, `<div class="crane-node-detail"><div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span></div>${asset.operationStatus === "prohibited" ? '<div class="crane-prohibition-banner"><strong>Эксплуатация запрещена</strong><span>Статус снимется после устранения и подтверждения инженером.</span></div>' : ""}<div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Ежесменный осмотр ${status.shiftDone ? "✓" : "не выполнен"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячное ТО ${status.monthlyDone ? "✓" : "не выполнено"}</b>` : ""}</div><div class="crane-node-detail-actions"><button data-shift>Нижний QR · ежесменный осмотр</button><button data-monthly>Верхний QR · ежемесячное ТО</button><button data-journal>Вахтенный журнал</button><button data-crane-qr>Показать и распечатать два QR</button>${craneBeamState.canManage ? '<button data-edit>Настроить оборудование</button>' : ""}</div></div>`);
   overlay.querySelector("[data-shift]").addEventListener("click", () => { overlay.remove(); openCraneInspection(asset, "shift"); });
   overlay.querySelector("[data-monthly]").addEventListener("click", () => { overlay.remove(); openCraneInspection(asset, "monthly"); });
   overlay.querySelector("[data-journal]").addEventListener("click", () => { overlay.remove(); openCraneJournal(asset); });

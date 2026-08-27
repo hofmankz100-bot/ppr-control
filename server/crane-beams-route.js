@@ -258,7 +258,15 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         const id = newId("crane-inspection"), who = actor(req.authUser), defects = answers.filter(item => !item.ok);
         const inspection = { id, craneId: asset.id, craneName: asset.name, workshop: asset.workshop, type, date, shift, at: new Date().toISOString(), actor: who, checklistVersion: asset.checklistVersion, answers, result: defects.length ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good", decision: defects.length ? (body.decision === "prohibited" ? "prohibited" : "allowed_with_remark") : "allowed", counterEligible, counterApplied: counterEligible && !duplicate };
         db.craneBeams.inspections[id] = inspection;
-        if (defects.length) { const defectId = newId("crane-defect"); db.craneBeams.defects[defectId] = { id: defectId, craneId: asset.id, inspectionId: id, createdAt: inspection.at, createdBy: who, items: defects, status: "open", resolution: null, confirmation: null }; }
+        if (defects.length) {
+          const defectId = newId("crane-defect");
+          db.craneBeams.defects[defectId] = { id: defectId, craneId: asset.id, inspectionId: id, createdAt: inspection.at, createdBy: who, items: defects, status: "open", operationDecision: inspection.decision, resolution: null, confirmation: null };
+          if (inspection.decision === "prohibited") {
+            asset.operationStatus = "prohibited";
+            asset.prohibitedAt = inspection.at;
+            asset.prohibitedByInspectionId = inspection.id;
+          }
+        }
         if (type === "monthly" && inspection.counterApplied) asset.lastMonthlyAt = inspection.at;
         if (type === "shift" && inspection.counterApplied) asset.lastShiftAt = inspection.at;
         writeDb(db, { action: "crane_beam_inspection_saved", user: req.authUser, craneId: asset.id, inspectionId: id, type });
@@ -326,9 +334,24 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
           if (!["mechanic", "electrician", "engineer"].includes(role)) return { error: "crane_defect_resolution_forbidden" };
           const comment = text(body.comment, 1500); if (!comment) return { error: "crane_resolution_comment_required" };
           defect.resolution = { at: now, actor: who, comment, parts: text(body.parts, 1000), photo: text(body.photo, 500) }; defect.status = "awaiting_confirmation";
+          if (defect.resolution.parts) {
+            const eventId = newId("installation-parts");
+            const asset = db.craneBeams.assets[defect.craneId];
+            db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: defect.craneId, defectId: defect.id, action: "parts_installed", status: "installed", workshop: asset?.workshop || "", place: asset?.installationPlace || "", date: now.slice(0, 10), at: now, byName: who.name, byRole: who.role, parts: defect.resolution.parts, comment: `Установлено: ${defect.resolution.parts}. ${comment}` };
+          }
         } else if (["confirm", "return"].includes(action)) {
           if (role !== "engineer") return { error: "crane_defect_confirmation_forbidden" };
           defect.confirmation = { at: now, actor: who, accepted: action === "confirm", comment: text(body.comment, 1500) }; defect.status = action === "confirm" ? "closed" : "returned";
+          if (action === "confirm") {
+            const asset = db.craneBeams.assets[defect.craneId];
+            const remainingProhibitions = Object.values(db.craneBeams.defects).some(item => item && item.craneId === defect.craneId && item.id !== defect.id && item.operationDecision === "prohibited" && item.status !== "closed");
+            if (asset && !remainingProhibitions) {
+              asset.operationStatus = "allowed";
+              asset.prohibitionClearedAt = now;
+              asset.prohibitionClearedBy = who;
+              delete asset.prohibitedByInspectionId;
+            }
+          }
         } else return { error: "crane_defect_action_invalid" };
         writeDb(db, { action: `crane_beam_defect_${action}`, user: req.authUser, defectId: defect.id, craneId: defect.craneId });
         return { defect, state: publicCraneState(db, req.authUser, builtInEquipment) };

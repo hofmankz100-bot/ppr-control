@@ -116,6 +116,19 @@ test("finish saw stays an ordinary press node and is removed only from crane ass
   assert.equal(db.catalog.equipment[1].craneBeamNodes, undefined);
 });
 
+test("prohibition remains visible until repair is confirmed by an engineer", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ", name: "Оператор" }, body: { craneId: "one", type: "shift", date: "2026-08-27", shift: "day", decision: "prohibited", answers: { a: { ok: false, comment: "Не держит тормоз" } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  const defect = Object.values(db.craneBeams.defects)[0];
+  assert.equal(db.craneBeams.assets.one.operationStatus, "prohibited");
+  await h.handler({ method: "POST", authUser: { id: "m", role: "mechanic", name: "Электромеханик" }, body: { defectId: defect.id, action: "resolve", comment: "Тормоз заменён", parts: "Колодка 1 шт." } }, {}, "/api/crane-beams/defect", new URL("http://test"));
+  assert.equal(db.craneBeams.assets.one.operationStatus, "prohibited");
+  assert.equal(Object.values(db.craneBeams.installationJournal)[0].parts, "Колодка 1 шт.");
+  await h.handler({ method: "POST", authUser: { id: "e", role: "engineer", name: "Инженер" }, body: { defectId: defect.id, action: "confirm", comment: "Проверено" } }, {}, "/api/crane-beams/defect", new URL("http://test"));
+  assert.equal(db.craneBeams.assets.one.operationStatus, "allowed");
+});
+
 test("upper QR closes the monthly counter once for engineers but never for admin", async () => {
   const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const body = { craneId: "one", type: "monthly", date: "2026-08-27", answers: { a: { ok: true } } };
