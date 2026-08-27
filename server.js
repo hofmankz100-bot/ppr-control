@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v652-shared-gpm-upper-qr-1";
+const SERVER_VERSION = "v653-gpm-conditional-ppr-counter-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5917,7 +5917,9 @@ async function handleApi(req, res, pathname, url) {
         : now;
       const currentRecord = db.checks[recordKey] || {};
       const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
-      const existing = currentItem.walkGroups?.[group]?.[shift]
+      const qrKind = body.qrKind === "upper" ? "upper" : "lower";
+      const markKey = qrKind === "upper" ? `${shift}:upper` : shift;
+      const existing = currentItem.walkGroups?.[group]?.[markKey]
         || (group === "technical" ? currentItem.walkShifts?.[shift] : null);
       const existingAt = Date.parse(existing?.at || "");
       const capturedMs = Date.parse(capturedAt);
@@ -5944,12 +5946,13 @@ async function handleApi(req, res, pathname, url) {
           ...(currentItem.walkGroups || {}),
           [group]: {
             ...(currentItem.walkGroups?.[group] || {}),
-            [shift]: {
+            [markKey]: {
             done: true,
             at: capturedAt,
             byRole: String(req.authUser?.role || ""),
             byName: String(req.authUser?.name || ""),
             shift,
+            qrKind,
             label: String(body.label || "").slice(0, 100),
             range: String(body.range || "").slice(0, 100)
             ,group,
@@ -5963,11 +5966,12 @@ async function handleApi(req, res, pathname, url) {
       const record = { ...currentRecord, createdAt: currentRecord.createdAt || now, updatedAt: now, to: nextItem };
       db.checks[recordKey] = record;
       const journalEntry = {
-        id: `${recordKey}:${group}:${shift}`,
+        id: `${recordKey}:${group}:${markKey}`,
         equipmentId,
         nodeIndex,
         date,
         shift,
+        qrKind,
         group,
         at: capturedAt,
         receivedAt: now,

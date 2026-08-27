@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v652-shared-gpm-upper-qr-1";
+const APP_VERSION = "v653-gpm-conditional-ppr-counter-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4626,7 +4626,8 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   const group = qrWalkGroup();
   rec.to.walkGroups ||= {};
   rec.to.walkGroups[group] ||= {};
-  rec.to.walkGroups[group][shiftInfo.key] = {
+  const markKey = options.qrKind === "upper" ? `${shiftInfo.key}:upper` : shiftInfo.key;
+  rec.to.walkGroups[group][markKey] = {
     done: true,
     at: now,
     byRole: profile?.role || "",
@@ -4645,9 +4646,10 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   return { date, shift: shiftInfo };
 }
 
-async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null) {
+async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
   const group = qrWalkGroup();
-  const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[shiftInfo?.key];
+  const markKey = qrKind === "upper" ? `${shiftInfo?.key}:upper` : shiftInfo?.key;
+  const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[markKey];
   const publish = async () => {
     try {
       const result = await apiJson("/api/qr-walk/mark", {
@@ -4661,6 +4663,7 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
         qrToken,
         date,
         shift: shiftInfo?.key || "",
+        qrKind,
         group,
         capturedAt: localMark?.at || new Date().toISOString(),
         equipment: equipmentById(equipmentId)?.name || "",
@@ -5715,7 +5718,7 @@ function promptCompressorQrDecision(parsed) {
       setButtonBusy(event.currentTarget, true, "Сохраняем...");
       try {
         markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken);
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, null, parsed.qrKind);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = values.hasRemark
           ? appendCommentEntry(item, values.comment, "", { area: eq?.area || COMPRESSOR_JOURNAL_AREA })
@@ -5853,8 +5856,8 @@ function promptQrWalkDecision(parsed) {
       submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
-      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal });
-      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal);
+      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal, qrKind: parsed.qrKind });
+      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
       showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
@@ -5911,8 +5914,8 @@ function promptQrWalkDecision(parsed) {
         if (customJournal === false) { submitting = false; setButtonBusy(button, false); return; }
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal);
+        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal, qrKind: parsed.qrKind });
+        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);
@@ -11926,6 +11929,7 @@ function renderEquipment() {
       const gasJournalOverdueDays = eq.area === GAS_JOURNAL_AREA ? gasJournalIncompleteDays() : 0;
       const compressorJournalMissingToday = compressorJournalOverdueDays > 0;
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
+      const sharedGpmCard = String(eq.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ";
       const linkedGpmEquipment = gpmEquipmentList().find(item => Number(item.sourceEquipmentId || 0) === Number(eq.id));
       const gpmEquipment = Boolean(linkedGpmEquipment) || isGpmEquipment(eq);
       const modernCraneEquipment = linkedCraneJournalForEquipment(eq);
@@ -11940,7 +11944,7 @@ function renderEquipment() {
             <button type="button" ${gpmEquipment ? `data-gpm-equipment="${eq.id}"` : `data-aggregate-equipment="${eq.id}"`} class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">${gpmEquipment ? isForkliftEquipment(eq) ? "Журнал погрузчика" : "Журнал ГПМ" : "Журнал"}</span>
               <strong>${escapeHtml(linkedGpmEquipment?.sourceEquipmentName || eq.name)}</strong>
-              <span>${modernCraneEquipment ? "2 QR · вахтенный журнал" : modernForkliftEquipment ? "1 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
+              <span>${sharedGpmCard ? `${eq.nodes.length} кранов · по 2 QR` : modernCraneEquipment ? "2 QR · вахтенный журнал" : modernForkliftEquipment ? "1 QR · вахтенный журнал" : `${eq.nodes.length} узлов`} · ${escapeHtml(eq.area)}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : modernCraneEquipment ? "Только новая схема QR-обходов" : modernForkliftEquipment ? "Ежесменный обход и Плановое ТО через один QR" : gpmEquipment ? "Осмотры и документы" : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             <div class="equipment-secondary-tools">
@@ -11949,7 +11953,7 @@ function renderEquipment() {
                 ? `<button type="button" class="equipment-qr-print-button" data-print-all-gpm-qr>${allCraneQrCount} QR кран-балок<br><small>По 2 на каждый кран</small></button>`
                 : linkedGpmEquipment && gpmItemKind(linkedGpmEquipment) === "forklift"
                   ? `<button type="button" class="equipment-qr-print-button" data-print-all-forklift-qr>${allForkliftQrCount} QR погрузчиков<br><small>По одному · A4 по 4</small></button>`
-                : !gpmEquipment ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR всех узлов<br><small>${eq.nodes.length} шт · A4 по 4</small></button>` : "" : ""}
+                : !gpmEquipment ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">${sharedGpmCard ? "Нижние + верхние QR" : "QR всех узлов"}<br><small>${sharedGpmCard ? `${eq.nodes.length * 2} шт · по 2 на каждый кран` : `${eq.nodes.length} шт · A4 по 4`}</small></button>` : "" : ""}
             </div>
           </div>
           ${canEditEquipmentCatalog(eq) ? `
@@ -12036,11 +12040,18 @@ function renderEquipment() {
         const firstOpenCommentIndex = eq.nodes.findIndex((_, nodeIndex) => hasOpenCommentRecord(getRecord(eq.id, nodeIndex, date)));
         const downtimeOpen = equipmentDowntimeOpen;
         const td = document.createElement("td");
+        if (sharedGpmCard) td.classList.add("modern-crane-workflow-cell");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
         const baseClass = operationalPause ? "operational-paused-day" : summary.done === summary.total ? "completed-day" : "to";
           td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.textContent = operationalPause ? "Пауза" : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
+        const pprPlan = sharedGpmCard ? recommendedMaintenanceForDate(eq, date) : null;
+        const pprNodeIndex = pprPlan ? eq.nodes.indexOf(pprPlan.node) : -1;
+        const pprRecord = pprNodeIndex >= 0 ? getRecord(eq.id, pprNodeIndex, date) : null;
+        const pprDone = pprRecord ? Object.values(pprRecord?.to?.walkGroups || {}).some(group => Object.entries(group || {}).some(([markKey, mark]) => markKey.endsWith(":upper") && mark?.done)) : false;
+        td.innerHTML = operationalPause ? "Пауза" : sharedGpmCard
+          ? `<span>Осмотр <b>${summary.done}/${summary.total}</b></span>${pprPlan ? `<span>ППР <b>${pprDone ? 1 : 0}/1</b></span>` : ""}`
+          : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
         td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
         td.addEventListener("click", () => {
           if (!canOpenEquipmentDate(date)) return;
