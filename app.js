@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v677-crane-shift-inspection-1";
+const APP_VERSION = "v678-crane-monthly-calendar-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -13487,10 +13487,21 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   }));
 }
 
+function craneMonthlyCalendarItems(year, month) {
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  return (craneBeamState.assets || []).filter(asset => asset.installed && !asset.operationalPaused).map(asset => {
+    const day = Math.max(1, Math.min(new Date(year, month + 1, 0).getDate(), Number(asset.monthlyDay || 1)));
+    const date = `${monthPrefix}-${String(day).padStart(2, "0")}`;
+    const completed = (craneBeamState.inspections || []).some(row => row.craneId === asset.id && row.type === "monthly" && row.date === date && row.counterApplied);
+    return { craneId: asset.id, equipmentId: asset.parentEquipmentId, equipment: asset.name, area: asset.workshop, date, completed };
+  });
+}
+
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
   const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const itemsByDate = {};
+  const craneItemsByDate = {};
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = activeEquipment.flatMap(eq => {
@@ -13508,7 +13519,10 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
     });
     if (items.length) itemsByDate[date] = items;
   }
-  return { year, month, daysInMonth, itemsByDate };
+  craneMonthlyCalendarItems(year, month).forEach(item => {
+    (craneItemsByDate[item.date] ||= []).push(item);
+  });
+  return { year, month, daysInMonth, itemsByDate, craneItemsByDate };
 }
 
 function pprCalendarShortName(name) {
@@ -13875,15 +13889,18 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
   for (let day = 1; day <= data.daysInMonth; day += 1) {
     const date = `${data.year}-${String(data.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = data.itemsByDate[date] || [];
+    const craneItems = data.craneItemsByDate[date] || [];
     const itemStatuses = items.map(item => pprJournalCompletion(equipmentById(item.equipmentId), date, item.node));
     const sheetStatus = pprSheetCompletion(date);
     const usesSheet = sheetStatus.active > 0;
-    const dayDone = items.length && (usesSheet ? sheetStatus.complete : itemStatuses.every(item => item.complete));
+    const craneDone = craneItems.every(item => item.completed);
+    const ordinaryDone = !items.length || (usesSheet ? sheetStatus.complete : itemStatuses.every(item => item.complete));
+    const dayDone = (items.length || craneItems.length) && ordinaryDone && craneDone;
     const dayPartial = usesSheet ? sheetStatus.partial : itemStatuses.some(item => item.partial && !item.complete);
-    const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored);
+    const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored) || craneItems.some(item => !item.completed);
     const dayMissed = date < todayISO() && !sheetStatus.awaitingApproval && (usesSheet ? !sheetStatus.complete : activeIncomplete);
-    const dayWarning = date >= todayISO() && (usesSheet ? !sheetStatus.complete : activeIncomplete);
-    const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
+    const dayWarning = date >= todayISO() && ((items.length && usesSheet) ? !sheetStatus.complete || !craneDone : activeIncomplete);
+    const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : (items.length || craneItems.length) ? "history" : "";
     const statusIcon = dayDone ? "✓" : sheetStatus.awaitingApproval ? "!" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
     const statusText = dayDone
       ? "ППР принят инженером"
@@ -13895,16 +13912,17 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
             ? "ППР выполнен частично"
             : dayWarning
               ? "Приближается срок ППР"
-              : items.length ? "Архивный график" : "Работ нет";
+              : (items.length || craneItems.length) ? "Архивный график" : "Работ нет";
     cells.push(`
       <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} · ${statusText}`)}">
         <time datetime="${date}">${day}</time>
         ${statusIcon ? `<span class="ppr-day-status" aria-label="${escapeHtml(statusText)}">${statusIcon}</span>` : ""}
-        ${items.length > 1 ? `<small class="ppr-day-count">${items.length}</small>` : ""}
+        ${items.length + craneItems.length > 1 ? `<small class="ppr-day-count">${items.length + craneItems.length}</small>` : ""}
       </button>
     `);
   }
   const selectedItems = data.itemsByDate[selectedDate] || [];
+  const selectedCraneItems = data.craneItemsByDate[selectedDate] || [];
   return `
     <div class="ppr-calendar-toolbar">
       <strong>${escapeHtml(monthLabel)}</strong>
@@ -13922,7 +13940,11 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
     <div class="ppr-calendar-grid">${cells.join("")}</div>
     <section class="ppr-selected-day">
       <div><span>Выбранный день</span><strong>${dateHuman(selectedDate)}</strong></div>
-      <div class="ppr-calendar-tasks">${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : `<p>На этот день работ ППР нет</p>`}</div>
+      <div class="ppr-calendar-tasks">
+        ${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : ""}
+        ${selectedCraneItems.length ? `<section class="crane-calendar-reminders"><h3>Ежемесячный осмотр кран-балок</h3>${selectedCraneItems.map(item => `<article class="${item.completed ? "done" : "due"}"><div><strong>${escapeHtml(item.equipment)}</strong><span>${escapeHtml(item.area)} · ${item.completed ? "выполнено верхним QR" : "требуется верхний QR"}</span></div><b>${item.completed ? "✓" : "!"}</b></article>`).join("")}<p>Карточка обычного ППР не заполняется. Осмотр выполняется только после сканирования верхнего QR кран-балки.</p></section>` : ""}
+        ${!selectedItems.length && !selectedCraneItems.length ? `<p>На этот день работ ППР нет</p>` : ""}
+      </div>
     </section>
   `;
 }
@@ -14447,6 +14469,19 @@ function globalReminderItems(equipment = globalControlEquipment()) {
         pprApprovalDate: date
       }));
   }
+  const reminderToday = new Date(`${todayISO()}T00:00:00`);
+  craneMonthlyCalendarItems(reminderToday.getFullYear(), reminderToday.getMonth()).forEach(item => {
+    if (item.completed) return;
+    const due = new Date(`${item.date}T00:00:00`);
+    const daysUntil = Math.round((due - reminderToday) / 86400000);
+    if (daysUntil < 0 || daysUntil > 2) return;
+    items.push({
+      level: daysUntil === 0 ? "red" : "yellow",
+      icon: "🏗️",
+      title: daysUntil === 0 ? `Сегодня ежемесячный осмотр: ${item.equipment}` : `Подходит ежемесячный осмотр: ${item.equipment}`,
+      text: `${item.area} · выполнить верхним QR${daysUntil ? ` · ${dateHuman(item.date)}` : ""}`
+    });
+  });
   allRequests()
     .filter(req =>
       !req.done && !req.stock && !req.rejected && !req.deleted &&
