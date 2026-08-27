@@ -770,6 +770,7 @@ test("registered employees can be searched by name phone or employee number", ()
   assert.match(client, /const filterDirectorUsers = \(\) =>/);
   assert.match(client, /const digits = query\.replace\(\/\\D\/g, ""\)/);
   assert.match(client, /row\.hidden = !matches/);
+  assert.match(css, /\[data-director-user-row\]\[hidden\][\s\S]*?display:\s*none\s*!important/);
   assert.match(client, /Сотрудник не найден/);
   assert.match(css, /\.director-user-search input/);
   assert.match(css, /html\[data-theme="dark"\] \.director-user-search input/);

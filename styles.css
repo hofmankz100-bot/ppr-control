@@ -7999,6 +7999,10 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   outline: 3px solid color-mix(in srgb, var(--brand) 20%, transparent);
 }
 
+[data-director-user-row][hidden] {
+  display: none !important;
+}
+
 .director-crane-picker {
   grid-column: 1 / -1;
   display: grid;
