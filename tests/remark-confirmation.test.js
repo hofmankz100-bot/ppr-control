@@ -1732,10 +1732,12 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(source, /row\.draftUpdatedAt = new Date\(\)\.toISOString\(\)/);
   assert.match(source, /touchPprSheet\(sheet, false\)/);
   assert.match(source, /publishPprSheetAction\(date, "draft"/);
+  assert.match(source, /window\.setTimeout\(publishDraft, 700\)/);
   assert.match(source, />\$\{escapeHtml\(row\.resolutionComment \|\| ""\)\}<\/textarea>/);
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(server, /\["draft", "mark", "add-row", "approve"\]/);
   assert.match(server, /row\.draftByName = name/);
+  assert.doesNotMatch(server, /if \(!row \|\| row\.mark \|\| !String\(row\.work/);
   assert.match(source, /function mergePprSheetRowsLocal\(currentRows = \[\], incomingRows = \[\]\)/);
   assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets\)/);
   assert.doesNotMatch(source, /state\.pprSheets = preferRemote\s*\? \{ \.\.\.\(remote\.pprSheets/);

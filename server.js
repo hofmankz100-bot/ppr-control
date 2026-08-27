@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v645-ppr-draft-persistence-1";
+const SERVER_VERSION = "v646-ppr-marked-edit-persistence-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -6811,7 +6811,7 @@ async function handleApi(req, res, pathname, url) {
       let clearEngineerApproval = false;
       if (action === "draft") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
-        if (!row || row.mark || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
+        if (!row || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
         row.resolutionComment = String(body.resolutionComment || "").trim().slice(0, 2000);
         row.draftUpdatedAt = now;
         row.updatedAt = now;

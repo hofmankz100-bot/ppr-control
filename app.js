@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v645-ppr-draft-persistence-1";
+const APP_VERSION = "v646-ppr-marked-edit-persistence-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -14236,6 +14236,24 @@ function bindPprCalendarControls(container, rerender) {
     });
   });
   container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
+    let draftSaveTimer = null;
+    const publishDraft = async () => {
+      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
+      if (!date) return;
+      const sheet = pprSheetRecord(date, true);
+      const row = sheet.rows.find(item => item.id === input.dataset.pprResolutionInput);
+      if (!row) return;
+      try {
+        await publishPprSheetAction(date, "draft", {
+          rowId: row.id,
+          resolutionComment: String(input.value || "").slice(0, 2000)
+        });
+      } catch {
+        // Keep the same draft in the normal durable synchronization queue if
+        // the focused endpoint or a newly-created server sheet is unavailable.
+        saveState();
+      }
+    };
     input.addEventListener("input", () => {
       const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
       if (!date) return;
@@ -14249,24 +14267,12 @@ function bindPprCalendarControls(container, rerender) {
       row.draftUpdatedAt = new Date().toISOString();
       row.updatedAt = row.draftUpdatedAt;
       touchPprSheet(sheet, false);
+      clearTimeout(draftSaveTimer);
+      draftSaveTimer = window.setTimeout(publishDraft, 700);
     });
     input.addEventListener("change", async () => {
-      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
-      if (!date) return;
-      const sheet = pprSheetRecord(date, true);
-      const row = sheet.rows.find(item => item.id === input.dataset.pprResolutionInput);
-      if (!row || row.mark) return;
-      try {
-        await publishPprSheetAction(date, "draft", {
-          rowId: row.id,
-          resolutionComment: String(input.value || "").slice(0, 2000)
-        });
-      } catch {
-        // The sheet may have been created locally moments ago or the focused
-        // endpoint may be temporarily unavailable. Queue the same draft through
-        // the normal durable state sync instead of waiting for another resume.
-        saveState();
-      }
+      clearTimeout(draftSaveTimer);
+      await publishDraft();
     });
   });
   container?.querySelectorAll("[data-ppr-row-mark]").forEach(button => {
