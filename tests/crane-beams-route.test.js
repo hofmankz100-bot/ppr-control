@@ -7,6 +7,9 @@ const path = require("node:path");
 const { createCraneBeamsRoute, ensureCraneBeams } = require("../server/crane-beams-route");
 
 function harness(database, builtInEquipment = {}) {
+  Object.values(database.craneBeams?.assets || {}).forEach(asset => {
+    if (asset.checklistSchemaVersion === 2 && (asset.checklist || []).length < 6) asset.checklistSchemaVersion = 3;
+  });
   const responses = [];
   const handler = createCraneBeamsRoute({
     builtInEquipment,
@@ -194,20 +197,20 @@ test("protected crane is restored when the built-in workshop reference becomes a
   assert.equal(db.craneBeams.assets.kb.upperQr, "old-upper");
 });
 
-test("new crane checklist contains the specified 16 inspection points", () => {
+test("new crane checklist contains the specified 6 grouped inspection points", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "kb", name: "Кран-балка Пресс 2400" }] } };
   ensureCraneBeams(db);
-  assert.equal(db.craneBeams.assets.kb.checklist.length, 16);
-  assert.equal(db.craneBeams.assets.kb.checklist[0].label, "Металлоконструкция и крепления");
-  assert.equal(db.craneBeams.assets.kb.checklist[15].label, "Рабочая зона и путь перемещения");
+  assert.equal(db.craneBeams.assets.kb.checklist.length, 6);
+  assert.equal(db.craneBeams.assets.kb.checklist[0].label, "Металлоконструкция");
+  assert.equal(db.craneBeams.assets.kb.checklist[5].label, "Крановый путь");
 });
 
-test("current legacy checklist upgrades to 16 points while its old version is retained", () => {
+test("current legacy checklist upgrades to 6 grouped points while its old version is retained", () => {
   const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { kb: { id: "kb", name: "Кран", workshop: "ЛПЦ", checklistVersion: 1, checklist: [{ id: "old", label: "Старый пункт" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   ensureCraneBeams(db);
-  assert.equal(db.craneBeams.assets.kb.checklist.length, 16);
+  assert.equal(db.craneBeams.assets.kb.checklist.length, 6);
   assert.equal(db.craneBeams.assets.kb.checklistHistory[0].checklist[0].label, "Старый пункт");
-  assert.equal(db.craneBeams.assets.kb.checklistSchemaVersion, 2);
+  assert.equal(db.craneBeams.assets.kb.checklistSchemaVersion, 3);
 });
 
 test("archived ordinary-node QR identities remain aliases of the restored crane", () => {
@@ -284,7 +287,7 @@ test("client exposes lifecycle controls, recoverable trash, and tokenized dual Q
 
 test("crane defect lifecycle emits addressable notification events", async () => {
   const events = [];
-  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistVersion: 3, checklistSchemaVersion: 3, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const handler = createCraneBeamsRoute({ enqueueStateWrite: fn => fn(), notifyCraneEvent: event => events.push(event), readBody: req => Promise.resolve(req.body || {}), readDb: () => db, sendJson: () => {}, writeDb: () => {} });
   await handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ" }, body: { craneId: "one", type: "shift", date: "2026-08-27", shift: "day", answers: { a: { ok: false, comment: "Износ" } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
   assert.equal(events[0].event, "defect_opened");
@@ -301,7 +304,7 @@ test("pending and disabled employees cannot write a crane inspection", async () 
 });
 
 test("server assigns crane date and shift, paused scans stay unscheduled, and retries are idempotent", async () => {
-  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, operationalPaused: true, monthlyDay: 30, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, operationalPaused: true, monthlyDay: 30, checklistVersion: 3, checklistSchemaVersion: 3, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const responses = [];
   const handler = createCraneBeamsRoute({ enqueueStateWrite: fn => fn(), nowProvider: () => new Date("2026-08-28T15:00:00Z"), readBody: req => Promise.resolve(req.body || {}), readDb: () => db, sendJson: (_res, status, payload) => responses.push({ status, payload }), writeDb: () => {} });
   const req = { method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ" }, body: { craneId: "one", type: "shift", submissionId: "same", date: "2000-01-01", shift: "day", answers: { a: { ok: true } } } };

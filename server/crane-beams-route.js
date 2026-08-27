@@ -3,22 +3,12 @@
 const crypto = require("crypto");
 
 const DEFAULT_CHECKLIST = [
-  "Металлоконструкция и крепления",
-  "Болтовые и сварные соединения",
-  "Крюк и предохранительный замок",
-  "Канат, цепь и крепление",
-  "Барабан и направляющие",
-  "Тормозной механизм",
-  "Редуктор и привод",
-  "Электродвигатель",
-  "Концевые выключатели",
-  "Пульт управления",
-  "Аварийная остановка",
-  "Звуковая сигнализация",
-  "Кабели и токоподвод",
-  "Заземление",
-  "Отсутствие посторонних шумов и вибрации",
-  "Рабочая зона и путь перемещения"
+  "Металлоконструкция",
+  "Тормоза: грузовой лебедки; стреловой лебедки; механизма передвижения тележки; поворота; механизма передвижения крана",
+  "Приборы безопасности: ограничитель грузоподъемности; концевые выключатели; блокировочные контакты; указатели; сигнализаторы; электрооборудование; заземление",
+  "Канаты: грузовой; стреловой; оттяжки стрелы; тележечный",
+  "Крюковая подвеска",
+  "Крановый путь"
 ];
 
 function text(value, limit = 300) { return String(value || "").trim().slice(0, limit); }
@@ -196,15 +186,15 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
     asset.pausePeriods = Array.isArray(asset.pausePeriods) ? asset.pausePeriods : [];
     const archivedSource = archivedById.get(String(id));
     if (archivedSource) asset.legacyQrAliases = archivedQrAliases(archivedSource);
-    if (asset.checklistSchemaVersion !== 2) {
+    if (asset.checklistSchemaVersion !== 3) {
       const previousChecklist = Array.isArray(asset.checklist) ? asset.checklist.map(item => ({ ...item })) : [];
       if (previousChecklist.length) {
         asset.checklistHistory ||= [];
         asset.checklistHistory.push({ version: Number(asset.checklistVersion || 1), checklist: previousChecklist, retiredAt: new Date().toISOString() });
       }
-      asset.checklistVersion = Math.max(2, Number(asset.checklistVersion || 1) + (previousChecklist.length ? 1 : 0));
+      asset.checklistVersion = Math.max(3, Number(asset.checklistVersion || 1) + (previousChecklist.length ? 1 : 0));
       asset.checklist = DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label }));
-      asset.checklistSchemaVersion = 2;
+      asset.checklistSchemaVersion = 3;
     }
     delete asset.parentNodeIndex;
     delete db.craneBeams.unresolvedArchive[id];
@@ -229,7 +219,7 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
       lowerQr: text(saved.lowerQr, 300) || `PPRGPM|SHIFT|${id}`,
       upperQr: text(saved.upperQr, 300) || `PPRGPM|MONTHLY|${id}`,
       legacyQrAliases: archivedQrAliases(saved),
-      checklistVersion: 1, checklistSchemaVersion: 2, checklist: DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label })),
+      checklistVersion: 3, checklistSchemaVersion: 3, checklist: DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label })),
       monthlyDay: 1, createdAt: now, restoredFromArchive: true, operationalPaused: false
     };
     db.craneBeams.assets[id] = asset;
