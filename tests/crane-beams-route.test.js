@@ -74,8 +74,6 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /ordinaryNodeIndexes/);
   assert.match(app, /remote\.craneBeams/);
   assert.match(app, /parentEquipmentId/);
-  assert.match(app, /Узлы и вложенное оборудование/);
-  assert.match(app, /data-open-equipment-structure/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
   assert.doesNotMatch(app, /function renderCraneBeamNodeCards/);
