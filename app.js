@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v660-crane-beams-as-workshop-nodes-1";
+const APP_VERSION = "v661-crane-beams-inside-node-screen-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11596,7 +11596,6 @@ function renderEquipment() {
     </div>
     <div class="segmented">
       ${profile?.role === "editor" ? `<button type="button" data-create-equipment>+ Создать оборудование</button>` : ""}
-      ${profile?.role === "editor" ? `<button type="button" data-create-crane-node>+ Узел кран-балки</button>` : ""}
       ${canEditAnnualPpr() ? `<button type="button" class="desktop-annual-ppr-button" data-open-annual-ppr>Годовой график ППР</button>` : ""}
       ${canViewQrWalkJournal() ? `<button type="button" data-open-qr-walk-journal>Журнал QR</button>` : ""}
       ${editorSchedule ? `<button type="button" data-equipment-month="prev">‹</button>` : ""}
@@ -11605,7 +11604,6 @@ function renderEquipment() {
     </div>
   `;
   monthBar.querySelector("[data-create-equipment]")?.addEventListener("click", openCreateEquipmentDialog);
-  monthBar.querySelector("[data-create-crane-node]")?.addEventListener("click", () => editCraneAsset());
   monthBar.querySelector("[data-open-annual-ppr]")?.addEventListener("click", () => openAnnualPprSchedule());
   monthBar.querySelector("[data-open-qr-walk-journal]")?.addEventListener("click", () => show("qrWalkJournal"));
   monthBar.querySelector("[data-equipment-month='prev']")?.addEventListener("click", () => {
@@ -11645,7 +11643,6 @@ function renderEquipment() {
   const tbody = table.querySelector("tbody");
   equipment.forEach(eq => {
       const tr = document.createElement("tr");
-      tr.dataset.equipmentArea = String(eq.area || "");
       const alert = hasOpenCommentEquipment(eq.id);
       const stoppedNodeIndex = eq.nodes.findIndex((_, nodeIndex) => activeDowntime(eq.id, nodeIndex));
       const equipmentDowntimeOpen = stoppedNodeIndex >= 0;
@@ -11777,34 +11774,8 @@ function renderEquipment() {
       });
       tbody.append(tr);
     });
-  renderCraneNodesInsideWorkshops(tbody, equipment, days.length + 1);
   wrap.append(table);
   ui.equipmentList.append(wrap);
-}
-
-function renderCraneNodesInsideWorkshops(tbody, equipment, columnCount) {
-  const visibleAreas = new Set(equipment.map(item => String(item.area || "").trim().toLocaleLowerCase("ru-RU")));
-  const grouped = new Map();
-  craneBeamState.assets.filter(asset => visibleAreas.has(String(asset.workshop || "").trim().toLocaleLowerCase("ru-RU"))).forEach(asset => {
-    if (!grouped.has(asset.workshop)) grouped.set(asset.workshop, []);
-    grouped.get(asset.workshop).push(asset);
-  });
-  for (const [workshop, assets] of grouped) {
-    const row = document.createElement("tr");
-    row.className = "crane-workshop-node-row";
-    row.innerHTML = `<td colspan="${columnCount}"><section class="crane-workshop-nodes"><header><div><span>УЗЛЫ ЦЕХА</span><h3>${escapeHtml(workshop)}</h3></div><button type="button" data-installation-journal>Журнал установленных</button></header><div class="crane-node-list">${assets.map(asset => { const status = craneTodayStatus(asset); return `<article class="crane-node ${asset.installed ? "" : "inactive"}"><div><span>${asset.installed ? "Установлено" : escapeHtml(asset.installationStatus)}</span><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.installationPlace || "Место установки не указано")}</small></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Смена ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">ТО ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div><div class="crane-node-actions"><button data-shift="${escapeHtml(asset.id)}">Нижний QR</button><button data-monthly="${escapeHtml(asset.id)}">Верхний QR</button><button data-journal="${escapeHtml(asset.id)}">Вахтенный журнал</button><button data-crane-qr="${escapeHtml(asset.id)}">Два QR</button>${craneBeamState.canManage ? `<button data-edit="${escapeHtml(asset.id)}">Настроить узел</button>` : ""}</div></article>`; }).join("")}</div>${craneBeamState.canManage ? '<button type="button" data-add-crane>+ Добавить узел кран-балки</button>' : ""}</section></td>`;
-    row.querySelector("[data-installation-journal]").addEventListener("click", openCraneInstallationJournal);
-    row.querySelector("[data-add-crane]")?.addEventListener("click", () => editCraneAsset({ workshop }));
-    row.querySelectorAll("[data-shift]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.shift), "shift")));
-    row.querySelectorAll("[data-monthly]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.monthly), "monthly")));
-    row.querySelectorAll("[data-journal]").forEach(button => button.addEventListener("click", () => openCraneJournal(craneBeamState.assets.find(item => item.id === button.dataset.journal))));
-    row.querySelectorAll("[data-crane-qr]").forEach(button => button.addEventListener("click", () => openCraneQrCards(craneBeamState.assets.find(item => item.id === button.dataset.craneQr))));
-    row.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => editCraneAsset(craneBeamState.assets.find(item => item.id === button.dataset.edit))));
-    const matchingRows = [...tbody.querySelectorAll("tr[data-equipment-area]")].filter(item => String(item.dataset.equipmentArea || "").trim().toLocaleLowerCase("ru-RU") === String(workshop || "").trim().toLocaleLowerCase("ru-RU"));
-    const parentRow = matchingRows.at(-1);
-    if (parentRow) parentRow.after(row);
-    else tbody.append(row);
-  }
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
@@ -11999,6 +11970,32 @@ function renderNodes() {
     }
     ui.nodeList.append(card);
   });
+  renderCraneBeamNodeCards(eq);
+}
+
+function craneParentEquipment(asset) {
+  const normalize = value => String(value || "").trim().toLocaleLowerCase("ru-RU");
+  const equipment = allEquipment();
+  const workshop = normalize(asset.parentWorkshop || asset.workshop);
+  return equipment.find(item => normalize(item.name) === workshop)
+    || equipment.find(item => normalize(item.area) === workshop)
+    || null;
+}
+
+function renderCraneBeamNodeCards(eq) {
+  const assets = craneBeamState.assets.filter(asset => Number(craneParentEquipment(asset)?.id) === Number(eq.id));
+  if (!assets.length && !craneBeamState.canManage) return;
+  const section = document.createElement("section");
+  section.className = "crane-nodes-inside-equipment";
+  section.innerHTML = `<header><div><span>КРАН-БАЛКИ · УЗЛЫ ЦЕХА</span><strong>${escapeHtml(eq.name)}</strong></div><div><button type="button" data-installation-journal>Журнал установленных</button>${craneBeamState.canManage ? '<button type="button" data-add-crane>+ Добавить кран-балку</button>' : ""}</div></header><div class="crane-node-list">${assets.map(asset => { const status = craneTodayStatus(asset); return `<article class="node-card-group crane-equipment-node ${asset.installed ? "" : "inactive"}"><div class="node-card crane-node-main"><div><strong>${escapeHtml(asset.name)}</strong><span>${asset.installed ? "Установлено" : escapeHtml(asset.installationStatus)} · ${escapeHtml(asset.installationPlace || eq.name)}</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Смена ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">ТО ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div></div><div class="crane-node-actions"><button data-shift="${escapeHtml(asset.id)}">Нижний QR · осмотр</button><button data-monthly="${escapeHtml(asset.id)}">Верхний QR · ТО</button><button data-journal="${escapeHtml(asset.id)}">Вахтенный журнал</button><button data-crane-qr="${escapeHtml(asset.id)}">Показать два QR</button>${craneBeamState.canManage ? `<button data-edit="${escapeHtml(asset.id)}">Настроить узел</button>` : ""}</div></article>`; }).join("") || '<div class="empty-state">Кран-балки этого цеха ещё не добавлены.</div>'}</div>`;
+  section.querySelector("[data-installation-journal]").addEventListener("click", openCraneInstallationJournal);
+  section.querySelector("[data-add-crane]")?.addEventListener("click", () => editCraneAsset({ workshop: eq.name, parentWorkshop: eq.name, installationPlace: eq.name }));
+  section.querySelectorAll("[data-shift]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.shift), "shift")));
+  section.querySelectorAll("[data-monthly]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.monthly), "monthly")));
+  section.querySelectorAll("[data-journal]").forEach(button => button.addEventListener("click", () => openCraneJournal(craneBeamState.assets.find(item => item.id === button.dataset.journal))));
+  section.querySelectorAll("[data-crane-qr]").forEach(button => button.addEventListener("click", () => openCraneQrCards(craneBeamState.assets.find(item => item.id === button.dataset.craneQr))));
+  section.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => editCraneAsset(craneBeamState.assets.find(item => item.id === button.dataset.edit))));
+  ui.nodeList.append(section);
 }
 
 function renderSchedule() {
@@ -19079,7 +19076,7 @@ function openCraneInspection(asset, type = "shift") {
     const answers = Object.fromEntries(checklist.map(item => [item.id, { ok: form.elements[item.id].checked, comment: form.elements[`comment-${item.id}`].value.trim() }]));
     try {
       const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, date: todayISO(), shift: form.elements.shift?.value || currentWalkShift().key, decision: form.elements.decision.value, answers }) });
-      craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); renderEquipment();
+      craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "node" ? renderNodes() : renderEquipment();
     } catch (error) { window.alert(error.message === "crane_defect_comment_required" ? "Укажите комментарий для каждого неотмеченного пункта." : error.message); submit.disabled = false; }
   });
 }
@@ -19114,7 +19111,7 @@ function openCraneQrCards(asset) {
 function editCraneAsset(asset = {}) {
   const overlay = craneOverlay(asset.id ? `Настройка · ${asset.name}` : "Добавить кран-балку", `<form class="crane-admin-form"><label>Название<input name="name" required value="${escapeHtml(asset.name || "")}"></label><label>Цех<input name="workshop" required value="${escapeHtml(asset.workshop || "")}"></label><label>Инвентарный номер<input name="inventoryNumber" value="${escapeHtml(asset.inventoryNumber || "")}"></label><label>Место установки<input name="installationPlace" value="${escapeHtml(asset.installationPlace || "")}"></label><label>Дата установки<input name="installationDate" type="date" value="${escapeHtml(asset.installationDate || "")}"></label><label>Статус<select name="installationStatus"><option value="installed">Установлено</option><option value="temporary">Временно снято</option><option value="dismantled">Демонтировано</option><option value="archived">Архив</option></select></label><label>День ежемесячного ТО<input name="monthlyDay" type="number" min="1" max="28" value="${Number(asset.monthlyDay || 1)}"></label><label>Пункты осмотра, каждый с новой строки<textarea name="checklist" rows="8">${escapeHtml((asset.checklist || []).map(item => item.label).join("\n"))}</textarea></label><label>Комментарий установки / переноса<textarea name="installationComment"></textarea></label><label class="inline-check"><input name="operationalPaused" type="checkbox" ${asset.operationalPaused ? "checked" : ""}> Приостановить счётчики</label><button type="submit">Сохранить</button></form>`);
   const form = overlay.querySelector("form"); form.elements.installationStatus.value = asset.installationStatus || "installed";
-  form.addEventListener("submit", async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(form)); data.id = asset.id || ""; data.checklist = form.elements.checklist.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); data.operationalPaused = form.elements.operationalPaused.checked; try { const result = await apiJson("/api/crane-beams/save", { method: "POST", body: JSON.stringify(data) }); craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); renderEquipment(); } catch (error) { window.alert(error.message); } });
+  form.addEventListener("submit", async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(form)); data.id = asset.id || ""; data.checklist = form.elements.checklist.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); data.operationalPaused = form.elements.operationalPaused.checked; try { const result = await apiJson("/api/crane-beams/save", { method: "POST", body: JSON.stringify(data) }); craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } });
 }
 
 async function handleIncomingCraneQrFromUrl() {
@@ -19186,7 +19183,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
-  loadCraneBeams().then(() => renderEquipment()).catch(() => {});
+  loadCraneBeams().then(() => current.view === "node" ? renderNodes() : renderEquipment()).catch(() => {});
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
