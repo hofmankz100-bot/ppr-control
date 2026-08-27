@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v663-crane-beams-in-main-state-1";
+const APP_VERSION = "v664-crane-beams-real-catalog-nodes-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11953,6 +11953,7 @@ function renderNodes() {
   ui.equipmentAlertBadge.classList.toggle("alert", alert);
   ui.nodeList.innerHTML = "";
   eq.nodes.forEach((node, index) => {
+    const craneAsset = craneBeamState.assets.find(asset => String(asset.id) === String(eq.craneBeamNodes?.[index]));
     const nodeAlert = Object.entries(state.checks).some(([k, rec]) => {
       const [eqId, nodeIdx] = k.split(":").map(Number);
       return eqId === eq.id && nodeIdx === index && hasOpenCommentRecord(rec);
@@ -11962,11 +11963,13 @@ function renderNodes() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "node-card";
+    const craneStatus = craneAsset ? craneTodayStatus(craneAsset) : null;
     button.innerHTML = `
-      <div><strong>${node}</strong><span>График и чек-листы</span></div>
-      <div class="small-status ${nodeAlert ? "alert" : ""}">${nodeAlert ? "Замечание" : "Открыть"}</div>
+      <div><strong>${node}</strong><span>${craneAsset ? "Кран-балка · собственный вахтенный журнал" : "График и чек-листы"}</span></div>
+      ${craneAsset ? `<div class="crane-counts"><b class="${craneStatus.shiftDone ? "done" : ""}">Смена ${craneStatus.shiftDone ? "✓" : "1"}</b>${craneStatus.monthlyDue ? `<b class="${craneStatus.monthlyDone ? "done" : "due"}">ТО ${craneStatus.monthlyDone ? "✓" : "1"}</b>` : ""}<i>›</i></div>` : `<div class="small-status ${nodeAlert ? "alert" : ""}">${nodeAlert ? "Замечание" : "Открыть"}</div>`}
     `;
     button.addEventListener("click", () => {
+      if (craneAsset) return openCraneNodeDetails(craneAsset);
       current.nodeIndex = index;
       show("schedule");
     });
@@ -11977,40 +11980,6 @@ function renderNodes() {
     }
     ui.nodeList.append(card);
   });
-  renderCraneBeamNodeCards(eq);
-}
-
-function craneParentEquipment(asset) {
-  const normalize = value => String(value || "").trim().toLocaleLowerCase("ru-RU");
-  const equipment = allEquipment();
-  const workshop = normalize(asset.parentWorkshop || asset.workshop);
-  return equipment.find(item => normalize(item.name) === workshop)
-    || equipment.find(item => normalize(item.area) === workshop)
-    || null;
-}
-
-function renderCraneBeamNodeCards(eq) {
-  const assets = craneBeamState.assets.filter(asset => Number(craneParentEquipment(asset)?.id) === Number(eq.id));
-  assets.forEach(asset => {
-    const status = craneTodayStatus(asset);
-    const card = document.createElement("div");
-    card.className = `node-card-group crane-equipment-node ${asset.installed ? "" : "inactive"}`;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "node-card";
-    button.innerHTML = `<div><strong>${escapeHtml(asset.name)}</strong><span>Кран-балка · собственный вахтенный журнал</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Смена ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">ТО ${status.monthlyDone ? "✓" : "1"}</b>` : ""}<i>›</i></div>`;
-    button.addEventListener("click", () => openCraneNodeDetails(asset));
-    card.append(button);
-    ui.nodeList.append(card);
-  });
-  if (craneBeamState.canManage) {
-    const actions = document.createElement("div");
-    actions.className = "crane-node-admin-actions";
-    actions.innerHTML = `<button type="button" data-add-crane>+ Добавить кран-балку как узел</button><button type="button" data-installation-journal>Журнал установленных</button>`;
-    actions.querySelector("[data-add-crane]").addEventListener("click", () => editCraneAsset({ workshop: eq.name, parentWorkshop: eq.name, installationPlace: eq.name }));
-    actions.querySelector("[data-installation-journal]").addEventListener("click", openCraneInstallationJournal);
-    ui.nodeList.append(actions);
-  }
 }
 
 function renderSchedule() {

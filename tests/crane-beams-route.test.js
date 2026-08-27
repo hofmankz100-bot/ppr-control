@@ -62,18 +62,20 @@ test("crane beams are rendered as workshop nodes without a separate home section
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.doesNotMatch(html, /id="craneBeamsButton"/);
-  assert.match(app, /function renderCraneBeamNodeCards/);
   assert.match(app, /Кран-балка · собственный вахтенный журнал/);
   assert.match(app, /remote\.craneBeams/);
-  assert.match(app, /ui\.nodeList\.append\(card\)/);
+  assert.match(app, /eq\.craneBeamNodes/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
+  assert.doesNotMatch(app, /function renderCraneBeamNodeCards/);
   assert.doesNotMatch(app, /async function openCraneBeams/);
 });
 
 test("legacy GPM parent is replaced from the crane beam name", () => {
-  const db = { craneBeams: { migrationVersion: "retired-archive-v1", assets: { a: { id: "a", name: "Кран балка N6 покраска ванна", workshop: "ГПМ" }, b: { id: "b", name: "Кран-балка N 11 цианизация инструментальный", workshop: "ГПМ" } }, inspections: {}, defects: {}, installationJournal: {} } };
+  const db = { catalog: { equipment: { 4: { name: "Покрасочный цех", area: "Покрасочный цех", nodes: ["Щит"] }, 8: { name: "инструментальный цех", area: "Инструментальный цех", nodes: ["Станок"] } } }, craneBeams: { migrationVersion: "retired-archive-v1", assets: { a: { id: "a", name: "Кран балка N6 покраска ванна", workshop: "ГПМ" }, b: { id: "b", name: "Кран-балка N 11 цианизация инструментальный", workshop: "ГПМ" } }, inspections: {}, defects: {}, installationJournal: {} } };
   ensureCraneBeams(db);
   assert.equal(db.craneBeams.assets.a.parentWorkshop, "Покрасочный цех");
   assert.equal(db.craneBeams.assets.b.parentWorkshop, "инструментальный цех");
+  assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит", "Кран балка N6 покраска ванна"]);
+  assert.equal(db.catalog.equipment[4].craneBeamNodes[1], "a");
 });

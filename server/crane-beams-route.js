@@ -42,6 +42,29 @@ function ensureCraneBeams(db) {
     asset.entityType = "workshopNode";
     asset.parentWorkshop = text(asset.workshop, 200);
   });
+  const catalogEntries = Object.entries(db.catalog?.equipment || {});
+  Object.values(db.craneBeams.assets).forEach(asset => {
+    if (!asset || asset.archived) return;
+    const normalized = value => text(value, 240).toLocaleLowerCase("ru-RU");
+    const assetName = normalized(asset.name), workshop = normalized(asset.parentWorkshop || asset.workshop);
+    let parent = assetName.includes("1540") ? catalogEntries.find(([, card]) => normalized(card?.name).includes("1540")) : null;
+    if (!parent && assetName.includes("2400")) parent = catalogEntries.find(([, card]) => normalized(card?.name).includes("2400"));
+    parent ||= catalogEntries.find(([, card]) => normalized(card?.name) === workshop);
+    parent ||= catalogEntries.find(([, card]) => normalized(card?.area) === workshop);
+    if (!parent) return;
+    const [equipmentId, card] = parent;
+    card.nodes = Array.isArray(card.nodes) ? card.nodes : [];
+    card.craneBeamNodes = card.craneBeamNodes && typeof card.craneBeamNodes === "object" ? card.craneBeamNodes : {};
+    let nodeIndex = Object.entries(card.craneBeamNodes).find(([, craneId]) => String(craneId) === String(asset.id))?.[0];
+    nodeIndex = Number(nodeIndex);
+    if (!Number.isInteger(nodeIndex) || nodeIndex < 0) {
+      nodeIndex = card.nodes.findIndex(node => normalized(node) === normalized(asset.name));
+      if (nodeIndex < 0) { nodeIndex = card.nodes.length; card.nodes.push(asset.name); }
+    } else card.nodes[nodeIndex] = asset.name;
+    card.craneBeamNodes[nodeIndex] = asset.id;
+    asset.parentEquipmentId = String(equipmentId);
+    asset.parentNodeIndex = nodeIndex;
+  });
   if (db.craneBeams.migrationVersion === "retired-archive-v1") return false;
   const archived = Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : [];
   const now = new Date().toISOString();
