@@ -63,7 +63,10 @@ function ensureCraneBeams(db) {
     asset.entityType = "workshopNode";
     asset.parentWorkshop = text(asset.workshop, 200);
   });
-  const catalogEntries = Object.entries(db.catalog?.equipment || {});
+  db.catalog ||= { equipment: {} };
+  db.catalog.equipment ||= {};
+  const catalogEntries = Object.entries(db.catalog.equipment).filter(([, card]) => card?.equipmentKind !== "craneBeam");
+  let nextEquipmentId = Math.max(1000, ...Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger)) + 1;
   Object.values(db.craneBeams.assets).forEach(asset => {
     if (!asset || asset.archived) return;
     const normalized = value => text(value, 240).toLocaleLowerCase("ru-RU");
@@ -74,17 +77,46 @@ function ensureCraneBeams(db) {
     parent ||= catalogEntries.find(([, card]) => normalized(card?.area) === workshop);
     if (!parent) return;
     const [equipmentId, card] = parent;
-    card.nodes = Array.isArray(card.nodes) ? card.nodes : [];
-    card.craneBeamNodes = card.craneBeamNodes && typeof card.craneBeamNodes === "object" ? card.craneBeamNodes : {};
-    let nodeIndex = Object.entries(card.craneBeamNodes).find(([, craneId]) => String(craneId) === String(asset.id))?.[0];
-    nodeIndex = Number(nodeIndex);
-    if (!Number.isInteger(nodeIndex) || nodeIndex < 0) {
-      nodeIndex = card.nodes.findIndex(node => normalized(node) === normalized(asset.name));
-      if (nodeIndex < 0) { nodeIndex = card.nodes.length; card.nodes.push(asset.name); }
-    } else card.nodes[nodeIndex] = asset.name;
-    card.craneBeamNodes[nodeIndex] = asset.id;
+    Object.values(db.catalog.equipment).forEach(parentCard => {
+      const legacyIndexes = Object.entries(parentCard?.craneBeamNodes || {})
+        .filter(([, craneId]) => String(craneId) === String(asset.id)).map(([index]) => Number(index)).filter(Number.isInteger).sort((a, b) => b - a);
+      if (!legacyIndexes.length && Array.isArray(parentCard?.nodes)) {
+        const nameIndex = parentCard.nodes.findIndex(node => normalized(node) === assetName);
+        if (nameIndex >= 0) legacyIndexes.push(nameIndex);
+      }
+      legacyIndexes.forEach(index => {
+        if (Array.isArray(parentCard.nodes) && index >= 0 && index < parentCard.nodes.length) parentCard.nodes.splice(index, 1);
+      });
+      if (legacyIndexes.length) delete parentCard.craneBeamNodes;
+    });
+    let childId = Number(asset.catalogEquipmentId);
+    let child = Number.isSafeInteger(childId) ? db.catalog.equipment[String(childId)] : null;
+    if (!child || child.equipmentKind !== "craneBeam") {
+      while (db.catalog.equipment[String(nextEquipmentId)]) nextEquipmentId += 1;
+      childId = nextEquipmentId++;
+      child = {
+        id: childId, created: true, equipmentKind: "craneBeam", craneBeamId: asset.id,
+        parentEquipmentId: Number(equipmentId), name: asset.name, area: card.area || asset.workshop,
+        nodes: (asset.checklist || DEFAULT_CHECKLIST.map(label => ({ label }))).map(item => text(item?.label || item, 240)).filter(Boolean),
+        qrTokens: {}, reminders: {}, reminderMeta: {}, operationalPauses: [], nodeOperationalPauses: {}
+      };
+      db.catalog.equipment[String(childId)] = child;
+    }
+    child.name = asset.name;
+    child.area = card.area || asset.workshop;
+    child.parentEquipmentId = Number(equipmentId);
+    child.craneBeamId = asset.id;
+    child.equipmentKind = "craneBeam";
+    child.created = true;
+    child.nodes = Array.isArray(child.nodes) && child.nodes.length ? child.nodes : DEFAULT_CHECKLIST.slice();
+    child.qrTokens ||= {};
+    child.nodes.forEach((_, index) => { child.qrTokens[index] ||= crypto.randomBytes(12).toString("hex"); });
+    card.childEquipmentIds = [...new Set([...(Array.isArray(card.childEquipmentIds) ? card.childEquipmentIds : []), childId])];
+    asset.entityType = "nestedEquipment";
     asset.parentEquipmentId = String(equipmentId);
-    asset.parentNodeIndex = nodeIndex;
+    asset.catalogEquipmentId = childId;
+    asset.checklist = child.nodes.map((label, index) => ({ id: `node-${index + 1}`, label }));
+    delete asset.parentNodeIndex;
   });
   if (db.craneBeams.migrationVersion === "retired-archive-v1") return false;
   const archived = Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : [];
@@ -107,7 +139,8 @@ function ensureCraneBeams(db) {
     db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: "restored", status: "installed", workshop, place: asset.installationPlace, date: asset.installationDate, at: now, byName: "Система", comment: "Восстановлено из защищённого архива" };
   });
   db.craneBeams.migrationVersion = "retired-archive-v1";
-  return archived.length > 0;
+  if (archived.length) { ensureCraneBeams(db); return true; }
+  return false;
 }
 
 function canInspect(user, asset, type) {

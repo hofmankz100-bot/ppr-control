@@ -19,10 +19,14 @@ test("archived crane beams return as workshop equipment with both permanent QR i
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "ЛПЦ" } } }, retiredCraneBeamArchive: { assets: [{ id: "kb-1", name: "Кран-балка ЛПЦ №1", lowerQr: "PPRGPM|SHIFT|kb-1", upperQr: "PPRGPM|MONTHLY|kb-1" }] } };
   assert.equal(ensureCraneBeams(db), true);
   assert.equal(db.craneBeams.assets["kb-1"].workshop, "ЛПЦ");
-  assert.equal(db.craneBeams.assets["kb-1"].entityType, "workshopNode");
+  assert.equal(db.craneBeams.assets["kb-1"].entityType, "nestedEquipment");
   assert.equal(db.craneBeams.assets["kb-1"].parentWorkshop, "ЛПЦ");
   assert.equal(db.craneBeams.assets["kb-1"].lowerQr, "PPRGPM|SHIFT|kb-1");
   assert.equal(db.craneBeams.assets["kb-1"].upperQr, "PPRGPM|MONTHLY|kb-1");
+  const child = db.catalog.equipment[String(db.craneBeams.assets["kb-1"].catalogEquipmentId)];
+  assert.equal(child.equipmentKind, "craneBeam");
+  assert.equal(child.parentEquipmentId, 1);
+  assert.equal(child.nodes.length, 6);
   assert.equal(Object.values(db.craneBeams.installationJournal).length, 1);
 });
 
@@ -64,12 +68,12 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.doesNotMatch(html, /id="craneBeamsButton"/);
   assert.match(app, /function nestedCraneEquipmentCard/);
   assert.match(app, /Вложенное оборудование/);
-  assert.match(app, /Обычный узел кран-балки/);
+  assert.match(app, /Обычный узел оборудования/);
   assert.match(app, /Вахтенный журнал/);
   assert.match(app, /Два QR-кода/);
   assert.match(app, /ordinaryNodeIndexes/);
   assert.match(app, /remote\.craneBeams/);
-  assert.match(app, /eq\.craneBeamNodes/);
+  assert.match(app, /parentEquipmentId/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
   assert.doesNotMatch(app, /function renderCraneBeamNodeCards/);
@@ -83,8 +87,11 @@ test("legacy GPM parent is replaced from the crane beam name", () => {
   ensureCraneBeams(db);
   assert.equal(db.craneBeams.assets.a.parentWorkshop, "Покрасочный цех");
   assert.equal(db.craneBeams.assets.b.parentWorkshop, "инструментальный цех");
-  assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит", "Кран балка N6 покраска ванна"]);
-  assert.equal(db.catalog.equipment[4].craneBeamNodes[1], "a");
+  assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит"]);
+  const children = Object.values(db.catalog.equipment).filter(item => item.equipmentKind === "craneBeam");
+  assert.equal(children.length, 2);
+  assert.equal(children.find(item => item.craneBeamId === "a").parentEquipmentId, 4);
+  assert.equal(children.find(item => item.craneBeamId === "b").parentEquipmentId, 8);
 });
 
 test("finish saw stays an ordinary press node and is removed only from crane assets", () => {
