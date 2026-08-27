@@ -19,7 +19,8 @@ test("archived crane beams return as workshop equipment with both permanent QR i
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "ЛПЦ" } } }, retiredCraneBeamArchive: { assets: [{ id: "kb-1", name: "Кран-балка ЛПЦ №1", lowerQr: "PPRGPM|SHIFT|kb-1", upperQr: "PPRGPM|MONTHLY|kb-1" }] } };
   assert.equal(ensureCraneBeams(db), true);
   assert.equal(db.craneBeams.assets["kb-1"].workshop, "ЛПЦ");
-  assert.equal(db.craneBeams.assets["kb-1"].entityType, "workshopNode");
+  assert.equal(db.craneBeams.assets["kb-1"].entityType, "nestedEquipment");
+  assert.equal(db.craneBeams.assets["kb-1"].parentEquipmentId, "1");
   assert.equal(db.craneBeams.assets["kb-1"].parentWorkshop, "ЛПЦ");
   assert.equal(db.craneBeams.assets["kb-1"].lowerQr, "PPRGPM|SHIFT|kb-1");
   assert.equal(db.craneBeams.assets["kb-1"].upperQr, "PPRGPM|MONTHLY|kb-1");
@@ -27,7 +28,7 @@ test("archived crane beams return as workshop equipment with both permanent QR i
 });
 
 test("outside employee writes journal but does not close the workshop shift counter", async () => {
-  const db = { craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const { handler, responses } = harness(db);
   await handler({ method: "POST", authUser: { id: "u", approved: true, role: "operator", name: "Оператор", area: "Другой цех" }, body: { craneId: "one", type: "shift", date: "2026-08-27", shift: "day", answers: { a: { ok: true } } } }, {}, "/api/crane-beams/inspect", new URL("http://test/api/crane-beams/inspect"));
   assert.equal(responses[0].status, 200);
@@ -36,7 +37,7 @@ test("outside employee writes journal but does not close the workshop shift coun
 });
 
 test("shop operator closes shift once and monthly QR is restricted", async () => {
-  const db = { craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const h = harness(db);
   const body = { craneId: "one", type: "shift", date: "2026-08-27", shift: "day", answers: { a: { ok: true } } };
   await h.handler({ method: "POST", authUser: { id: "u", role: "operator", name: "Оператор", area: "ЛПЦ" }, body }, {}, "/api/crane-beams/inspect", new URL("http://test"));
@@ -49,7 +50,7 @@ test("shop operator closes shift once and monthly QR is restricted", async () =>
 });
 
 test("unchecked points require comments and create one grouped defect", async () => {
-  const db = { craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }, { id: "b", label: "Крюк" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 1, checklist: [{ id: "a", label: "Тормоз" }, { id: "b", label: "Крюк" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
   const h = harness(db);
   await h.handler({ method: "POST", authUser: { id: "m", role: "mechanic", name: "Механик" }, body: { craneId: "one", type: "monthly", date: "2026-08-27", answers: { a: { ok: false, comment: "Износ" }, b: { ok: true } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
   assert.equal(h.responses[0].status, 200);
@@ -69,7 +70,7 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /Два QR-кода/);
   assert.match(app, /ordinaryNodeIndexes/);
   assert.match(app, /remote\.craneBeams/);
-  assert.match(app, /eq\.craneBeamNodes/);
+  assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
   assert.doesNotMatch(app, /function renderCraneBeamNodeCards/);
@@ -78,13 +79,15 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.doesNotMatch(app, /async function openCraneBeams/);
 });
 
-test("legacy GPM parent is replaced from the crane beam name", () => {
+test("legacy GPM placement is resolved but crane beams are not inserted into ordinary nodes", () => {
   const db = { catalog: { equipment: { 4: { name: "Покрасочный цех", area: "Покрасочный цех", nodes: ["Щит"] }, 8: { name: "инструментальный цех", area: "Инструментальный цех", nodes: ["Станок"] } } }, craneBeams: { migrationVersion: "retired-archive-v1", assets: { a: { id: "a", name: "Кран балка N6 покраска ванна", workshop: "ГПМ" }, b: { id: "b", name: "Кран-балка N 11 цианизация инструментальный", workshop: "ГПМ" } }, inspections: {}, defects: {}, installationJournal: {} } };
   ensureCraneBeams(db);
   assert.equal(db.craneBeams.assets.a.parentWorkshop, "Покрасочный цех");
-  assert.equal(db.craneBeams.assets.b.parentWorkshop, "инструментальный цех");
-  assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит", "Кран балка N6 покраска ванна"]);
-  assert.equal(db.catalog.equipment[4].craneBeamNodes[1], "a");
+  assert.equal(db.craneBeams.assets.b.parentWorkshop, "Инструментальный цех");
+  assert.equal(db.craneBeams.assets.a.entityType, "nestedEquipment");
+  assert.equal(db.craneBeams.assets.a.parentEquipmentId, "4");
+  assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит"]);
+  assert.equal(db.catalog.equipment[4].craneBeamNodes, undefined);
 });
 
 test("finish saw stays an ordinary press node and is removed only from crane assets", () => {
@@ -100,7 +103,22 @@ test("finish saw stays an ordinary press node and is removed only from crane ass
   ensureCraneBeams(db);
   assert.equal(db.craneBeams.assets.saw, undefined);
   assert.deepEqual(db.catalog.equipment[1].nodes, [saw]);
-  assert.deepEqual(db.catalog.equipment[1].craneBeamNodes, {});
+  assert.equal(db.catalog.equipment[1].craneBeamNodes, undefined);
+});
+
+test("unresolved crane stays in protected archive instead of an arbitrary workshop", () => {
+  const db = { catalog: { equipment: { 1: { name: "Пресс", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "mystery", name: "Кран-балка без цеха" }] } };
+  ensureCraneBeams(db);
+  assert.equal(db.craneBeams.assets.mystery, undefined);
+  assert.equal(db.craneBeams.unresolvedArchive.mystery.archiveStatus, "workshop_unresolved");
+});
+
+test("new crane checklist contains the specified 16 inspection points", () => {
+  const db = { catalog: { equipment: { 1: { name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "kb", name: "Кран-балка Пресс 2400" }] } };
+  ensureCraneBeams(db);
+  assert.equal(db.craneBeams.assets.kb.checklist.length, 16);
+  assert.equal(db.craneBeams.assets.kb.checklist[0].label, "Металлоконструкция и крепления");
+  assert.equal(db.craneBeams.assets.kb.checklist[15].label, "Рабочая зона и путь перемещения");
 });
 
 test("undo removes generated nested catalog equipment but keeps crane assets and journals", () => {

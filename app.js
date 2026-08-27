@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v672-delete-built-in-equipment-1";
+const APP_VERSION = "v673-clean-nested-crane-model-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -4919,12 +4919,8 @@ function openRepeatedNodeQrDestination(parsed, shift = currentWalkShift()) {
   });
 }
 
-function craneNodeIndexes(eq = {}) {
-  return (eq.nodes || []).map((_, index) => index).filter(index => eq.craneBeamNodes?.[index]);
-}
-
 function ordinaryNodeIndexes(eq = {}) {
-  return (eq.nodes || []).map((_, index) => index).filter(index => !eq.craneBeamNodes?.[index]);
+  return (eq.nodes || []).map((_, index) => index);
 }
 
 function refreshNodeWalkProgress(eq) {
@@ -11895,10 +11891,10 @@ function nodeDocumentMemoItems(eq, nodeName) {
       "Паспорт, карта уставок и журнал проверки релейной защиты — если она установлена."
     );
   }
-  if (/(кран|таль|тельфер|лебед|подъем|подъём|гпм|строп|крюк)/u.test(searchText)) {
+  if (/(кран|таль|тельфер|лебед|подъем|подъём|строп|крюк)/u.test(searchText)) {
     add(
       "Паспорт грузоподъёмного механизма с записями о ремонтах и технических освидетельствованиях.",
-      "Журнал ежесменного осмотра ГПМ.",
+      "Журнал ежесменного осмотра кран-балки.",
       "Акты частичного и полного технического освидетельствования.",
       "Протоколы статических и динамических испытаний.",
       "Журнал осмотра канатов, крюков, стропов и грузозахватных приспособлений."
@@ -12011,8 +12007,7 @@ function renderNodes() {
     }
     ui.nodeList.append(card);
   });
-  const nestedCraneAssets = craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id)
-    || Object.values(eq.craneBeamNodes || {}).some(craneId => String(craneId) === String(asset.id)));
+  const nestedCraneAssets = craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id));
   nestedCraneAssets.forEach(asset => ui.nodeList.append(nestedCraneEquipmentCard(asset)));
 }
 

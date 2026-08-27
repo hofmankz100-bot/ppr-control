@@ -3,12 +3,22 @@
 const crypto = require("crypto");
 
 const DEFAULT_CHECKLIST = [
-  "Состояние металлоконструкции и креплений",
-  "Крюк, канат, цепь и грузозахватные устройства",
-  "Тормоза и ограничители",
-  "Пульт управления и аварийная остановка",
-  "Электрооборудование и кабель",
-  "Путь перемещения и рабочая зона"
+  "Металлоконструкция и крепления",
+  "Болтовые и сварные соединения",
+  "Крюк и предохранительный замок",
+  "Канат, цепь и крепление",
+  "Барабан и направляющие",
+  "Тормозной механизм",
+  "Редуктор и привод",
+  "Электродвигатель",
+  "Концевые выключатели",
+  "Пульт управления",
+  "Аварийная остановка",
+  "Звуковая сигнализация",
+  "Кабели и токоподвод",
+  "Заземление",
+  "Отсутствие посторонних шумов и вибрации",
+  "Рабочая зона и путь перемещения"
 ];
 
 function text(value, limit = 300) { return String(value || "").trim().slice(0, limit); }
@@ -21,15 +31,68 @@ function same(value, expected) { return text(value).toLocaleLowerCase("ru-RU") =
 function actor(user = {}) { return { id: text(user.id || user.employeeId, 120), employeeId: text(user.employeeId, 80), name: text(user.name || "Сотрудник", 200), role: roleOf(user), jobRole: text(user.jobRole, 100), area: text(user.area, 200) }; }
 function newId(prefix) { return `${prefix}:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`; }
 
-function inferWorkshop(asset = {}, equipment = {}) {
-  const source = `${asset.name || ""} ${asset.workshop || ""}`.toLocaleLowerCase("ru-RU");
-  const areas = [...new Set(Object.values(equipment || {}).map(item => text(item?.area, 200)).filter(Boolean))];
-  return areas.sort((a, b) => b.length - a.length).find(area => source.includes(area.toLocaleLowerCase("ru-RU"))) || text(asset.workshop, 200) || "Цех не определён";
+function normalized(value) {
+  return text(value, 300).toLocaleLowerCase("ru-RU").replaceAll("ё", "е").replace(/[^a-zа-я0-9]+/giu, " ").trim();
+}
+
+function workshopHint(asset = {}) {
+  const source = normalized(`${asset.name || ""} ${asset.workshop || ""} ${asset.installationPlace || ""}`);
+  if (/\bсгп\b/u.test(source)) return "сгп";
+  if (/литейн/u.test(source)) return "литейн";
+  if (/анод/u.test(source)) return "анод";
+  if (/покрас|ванн/u.test(source)) return "покрас";
+  if (/инструмент|цианизац/u.test(source)) return "инструмент";
+  if (/пресс|матриц|\b1540\b|\b2400\b/u.test(source)) return "пресс";
+  return "";
+}
+
+function resolveWorkshop(asset = {}, equipment = {}) {
+  const entries = Object.entries(equipment || {}).filter(([, card]) => card && card.deleted !== true && card.equipmentKind !== "craneBeam");
+  const source = normalized(`${asset.name || ""} ${asset.workshop || ""} ${asset.installationPlace || ""}`);
+  const savedParent = entries.find(([id]) => String(id) === String(asset.parentEquipmentId || ""));
+  const numberedParent = /\b1540\b/u.test(source)
+    ? entries.find(([, card]) => normalized(card.name).includes("1540"))
+    : /\b2400\b/u.test(source) ? entries.find(([, card]) => normalized(card.name).includes("2400")) : null;
+  const areas = entries.flatMap(([id, card]) => [
+    { id, card, value: text(card.area, 200) },
+    { id, card, value: text(card.name, 200) }
+  ]).filter(item => item.value && source.includes(normalized(item.value))).sort((a, b) => normalized(b.value).length - normalized(a.value).length);
+  const hint = workshopHint(asset);
+  const hintedParent = hint ? entries.find(([, card]) => normalized(`${card.name || ""} ${card.area || ""}`).includes(hint)) : null;
+  const parent = numberedParent || areas[0] && [areas[0].id, areas[0].card] || hintedParent || savedParent;
+  if (!parent) return null;
+  const [parentEquipmentId, card] = parent;
+  return { parentEquipmentId: String(parentEquipmentId), workshop: text(card.area || card.name, 200), parentName: text(card.name, 200) };
+}
+
+function removeLegacyCraneNodes(db, excludedAssetIds = new Set()) {
+  Object.values(db.catalog?.equipment || {}).forEach(card => {
+    if (!card?.craneBeamNodes || typeof card.craneBeamNodes !== "object") return;
+    const removedIndexes = new Set(Object.entries(card.craneBeamNodes)
+      .filter(([, craneId]) => !excludedAssetIds.has(String(craneId)))
+      .map(([index]) => Number(index)).filter(Number.isInteger));
+    if (removedIndexes.size && Array.isArray(card.nodes)) {
+      card.nodes = card.nodes.filter((_, index) => !removedIndexes.has(index));
+      ["reminders", "reminderMeta", "nodeOperationalPauses", "nodeCreatedAt", "qrTokens", "upperQrTokens", "qrUpdatedAt"].forEach(field => {
+        if (!card[field] || typeof card[field] !== "object") return;
+        const shifted = {};
+        Object.entries(card[field]).forEach(([rawIndex, value]) => {
+          const index = Number(rawIndex);
+          if (!Number.isInteger(index) || removedIndexes.has(index)) return;
+          const nextIndex = index - [...removedIndexes].filter(removed => removed < index).length;
+          shifted[nextIndex] = value;
+        });
+        card[field] = shifted;
+      });
+    }
+    delete card.craneBeamNodes;
+  });
 }
 
 function ensureCraneBeams(db) {
-  db.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "" };
-  for (const key of ["assets", "inspections", "defects", "installationJournal"]) db.craneBeams[key] ||= {};
+  db.craneBeams ||= { schemaVersion: 1, assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: {}, migrationVersion: "" };
+  db.craneBeams.schemaVersion = 1;
+  for (const key of ["assets", "inspections", "defects", "installationJournal", "unresolvedArchive"]) db.craneBeams[key] ||= {};
   const removedNestedEquipmentIds = new Set();
   Object.entries(db.catalog?.equipment || {}).forEach(([equipmentId, card]) => {
     if (card?.equipmentKind !== "craneBeam") return;
@@ -64,40 +127,22 @@ function ensureCraneBeams(db) {
       if (ordinaryNodeAssetIds.has(String(row?.craneId))) delete db.craneBeams.installationJournal[id];
     });
   }
-  Object.values(db.craneBeams.assets).forEach(asset => {
+  removeLegacyCraneNodes(db, ordinaryNodeAssetIds);
+  Object.entries(db.craneBeams.assets).forEach(([id, asset]) => {
     if (!asset) return;
-    const name = text(asset.name, 200).toLocaleLowerCase("ru-RU");
-    if (/сгп/u.test(name)) asset.workshop = "Сгп";
-    else if (/литейн/u.test(name)) asset.workshop = "Литейный цех";
-    else if (/анод/u.test(name)) asset.workshop = "Анодный цех";
-    else if (/покрас|покраск|ванн/u.test(name)) asset.workshop = "Покрасочный цех";
-    else if (/инструмент|цианизац/u.test(name)) asset.workshop = "инструментальный цех";
-    else if (/пресс|матриц/u.test(name)) asset.workshop = "Прессовый участок";
-    asset.entityType = "workshopNode";
-    asset.parentWorkshop = text(asset.workshop, 200);
-  });
-  const catalogEntries = Object.entries(db.catalog?.equipment || {});
-  Object.values(db.craneBeams.assets).forEach(asset => {
-    if (!asset || asset.archived) return;
-    const normalized = value => text(value, 240).toLocaleLowerCase("ru-RU");
-    const assetName = normalized(asset.name), workshop = normalized(asset.parentWorkshop || asset.workshop);
-    let parent = assetName.includes("1540") ? catalogEntries.find(([, card]) => normalized(card?.name).includes("1540")) : null;
-    if (!parent && assetName.includes("2400")) parent = catalogEntries.find(([, card]) => normalized(card?.name).includes("2400"));
-    parent ||= catalogEntries.find(([, card]) => normalized(card?.name) === workshop);
-    parent ||= catalogEntries.find(([, card]) => normalized(card?.area) === workshop);
-    if (!parent) return;
-    const [equipmentId, card] = parent;
-    card.nodes = Array.isArray(card.nodes) ? card.nodes : [];
-    card.craneBeamNodes = card.craneBeamNodes && typeof card.craneBeamNodes === "object" ? card.craneBeamNodes : {};
-    let nodeIndex = Object.entries(card.craneBeamNodes).find(([, craneId]) => String(craneId) === String(asset.id))?.[0];
-    nodeIndex = Number(nodeIndex);
-    if (!Number.isInteger(nodeIndex) || nodeIndex < 0) {
-      nodeIndex = card.nodes.findIndex(node => normalized(node) === normalized(asset.name));
-      if (nodeIndex < 0) { nodeIndex = card.nodes.length; card.nodes.push(asset.name); }
-    } else card.nodes[nodeIndex] = asset.name;
-    card.craneBeamNodes[nodeIndex] = asset.id;
-    asset.parentEquipmentId = String(equipmentId);
-    asset.parentNodeIndex = nodeIndex;
+    const resolved = resolveWorkshop(asset, db.catalog?.equipment);
+    if (!resolved) {
+      db.craneBeams.unresolvedArchive[id] = { ...asset, archiveStatus: "workshop_unresolved", archivedAt: asset.archivedAt || new Date().toISOString() };
+      delete db.craneBeams.assets[id];
+      return;
+    }
+    asset.workshop = resolved.workshop;
+    asset.parentWorkshop = resolved.workshop;
+    asset.parentEquipmentId = resolved.parentEquipmentId;
+    asset.parentEquipmentName = resolved.parentName;
+    asset.entityType = "nestedEquipment";
+    delete asset.parentNodeIndex;
+    delete db.craneBeams.unresolvedArchive[id];
   });
   if (db.craneBeams.migrationVersion === "retired-archive-v1") return false;
   const archived = Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : [];
@@ -105,9 +150,15 @@ function ensureCraneBeams(db) {
   archived.forEach((saved, index) => {
     const id = text(saved.id, 120) || `crane-${index + 1}`;
     if (db.craneBeams.assets[id]) return;
-    const workshop = inferWorkshop(saved, db.catalog?.equipment);
+    const resolved = resolveWorkshop(saved, db.catalog?.equipment);
+    if (!resolved) {
+      db.craneBeams.unresolvedArchive[id] = { ...saved, id, archiveStatus: "workshop_unresolved", archivedAt: now };
+      return;
+    }
+    const workshop = resolved.workshop;
     const asset = {
-      id, name: text(saved.name, 200) || `Кран-балка ${index + 1}`, workshop, parentWorkshop: workshop, entityType: "workshopNode",
+      id, name: text(saved.name, 200) || `Кран-балка ${index + 1}`, workshop, parentWorkshop: workshop, entityType: "nestedEquipment",
+      parentEquipmentId: resolved.parentEquipmentId, parentEquipmentName: resolved.parentName,
       inventoryNumber: text(saved.inventoryNumber, 120), installationPlace: text(saved.installationPlace || saved.workshop, 240),
       installationDate: text(saved.installationDate, 10), installationStatus: "installed", installed: true,
       lowerQr: text(saved.lowerQr, 300) || `PPRGPM|SHIFT|${id}`,
@@ -138,7 +189,8 @@ function closesCounter(user, asset, type) {
 function publicCraneState(db, user) {
   ensureCraneBeams(db);
   const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
-  return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), canManage: roleOf(user) === "editor" };
+  const canManage = roleOf(user) === "editor";
+  return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
 function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
@@ -182,10 +234,14 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
       const result = await enqueueStateWrite(async () => {
         const db = readDb(); ensureCraneBeams(db); const now = new Date().toISOString();
         const id = text(body.id, 120) || newId("crane"); const previous = db.craneBeams.assets[id];
-        const name = text(body.name, 200), workshop = text(body.workshop, 200); if (!name || !workshop) return { error: "crane_fields_required" };
+        const name = text(body.name, 200), workshopInput = text(body.workshop, 200); if (!name || !workshopInput) return { error: "crane_fields_required" };
+        const resolved = resolveWorkshop({ ...(previous || {}), name, workshop: workshopInput, installationPlace: body.installationPlace, parentEquipmentId: body.parentEquipmentId || previous?.parentEquipmentId }, db.catalog?.equipment);
+        if (!resolved) return { error: "crane_workshop_unresolved" };
+        const workshop = resolved.workshop;
         const checklist = Array.isArray(body.checklist) ? body.checklist.map((label, index) => ({ id: previous?.checklist?.[index]?.id || `check-${index + 1}`, label: text(typeof label === "string" ? label : label?.label, 240) })).filter(item => item.label) : previous?.checklist || DEFAULT_CHECKLIST.map((label, index) => ({ id: `check-${index + 1}`, label }));
         const status = ["installed", "dismantled", "temporary", "archived"].includes(body.installationStatus) ? body.installationStatus : previous?.installationStatus || "installed";
-        const asset = { ...(previous || {}), id, name, workshop, parentWorkshop: workshop, entityType: "workshopNode", inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: body.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, createdAt: previous?.createdAt || now, updatedAt: now };
+        const asset = { ...(previous || {}), id, name, workshop, parentWorkshop: workshop, parentEquipmentId: resolved.parentEquipmentId, parentEquipmentName: resolved.parentName, entityType: "nestedEquipment", inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: body.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, createdAt: previous?.createdAt || now, updatedAt: now };
+        delete asset.parentNodeIndex;
         db.craneBeams.assets[id] = asset;
         const changedInstallation = !previous || previous.workshop !== asset.workshop || previous.installationPlace !== asset.installationPlace || previous.installationStatus !== asset.installationStatus || previous.installationDate !== asset.installationDate;
         if (changedInstallation) { const eventId = newId("installation"); db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: previous ? (status === "installed" ? "installed_or_moved" : status) : "installed", status, workshop, previousWorkshop: previous?.workshop || "", place: asset.installationPlace, date: asset.installationDate, at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: text(body.installationComment, 1000) }; }
