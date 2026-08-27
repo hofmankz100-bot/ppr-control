@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v676-crane-nested-admin-1";
+const APP_VERSION = "v677-crane-shift-inspection-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -19075,25 +19075,68 @@ function craneOverlay(title, content) {
   return overlay;
 }
 
+function craneInspectionDraftKey(assetId, type, date, shift) {
+  return `${STORE_KEY}-crane-draft:${assetId}:${type}:${date}:${shift}`;
+}
+
+function readCraneInspectionDraft(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null") || null; } catch { return null; }
+}
+
+function saveCraneInspectionDraft(key, form, checklist) {
+  const draft = {
+    savedAt: new Date().toISOString(),
+    decision: form.elements.decision?.value || "allowed_with_remark",
+    answers: Object.fromEntries(checklist.map(item => [item.id, {
+      ok: Boolean(form.elements[item.id]?.checked),
+      comment: String(form.elements[`comment-${item.id}`]?.value || "").trim()
+    }]))
+  };
+  try { localStorage.setItem(key, JSON.stringify(draft)); } catch {}
+}
+
 function openCraneInspection(asset, type = "shift") {
   const monthly = type === "monthly";
   const checklist = Array.isArray(asset.checklist) ? asset.checklist : [];
+  const inspectionDate = todayISO();
+  const inspectionShift = currentWalkShift();
+  const draftKey = craneInspectionDraftKey(asset.id, type, inspectionDate, monthly ? "monthly" : inspectionShift.key);
+  const draft = readCraneInspectionDraft(draftKey);
   const overlay = craneOverlay(`${asset.name} · ${monthly ? "Ежемесячное ТО" : "Ежесменный осмотр"}`, `
-    <div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span></div>
+    <div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span><span>${escapeHtml(dateHuman(inspectionDate))}${monthly ? " · ежемесячный осмотр" : ` · ${escapeHtml(inspectionShift.label)}`}</span></div>
     <form class="crane-inspection-form">
-      <div class="crane-form-actions"><button type="button" data-all-good>✓ Всё исправно</button><select name="shift" ${monthly ? "hidden" : ""}><option value="day" ${currentWalkShift().key === "day" ? "selected" : ""}>Дневная смена</option><option value="night" ${currentWalkShift().key === "night" ? "selected" : ""}>Ночная смена</option></select></div>
-      <div class="crane-checklist">${checklist.map(item => `<article><label><input type="checkbox" name="${escapeHtml(item.id)}"><span><strong>${escapeHtml(item.label)}</strong><small>Отметьте, если исправно</small></span></label><textarea name="comment-${escapeHtml(item.id)}" placeholder="Комментарий обязателен, если пункт не отмечен"></textarea></article>`).join("")}</div>
+      <div class="crane-form-actions"><button type="button" data-all-good>✓ Всё исправно</button><small data-crane-draft-status>${draft ? "Черновик восстановлен" : "Дата и смена определены автоматически"}</small></div>
+      <div class="crane-checklist">${checklist.map(item => `<article><label><input type="checkbox" name="${escapeHtml(item.id)}"><span><strong>${escapeHtml(item.label)}</strong><small>Отметьте, если исправно</small></span></label><textarea name="comment-${escapeHtml(item.id)}" placeholder="Комментарий обязателен, если пункт не отмечен"></textarea><label class="crane-photo-field"><span>Фото замечания</span><input type="file" name="photo-${escapeHtml(item.id)}" accept="image/*" capture="environment"></label></article>`).join("")}</div>
       <label class="crane-decision"><span>Решение при замечании</span><select name="decision"><option value="allowed_with_remark">Работа разрешена с замечанием</option><option value="prohibited">Эксплуатация запрещена</option></select></label>
       <button type="submit" class="crane-save-inspection">Записать в вахтенный журнал</button>
     </form>`);
   const form = overlay.querySelector("form");
-  overlay.querySelector("[data-all-good]").addEventListener("click", () => form.querySelectorAll('.crane-checklist input[type="checkbox"]').forEach(input => { input.checked = true; }));
+  if (draft) {
+    form.elements.decision.value = draft.decision || "allowed_with_remark";
+    checklist.forEach(item => {
+      form.elements[item.id].checked = draft.answers?.[item.id]?.ok === true;
+      form.elements[`comment-${item.id}`].value = draft.answers?.[item.id]?.comment || "";
+    });
+  }
+  const persistDraft = () => {
+    saveCraneInspectionDraft(draftKey, form, checklist);
+    const status = overlay.querySelector("[data-crane-draft-status]");
+    if (status) status.textContent = "Черновик сохранён на этом устройстве";
+  };
+  form.addEventListener("input", persistDraft);
+  form.addEventListener("change", persistDraft);
+  overlay.querySelector("[data-all-good]").addEventListener("click", () => { form.querySelectorAll('.crane-checklist input[type="checkbox"]').forEach(input => { input.checked = true; }); persistDraft(); });
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
-    const answers = Object.fromEntries(checklist.map(item => [item.id, { ok: form.elements[item.id].checked, comment: form.elements[`comment-${item.id}`].value.trim() }]));
+    const answerRows = await Promise.all(checklist.map(async item => {
+      const file = form.elements[`photo-${item.id}`]?.files?.[0];
+      return [item.id, { ok: form.elements[item.id].checked, comment: form.elements[`comment-${item.id}`].value.trim(), photo: file ? await readPhotoFile(file) : "" }];
+    }));
+    const answers = Object.fromEntries(answerRows);
     try {
-      const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, date: todayISO(), shift: form.elements.shift?.value || currentWalkShift().key, decision: form.elements.decision.value, answers }) });
+      const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, date: inspectionDate, shift: inspectionShift.key, decision: form.elements.decision.value, answers }) });
+      try { localStorage.removeItem(draftKey); } catch {}
       craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "node" ? renderNodes() : renderEquipment();
     } catch (error) { window.alert(error.message === "crane_defect_comment_required" ? "Укажите комментарий для каждого неотмеченного пункта." : error.message); submit.disabled = false; }
   });
@@ -19112,7 +19155,7 @@ function openCraneNodeDetails(asset) {
 function openCraneJournal(asset) {
   const rows = craneBeamState.inspections.filter(row => row.craneId === asset.id).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const columns = [...new Map(rows.flatMap(row => row.answers || []).map(item => [item.id, item.label])).entries()];
-  const overlay = craneOverlay(`Вахтенный журнал · ${asset.name}`, `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата и смена</th><th>Вид осмотра</th><th>Сотрудник</th>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}<th>Результат</th><th>Замечание</th><th>Устранение</th><th>Подтверждение</th></tr></thead><tbody>${rows.length ? rows.map(row => { const answers = new Map((row.answers || []).map(item => [item.id, item])); const defect = craneBeamState.defects.find(item => item.inspectionId === row.id); const canResolve = defect && ["open", "returned"].includes(defect.status) && ["mechanic", "electrician", "engineer"].includes(profile?.role); const canConfirm = defect?.status === "awaiting_confirmation" && profile?.role === "engineer"; return `<tr><td>${escapeHtml(row.date)}<br>${row.type === "monthly" ? "—" : row.shift === "night" ? "Ночь" : "День"}</td><td>${row.type === "monthly" ? "Ежемесячное ТО" : "Ежесменный осмотр"}</td><td><strong>${escapeHtml(row.actor?.name)}</strong><br>${escapeHtml(craneRoleLabel(row.actor?.role))}</td>${columns.map(([id]) => { const answer = answers.get(id); return `<td class="${answer?.ok ? "is-good" : "is-bad"}">${answer ? (answer.ok ? "✓" : `✕<br>${escapeHtml(answer.comment)}`) : "—"}</td>`; }).join("")}<td>${row.result === "good" ? "Исправно" : row.result === "prohibited" ? "Запрещено" : "С замечанием"}</td><td>${escapeHtml(defect?.items?.map(item => `${item.label}: ${item.comment}`).join("; ") || "—")}</td><td>${escapeHtml(defect?.resolution?.comment || "—")}${canResolve ? `<br><button data-defect-resolve="${escapeHtml(defect.id)}">Записать устранение</button>` : ""}</td><td>${escapeHtml(defect?.confirmation?.comment || "—")}${canConfirm ? `<br><button data-defect-confirm="${escapeHtml(defect.id)}">Подтвердить</button><button data-defect-return="${escapeHtml(defect.id)}">Вернуть</button>` : ""}</td></tr>`; }).join("") : `<tr><td colspan="${columns.length + 8}">Записей пока нет</td></tr>`}</tbody></table></div>`);
+  const overlay = craneOverlay(`Вахтенный журнал · ${asset.name}`, `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата и смена</th><th>Вид осмотра</th><th>Сотрудник</th>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}<th>Результат</th><th>Замечание</th><th>Устранение</th><th>Подтверждение</th></tr></thead><tbody>${rows.length ? rows.map(row => { const answers = new Map((row.answers || []).map(item => [item.id, item])); const defect = craneBeamState.defects.find(item => item.inspectionId === row.id); const canResolve = defect && ["open", "returned"].includes(defect.status) && ["mechanic", "electrician", "engineer"].includes(profile?.role); const canConfirm = defect?.status === "awaiting_confirmation" && profile?.role === "engineer"; return `<tr><td>${escapeHtml(row.date)}<br>${row.type === "monthly" ? "—" : row.shift === "night" ? "Ночь" : "День"}</td><td>${row.type === "monthly" ? "Ежемесячное ТО" : "Ежесменный осмотр"}</td><td><strong>${escapeHtml(row.actor?.name)}</strong><br>${escapeHtml(craneRoleLabel(row.actor?.role))}</td>${columns.map(([id]) => { const answer = answers.get(id); return `<td class="${answer?.ok ? "is-good" : "is-bad"}">${answer ? (answer.ok ? "✓" : `✕<br>${escapeHtml(answer.comment)}${answer.photo ? `<br><a href="${escapeHtml(answer.photo)}" target="_blank" rel="noopener"><img class="crane-journal-photo" src="${escapeHtml(answer.photo)}" alt="Фото замечания"></a>` : ""}`) : "—"}</td>`; }).join("")}<td>${row.result === "good" ? "Исправно" : row.result === "prohibited" ? "Запрещено" : "С замечанием"}</td><td>${escapeHtml(defect?.items?.map(item => `${item.label}: ${item.comment}`).join("; ") || "—")}</td><td>${escapeHtml(defect?.resolution?.comment || "—")}${canResolve ? `<br><button data-defect-resolve="${escapeHtml(defect.id)}">Записать устранение</button>` : ""}</td><td>${escapeHtml(defect?.confirmation?.comment || "—")}${canConfirm ? `<br><button data-defect-confirm="${escapeHtml(defect.id)}">Подтвердить</button><button data-defect-return="${escapeHtml(defect.id)}">Вернуть</button>` : ""}</td></tr>`; }).join("") : `<tr><td colspan="${columns.length + 8}">Записей пока нет</td></tr>`}</tbody></table></div>`);
   const act = async (defectId, action) => {
     const comment = window.prompt(action === "resolve" ? "Что выполнено для устранения?" : action === "confirm" ? "Комментарий подтверждения" : "Причина возврата");
     if (comment === null || !comment.trim()) return;
