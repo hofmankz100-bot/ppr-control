@@ -116,6 +116,19 @@ test("finish saw stays an ordinary press node and is removed only from crane ass
   assert.equal(db.catalog.equipment[1].craneBeamNodes, undefined);
 });
 
+test("upper QR closes the monthly counter once for engineers but never for admin", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран №1", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const body = { craneId: "one", type: "monthly", date: "2026-08-27", answers: { a: { ok: true } } };
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "e", role: "engineer", name: "Инженер" }, body }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  await h.handler({ method: "POST", authUser: { id: "m", role: "mechanic", name: "Электромеханик" }, body }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  assert.equal(h.responses[0].payload.inspection.counterApplied, true);
+  assert.equal(h.responses[1].payload.inspection.counterApplied, false);
+  const admin = harness(db);
+  await admin.handler({ method: "POST", authUser: { id: "a", role: "editor", name: "Админ" }, body }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  assert.equal(admin.responses[0].status, 403);
+});
+
 test("admin-selected parent equipment wins over words in the crane name", async () => {
   const db = { catalog: { equipment: {} }, craneBeams: { assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1" } };
   const builtIn = {
@@ -127,6 +140,20 @@ test("admin-selected parent equipment wins over words in the crane name", async 
   assert.equal(h.responses[0].status, 200);
   assert.equal(h.responses[0].payload.asset.parentEquipmentId, "3");
   assert.equal(h.responses[0].payload.asset.workshop, "Литейный цех");
+});
+
+test("admin correction requires a reason and preserves before and after snapshots", async () => {
+  const inspection = { id: "inspection-1", craneId: "one", type: "shift", date: "2026-08-27", shift: "day", actor: { name: "Старое имя", role: "operator" }, answers: [{ id: "a", label: "Тормоз", ok: true, comment: "" }], result: "good", decision: "allowed" };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", parentEquipmentId: "1", checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: { "inspection-1": inspection }, defects: {}, installationJournal: {}, corrections: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1" } };
+  const missing = harness(db);
+  await missing.handler({ method: "POST", authUser: { id: "admin", role: "editor" }, body: { inspectionId: "inspection-1", actorName: "Новое имя" } }, {}, "/api/crane-beams/correct", new URL("http://test"));
+  assert.equal(missing.responses[0].status, 400);
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { inspectionId: "inspection-1", reason: "Исправление ошибки", actorName: "Новое имя", answers: { a: { ok: false, comment: "Износ" } } } }, {}, "/api/crane-beams/correct", new URL("http://test"));
+  assert.equal(h.responses[0].status, 200);
+  assert.equal(h.responses[0].payload.correction.before.actor.name, "Старое имя");
+  assert.equal(h.responses[0].payload.correction.after.actor.name, "Новое имя");
+  assert.equal(h.responses[0].payload.inspection.result, "remark");
 });
 test("unresolved crane stays in protected archive instead of an arbitrary workshop", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "mystery", name: "Кран-балка без цеха" }] } };

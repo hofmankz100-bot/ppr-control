@@ -105,9 +105,9 @@ function removeLegacyCraneNodes(db, excludedAssetIds = new Set()) {
 }
 
 function ensureCraneBeams(db, builtInEquipment = {}) {
-  db.craneBeams ||= { schemaVersion: 1, assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: {}, migrationVersion: "" };
+  db.craneBeams ||= { schemaVersion: 1, assets: {}, inspections: {}, defects: {}, installationJournal: {}, corrections: {}, unresolvedArchive: {}, migrationVersion: "" };
   db.craneBeams.schemaVersion = 1;
-  for (const key of ["assets", "inspections", "defects", "installationJournal", "unresolvedArchive"]) db.craneBeams[key] ||= {};
+  for (const key of ["assets", "inspections", "defects", "installationJournal", "corrections", "unresolvedArchive"]) db.craneBeams[key] ||= {};
   const equipmentReference = { ...(builtInEquipment || {}), ...(db.catalog?.equipment || {}) };
   const removedNestedEquipmentIds = new Set();
   Object.entries(db.catalog?.equipment || {}).forEach(([equipmentId, card]) => {
@@ -227,7 +227,7 @@ function publicCraneState(db, user, builtInEquipment = {}) {
   ensureCraneBeams(db, builtInEquipment);
   const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
   const canManage = roleOf(user) === "editor";
-  return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
+  return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
 function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
@@ -285,6 +285,37 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         writeDb(db, { action: "crane_beam_saved", user: req.authUser, craneId: id }); return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
       if (result.error) sendJson(res, 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+    }
+    if (pathname === "/api/crane-beams/correct" && req.method === "POST") {
+      if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+      const result = await enqueueStateWrite(async () => {
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment);
+        const inspection = db.craneBeams.inspections[text(body.inspectionId, 180)];
+        const reason = text(body.reason, 1200);
+        if (!inspection) return { error: "crane_inspection_not_found" };
+        if (!reason) return { error: "crane_correction_reason_required" };
+        const before = structuredClone(inspection);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(body.date || ""))) inspection.date = body.date;
+        if (inspection.type === "shift" && ["day", "night"].includes(body.shift)) inspection.shift = body.shift;
+        inspection.actor ||= {};
+        if (text(body.actorName, 200)) inspection.actor.name = text(body.actorName, 200);
+        if (text(body.actorRole, 80)) inspection.actor.role = text(body.actorRole, 80);
+        if (body.answers && typeof body.answers === "object") {
+          inspection.answers = (inspection.answers || []).map(answer => {
+            const patch = body.answers[answer.id];
+            if (!patch || typeof patch !== "object") return answer;
+            return { ...answer, ok: patch.ok === true, comment: text(patch.comment, 1000), photo: text(patch.photo || answer.photo, 500) };
+          });
+        }
+        inspection.result = inspection.answers.some(answer => !answer.ok) ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good";
+        inspection.decision = inspection.result === "good" ? "allowed" : inspection.result === "prohibited" ? "prohibited" : "allowed_with_remark";
+        inspection.correctedAt = new Date().toISOString();
+        const correctionId = newId("crane-correction");
+        db.craneBeams.corrections[correctionId] = { id: correctionId, inspectionId: inspection.id, craneId: inspection.craneId, at: inspection.correctedAt, reason, actor: actor(req.authUser), before, after: structuredClone(inspection) };
+        writeDb(db, { action: "crane_beam_inspection_corrected", user: req.authUser, craneId: inspection.craneId, inspectionId: inspection.id, correctionId, reason });
+        return { inspection, correction: db.craneBeams.corrections[correctionId], state: publicCraneState(db, req.authUser, builtInEquipment) };
+      });
+      if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
     if (pathname === "/api/crane-beams/defect" && req.method === "POST") {
       const result = await enqueueStateWrite(async () => {
