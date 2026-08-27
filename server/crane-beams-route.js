@@ -166,6 +166,16 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
     asset.entityType = "nestedEquipment";
     const archivedSource = archivedById.get(String(id));
     if (archivedSource) asset.legacyQrAliases = archivedQrAliases(archivedSource);
+    if (asset.checklistSchemaVersion !== 2) {
+      const previousChecklist = Array.isArray(asset.checklist) ? asset.checklist.map(item => ({ ...item })) : [];
+      if (previousChecklist.length) {
+        asset.checklistHistory ||= [];
+        asset.checklistHistory.push({ version: Number(asset.checklistVersion || 1), checklist: previousChecklist, retiredAt: new Date().toISOString() });
+      }
+      asset.checklistVersion = Math.max(2, Number(asset.checklistVersion || 1) + (previousChecklist.length ? 1 : 0));
+      asset.checklist = DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label }));
+      asset.checklistSchemaVersion = 2;
+    }
     delete asset.parentNodeIndex;
     delete db.craneBeams.unresolvedArchive[id];
   });
@@ -189,7 +199,7 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
       lowerQr: text(saved.lowerQr, 300) || `PPRGPM|SHIFT|${id}`,
       upperQr: text(saved.upperQr, 300) || `PPRGPM|MONTHLY|${id}`,
       legacyQrAliases: archivedQrAliases(saved),
-      checklistVersion: 1, checklist: DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label })),
+      checklistVersion: 1, checklistSchemaVersion: 2, checklist: DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label })),
       monthlyDay: 1, createdAt: now, restoredFromArchive: true, operationalPaused: false
     };
     db.craneBeams.assets[id] = asset;
