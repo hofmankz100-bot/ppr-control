@@ -69,6 +69,7 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /Вложенное оборудование/);
   assert.doesNotMatch(app, /Обычный узел кран-балки/);
   assert.doesNotMatch(app, /class="nested-crane-nodes"/);
+  assert.doesNotMatch(app, /data-crane-open/);
   assert.match(app, /Вахтенный журнал/);
   assert.match(app, /Два QR-кода/);
   assert.match(app, /ordinaryNodeIndexes/);
