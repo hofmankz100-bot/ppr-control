@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v683-crane-schedule-audit-1";
+const APP_VERSION = "v684-cranes-visible-in-node-walk-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -12687,6 +12687,9 @@ function renderNodeWalkthrough(eq) {
     });
     list.append(row);
   });
+  if (selectedNodeIndex === null) {
+    craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id)).forEach(asset => list.append(nestedCraneEquipmentCard(asset)));
+  }
   ui.taskList.append(list);
   if (current.scrollToDowntimeNode !== null && current.scrollToDowntimeNode !== undefined) {
     const targetIndex = current.scrollToDowntimeNode;
@@ -19205,7 +19208,7 @@ function openCraneInspection(asset, type = "shift") {
     try {
       const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, submissionId, decision: form.elements.decision.value, answers }) });
       try { localStorage.removeItem(draftKey); } catch {}
-      craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "node" ? renderNodes() : renderEquipment();
+      craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment();
     } catch (error) { window.alert(error.message === "crane_defect_comment_required" ? "Укажите комментарий для каждого неотмеченного пункта." : error.message); submit.disabled = false; }
   });
 }
@@ -19328,8 +19331,8 @@ function editCraneAsset(asset = {}) {
   const controls = asset.id ? `<div class="crane-node-detail-actions">${asset.operationalPaused ? '<button type="button" data-crane-resume>Возобновить эксплуатацию</button>' : '<button type="button" data-crane-pause>Остановить с причиной</button>'}<button type="button" data-crane-trash>Переместить в корзину</button><button type="button" data-open-crane-trash>Открыть корзину (${(craneBeamState.archivedAssets || []).length})</button></div>${asset.operationalPaused ? `<div class="crane-prohibition-banner"><strong>Счётчики остановлены</strong><span>${escapeHtml(asset.pauseReason || "Причина не указана")}</span></div>` : ""}` : "";
   const overlay = craneOverlay(asset.id ? `Настройка · ${asset.name}` : "Добавить кран-балку", `${controls}<form class="crane-admin-form"><label>Название<input name="name" required value="${escapeHtml(asset.name || "")}"></label><label>Внутри оборудования<select name="parentEquipmentId" required>${parentOptions}</select><small>Кран-балка будет показана внутри выбранного оборудования, отдельно от его обычных узлов.</small></label><label>Инвентарный номер<input name="inventoryNumber" value="${escapeHtml(asset.inventoryNumber || "")}"></label><label>Место установки<input name="installationPlace" value="${escapeHtml(asset.installationPlace || "")}"></label><label>Дата установки<input name="installationDate" type="date" value="${escapeHtml(asset.installationDate || "")}"></label><label>Статус<select name="installationStatus"><option value="installed">Установлено</option><option value="temporary">Временно снято</option><option value="dismantled">Демонтировано</option></select></label><label>День ежемесячного ТО<input name="monthlyDay" type="number" min="1" max="28" value="${Number(asset.monthlyDay || 1)}"></label><label>Пункты осмотра, каждый с новой строки<textarea name="checklist" rows="8">${escapeHtml((asset.checklist || []).map(item => item.label).join("\n"))}</textarea></label><label>Комментарий установки / переноса<textarea name="installationComment"></textarea></label><button type="submit">Сохранить</button></form>`);
   const form = overlay.querySelector("form"); form.elements.installationStatus.value = asset.installationStatus || "installed";
-  form.addEventListener("submit", async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(form)); const parent = equipmentById(Number(data.parentEquipmentId)); data.id = asset.id || ""; data.workshop = parent?.area || ""; data.checklist = form.elements.checklist.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); try { const result = await apiJson("/api/crane-beams/save", { method: "POST", body: JSON.stringify(data) }); craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } });
-  const lifecycle = async action => { try { await changeCraneLifecycle(asset, action); overlay.remove(); current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } };
+  form.addEventListener("submit", async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(form)); const parent = equipmentById(Number(data.parentEquipmentId)); data.id = asset.id || ""; data.workshop = parent?.area || ""; data.checklist = form.elements.checklist.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); try { const result = await apiJson("/api/crane-beams/save", { method: "POST", body: JSON.stringify(data) }); craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } });
+  const lifecycle = async action => { try { await changeCraneLifecycle(asset, action); overlay.remove(); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } };
   overlay.querySelector("[data-crane-pause]")?.addEventListener("click", () => lifecycle("pause"));
   overlay.querySelector("[data-crane-resume]")?.addEventListener("click", () => lifecycle("resume"));
   overlay.querySelector("[data-crane-trash]")?.addEventListener("click", () => lifecycle("archive"));
@@ -19408,7 +19411,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
-  loadCraneBeams().then(() => current.view === "node" ? renderNodes() : renderEquipment()).catch(() => {});
+  loadCraneBeams().then(() => current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment()).catch(() => {});
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
