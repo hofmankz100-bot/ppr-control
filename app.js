@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v653-gpm-conditional-ppr-counter-1";
+const APP_VERSION = "v654-restore-legacy-gpm-qr-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -5213,6 +5213,13 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     if (gpmParsed) {
       const item = gpmEquipmentList().find(entry => String(entry.id) === String(gpmParsed.gpmId));
       if (!item) {
+        const card = allEquipment().find(eq => eq?.legacyGpmQrAliases?.[gpmParsed.gpmId] !== undefined);
+        const nodeIndex = Number(card?.legacyGpmQrAliases?.[gpmParsed.gpmId]);
+        if (card && Number.isSafeInteger(nodeIndex) && card.nodes?.[nodeIndex]) {
+          const qrKind = gpmParsed.mode === "monthly" ? "upper" : "lower";
+          return { equipmentId: Number(card.id), nodeIndex, qrKind,
+            qrToken: String((qrKind === "upper" ? card.upperQrTokens : card.qrTokens)?.[nodeIndex] || "") };
+        }
         if (statusEl) statusEl.textContent = "Оборудование по этому QR не найдено";
         return false;
       }

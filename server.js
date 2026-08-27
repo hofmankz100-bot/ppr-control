@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v653-gpm-conditional-ppr-counter-1";
+const SERVER_VERSION = "v654-restore-legacy-gpm-qr-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2647,6 +2647,65 @@ function sameRemarkAuthorServer(user = {}, remark = {}) {
 
 function sameRemarkAreaServer(left = "", right = "") {
   return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
+}
+
+async function recoverLegacyGpmQrAliases() {
+  const db = readDb();
+  db.targetedCleanupVersions ||= {};
+  if (db.targetedCleanupVersions.legacyGpmQrAliasesV1) return false;
+  let legacy = null;
+  if (postgresPool) {
+    const result = await postgresPool.query(`SELECT payload FROM ppr_admin_backups
+      WHERE jsonb_object_length(COALESCE(payload->'gpmJournal'->'equipment','{}'::jsonb)) > 0
+      ORDER BY created_at DESC LIMIT 1`);
+    legacy = result.rows[0]?.payload || null;
+  } else if (fs.existsSync(backupDir)) {
+    const files = fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json")).sort().reverse();
+    for (const name of files) {
+      const candidate = JSON.parse(fs.readFileSync(path.join(backupDir, name), "utf8"));
+      if (Object.keys(candidate?.gpmJournal?.equipment || {}).length) { legacy = candidate; break; }
+    }
+  }
+  if (!legacy) return false;
+  const cards = Object.values(db.catalog?.equipment || {}).filter(item => item && !item.deleted);
+  const gpmCard = cards.find(item => String(item.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ");
+  const forkliftCard = cards.find(item => /вилоч|погрузчик/i.test(String(item.name || "")));
+  let aliases = 0;
+  const resolvedAliases = new Map();
+  Object.values(legacy.gpmJournal?.equipment || {}).forEach(item => {
+    if (!item || item.deleted || !item.id) return;
+    const forklift = item.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(String(item.name || ""));
+    const card = forklift ? forkliftCard : gpmCard;
+    if (!card) return;
+    const normalized = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+    const nodeIndex = (card.nodes || []).findIndex(node => normalized(node) === normalized(item.name));
+    if (nodeIndex < 0) return;
+    card.legacyGpmQrAliases ||= {};
+    card.legacyGpmQrAliases[String(item.id)] = nodeIndex;
+    resolvedAliases.set(String(item.id), { card, nodeIndex });
+    aliases += 1;
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  let restoredToday = 0;
+  Object.values(legacy.gpmJournal?.inspections || {}).forEach(inspection => {
+    if (!inspection || inspection.deleted || inspection.shiftDate !== today || inspection.inspectionType !== "monthly") return;
+    const target = resolvedAliases.get(String(inspection.gpmId || ""));
+    if (!target) return;
+    const shift = ["day", "night"].includes(inspection.shiftKey) ? inspection.shiftKey : "day";
+    const recordKey = `${target.card.id}:${target.nodeIndex}:${today}`;
+    const current = db.checks?.[recordKey] || {};
+    const to = current.to && typeof current.to === "object" ? current.to : {};
+    db.checks ||= {};
+    db.checks[recordKey] = { ...current, updatedAt: inspection.updatedAt || inspection.createdAt,
+      to: { ...to, walkGroups: { ...(to.walkGroups || {}), technical: { ...(to.walkGroups?.technical || {}), [`${shift}:upper`]: {
+        done: true, at: inspection.updatedAt || inspection.createdAt || new Date().toISOString(), byRole: inspection.authorRole || "",
+        byName: inspection.authorName || "", shift, qrKind: "upper", group: "technical"
+      } } } } };
+    restoredToday += 1;
+  });
+  db.targetedCleanupVersions.legacyGpmQrAliasesV1 = { at: new Date().toISOString(), aliases, restoredToday };
+  writeDb(db, { action: "legacy_gpm_qr_aliases_recovered", aliases, restoredToday });
+  return aliases > 0;
 }
 
 function normalizedUserAreasServer(user = {}) {
@@ -5710,7 +5769,14 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: "Некорректный QR кран-балки." });
       return true;
     }
-    const target = `/?gpmQr=${encodeURIComponent(`PPRGPM|${mode}|${id}`)}`;
+    const db = readDb();
+    const card = Object.values(db.catalog?.equipment || {}).find(item => item?.legacyGpmQrAliases?.[id] !== undefined);
+    const nodeIndex = Number(card?.legacyGpmQrAliases?.[id]);
+    const upper = mode === "MONTHLY";
+    const token = String((upper ? card?.upperQrTokens : card?.qrTokens)?.[nodeIndex] || "");
+    const target = card && Number.isSafeInteger(nodeIndex)
+      ? `/?qr=${encodeURIComponent(`PPRQR|NODE|${card.id}|${nodeIndex}|${token}${upper ? "|upper" : ""}`)}`
+      : `/?gpmQr=${encodeURIComponent(`PPRGPM|${mode}|${id}`)}`;
     res.writeHead(302, { Location: target, "Cache-Control": "no-store" });
     res.end();
     return true;
@@ -8526,7 +8592,8 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 initializeStorage()
-  .then(storage => {
+  .then(async storage => {
+    await recoverLegacyGpmQrAliases().catch(error => console.warn(`Legacy GPM QR recovery failed: ${error.message}`));
     startPostgresRecoveryMonitor();
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
