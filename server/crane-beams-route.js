@@ -165,6 +165,9 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
     asset.parentEquipmentId = resolved.parentEquipmentId;
     asset.parentEquipmentName = resolved.parentName;
     asset.entityType = "nestedEquipment";
+    asset.lowerQrToken ||= crypto.randomBytes(12).toString("hex");
+    asset.upperQrToken ||= crypto.randomBytes(12).toString("hex");
+    asset.pausePeriods = Array.isArray(asset.pausePeriods) ? asset.pausePeriods : [];
     const archivedSource = archivedById.get(String(id));
     if (archivedSource) asset.legacyQrAliases = archivedQrAliases(archivedSource);
     if (asset.checklistSchemaVersion !== 2) {
@@ -227,7 +230,8 @@ function publicCraneState(db, user, builtInEquipment = {}) {
   ensureCraneBeams(db, builtInEquipment);
   const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
   const canManage = roleOf(user) === "editor";
-  return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
+  const archivedAssets = canManage ? Object.values(db.craneBeams.assets).filter(item => item?.archived === true).map(item => ({ ...item })) : [];
+  return { assets, archivedAssets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
 function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
@@ -235,7 +239,13 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
       const mode = String(url.searchParams.get("mode") || "shift").toLowerCase() === "monthly" ? "monthly" : "shift";
       const id = text(url.searchParams.get("id"), 120);
-      res.writeHead(302, { Location: `/?craneQr=${encodeURIComponent(`CRANE|${mode.toUpperCase()}|${id}`)}`, "Cache-Control": "no-store" }); res.end(); return true;
+      const db = readDb(); ensureCraneBeams(db, builtInEquipment);
+      const asset = db.craneBeams.assets[id];
+      const token = text(url.searchParams.get("token"), 200);
+      const expected = mode === "monthly" ? text(asset?.upperQrToken, 200) : text(asset?.lowerQrToken, 200);
+      const rotated = mode === "monthly" ? asset?.upperQrRotated === true : asset?.lowerQrRotated === true;
+      if (!asset || asset.archived || (rotated && token !== expected)) { res.writeHead(302, { Location: "/?craneQr=INVALID", "Cache-Control": "no-store" }); res.end(); return true; }
+      res.writeHead(302, { Location: `/?craneQr=${encodeURIComponent(`CRANE|${mode.toUpperCase()}|${id}|${expected}`)}`, "Cache-Control": "no-store" }); res.end(); return true;
     }
     if (!pathname.startsWith("/api/crane-beams")) return false;
     if (!req.authUser) { sendJson(res, 401, { ok: false, error: "auth_required" }); return true; }
@@ -284,8 +294,8 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         if (!resolved) return { error: "crane_workshop_unresolved" };
         const workshop = resolved.workshop;
         const checklist = Array.isArray(body.checklist) ? body.checklist.map((label, index) => ({ id: previous?.checklist?.[index]?.id || `check-${index + 1}`, label: text(typeof label === "string" ? label : label?.label, 240) })).filter(item => item.label) : previous?.checklist || DEFAULT_CHECKLIST.map((label, index) => ({ id: `check-${index + 1}`, label }));
-        const status = ["installed", "dismantled", "temporary", "archived"].includes(body.installationStatus) ? body.installationStatus : previous?.installationStatus || "installed";
-        const asset = { ...(previous || {}), id, name, workshop, parentWorkshop: workshop, parentEquipmentId: resolved.parentEquipmentId, parentEquipmentName: resolved.parentName, entityType: "nestedEquipment", inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: body.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, createdAt: previous?.createdAt || now, updatedAt: now };
+        const status = ["installed", "dismantled", "temporary"].includes(body.installationStatus) ? body.installationStatus : previous?.installationStatus || "installed";
+        const asset = { ...(previous || {}), id, name, workshop, parentWorkshop: workshop, parentEquipmentId: resolved.parentEquipmentId, parentEquipmentName: resolved.parentName, entityType: "nestedEquipment", inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: previous?.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, lowerQrToken: previous?.lowerQrToken || crypto.randomBytes(12).toString("hex"), upperQrToken: previous?.upperQrToken || crypto.randomBytes(12).toString("hex"), pausePeriods: Array.isArray(previous?.pausePeriods) ? previous.pausePeriods : [], createdAt: previous?.createdAt || now, updatedAt: now };
         delete asset.parentNodeIndex;
         db.craneBeams.assets[id] = asset;
         const changedInstallation = !previous || previous.workshop !== asset.workshop || previous.installationPlace !== asset.installationPlace || previous.installationStatus !== asset.installationStatus || previous.installationDate !== asset.installationDate;
@@ -324,6 +334,57 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         return { inspection, correction: db.craneBeams.corrections[correctionId], state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
       if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+    }
+    if (pathname === "/api/crane-beams/pause" && req.method === "POST") {
+      if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+      const result = await enqueueStateWrite(async () => {
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment); const asset = db.craneBeams.assets[text(body.craneId, 120)];
+        if (!asset || asset.archived) return { error: "crane_not_found" };
+        const now = new Date().toISOString(), action = body.action === "resume" ? "resume" : "pause";
+        asset.pausePeriods = Array.isArray(asset.pausePeriods) ? asset.pausePeriods : [];
+        if (action === "pause") {
+          const reason = text(body.reason, 1000); if (!reason) return { error: "crane_pause_reason_required" };
+          if (!asset.operationalPaused) asset.pausePeriods.push({ id: newId("crane-pause"), from: now, to: "", reason, by: actor(req.authUser) });
+          asset.operationalPaused = true; asset.pauseReason = reason; asset.pausedAt = now;
+        } else {
+          const open = [...asset.pausePeriods].reverse().find(period => !period.to); if (open) { open.to = now; open.resumedBy = actor(req.authUser); }
+          asset.operationalPaused = false; asset.pauseReason = ""; asset.resumedAt = now;
+        }
+        writeDb(db, { action: `crane_beam_${action}d`, user: req.authUser, craneId: asset.id, reason: asset.pauseReason });
+        return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
+      });
+      if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+    }
+    if (pathname === "/api/crane-beams/archive" && req.method === "POST") {
+      if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+      const result = await enqueueStateWrite(async () => {
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment); const asset = db.craneBeams.assets[text(body.craneId, 120)];
+        if (!asset) return { error: "crane_not_found" };
+        const restore = body.action === "restore";
+        const reason = text(body.reason, 1000);
+        if (!restore && !reason) return { error: "crane_archive_reason_required" };
+        asset.archived = !restore; asset.installed = restore ? asset.installationStatus === "installed" : false;
+        const now = new Date().toISOString();
+        if (restore) { asset.restoredAt = now; delete asset.archivedAt; } else asset.archivedAt = now;
+        const eventId = newId("installation");
+        db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: asset.id, action: restore ? "restored" : "archived", status: restore ? asset.installationStatus : "archived", workshop: asset.workshop, place: asset.installationPlace, date: now.slice(0, 10), at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: reason };
+        writeDb(db, { action: restore ? "crane_beam_restored" : "crane_beam_archived", user: req.authUser, craneId: asset.id, reason });
+        return { state: publicCraneState(db, req.authUser, builtInEquipment) };
+      });
+      if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+    }
+    if (pathname === "/api/crane-beams/qr-rotate" && req.method === "POST") {
+      if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+      const result = await enqueueStateWrite(async () => {
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment); const asset = db.craneBeams.assets[text(body.craneId, 120)];
+        if (!asset || asset.archived) return { error: "crane_not_found" };
+        const kind = body.kind === "monthly" ? "monthly" : "shift", now = new Date().toISOString();
+        if (kind === "monthly") { asset.upperQrToken = crypto.randomBytes(12).toString("hex"); asset.upperQrRotated = true; asset.upperQrUpdatedAt = now; }
+        else { asset.lowerQrToken = crypto.randomBytes(12).toString("hex"); asset.lowerQrRotated = true; asset.lowerQrUpdatedAt = now; }
+        writeDb(db, { action: "crane_beam_qr_rotated", user: req.authUser, craneId: asset.id, kind });
+        return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
+      });
+      if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
     if (pathname === "/api/crane-beams/defect" && req.method === "POST") {
       const result = await enqueueStateWrite(async () => {

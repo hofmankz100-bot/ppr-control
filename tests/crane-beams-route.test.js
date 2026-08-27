@@ -223,3 +223,51 @@ test("undo removes generated nested catalog equipment but keeps crane assets and
   assert.equal(db.craneBeams.assets.kb.catalogEquipmentId, undefined);
   assert.equal(db.craneBeams.inspections.one.craneId, "kb");
 });
+
+test("admin pause requires a reason and records a closed stop period on resume", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, installationStatus: "installed", checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const missing = harness(db);
+  await missing.handler({ method: "POST", authUser: { id: "admin", role: "editor" }, body: { craneId: "one", action: "pause" } }, {}, "/api/crane-beams/pause", new URL("http://test"));
+  assert.equal(missing.responses[0].status, 400);
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { craneId: "one", action: "pause", reason: "Ремонт" } }, {}, "/api/crane-beams/pause", new URL("http://test"));
+  assert.equal(db.craneBeams.assets.one.operationalPaused, true);
+  assert.equal(db.craneBeams.assets.one.pausePeriods[0].reason, "Ремонт");
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { craneId: "one", action: "resume" } }, {}, "/api/crane-beams/pause", new URL("http://test"));
+  assert.equal(db.craneBeams.assets.one.operationalPaused, false);
+  assert.ok(db.craneBeams.assets.one.pausePeriods[0].to);
+});
+
+test("admin archive uses a recoverable trash and preserves the installation journal", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", parentEquipmentId: "1", installed: true, installationStatus: "installed", checklistSchemaVersion: 2, checklist: [] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { craneId: "one", action: "archive", reason: "Демонтаж" } }, {}, "/api/crane-beams/archive", new URL("http://test"));
+  assert.equal(h.responses[0].payload.state.assets.length, 0);
+  assert.equal(h.responses[0].payload.state.archivedAssets.length, 1);
+  assert.equal(Object.values(db.craneBeams.installationJournal)[0].action, "archived");
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { craneId: "one", action: "restore" } }, {}, "/api/crane-beams/archive", new URL("http://test"));
+  assert.equal(h.responses[1].payload.state.assets.length, 1);
+  assert.equal(db.craneBeams.assets.one.installed, true);
+});
+
+test("lower and upper QR identities rotate independently", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistSchemaVersion: 2, checklist: [] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  ensureCraneBeams(db);
+  const oldLower = db.craneBeams.assets.one.lowerQrToken, oldUpper = db.craneBeams.assets.one.upperQrToken;
+  const h = harness(db);
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor" }, body: { craneId: "one", kind: "shift" } }, {}, "/api/crane-beams/qr-rotate", new URL("http://test"));
+  assert.notEqual(db.craneBeams.assets.one.lowerQrToken, oldLower);
+  assert.equal(db.craneBeams.assets.one.upperQrToken, oldUpper);
+  assert.equal(db.craneBeams.assets.one.lowerQrRotated, true);
+});
+
+test("client exposes lifecycle controls, recoverable trash, and tokenized dual QR", () => {
+  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  assert.match(app, /Остановить с причиной/);
+  assert.match(app, /Корзина кран-балок/);
+  assert.match(app, /Заменить только нижний QR/);
+  assert.match(app, /Заменить только верхний QR/);
+  assert.match(app, /lowerQrToken/);
+  assert.match(app, /upperQrToken/);
+  assert.doesNotMatch(app, /name="operationalPaused"/);
+});
