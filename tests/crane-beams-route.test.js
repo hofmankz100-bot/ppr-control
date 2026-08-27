@@ -62,8 +62,9 @@ test("crane beams are rendered as workshop nodes without a separate home section
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.doesNotMatch(html, /id="craneBeamsButton"/);
-  assert.match(app, /function craneMainScheduleRow/);
-  assert.match(app, /отдельное оборудование цеха/);
+  assert.match(app, /function nestedCraneEquipmentCard/);
+  assert.match(app, /Вложенное оборудование/);
+  assert.match(app, /Обычный узел кран-балки/);
   assert.match(app, /Вахтенный журнал/);
   assert.match(app, /Два QR-кода/);
   assert.match(app, /ordinaryNodeIndexes/);
@@ -73,6 +74,7 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
   assert.doesNotMatch(app, /function renderCraneBeamNodeCards/);
   assert.doesNotMatch(app, /function craneWorkshopEquipmentRow/);
+  assert.doesNotMatch(app, /function craneMainScheduleRow/);
   assert.doesNotMatch(app, /async function openCraneBeams/);
 });
 
