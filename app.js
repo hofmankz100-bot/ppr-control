@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v646-ppr-marked-edit-persistence-1";
+const APP_VERSION = "v647-ppr-field-merge-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -2272,10 +2272,45 @@ function mergeObjectByFreshnessLocal(current = {}, incoming = {}) {
 function pprRowFreshnessLocal(row = {}) {
   return Math.max(
     Date.parse(row.updatedAt || "") || 0,
+    Date.parse(row.workUpdatedAt || "") || 0,
+    Date.parse(row.resolutionUpdatedAt || "") || 0,
+    Date.parse(row.markUpdatedAt || "") || 0,
     Date.parse(row.draftUpdatedAt || "") || 0,
     Date.parse(row.markedAt || "") || 0,
     Date.parse(row.createdAt || "") || 0
   );
+}
+
+function pprFieldTimeLocal(row = {}, field) {
+  if (field === "work") return Date.parse(row.workUpdatedAt || row.createdAt || "") || 0;
+  if (field === "resolution") return Date.parse(row.resolutionUpdatedAt || row.draftUpdatedAt || row.markedAt || "") || 0;
+  if (field === "mark") return Date.parse(row.markUpdatedAt || row.markedAt || "") || 0;
+  return 0;
+}
+
+function mergePprRowFieldsLocal(currentRow, incomingRow) {
+  const incomingWins = pprRowFreshnessLocal(incomingRow) >= pprRowFreshnessLocal(currentRow);
+  const next = incomingWins ? { ...currentRow, ...incomingRow } : { ...incomingRow, ...currentRow };
+  const choose = (field, keys) => {
+    const currentTime = pprFieldTimeLocal(currentRow, field);
+    const incomingTime = pprFieldTimeLocal(incomingRow, field);
+    let source;
+    if (currentTime !== incomingTime) source = incomingTime > currentTime ? incomingRow : currentRow;
+    else {
+      const currentHasValue = keys.some(key => String(currentRow[key] || "").trim());
+      const incomingHasValue = keys.some(key => String(incomingRow[key] || "").trim());
+      source = currentHasValue !== incomingHasValue ? (incomingHasValue ? incomingRow : currentRow) : (incomingWins ? incomingRow : currentRow);
+    }
+    keys.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) next[key] = source[key];
+    });
+  };
+  choose("work", ["work", "workUpdatedAt", "equipmentId", "equipment", "node", "area"]);
+  choose("resolution", ["resolutionComment", "resolutionUpdatedAt", "draftUpdatedAt", "draftByName", "draftByRole"]);
+  choose("mark", ["mark", "markUpdatedAt", "markedAt", "markedByName", "markedByRole"]);
+  const newestTime = Math.max(pprRowFreshnessLocal(currentRow), pprRowFreshnessLocal(incomingRow));
+  if (newestTime) next.updatedAt = new Date(newestTime).toISOString();
+  return next;
 }
 
 function mergePprSheetRowsLocal(currentRows = [], incomingRows = []) {
@@ -2287,13 +2322,7 @@ function mergePprSheetRowsLocal(currentRows = [], incomingRows = []) {
     const incomingRow = incomingMap.get(id);
     if (!currentRow) return incomingRow;
     if (!incomingRow) return currentRow;
-    const currentTime = pprRowFreshnessLocal(currentRow);
-    const incomingTime = pprRowFreshnessLocal(incomingRow);
-    if (incomingTime !== currentTime) return incomingTime > currentTime ? incomingRow : currentRow;
-    const currentHasContent = Boolean(String(currentRow.work || "").trim() || String(currentRow.resolutionComment || "").trim() || currentRow.mark);
-    const incomingHasContent = Boolean(String(incomingRow.work || "").trim() || String(incomingRow.resolutionComment || "").trim() || incomingRow.mark);
-    if (currentHasContent !== incomingHasContent) return incomingHasContent ? incomingRow : currentRow;
-    return { ...currentRow, ...incomingRow };
+    return mergePprRowFieldsLocal(currentRow, incomingRow);
   });
 }
 
@@ -14224,7 +14253,8 @@ function bindPprCalendarControls(container, rerender) {
         row.markedAt = "";
       }
       row.work = input.value;
-      row.updatedAt = new Date().toISOString();
+      row.workUpdatedAt = new Date().toISOString();
+      row.updatedAt = row.workUpdatedAt;
       row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
       row.equipment = input.dataset.pprEquipment || row.equipment || "";
       row.node = input.dataset.pprNode || row.node || "";
@@ -14265,6 +14295,7 @@ function bindPprCalendarControls(container, rerender) {
       }
       row.resolutionComment = input.value;
       row.draftUpdatedAt = new Date().toISOString();
+      row.resolutionUpdatedAt = row.draftUpdatedAt;
       row.updatedAt = row.draftUpdatedAt;
       touchPprSheet(sheet, false);
       clearTimeout(draftSaveTimer);
@@ -14299,7 +14330,9 @@ function bindPprCalendarControls(container, rerender) {
       row.markedByName = row.mark ? profile?.name || "" : "";
       row.markedByRole = row.mark ? profile?.role || "" : "";
       row.markedAt = row.mark ? new Date().toISOString() : "";
-      row.updatedAt = new Date().toISOString();
+      row.markUpdatedAt = new Date().toISOString();
+      row.resolutionUpdatedAt = row.markUpdatedAt;
+      row.updatedAt = row.markUpdatedAt;
       touchPprSheet(sheet, false);
       try {
         await publishPprSheetAction(date, "mark", {

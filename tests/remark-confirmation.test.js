@@ -1743,6 +1743,44 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.doesNotMatch(source, /state\.pprSheets = preferRemote\s*\? \{ \.\.\.\(remote\.pprSheets/);
   assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
   assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
+  assert.match(source, /function mergePprRowFieldsLocal\(currentRow, incomingRow\)/);
+  assert.match(source, /row\.workUpdatedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /row\.resolutionUpdatedAt = row\.draftUpdatedAt/);
+  assert.match(server, /function mergePprRowFields\(currentRow, incomingRow\)/);
+  assert.match(server, /row\.markUpdatedAt = now/);
+});
+
+test("PPR synchronization merges concurrent edits to separate fields of the same row", () => {
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const start = server.indexOf("function pprRowFreshness(");
+  const end = server.indexOf("function mergePprSheetsByFreshness(", start);
+  assert.ok(start >= 0 && end > start);
+  const implementation = server.slice(start, end);
+  const { mergePprRows } = new Function(`${implementation}; return { mergePprRows };`)();
+  const current = [{
+    id: "row-1",
+    work: "Новая работа инженера",
+    workUpdatedAt: "2026-08-27T10:05:00.000Z",
+    resolutionComment: "Старый результат",
+    resolutionUpdatedAt: "2026-08-27T10:00:00.000Z",
+    mark: "done",
+    markUpdatedAt: "2026-08-27T10:03:00.000Z",
+    markedByName: "Исполнитель"
+  }];
+  const incoming = [{
+    id: "row-1",
+    work: "Старый план",
+    workUpdatedAt: "2026-08-27T09:00:00.000Z",
+    resolutionComment: "Новый результат исполнителя",
+    resolutionUpdatedAt: "2026-08-27T10:06:00.000Z",
+    mark: "",
+    markUpdatedAt: "2026-08-27T09:30:00.000Z"
+  }];
+  const [merged] = mergePprRows(current, incoming);
+  assert.equal(merged.work, "Новая работа инженера");
+  assert.equal(merged.resolutionComment, "Новый результат исполнителя");
+  assert.equal(merged.mark, "done");
+  assert.equal(merged.markedByName, "Исполнитель");
 });
 
 test("month closing API remains compatible but its panel is removed from the report", () => {

@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v646-ppr-marked-edit-persistence-1";
+const CACHE_NAME = "ppr-v647-ppr-field-merge-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=v646-ppr-marked-edit-persistence-1",
+  "./styles.css?v=v647-ppr-field-merge-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -10,12 +10,12 @@ const ASSETS = [
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
   "./node_modules/html2canvas/dist/html2canvas.min.js?v=421-annual-ppr-equipment-acts",
-  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v646-ppr-marked-edit-persistence-1",
-  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v646-ppr-marked-edit-persistence-1",
+  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v647-ppr-field-merge-1",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v647-ppr-field-merge-1",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=482-crane-journals-entry",
-  "./app.js?v=v646-ppr-marked-edit-persistence-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v646-ppr-marked-edit-persistence-1",
+  "./app.js?v=v647-ppr-field-merge-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v647-ppr-field-merge-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

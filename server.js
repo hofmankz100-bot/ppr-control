@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v646-ppr-marked-edit-persistence-1";
+const SERVER_VERSION = "v647-ppr-field-merge-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4419,10 +4419,45 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
 function pprRowFreshness(row = {}) {
   return Math.max(
     Date.parse(row.updatedAt || "") || 0,
+    Date.parse(row.workUpdatedAt || "") || 0,
+    Date.parse(row.resolutionUpdatedAt || "") || 0,
+    Date.parse(row.markUpdatedAt || "") || 0,
     Date.parse(row.draftUpdatedAt || "") || 0,
     Date.parse(row.markedAt || "") || 0,
     Date.parse(row.createdAt || "") || 0
   );
+}
+
+function pprFieldTime(row = {}, field) {
+  if (field === "work") return Date.parse(row.workUpdatedAt || row.createdAt || "") || 0;
+  if (field === "resolution") return Date.parse(row.resolutionUpdatedAt || row.draftUpdatedAt || row.markedAt || "") || 0;
+  if (field === "mark") return Date.parse(row.markUpdatedAt || row.markedAt || "") || 0;
+  return 0;
+}
+
+function mergePprRowFields(currentRow, incomingRow) {
+  const incomingWins = pprRowFreshness(incomingRow) >= pprRowFreshness(currentRow);
+  const next = incomingWins ? { ...currentRow, ...incomingRow } : { ...incomingRow, ...currentRow };
+  const choose = (field, keys) => {
+    const currentTime = pprFieldTime(currentRow, field);
+    const incomingTime = pprFieldTime(incomingRow, field);
+    let source;
+    if (currentTime !== incomingTime) source = incomingTime > currentTime ? incomingRow : currentRow;
+    else {
+      const currentHasValue = keys.some(key => String(currentRow[key] || "").trim());
+      const incomingHasValue = keys.some(key => String(incomingRow[key] || "").trim());
+      source = currentHasValue !== incomingHasValue ? (incomingHasValue ? incomingRow : currentRow) : (incomingWins ? incomingRow : currentRow);
+    }
+    keys.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) next[key] = source[key];
+    });
+  };
+  choose("work", ["work", "workUpdatedAt", "equipmentId", "equipment", "node", "area"]);
+  choose("resolution", ["resolutionComment", "resolutionUpdatedAt", "draftUpdatedAt", "draftByName", "draftByRole"]);
+  choose("mark", ["mark", "markUpdatedAt", "markedAt", "markedByName", "markedByRole"]);
+  const newestTime = Math.max(pprRowFreshness(currentRow), pprRowFreshness(incomingRow));
+  if (newestTime) next.updatedAt = new Date(newestTime).toISOString();
+  return next;
 }
 
 function mergePprRows(currentRows = [], incomingRows = []) {
@@ -4434,13 +4469,7 @@ function mergePprRows(currentRows = [], incomingRows = []) {
     const incomingRow = incomingMap.get(id);
     if (!currentRow) return incomingRow;
     if (!incomingRow) return currentRow;
-    const currentTime = pprRowFreshness(currentRow);
-    const incomingTime = pprRowFreshness(incomingRow);
-    if (incomingTime !== currentTime) return incomingTime > currentTime ? incomingRow : currentRow;
-    const currentHasContent = Boolean(String(currentRow.work || "").trim() || String(currentRow.resolutionComment || "").trim() || currentRow.mark);
-    const incomingHasContent = Boolean(String(incomingRow.work || "").trim() || String(incomingRow.resolutionComment || "").trim() || incomingRow.mark);
-    if (currentHasContent !== incomingHasContent) return incomingHasContent ? incomingRow : currentRow;
-    return { ...currentRow, ...incomingRow };
+    return mergePprRowFields(currentRow, incomingRow);
   });
 }
 
@@ -6814,6 +6843,7 @@ async function handleApi(req, res, pathname, url) {
         if (!row || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
         row.resolutionComment = String(body.resolutionComment || "").trim().slice(0, 2000);
         row.draftUpdatedAt = now;
+        row.resolutionUpdatedAt = now;
         row.updatedAt = now;
         row.draftByName = name;
         row.draftByRole = role;
@@ -6828,6 +6858,8 @@ async function handleApi(req, res, pathname, url) {
         row.markedByRole = mark ? role : "";
         row.markedAt = mark ? now : "";
         row.resolutionComment = mark ? resolutionComment : "";
+        row.resolutionUpdatedAt = now;
+        row.markUpdatedAt = now;
         row.updatedAt = now;
         row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
         row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
