@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v655-operator-shared-gpm-access-1";
+const APP_VERSION = "v656-gpm-operator-selector-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18383,7 +18383,7 @@ function renderDirector() {
         window.alert("Сначала назначьте должность сотрудника.");
         return;
       }
-      if (role === "operator" && !row?.querySelector("[data-pending-gpm-access]")?.checked) {
+      if (role === "operator" && row?.querySelector("[data-pending-gpm-access]")?.value !== "ГПМ") {
         window.alert("Выберите «ГПМ — все краны».");
         return;
       }
@@ -19576,7 +19576,7 @@ function renderDirectorUsers() {
             <label class="user-access-field"><span>Основной участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
             <fieldset class="user-area-picker"><legend>Все доступные участки</legend>${assignableEquipmentAreas().map(area => `<label><input type="checkbox" data-user-extra-area value="${escapeHtml(area)}" ${selectedAreas.has(area) ? "checked" : ""}><span>${escapeHtml(area)}</span></label>`).join("")}<small>Основной участок также должен быть отмечен. Можно выбрать несколько.</small></fieldset>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${userAreas(user).length ? ` · ${escapeHtml(userAreas(user).join(", "))}` : ""}</span>`}
-          ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Выбор оборудования</legend><label><input type="checkbox" data-pending-gpm-access><span><strong>ГПМ</strong> — все краны общей карточки</span></label></fieldset>` : ""}
+          ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Выбор ГПМ</legend><label><span>ГПМ</span><select data-pending-gpm-access><option value="">Выберите ГПМ</option><option value="ГПМ">ГПМ — все краны</option></select></label></fieldset>` : ""}
           <span class="user-approval-status">${pending ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
