@@ -17,7 +17,7 @@ test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
   assert.ok(appVersion && html.includes(`html2pdf.bundle.min.js?v=${appVersion}`));
   assert.match(html, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(html, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
+  assert.match(html, /modules\/work-permit\.js\?v=658-cleanup/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
 });
@@ -251,7 +251,7 @@ test("service worker caches the current permit assets", () => {
   assert.ok(appVersion && serviceWorker.includes(`ppr-${appVersion}`));
   assert.ok(serviceWorker.includes(`html2pdf.bundle.min.js?v=${appVersion}`));
   assert.match(serviceWorker, /mammoth\.browser\.min\.js\?v=421-annual-ppr-equipment-acts/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=482-crane-journals-entry/);
+  assert.match(serviceWorker, /modules\/work-permit\.js\?v=658-cleanup/);
   assert.ok(serviceWorker.includes(`styles.css?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`app.js?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`node_modules/jsqr/dist/jsQR.js?v=${appVersion}`));

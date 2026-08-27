@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v657-employee-search-display-fix-1";
+const SERVER_VERSION = "v658-remove-crane-beam-system-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -130,7 +130,7 @@ const PRESS_2400_HISTORICAL_NODES = Object.freeze([
   "Контейнер и Прессштемпель (магнит размер,темп контейнера,латун центровка))",
   "Кассета матрицы и Конвейнер , Нож",
   "Пульт управление кнопки (пила,пресс,печь заг)",
-  "Печь матрица ,Толкатель матрицы, Кран-балка матрицы",
+  "Печь матрица ,Толкатель матрицы",
   "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)",
   "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)",
   "Горячий пила и Пуллер A.B",
@@ -256,7 +256,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, gpmJournal: { equipment: {}, inspections: {}, events: {}, managers: {} }, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function removeWarehouseWorkflow(db) {
@@ -449,146 +449,97 @@ function restorePress2400Catalog(db) {
   return true;
 }
 
-function migrateForkliftsToOrdinaryEquipment(db) {
-  const version = "ordinary-forklift-fleet-v1";
-  db.targetedCleanupVersions ||= {};
-  if (db.targetedCleanupVersions[version]) return false;
-  const equipment = db.gpmJournal?.equipment || {};
-  const forklifts = Object.values(equipment).filter(item => item && !item.deleted
-    && (item.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`)));
-  const sourceIds = new Set(forklifts.map(item => Number(item.sourceEquipmentId || 0)).filter(Boolean));
-  let fleet = Object.values(db.catalog?.equipment || {}).find(item => item && !item.deleted
-    && String(item.name || "").trim().toLocaleLowerCase("ru-RU") === "вилочные погрузчики");
-  if (!fleet && sourceIds.size) fleet = db.catalog.equipment[[...sourceIds][0]];
-  if (!fleet && forklifts.length) {
-    const usedIds = Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger);
-    const id = Math.max(999, ...usedIds) + 1;
-    fleet = { id, created: true, name: "Вилочные погрузчики", area: forklifts[0].location || "Транспортный участок" };
-    db.catalog.equipment[id] = fleet;
-  }
-  const now = new Date().toISOString();
-  if (fleet) {
-    const names = [...new Set(forklifts.map(item => String(item.name || "").trim()).filter(Boolean))];
-    fleet.created = true;
-    fleet.equipmentKind = "ordinary";
-    fleet.name = "Вилочные погрузчики";
-    fleet.nodes = names.length ? names : (fleet.nodes || []).filter(name => !/вахтенный осмотр/i.test(String(name)));
-    if (!fleet.nodes.length) fleet.nodes = ["Погрузчик №1"];
-    fleet.qrTokens = Object.fromEntries(fleet.nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
-    fleet.nodeCreatedAt = Object.fromEntries(fleet.nodes.map((_, index) => [index, now]));
-    fleet.reminders ||= {};
-    fleet.reminderMeta ||= {};
-    fleet.operationalPauses ||= [];
-    fleet.nodeOperationalPauses ||= {};
-    fleet.journalSchema = {
-      version: Number(fleet.journalSchema?.version || 0) + 1,
-      title: "Журнал вилочных погрузчиков",
-      scope: "equipment", nodeIndex: null, fieldsTiming: "immediate", resultMode: "both", frequency: "twoShifts",
-      columns: [
-        { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all", options: [] },
-        { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all", options: [] },
-        { id: "shift", label: "Смена", type: "autoShift", required: true, nodeIndex: "all", options: [] },
-        { id: "employee", label: "Водитель", type: "autoEmployee", required: true, nodeIndex: "all", options: [] },
-        { id: "node", label: "Погрузчик", type: "autoNode", required: true, nodeIndex: "all", options: [] },
-        { id: "result", label: "Результат осмотра", type: "result", required: true, nodeIndex: "all", options: [] },
-        { id: "comment", label: "Комментарий", type: "text", required: false, nodeIndex: "all", options: [] }
-      ], updatedAt: now, updatedByName: "Системная миграция"
-    };
-    fleet.updatedAt = now;
-  }
-  const forkliftIds = new Set(forklifts.map(item => String(item.id || "")));
-  Object.keys(equipment).forEach(id => { if (forkliftIds.has(String(id))) delete equipment[id]; });
-  Object.keys(db.gpmJournal?.inspections || {}).forEach(id => { if (forkliftIds.has(String(db.gpmJournal.inspections[id]?.gpmId || ""))) delete db.gpmJournal.inspections[id]; });
-  Object.keys(db.gpmJournal?.events || {}).forEach(id => { if (forkliftIds.has(String(db.gpmJournal.events[id]?.gpmId || ""))) delete db.gpmJournal.events[id]; });
-  sourceIds.forEach(id => { if (fleet && Number(fleet.id) !== id) delete db.catalog.equipment[id]; });
-  db.targetedCleanupVersions[version] = { at: now, migrated: forklifts.length, equipmentId: fleet?.id || null };
-  return true;
-}
-
-function migrateGpmToOrdinaryEquipment(db) {
-  const version = "ordinary-equipment-only-v1";
+function archiveAndRemoveCraneBeamData(db) {
+  const version = "remove-crane-beams-completely-v1";
   db.targetedCleanupVersions ||= {};
   if (db.targetedCleanupVersions[version]) return false;
   const now = new Date().toISOString();
-  const items = Object.values(db.gpmJournal?.equipment || {}).filter(item => item && !item.deleted);
-  const groups = new Map();
-  items.forEach(item => {
-    const sourceId = Number(item.sourceEquipmentId || 0);
-    const key = sourceId ? `source:${sourceId}` : `item:${item.id}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+  const cranePattern = /гпм|кран(?:[\s-]*бал)?|грузопод(?:ъ|ь)?[её]м/iu;
+  const oldEquipment = Object.values(db.gpmJournal?.equipment || {}).filter(item => item && !item.deleted
+    && !(item.equipmentKind === "forklift" || /вилоч|погрузчик/iu.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`)));
+  const archived = [];
+  const nodeIndexRemaps = new Map();
+  oldEquipment.forEach(item => {
+    const id = String(item.id || "").trim();
+    if (!id) return;
+    archived.push({
+      id,
+      name: String(item.name || "").trim(),
+      workshop: String(item.location || item.sourceEquipmentName || "").trim(),
+      sourceEquipmentId: Number(item.sourceEquipmentId || 0) || null,
+      lowerQr: `PPRGPM|SHIFT|${id}`,
+      upperQr: `PPRGPM|MONTHLY|${id}`
+    });
   });
-  groups.forEach(group => {
-    const sourceId = Number(group[0]?.sourceEquipmentId || 0);
-    let card = sourceId ? db.catalog.equipment[sourceId] : null;
-    if (!card) {
-      const usedIds = Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger);
-      const id = Math.max(999, ...usedIds) + 1;
-      card = { id, created: true, name: group[0]?.sourceEquipmentName || group[0]?.name || "Оборудование", area: group[0]?.location || "Без участка" };
-      db.catalog.equipment[id] = card;
+  const removedEquipmentIds = new Set();
+  Object.entries(db.catalog?.equipment || {}).forEach(([key, card]) => {
+    if (!card || card.deleted) return;
+    const cardText = `${card.name || ""} ${card.area || ""}`;
+    const craneIndexes = (card.nodes || []).map((name, index) => cranePattern.test(String(name || "")) ? index : -1).filter(index => index >= 0);
+    const isDedicated = /^\s*гпм\s*$/iu.test(String(card.name || ""))
+      || (card.created === true && cranePattern.test(cardText) && craneIndexes.length === (card.nodes || []).length);
+    if (isDedicated) {
+      (card.nodes || []).forEach((name, index) => archived.push({
+        id: `catalog:${card.id}:${index}`,
+        name: String(name || "").trim(),
+        workshop: String(card.area || "").trim(),
+        sourceEquipmentId: Number(card.id),
+        lowerQrToken: String(card.qrTokens?.[index] || ""),
+        upperQrToken: String(card.upperQrTokens?.[index] || "")
+      }));
+      removedEquipmentIds.add(Number(card.id));
+      delete db.catalog.equipment[key];
+      return;
     }
-    const names = [...new Set(group.map(item => String(item.name || "").trim()).filter(Boolean))];
-    card.created = true;
-    card.equipmentKind = "ordinary";
-    card.nodes = names.length ? names : ["Основное оборудование"];
-    card.qrTokens = Object.fromEntries(card.nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
-    card.nodeCreatedAt = Object.fromEntries(card.nodes.map((_, index) => [index, now]));
-    card.reminders ||= {};
-    card.reminderMeta ||= {};
-    card.operationalPauses ||= [];
-    card.nodeOperationalPauses ||= {};
-    card.journalSchema = {
-      version: Number(card.journalSchema?.version || 0) + 1,
-      title: `Журнал ${card.name}`,
-      scope: "equipment", nodeIndex: null, fieldsTiming: "immediate", resultMode: "both", frequency: "twoShifts",
-      columns: [
-        { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all", options: [] },
-        { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all", options: [] },
-        { id: "shift", label: "Смена", type: "autoShift", required: true, nodeIndex: "all", options: [] },
-        { id: "employee", label: "Сотрудник", type: "autoEmployee", required: true, nodeIndex: "all", options: [] },
-        { id: "node", label: "Оборудование", type: "autoNode", required: true, nodeIndex: "all", options: [] },
-        { id: "result", label: "Результат", type: "result", required: true, nodeIndex: "all", options: [] },
-        { id: "comment", label: "Комментарий", type: "text", required: false, nodeIndex: "all", options: [] }
-      ], updatedAt: now, updatedByName: "Системная миграция"
-    };
+    if (!craneIndexes.length) return;
+    const removed = new Set(craneIndexes);
+    const kept = (card.nodes || []).map((name, oldIndex) => ({ name, oldIndex })).filter(entry => !removed.has(entry.oldIndex));
+    nodeIndexRemaps.set(Number(card.id), new Map(kept.map((entry, newIndex) => [entry.oldIndex, newIndex])));
+    craneIndexes.forEach(index => archived.push({
+      id: `catalog:${card.id}:${index}`,
+      name: String(card.nodes[index] || "").trim(),
+      workshop: String(card.area || "").trim(),
+      sourceEquipmentId: Number(card.id),
+      lowerQrToken: String(card.qrTokens?.[index] || ""),
+      upperQrToken: String(card.upperQrTokens?.[index] || "")
+    }));
+    card.nodes = kept.map(entry => entry.name);
+    card.qrTokens = Object.fromEntries(kept.map((entry, index) => [index, card.qrTokens?.[entry.oldIndex] || crypto.randomBytes(12).toString("hex")]));
+    delete card.upperQrTokens;
+    delete card.legacyGpmQrAliases;
     card.updatedAt = now;
   });
-  db.gpmJournal = { equipment: {}, inspections: {}, events: {}, managers: {}, removedAt: now };
-  db.targetedCleanupVersions[version] = { at: now, migrated: items.length };
-  return true;
-}
-
-function consolidateSpecialEquipmentCards(db) {
-  const version = "shared-equipment-cards-v2";
-  db.targetedCleanupVersions ||= {};
-  if (db.targetedCleanupVersions[version]) return false;
-  const now = new Date().toISOString();
-  const cards = Object.values(db.catalog?.equipment || {}).filter(item => item && !item.deleted
-    && item.created === true
-    && String(item.journalSchema?.updatedByName || "") === "Системная миграция");
-  const forkliftCards = cards.filter(item => /вилоч|погрузчик/i.test(`${item.name || ""} ${(item.nodes || []).join(" ")}`));
-  const gpmCards = cards.filter(item => !forkliftCards.includes(item)
-    && /гпм|кран|грузопод/i.test(`${item.name || ""} ${(item.nodes || []).join(" ")}`));
-  const consolidate = (group, name, area, title) => {
-    if (!group.length) return null;
-    const target = group.find(item => String(item.name || "").trim().toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU")) || group[0];
-    const nodes = [...new Set(group.flatMap(item => item.nodes || []).map(value => String(value || "").trim()).filter(Boolean))];
-    target.name = name;
-    target.area = area;
-    target.equipmentKind = "ordinary";
-    target.nodes = nodes;
-    target.qrTokens = Object.fromEntries(nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
-    if (name === "ГПМ") target.upperQrTokens = Object.fromEntries(nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
-    target.nodeCreatedAt = Object.fromEntries(nodes.map((_, index) => [index, now]));
-    target.journalSchema = { ...target.journalSchema, title, scope: "equipment", nodeIndex: null,
-      version: Number(target.journalSchema?.version || 0) + 1, updatedAt: now, updatedByName: "Системная миграция" };
-    target.updatedAt = now;
-    group.forEach(item => { if (Number(item.id) !== Number(target.id)) delete db.catalog.equipment[item.id]; });
-    return target;
-  };
-  const forklift = consolidate(forkliftCards, "Вилочные погрузчики", "Вилочные погрузчики", "Журнал вилочных погрузчиков");
-  const gpm = consolidate(gpmCards, "ГПМ", "ГПМ", "Журнал ГПМ");
-  db.targetedCleanupVersions[version] = { at: now, forkliftEquipmentId: forklift?.id || null, gpmEquipmentId: gpm?.id || null };
+  const nextChecks = {};
+  Object.entries(db.checks || {}).forEach(([key, record]) => {
+    const parts = String(key).split(":");
+    const equipmentId = Number(parts[0]);
+    if (removedEquipmentIds.has(equipmentId)) return;
+    const remap = nodeIndexRemaps.get(equipmentId);
+    if (!remap) { nextChecks[key] = record; return; }
+    const nextIndex = remap.get(Number(parts[1]));
+    if (nextIndex === undefined) return;
+    nextChecks[`${equipmentId}:${nextIndex}:${parts.slice(2).join(":")}`] = record;
+  });
+  db.checks = nextChecks;
+  db.qrWalkJournal = (db.qrWalkJournal || []).flatMap(entry => {
+    const equipmentId = Number(entry?.equipmentId);
+    if (removedEquipmentIds.has(equipmentId)) return [];
+    const remap = nodeIndexRemaps.get(equipmentId);
+    if (!remap) return [entry];
+    const nextIndex = remap.get(Number(entry?.nodeIndex));
+    return nextIndex === undefined ? [] : [{ ...entry, nodeIndex: nextIndex }];
+  });
+  delete db.gpmJournal;
+  db.users = (db.users || []).map(user => {
+    const next = { ...user };
+    delete next.craneOnly;
+    delete next.assignedGpmIds;
+    next.areas = (Array.isArray(next.areas) ? next.areas : []).filter(area => !/^\s*гпм\s*$/iu.test(String(area)));
+    if (/^\s*гпм\s*$/iu.test(String(next.area || ""))) next.area = next.areas[0] || "";
+    return next;
+  });
+  db.retiredCraneBeamArchive = { archivedAt: now, assets: [...new Map(archived.filter(item => item.name).map(item => [`${item.id}:${item.name}`, item])).values()] };
+  db.targetedCleanupVersions[version] = { at: now, archived: db.retiredCraneBeamArchive.assets.length };
   return true;
 }
 
@@ -609,11 +560,6 @@ function normalizeDb(db) {
   db.monthlyClosures = db.monthlyClosures && typeof db.monthlyClosures === "object" ? db.monthlyClosures : {};
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
-  db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-  db.gpmJournal.equipment ||= {};
-  db.gpmJournal.inspections ||= {};
-  db.gpmJournal.events ||= {};
-  db.gpmJournal.managers ||= {};
   db.weldingJournal ||= {};
   db.turningJournal ||= {};
   db.pprSheets ||= {};
@@ -624,9 +570,7 @@ function normalizeDb(db) {
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
-  migrateForkliftsToOrdinaryEquipment(db);
-  migrateGpmToOrdinaryEquipment(db);
-  consolidateSpecialEquipmentCards(db);
+  archiveAndRemoveCraneBeamData(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -664,22 +608,6 @@ function normalizeDb(db) {
     user.areas = normalizedUserAreasServer(user);
     user.area = user.areas[0] || "";
   });
-  if (db.gpmJournal.managerMigrationVersion !== "initial-maksut-v1") {
-    const initialManager = db.users.find(user =>
-      String(user?.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU") === "нурахунов махсут махмутович"
-    );
-    if (initialManager) {
-      const userKey = resolutionUserKeyServer(initialManager);
-      db.gpmJournal.managers[`manager:${userKey}`] = {
-        id: `manager:${userKey}`,
-        userKey,
-        userName: String(initialManager.name || ""),
-        active: true,
-        updatedAt: new Date().toISOString()
-      };
-    }
-    db.gpmJournal.managerMigrationVersion = "initial-maksut-v1";
-  }
   db.authSessions = Array.isArray(db.authSessions) ? db.authSessions : [];
   db.translationCache ||= {};
   db.pushNotifications ||= { subscriptions: [], vapid: null };
@@ -2297,7 +2225,6 @@ function publicState(db = readDb()) {
     monthlyClosures: db.monthlyClosures || {},
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
-    gpmJournal: db.gpmJournal,
     weldingJournal: db.weldingJournal || {},
     turningJournal: db.turningJournal || {},
     pprSheets: db.pprSheets,
@@ -2649,10 +2576,9 @@ function sameRemarkAreaServer(left = "", right = "") {
   return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
 }
 
-async function recoverLegacyGpmQrAliases() {
+async function recoverRetiredCraneBeamArchive() {
   const db = readDb();
-  db.targetedCleanupVersions ||= {};
-  if (db.targetedCleanupVersions.legacyGpmQrAliasesV1) return false;
+  if (db.retiredCraneBeamArchive?.assets?.length) return false;
   let legacy = null;
   if (postgresPool) {
     const result = await postgresPool.query(`SELECT payload FROM ppr_admin_backups
@@ -2667,45 +2593,16 @@ async function recoverLegacyGpmQrAliases() {
     }
   }
   if (!legacy) return false;
-  const cards = Object.values(db.catalog?.equipment || {}).filter(item => item && !item.deleted);
-  const gpmCard = cards.find(item => String(item.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ");
-  const forkliftCard = cards.find(item => /вилоч|погрузчик/i.test(String(item.name || "")));
-  let aliases = 0;
-  const resolvedAliases = new Map();
-  Object.values(legacy.gpmJournal?.equipment || {}).forEach(item => {
-    if (!item || item.deleted || !item.id) return;
-    const forklift = item.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(String(item.name || ""));
-    const card = forklift ? forkliftCard : gpmCard;
-    if (!card) return;
-    const normalized = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
-    const nodeIndex = (card.nodes || []).findIndex(node => normalized(node) === normalized(item.name));
-    if (nodeIndex < 0) return;
-    card.legacyGpmQrAliases ||= {};
-    card.legacyGpmQrAliases[String(item.id)] = nodeIndex;
-    resolvedAliases.set(String(item.id), { card, nodeIndex });
-    aliases += 1;
-  });
-  const today = new Date().toISOString().slice(0, 10);
-  let restoredToday = 0;
-  Object.values(legacy.gpmJournal?.inspections || {}).forEach(inspection => {
-    if (!inspection || inspection.deleted || inspection.shiftDate !== today || inspection.inspectionType !== "monthly") return;
-    const target = resolvedAliases.get(String(inspection.gpmId || ""));
-    if (!target) return;
-    const shift = ["day", "night"].includes(inspection.shiftKey) ? inspection.shiftKey : "day";
-    const recordKey = `${target.card.id}:${target.nodeIndex}:${today}`;
-    const current = db.checks?.[recordKey] || {};
-    const to = current.to && typeof current.to === "object" ? current.to : {};
-    db.checks ||= {};
-    db.checks[recordKey] = { ...current, updatedAt: inspection.updatedAt || inspection.createdAt,
-      to: { ...to, walkGroups: { ...(to.walkGroups || {}), technical: { ...(to.walkGroups?.technical || {}), [`${shift}:upper`]: {
-        done: true, at: inspection.updatedAt || inspection.createdAt || new Date().toISOString(), byRole: inspection.authorRole || "",
-        byName: inspection.authorName || "", shift, qrKind: "upper", group: "technical"
-      } } } } };
-    restoredToday += 1;
-  });
-  db.targetedCleanupVersions.legacyGpmQrAliasesV1 = { at: new Date().toISOString(), aliases, restoredToday };
-  writeDb(db, { action: "legacy_gpm_qr_aliases_recovered", aliases, restoredToday });
-  return aliases > 0;
+  const assets = Object.values(legacy.gpmJournal?.equipment || {}).filter(item => item && !item.deleted && item.id
+    && !(item.equipmentKind === "forklift" || /вилоч|погрузчик/iu.test(String(item.name || "")))).map(item => ({
+      id: String(item.id), name: String(item.name || "").trim(), workshop: String(item.location || item.sourceEquipmentName || "").trim(),
+      sourceEquipmentId: Number(item.sourceEquipmentId || 0) || null,
+      lowerQr: `PPRGPM|SHIFT|${item.id}`, upperQr: `PPRGPM|MONTHLY|${item.id}`
+    }));
+  if (!assets.length) return false;
+  db.retiredCraneBeamArchive = { archivedAt: new Date().toISOString(), assets };
+  writeDb(db, { action: "retired_crane_beam_archive_recovered", assets: assets.length });
+  return true;
 }
 
 function normalizedUserAreasServer(user = {}) {
@@ -4283,7 +4180,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "gpmJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
@@ -4780,120 +4677,6 @@ function purgeClosedWithoutScoreRemarksServer(db = {}) {
   return changed;
 }
 
-function gpmOperationalControlEnabledServer(db = {}, item = {}) {
-  const equipmentId = String(Number(item?.sourceEquipmentId || 0));
-  if (equipmentId === "0") return true;
-  const catalogItem = db.catalog?.equipment?.[equipmentId];
-  if (!catalogItem) return true;
-  const active = pause => Boolean(pause?.startedAt) && !pause?.endedAt;
-  if ((catalogItem.operationalPauses || []).some(active)) return false;
-  const nodeIndex = item?.sourceNodeIndex;
-  if (nodeIndex === null || nodeIndex === undefined || nodeIndex === "") return true;
-  return !(catalogItem.nodeOperationalPauses?.[String(nodeIndex)] || []).some(active);
-}
-
-function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
-  const stored = db.gpmJournal || { equipment: {}, inspections: {}, events: {}, managers: {} };
-  const actorKey = resolutionUserKeyServer(user);
-  const rawRole = String(user.role || "");
-  const effectiveRole = [user.role, user.jobRole].includes("forkliftDriver") ? "forkliftDriver" : rawRole;
-  const baseRole = permissionBaseRoleServer(rawRole);
-  const manager = Object.values(stored.managers || {}).some(grant => grant?.active && String(grant.userKey || "") === actorKey);
-  const canManage = baseRole === "editor" || manager;
-  const isEngineer = baseRole === "editor" || baseRole === "engineer";
-  const isRepairer = ["editor", "engineer"].includes(baseRole) || ["mechanic", "electrician", "welder", "turner"].includes(rawRole);
-  const equipment = {};
-  if (canManage) {
-    Object.entries(incoming?.equipment || {}).forEach(([id, raw]) => {
-      if (!raw || typeof raw !== "object") return;
-      const current = stored.equipment?.[id];
-      const next = { ...raw };
-      if (current?.deleted === true) {
-        next.deleted = true;
-        next.deletedAt = current.deletedAt || "";
-        next.deletedByName = current.deletedByName || "";
-      }
-      if (next.deleted === true && current?.deleted !== true) {
-        next.deleted = false;
-        next.deletedAt = current?.deletedAt || "";
-        next.deletedByName = current?.deletedByName || "";
-      }
-      const forklift = next.equipmentKind === "forklift";
-      const eligibleInspectors = new Map((db.users || [])
-        .filter(candidate => candidate?.approved !== false && candidate?.pendingApproval !== true)
-        .filter(candidate => forklift
-          ? [candidate.role, candidate.jobRole].includes("forkliftDriver")
-          : candidate.role === "operator")
-        .map(candidate => [resolutionUserKeyServer(candidate), candidate]));
-      const requestedInspectorKeys = Array.isArray(next.inspectorKeys) ? next.inspectorKeys.map(String) : [];
-      next.inspectorKeys = [...new Set(requestedInspectorKeys.filter(key => eligibleInspectors.has(key)))];
-      next.inspectorKey = next.inspectorKeys[0] || "";
-      next.inspectorNames = next.inspectorKeys.map(key => String(eligibleInspectors.get(key)?.name || "").trim()).filter(Boolean).join(", ");
-      equipment[id] = next;
-    });
-  }
-  const itemFor = id => equipment[id] || stored.equipment?.[id];
-  const inspectionAllowed = entry => {
-    const item = itemFor(String(entry?.gpmId || ""));
-    if (!item || item.deleted) return false;
-    const defectReport = entry?.inspectionType === "defectReport"
-      && entry?.decision === "prohibited"
-      && String(entry?.defects || "").trim()
-      && Array.isArray(entry?.points) && entry.points.some(point => point === false);
-    if (defectReport) return true;
-    if (!gpmOperationalControlEnabledServer(db, item)) return false;
-    if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
-    if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(effectiveRole)) return true;
-    const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-    if (["operator", "forkliftDriver"].includes(effectiveRole)) return assigned.includes(actorKey);
-    return assigned.includes(actorKey) || String(item.inspectorKey || "") === actorKey;
-  };
-  const inspections = {};
-  Object.entries(incoming?.inspections || {}).forEach(([id, entry]) => {
-    const current = stored.inspections?.[id];
-    if (!entry || typeof entry !== "object" || entry.deleted === true && current?.deleted !== true) return;
-    // A completed QR inspection is a journal record, not an editable draft.
-    // Repeated synchronization must be idempotent and must never rewrite its
-    // author, checklist, defect, decision or timestamps.
-    if (current) return;
-    if (String(entry.authorKey || "") !== actorKey && baseRole !== "editor") return;
-    if (inspectionAllowed(entry)) inspections[id] = entry;
-  });
-  const events = {};
-  Object.entries(incoming?.events || {}).forEach(([id, entry]) => {
-    if (!entry || typeof entry !== "object") return;
-    const current = stored.events?.[id];
-    const item = itemFor(String(entry.gpmId || current?.gpmId || ""));
-    if (!item || item.deleted || entry.deleted === true && current?.deleted !== true) return;
-    const approves = Boolean(entry.approvedAt) && String(entry.approvedAt) !== String(current?.approvedAt || "");
-    const resolves = Boolean(entry.resolutionComment) && String(entry.resolutionComment) !== String(current?.resolutionComment || "");
-    const inspection = { ...(stored.inspections?.[entry.inspectionId] || {}), ...(incoming?.inspections?.[entry.inspectionId] || {}) };
-    const ownsEvent = String(entry.authorKey || "") === actorKey && inspectionAllowed(inspection);
-    if (approves && isEngineer && current && !current.approvedAt && Boolean(current.resolutionComment)) {
-      events[id] = { ...current,
-        approvedAt: entry.approvedAt, approvedByKey: actorKey, approvedByName: String(user.name || ""),
-        engineerName: String(user.name || ""), decision: "allowed", status: "approved", updatedAt: entry.updatedAt
-      };
-    } else if (resolves && isRepairer && current && !current.approvedAt) {
-      events[id] = { ...current,
-        resolutionComment: entry.resolutionComment, resolvedAt: entry.resolvedAt, resolvedByKey: actorKey,
-        resolvedByName: String(user.name || ""), resolvedByRole: String(user.role || ""),
-        partInstalled: entry.partInstalled === true, partDescription: String(entry.partDescription || "").slice(0, 1000),
-        partPhotos: Array.isArray(entry.partPhotos) ? entry.partPhotos.slice(0, 10) : [], status: "awaitingEngineer", updatedAt: entry.updatedAt
-      };
-    } else if (!current && ownsEvent) {
-      events[id] = entry;
-    }
-  });
-  return {
-    equipment,
-    inspections,
-    events,
-    managers: baseRole === "editor" ? (incoming?.managers || {}) : {},
-    managerMigrationVersion: stored.managerMigrationVersion || incoming?.managerMigrationVersion || ""
-  };
-}
-
 const NODE_CHECKLIST_ROLES = new Set([
   "mechanic", "electrician", "welder", "turner", "forkliftDriver",
   "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
@@ -5177,7 +4960,6 @@ async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
-    || pathname === "/api/gpm-qr"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -5194,7 +4976,6 @@ async function handleApi(req, res, pathname, url) {
   }
   const publicRequest = pathname === "/api/health"
     || (pathname === "/api/qr" && req.method === "GET")
-    || (pathname === "/api/gpm-qr" && req.method === "GET")
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
@@ -5762,25 +5543,6 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/gpm-qr" && req.method === "GET") {
-    const mode = url.searchParams.get("mode") === "monthly" ? "MONTHLY" : "SHIFT";
-    const id = String(url.searchParams.get("id") || "").trim();
-    if (!id || id.length > 120 || !/^[\p{L}\p{N}:._-]+$/u.test(id)) {
-      sendJson(res, 400, { ok: false, error: "Некорректный QR кран-балки." });
-      return true;
-    }
-    const db = readDb();
-    const card = Object.values(db.catalog?.equipment || {}).find(item => item?.legacyGpmQrAliases?.[id] !== undefined);
-    const nodeIndex = Number(card?.legacyGpmQrAliases?.[id]);
-    const upper = mode === "MONTHLY";
-    const token = String((upper ? card?.upperQrTokens : card?.qrTokens)?.[nodeIndex] || "");
-    const target = card && Number.isSafeInteger(nodeIndex)
-      ? `/?qr=${encodeURIComponent(`PPRQR|NODE|${card.id}|${nodeIndex}|${token}${upper ? "|upper" : ""}`)}`
-      : `/?gpmQr=${encodeURIComponent(`PPRGPM|${mode}|${id}`)}`;
-    res.writeHead(302, { Location: target, "Cache-Control": "no-store" });
-    res.end();
-    return true;
-  }
 
   if (pathname === "/api/qr-walk/status" && req.method === "GET") {
     const equipmentId = Number(url.searchParams.get("equipmentId"));
@@ -6777,14 +6539,6 @@ async function handleApi(req, res, pathname, url) {
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
         db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
-        const allowedGpm = authorizedGpmSyncPayload(db, body.gpmJournal, req.authUser);
-        db.gpmJournal = {
-          equipment: mergeObjectRecordsByFreshness(db.gpmJournal?.equipment, allowedGpm.equipment),
-          inspections: mergeObjectRecordsByFreshness(db.gpmJournal?.inspections, allowedGpm.inspections),
-          events: mergeObjectRecordsByFreshness(db.gpmJournal?.events, allowedGpm.events),
-          managers: mergeObjectRecordsByFreshness(db.gpmJournal?.managers, allowedGpm.managers),
-          managerMigrationVersion: allowedGpm.managerMigrationVersion
-        };
         db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.turningJournal = mergeObjectRecordsByFreshness(db.turningJournal, body.turningJournal);
         db.pprSheets = mergePprSheetsByFreshness(db.pprSheets, body.pprSheets);
@@ -7028,88 +6782,6 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/gpm/inspection" && req.method === "POST") {
-    const body = await readBody(req);
-    const rawInspection = body.inspection && typeof body.inspection === "object" ? body.inspection : null;
-    const inspectionId = String(rawInspection?.id || "").trim();
-    const gpmId = String(rawInspection?.gpmId || "").trim();
-    const actor = req.authUser || {};
-    const actorKey = resolutionUserKeyServer(actor);
-    if (!inspectionId || !gpmId || !actorKey || !["shift", "monthly", "defectReport"].includes(String(rawInspection?.inspectionType || ""))) {
-      sendJson(res, 400, { ok: false, error: "gpm_inspection_invalid" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-      db.gpmJournal.equipment ||= {};
-      db.gpmJournal.inspections ||= {};
-      db.gpmJournal.events ||= {};
-      const existing = db.gpmJournal.inspections[inspectionId];
-      if (existing && existing.deleted !== true) {
-        return { actionId: String(body.actionId || ""), origin: body.clientId || "api", patch: { gpmJournal: { inspections: { [inspectionId]: existing } } } };
-      }
-      const now = new Date().toISOString();
-      const inspection = {
-        ...rawInspection,
-        id: inspectionId,
-        gpmId,
-        authorKey: actorKey,
-        authorName: String(actor.name || ""),
-        authorEmployeeId: String(actor.employeeId || ""),
-        authorRole: String(actor.role || ""),
-        createdAt: String(rawInspection.createdAt || now),
-        updatedAt: now,
-        serverSavedAt: now,
-        deleted: false
-      };
-      const rawEvent = body.event && typeof body.event === "object" ? body.event : null;
-      const event = rawEvent ? {
-        ...rawEvent,
-        id: String(rawEvent.id || `gpm-event:${inspectionId}`),
-        gpmId,
-        inspectionId,
-        authorKey: actorKey,
-        authorName: String(actor.name || ""),
-        createdAt: String(rawEvent.createdAt || now),
-        updatedAt: now,
-        serverSavedAt: now,
-        deleted: false
-      } : null;
-      const allowed = authorizedGpmSyncPayload(db, {
-        inspections: { [inspectionId]: inspection },
-        events: event ? { [event.id]: event } : {}
-      }, actor);
-      if (!allowed.inspections[inspectionId]) return { error: "gpm_inspection_forbidden" };
-      db.gpmJournal.inspections = mergeObjectRecordsByFreshness(db.gpmJournal.inspections, allowed.inspections);
-      if (event && !allowed.events[event.id]) return { error: "gpm_event_forbidden" };
-      if (event) db.gpmJournal.events = mergeObjectRecordsByFreshness(db.gpmJournal.events, allowed.events);
-      const item = db.gpmJournal.equipment[gpmId];
-      if (item) {
-        const hasDefect = inspection.inspectionType === "defectReport" || inspection.decision === "prohibited";
-        item.operationStatus = hasDefect ? "prohibited" : item.operationStatus || "allowed";
-        if (!hasDefect && (inspection.sourceInspectionType === "monthly" || inspection.inspectionType === "monthly")) {
-          item.lastMonthlyInspectionDate = String(inspection.shiftDate || now.slice(0, 10));
-        }
-        item.updatedAt = now;
-      }
-      const actionId = String(body.actionId || "");
-      const patch = { gpmJournal: {
-        equipment: item ? { [gpmId]: item } : {},
-        inspections: { [inspectionId]: db.gpmJournal.inspections[inspectionId] },
-        events: event ? { [event.id]: db.gpmJournal.events[event.id] } : {}
-      } };
-      writeDb(db, { action: "gpm_inspection_save", actionId, clientId: String(body.clientId || ""), user: actor, inspectionId, gpmId });
-      return { actionId, origin: body.clientId || "api", patch };
-    });
-    if (result.error) {
-      sendJson(res, result.error === "gpm_inspection_forbidden" || result.error === "gpm_event_forbidden" ? 403 : 400, { ok: false, error: result.error });
-      return true;
-    }
-    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
-    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
-    return true;
-  }
 
   if (pathname === "/api/ppr-sheet/action" && req.method === "POST") {
     const body = await readBody(req);
@@ -8129,7 +7801,6 @@ async function handleApi(req, res, pathname, url) {
     const role = String(body.role || "").trim();
     const area = String(body.area || "").trim();
     const areas = normalizedUserAreasServer({ area, areas: Array.isArray(body.areas) ? body.areas : [] });
-    const craneOnly = false;
     if (!role || role === "warehouse") {
       sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
       return true;
@@ -8146,11 +7817,6 @@ async function handleApi(req, res, pathname, url) {
       target.role = role;
       target.area = areas[0] || "";
       target.areas = areas;
-      target.craneOnly = false;
-      if (role === "operator") {
-        target.area = "ГПМ";
-        target.areas = [...new Set(["ГПМ", ...(target.areas || [])])];
-      }
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
       syncPushProfilesForUser(db, target);
@@ -8158,7 +7824,7 @@ async function handleApi(req, res, pathname, url) {
         action: "user_role_update",
         actionId: String(body.actionId || ""),
         clientId: String(body.clientId || ""),
-        user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area: target.area, areas, craneOnly }
+          user: { id: target.id || "", employeeId: target.employeeId || "", name: target.name || "", role, area: target.area, areas }
       });
       return { user: userPublic(target) };
     });
@@ -8300,7 +7966,6 @@ async function handleApi(req, res, pathname, url) {
         action: ignoredAction,
         actionId: ignoredActionId,
         clientId: ignoredClientId,
-        assignedGpmIds: ignoredAssignedGpmIds,
         ...safeUser
       } = user;
       if (existing?.role === "editor" && safeUser.role && safeUser.role !== "editor") {
@@ -8315,11 +7980,8 @@ async function handleApi(req, res, pathname, url) {
       };
       nextUser.areas = normalizedUserAreasServer(nextUser);
       nextUser.area = nextUser.areas[0] || "";
-      if (safeUser.role === "operator") {
-        nextUser.area = "ГПМ";
-        nextUser.areas = [...new Set(["ГПМ", ...nextUser.areas])];
-        nextUser.craneOnly = false;
-      }
+      delete nextUser.craneOnly;
+      delete nextUser.assignedGpmIds;
       db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
       if (user.newPassword) nextUser.passwordHash = hashPassword(user.newPassword);
       delete nextUser.newPassword;
@@ -8574,7 +8236,7 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(async storage => {
-    await recoverLegacyGpmQrAliases().catch(error => console.warn(`Legacy GPM QR recovery failed: ${error.message}`));
+    await recoverRetiredCraneBeamArchive().catch(error => console.warn(`Crane-beam archive recovery failed: ${error.message}`));
     startPostgresRecoveryMonitor();
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));

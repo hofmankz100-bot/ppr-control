@@ -39,7 +39,7 @@ test("welding journal participates in localhost server synchronization", () => {
   assert.match(server, /weldingJournal: \{\}/);
   assert.match(server, /weldingJournal: db\.weldingJournal \|\| \{\}/);
   assert.match(server, /db\.weldingJournal = mergeObjectRecordsByFreshness/);
-  assert.match(app, /"gpmJournal", "weldingJournal"/);
+  assert.match(app, /"gasJournal", "weldingJournal"/);
 });
 
 test("welding forms are optimized for phone filling", () => {

@@ -50,12 +50,6 @@ const html = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;
     }
   }
 
-  const equipment = JSON.parse(await page.evaluate(() => eval('JSON.stringify(Object.values(gpmStore().equipment || {}).map(item => ({...item, _kind: gpmItemKind(item)})))')));
-  process.stderr.write(`GPM equipment for print: ${equipment.length}\n`);
-  for (const item of equipment) {
-    const expression = `current.selectedGpmId=${JSON.stringify(item.id)}; current.gpmJournalKind=${JSON.stringify(item._kind === 'forklift' ? 'forklift' : 'gpm')}; printGpmJournal()`;
-    await printPopup(expression, `Вахтенный журнал - ${safe(item.name)} - ${month}.pdf`);
-  }
   const aggregateEquipment = JSON.parse(await page.evaluate(() => eval('JSON.stringify(allEquipment().filter(item => item && aggregateJournalItems(item.area, item.id).length).map(item => ({id:item.id,name:item.name,area:item.area})))')));
   process.stderr.write(`Aggregate journals for print: ${aggregateEquipment.length}\n`);
   for (const item of aggregateEquipment) {

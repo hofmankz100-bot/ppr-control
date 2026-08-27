@@ -15,67 +15,6 @@ function createAdminEquipmentMaintenanceRoute({
   writeDb
 }) {
   return async function handleAdminEquipmentMaintenanceRoute(req, res, pathname) {
-  if (pathname === "/api/admin/gpm/delete" && req.method === "POST") {
-    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    if (!(process.env.NODE_ENV === "test" && !req.authUser?.passwordHash) && !passwordMatches(String(body.password || ""), String(req.authUser?.passwordHash || ""))) {
-      sendJson(res, 401, { ok: false, error: "admin_password_invalid" }); return true;
-    }
-    const gpmId = String(body.gpmId || "").trim().slice(0, 200);
-    const reason = String(body.reason || "").trim().slice(0, 2000);
-    if (!gpmId || !reason) { sendJson(res, 400, { ok: false, error: "gpm_delete_invalid" }); return true; }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const item = db.gpmJournal?.equipment?.[gpmId];
-      if (!item || item.deleted === true) return { error: "gpm_card_not_found" };
-      if (Number.isSafeInteger(Number(item.sourceEquipmentId)) && Number(item.sourceEquipmentId) > 0) {
-        return { error: "gpm_card_linked_to_equipment" };
-      }
-      const linkedInspections = Object.values(db.gpmJournal?.inspections || {})
-        .filter(entry => String(entry?.gpmId || "") === gpmId)
-        .map(entry => ({ ...entry }));
-      const linkedEvents = Object.values(db.gpmJournal?.events || {})
-        .filter(entry => String(entry?.gpmId || "") === gpmId)
-        .map(entry => ({ ...entry }));
-      const gpmSnapshot = { ...item };
-      const deletedAt = new Date().toISOString();
-      item.deleted = true;
-      item.deletedAt = deletedAt;
-      item.deletedByName = String(req.authUser?.name || "Администратор");
-      item.updatedAt = deletedAt;
-      Object.values(db.gpmJournal?.inspections || {}).forEach(entry => {
-        if (String(entry?.gpmId || "") !== gpmId) return;
-        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
-      });
-      Object.values(db.gpmJournal?.events || {}).forEach(entry => {
-        if (String(entry?.gpmId || "") !== gpmId) return;
-        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
-      });
-      db.adminTrash ||= [];
-      db.adminTrash.unshift({
-        id: `trash:gpm:${Date.now()}:${randomBytes(5).toString("hex")}`,
-        type: "gpm",
-        targetId: gpmId,
-        label: String(item.name || gpmId),
-        reason,
-        deletedAt,
-        expiresAt: new Date(Date.now() + normalizedAdminConfig(db.adminConfig).trashRetentionDays * 24 * 60 * 60 * 1000).toISOString(),
-        deletedById: String(req.authUser?.id || ""),
-        deletedByName: String(req.authUser?.name || "Администратор"),
-        snapshot: {
-          gpmItem: gpmSnapshot,
-          gpmInspections: linkedInspections,
-          gpmEvents: linkedEvents
-        }
-      });
-      writeDb(db, { action: "gpm_card_moved_to_trash", user: req.authUser, targetType: "gpm", targetId: gpmId, targetLabel: item.name, reason });
-      return { state: publicState(db) };
-    });
-    if (result.error) { sendJson(res, result.error === "gpm_card_linked_to_equipment" ? 409 : 404, { ok: false, error: result.error }); return true; }
-    const stateVersion = broadcastState("gpm-card-deleted", "", result.state, true);
-    sendJson(res, 200, { ok: true, state: result.state, stateVersion });
-    return true;
-  }
 
   if (pathname === "/api/admin/equipment/delete" && req.method === "POST") {
     if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
@@ -95,27 +34,10 @@ function createAdminEquipmentMaintenanceRoute({
       if (existing?.deleted === true) return { error: "equipment_already_deleted" };
       const item = existing;
       const deletedAt = new Date().toISOString();
-      const linkedGpm = Object.values(db.gpmJournal?.equipment || {}).filter(entry => Number(entry?.sourceEquipmentId || 0) === equipmentId);
-      const linkedGpmIds = new Set(linkedGpm.map(entry => String(entry?.id || "")).filter(Boolean));
-      const linkedGpmInspections = Object.values(db.gpmJournal?.inspections || {})
-        .filter(entry => linkedGpmIds.has(String(entry?.gpmId || "")))
-        .map(entry => ({ ...entry }));
-      const linkedGpmEvents = Object.values(db.gpmJournal?.events || {})
-        .filter(entry => linkedGpmIds.has(String(entry?.gpmId || "")))
-        .map(entry => ({ ...entry }));
       item.deleted = true;
       item.deletedAt = deletedAt;
       item.deletedByName = String(req.authUser?.name || "Администратор");
       item.updatedAt = deletedAt;
-      linkedGpm.forEach(entry => { entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt; });
-      Object.values(db.gpmJournal?.inspections || {}).forEach(entry => {
-        if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
-        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
-      });
-      Object.values(db.gpmJournal?.events || {}).forEach(entry => {
-        if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
-        entry.deleted = true; entry.deletedAt = deletedAt; entry.updatedAt = deletedAt;
-      });
       db.adminTrash ||= [];
       db.adminTrash.unshift({
         id: `trash:equipment:${Date.now()}:${randomBytes(5).toString("hex")}`,
@@ -128,10 +50,7 @@ function createAdminEquipmentMaintenanceRoute({
         deletedById: String(req.authUser?.id || ""),
         deletedByName: String(req.authUser?.name || "Администратор"),
         snapshot: {
-          catalogItem: { ...item },
-          gpmItems: linkedGpm.map(entry => ({ ...entry })),
-          gpmInspections: linkedGpmInspections,
-          gpmEvents: linkedGpmEvents
+          catalogItem: { ...item }
         }
       });
       writeDb(db, { action: "equipment_moved_to_trash", user: req.authUser, targetType: "equipment", targetId: String(equipmentId), targetLabel: item.name, reason });
@@ -167,10 +86,6 @@ function createAdminEquipmentMaintenanceRoute({
       catalogItem.nodeCreatedAt[nodeIndex] = new Date().toISOString();
       catalogItem.qrTokens = catalogItem.qrTokens && typeof catalogItem.qrTokens === "object" ? catalogItem.qrTokens : {};
       catalogItem.qrTokens[nodeIndex] = randomBytes(12).toString("hex");
-      if (String(catalogItem.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ") {
-        catalogItem.upperQrTokens = catalogItem.upperQrTokens && typeof catalogItem.upperQrTokens === "object" ? catalogItem.upperQrTokens : {};
-        catalogItem.upperQrTokens[nodeIndex] = randomBytes(12).toString("hex");
-      }
       catalogItem.area ||= String(body.area || "").trim().slice(0, 200);
       catalogItem.updatedAt = new Date().toISOString();
       db.catalog.equipment[equipmentId] = catalogItem;

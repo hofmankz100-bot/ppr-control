@@ -64,63 +64,6 @@ function createAdminMaintenanceRoute(dependencies = {}) {
             deletedByName: "",
             restoredAt
           };
-          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-          db.gpmJournal.equipment ||= {};
-          (snapshot.gpmItems || []).forEach(gpm => {
-            if (!gpm?.id) return;
-            db.gpmJournal.equipment[gpm.id] = { ...gpm, deleted: false, deletedAt: "", restoredAt };
-          });
-          const linkedGpmIds = new Set((snapshot.gpmItems || []).map(gpm => String(gpm?.id || "")).filter(Boolean));
-          const restoreEquipmentLinked = (target, snapshots) => {
-            (snapshots || []).forEach(entry => {
-              if (!entry?.id || !linkedGpmIds.has(String(entry.gpmId || ""))) return;
-              target[entry.id] = { ...entry, deleted: false, deletedAt: "", restoredAt, updatedAt: restoredAt };
-            });
-            Object.values(target).forEach(entry => {
-              if (!linkedGpmIds.has(String(entry?.gpmId || ""))) return;
-              entry.deleted = false; entry.deletedAt = ""; entry.restoredAt = restoredAt; entry.updatedAt = restoredAt;
-            });
-          };
-          db.gpmJournal.inspections ||= {};
-          db.gpmJournal.events ||= {};
-          restoreEquipmentLinked(db.gpmJournal.inspections, snapshot.gpmInspections);
-          restoreEquipmentLinked(db.gpmJournal.events, snapshot.gpmEvents);
-        } else if (item.type === "gpm") {
-          const snapshot = item.snapshot || {};
-          const gpmItem = snapshot.gpmItem;
-          const gpmId = String(item.targetId || gpmItem?.id || "").trim();
-          if (!gpmId || !gpmItem) return { error: "restore_snapshot_invalid" };
-          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-          db.gpmJournal.equipment ||= {};
-          db.gpmJournal.inspections ||= {};
-          db.gpmJournal.events ||= {};
-          const active = db.gpmJournal.equipment[gpmId];
-          if (active && active.deleted !== true) return { error: "restore_conflict" };
-          const restoredAt = new Date(now()).toISOString();
-          db.gpmJournal.equipment[gpmId] = {
-            ...gpmItem,
-            id: gpmId,
-            deleted: false,
-            deletedAt: "",
-            deletedByName: "",
-            restoredAt,
-            updatedAt: restoredAt
-          };
-          const restoreLinked = (target, snapshots) => {
-            (snapshots || []).forEach(entry => {
-              if (!entry?.id || String(entry.gpmId || "") !== gpmId) return;
-              target[entry.id] = { ...entry, deleted: false, deletedAt: "", restoredAt, updatedAt: restoredAt };
-            });
-            Object.values(target).forEach(entry => {
-              if (String(entry?.gpmId || "") !== gpmId) return;
-              entry.deleted = false;
-              entry.deletedAt = "";
-              entry.restoredAt = restoredAt;
-              entry.updatedAt = restoredAt;
-            });
-          };
-          restoreLinked(db.gpmJournal.inspections, snapshot.gpmInspections);
-          restoreLinked(db.gpmJournal.events, snapshot.gpmEvents);
         } else {
           return { error: "restore_type_not_supported" };
         }
@@ -144,7 +87,6 @@ function createAdminMaintenanceRoute(dependencies = {}) {
         createManualBackup("before-trash-purge");
         if (item.type === "equipment") {
           const equipmentId = Number(item.targetId);
-          const linkedGpmIds = new Set((item.snapshot?.gpmItems || []).map(gpm => String(gpm?.id || "")).filter(Boolean));
           if (Number.isSafeInteger(equipmentId) && db.catalog?.equipment?.[equipmentId]?.deleted === true) {
             if (item.snapshot?.catalogItem?.builtIn === true) {
               db.catalog.equipment[equipmentId] = {
@@ -158,29 +100,6 @@ function createAdminMaintenanceRoute(dependencies = {}) {
               delete db.catalog.equipment[equipmentId];
             }
           }
-          Object.keys(db.gpmJournal?.equipment || {}).forEach(id => {
-            const gpm = db.gpmJournal.equipment[id];
-            if (Number(gpm?.sourceEquipmentId || 0) === equipmentId && gpm.deleted === true) {
-              linkedGpmIds.add(String(gpm.id || id));
-              delete db.gpmJournal.equipment[id];
-            }
-          });
-          [db.gpmJournal?.inspections, db.gpmJournal?.events].forEach(collection => {
-            Object.keys(collection || {}).forEach(id => {
-              if (linkedGpmIds.has(String(collection[id]?.gpmId || ""))) delete collection[id];
-            });
-          });
-        } else if (item.type === "gpm") {
-          const gpmId = String(item.targetId || item.snapshot?.gpmItem?.id || "").trim();
-          if (!gpmId) return { error: "restore_snapshot_invalid" };
-          if (db.gpmJournal?.equipment?.[gpmId]?.deleted === true) {
-            delete db.gpmJournal.equipment[gpmId];
-          }
-          [db.gpmJournal?.inspections, db.gpmJournal?.events].forEach(collection => {
-            Object.keys(collection || {}).forEach(id => {
-              if (String(collection[id]?.gpmId || "") === gpmId) delete collection[id];
-            });
-          });
         }
         db.adminTrash = (db.adminTrash || []).filter(entry => entry.id !== trashId);
         writeDb(db, {
@@ -197,7 +116,7 @@ function createAdminMaintenanceRoute(dependencies = {}) {
     });
     if (result.error) sendJson(res, 400, { ok: false, error: result.error });
     else {
-      const shouldBroadcast = ["equipment", "gpm"].includes(result.targetType) && result.state && typeof broadcastState === "function";
+      const shouldBroadcast = result.targetType === "equipment" && result.state && typeof broadcastState === "function";
       const stateVersion = shouldBroadcast
         ? broadcastState(result.restored ? "trash-restored" : "trash-purged", "", result.state, true)
         : "";

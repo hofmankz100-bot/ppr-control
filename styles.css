@@ -8002,23 +8002,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
 [data-director-user-row][hidden] {
   display: none !important;
 }
-
-.director-crane-picker {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  margin: 2px 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.director-crane-picker.hidden { display: none; }
-.director-crane-picker legend { padding: 0 6px; font-weight: 900; }
-.director-crane-picker label { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.director-crane-picker input { width: 20px; height: 20px; flex: 0 0 auto; }
-.director-crane-picker small { grid-column: 1 / -1; color: var(--muted); }
 .user-area-picker {
   grid-column: 1 / -1;
   display: grid;
@@ -11541,149 +11524,16 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 
 @media print {
   .mobile-table-swipe-hint { display: none !important; }
-}
-
-/* GPM register: assignments, shift inspections, PTO documents and printable history. */
-.gpm-head-actions,
-.gpm-form-actions,
-.gpm-admin-actions { display:flex;flex-wrap:wrap;gap:9px; }
-.gpm-panel { margin-top:14px; }
-.gpm-manager-settings { margin:0 0 14px;border:1px solid #cfdde5;border-radius:15px;background:#f7fafc; }
-.gpm-manager-settings summary { padding:13px 15px;cursor:pointer;color:#234b60;font-weight:850; }
-.gpm-warning-resolution { display:grid;gap:6px;margin:10px 0; }
-.gpm-warning-resolution span { font-weight:850; }
-.gpm-warning-resolution textarea { width:100%;box-sizing:border-box; }
-.gpm-qr-print-actions{display:flex;flex-wrap:wrap;gap:9px;margin:12px 0}.gpm-qr-only{display:grid;gap:5px;border:1px dashed #79a9b3;border-radius:12px;background:#f4fbfc;padding:16px;color:#234b60}.gpm-qr-only strong{font-size:1.05rem}.gpm-qr-mode{display:grid;gap:3px;border-radius:12px;padding:13px 15px;color:#fff}.gpm-qr-mode.shift{background:#176b78}.gpm-qr-mode.monthly{background:#b45309}.gpm-qr-mode strong{font-size:1.15rem}.gpm-qr-inspection .gpm-check-grid label span{display:grid;gap:2px}.gpm-qr-inspection .gpm-check-grid small{color:#60777f;font-weight:500}
-.gpm-official-shift-journal>h3{margin-bottom:12px}.gpm-official-sheet{margin:0 0 22px;padding:18px;border:1px solid #6b7280;border-radius:4px;background:#fff;color:#111}.gpm-official-appendix{text-align:right;font-size:.78rem;line-height:1.25}.gpm-official-sheet h4{text-align:center;margin:12px 0;font-size:1.08rem}.gpm-official-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid #111;border-left:1px solid #111}.gpm-official-meta span{min-height:42px;padding:7px;border-right:1px solid #111;border-bottom:1px solid #111}.gpm-official-checks{width:100%;border-collapse:collapse}.gpm-official-checks th,.gpm-official-checks td{border:1px solid #111;padding:7px;vertical-align:top}.gpm-official-checks th:nth-child(1),.gpm-official-checks td:nth-child(1){width:52px;text-align:center}.gpm-official-checks th:nth-child(2){width:36%}.gpm-official-checks th:nth-child(3){width:28%}.gpm-official-signatures{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #111;border-left:1px solid #111}.gpm-official-signatures div{display:grid;gap:8px;min-height:72px;padding:9px;border-right:1px solid #111;border-bottom:1px solid #111}.gpm-official-signatures span{border-bottom:1px solid #555;padding-bottom:4px}@media screen and (max-width:760px){.gpm-official-sheet{padding:10px}.gpm-official-meta,.gpm-official-signatures{grid-template-columns:1fr}.gpm-official-checks{min-width:760px}}
-.gpm-official-signatures .gpm-official-resolution{grid-column:1/-1;min-height:58px}
-.gpm-official-signatures .gpm-official-electromechanic{grid-column:1/-1;min-height:58px}
-.gpm-official-meta .gpm-official-assigned-operators{grid-column:1/-1;min-height:auto}
-.gpm-monthly-inspection-banner{margin:0 0 10px;padding:9px 12px;border:2px solid #a85b00;background:#fff1cc;color:#753c00;text-align:center;font-size:1rem;font-weight:900;letter-spacing:.04em}
-.gpm-official-monthly{border-color:#a85b00;box-shadow:inset 0 0 0 2px #ffd878}
-.modern-crane-workflow-cell{padding:6px 4px!important;background:#f1f8f8!important;color:#294956!important;text-align:center!important;font-size:.68rem;font-weight:800;line-height:1.25}
-.modern-crane-workflow-cell span{display:block;white-space:nowrap}
-.modern-crane-workflow-cell span+span{margin-top:4px;padding-top:4px;border-top:1px solid #bdd1d6}
-.modern-crane-workflow-cell b{display:block;color:#0f6f63;font-size:.82rem}
-.gpm-quick-result{width:min(100%,560px);margin:18px auto;padding:24px;border-radius:22px;background:#fff;box-shadow:0 18px 48px rgba(20,50,74,.2)}.gpm-quick-result h2{margin:16px 0 8px;font-size:1.9rem}.gpm-quick-result .qr-result-node{margin-bottom:18px}.gpm-quick-result .qr-result-actions{display:grid;gap:12px}.gpm-quick-result .qr-result-actions button{min-height:62px;font-size:1.08rem;font-weight:900}
-.gpm-responsible-print-sheet{display:none;color:#111}.gpm-responsible-print-sheet h4{text-align:center;margin:16mm 0 10mm;font-size:16pt}.gpm-responsible-print-meta{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #111;border-left:1px solid #111}.gpm-responsible-print-meta span{min-height:14mm;padding:4mm;border-right:1px solid #111;border-bottom:1px solid #111}.gpm-responsible-print-table{width:100%;margin-top:10mm;border-collapse:collapse;table-layout:fixed}.gpm-responsible-print-table th,.gpm-responsible-print-table td{height:20mm;padding:4mm;border:1px solid #111;text-align:left;vertical-align:middle}.gpm-responsible-print-table th:nth-child(1){width:35%}.gpm-responsible-print-table th:nth-child(3){width:25%}.gpm-responsible-print-footer{display:flex;justify-content:space-between;margin-top:12mm;font-size:10pt}
-@media print{.gpm-official-shift-journal>h3{display:none}.gpm-official-sheet{break-after:page;margin:0;border:0;padding:0}.gpm-official-sheet:last-child{break-after:auto}}
-.gpm-manager-settings form { display:grid;gap:10px;padding:0 15px 15px; }
-.gpm-manager-settings form p { margin:0;color:#647985; }
-.gpm-manager-settings label { display:grid;gap:6px; }
-.gpm-manager-settings select { width:100%;min-height:130px; }
-.gpm-manager-settings button { justify-self:start; }
-.gpm-layout { display:grid;grid-template-columns:minmax(230px,320px) minmax(0,1fr);gap:16px;align-items:start; }
-.gpm-equipment-list { display:grid;gap:8px;position:sticky;top:12px; }
-.gpm-equipment-list > button {
-  display:flex;align-items:center;gap:11px;width:100%;min-height:64px;padding:11px 13px;
-  border:1px solid #d5e1e8;border-radius:14px;background:#fff;color:#173447;text-align:left;
-}
-.gpm-equipment-list > button.active { border-color:#1682aa;box-shadow:0 0 0 3px rgba(22,130,170,.13); }
-.gpm-equipment-list > button div { display:grid;gap:3px;min-width:0; }
-.gpm-equipment-list > button strong,.gpm-equipment-list > button small { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.gpm-equipment-list > button small { color:#647985; }
-.gpm-status-dot { width:13px;height:13px;flex:0 0 13px;border-radius:50%;background:#22a45a;box-shadow:0 0 0 4px rgba(34,164,90,.12); }
-.gpm-status-dot.warning { background:#d99a13;box-shadow:0 0 0 4px rgba(217,154,19,.14); }
-.gpm-status-dot.prohibited { background:#d42d3f;box-shadow:0 0 0 4px rgba(212,45,63,.13); }
-.gpm-content { min-width:0; }
-.gpm-detail,.gpm-admin-form {
-  overflow:hidden;border:1px solid #d6e1e7;border-radius:18px;background:#fff;color:#173447;box-shadow:0 10px 28px rgba(20,50,74,.08);
-}
-.gpm-detail-head { display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px;border-bottom:1px solid #dce5ea;background:#f5f9fb; }
-.gpm-detail-head span,.gpm-detail-head p { color:#647985; }
-.gpm-detail-head h2 { margin:3px 0 5px; }
-.gpm-status { flex:0 0 auto;padding:8px 11px;border-radius:999px;background:#dcf5e5;color:#13733f;font-size:12px; }
-.gpm-status.warning { background:#fff0c4;color:#8a5b00; }
-.gpm-status.prohibited { background:#ffe0e3;color:#a31929; }
-.gpm-responsibles,.gpm-dates { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px 18px;border-bottom:1px solid #e1e8ec; }
-.gpm-responsibles > div,.gpm-dates > div { display:grid;gap:4px;padding:11px;border-radius:12px;background:#f6f9fb; }
-.gpm-responsibles span,.gpm-dates span { color:#69808c;font-size:11px;font-weight:700;text-transform:uppercase; }
-.gpm-work-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:16px 18px;background:#f7fafb; }
-.gpm-entry-form,.gpm-admin-form { display:grid;gap:12px;padding:17px; }
-.gpm-entry-form { border:1px solid #d8e3e9;border-radius:15px;background:#fff; }
-.gpm-entry-form p,.gpm-admin-form p { margin:0;color:#657b87; }
-.gpm-entry-form label,.gpm-admin-form label { display:grid;gap:5px; }
-.gpm-entry-form label > span,.gpm-admin-form label > span { color:#4d6674;font-size:12px;font-weight:800; }
-.gpm-entry-form input,.gpm-entry-form select,.gpm-entry-form textarea,
-.gpm-admin-form input,.gpm-admin-form select,.gpm-admin-form textarea { width:100%;min-height:42px; }
-.gpm-form-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px; }
-.gpm-check-grid { display:grid;gap:7px; }
-.gpm-check-grid label { display:flex;align-items:flex-start;gap:8px;padding:8px 9px;border:1px solid #dce5ea;border-radius:10px; }
-.gpm-check-grid input { width:18px;min-height:18px;flex:0 0 18px;margin-top:1px; }
-.gpm-log-section { padding:16px 18px;border-top:1px solid #dde6eb; }
-.gpm-log-section h3 { margin:0 0 10px; }
-.gpm-table-wrap { overflow-x:auto; }
-.gpm-table-wrap table { width:100%;border-collapse:collapse;min-width:720px; }
-.gpm-table-wrap th,.gpm-table-wrap td { padding:9px;border:1px solid #cbd8df;vertical-align:top;text-align:left;font-size:12px; }
-.gpm-table-wrap th { background:#eaf2f6;color:#254b60; }
-.gpm-admin-actions { padding:0 18px 18px; }
+} shift inspections{ display:flex;flex-wrap:wrap;gap:9px; }@media screen and (max-width:760px){}
+@media print{}
 
 @media (max-width: 820px) {
-  .gpm-layout { grid-template-columns:1fr; }
-  .gpm-equipment-list { position:static;grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .gpm-responsibles,.gpm-dates,.gpm-work-grid,.gpm-form-grid { grid-template-columns:1fr; }
 }
 @media (max-width: 520px) {
-  .gpm-equipment-list { grid-template-columns:1fr; }
-  .gpm-detail-head { display:grid; }
-  .gpm-status { justify-self:start; }
-  .gpm-log-section,.gpm-work-grid,.gpm-detail-head,.gpm-responsibles,.gpm-dates { padding-left:11px;padding-right:11px; }
 }
 
 @media print {
   @page { size:A4 landscape;margin:9mm; }
-  body.printing-gpm-journal * { visibility:hidden !important; }
-  body.printing-gpm-journal [data-gpm-print-root],
-  body.printing-gpm-journal [data-gpm-print-root] * { visibility:visible !important; }
-  body.printing-gpm-journal [data-gpm-print-root] {
-    position:absolute;inset:0;width:100%;overflow:visible;border:0;border-radius:0;box-shadow:none;color:#000;background:#fff;
-  }
-  body.printing-gpm-journal .no-print { display:none !important; }
-  body.printing-gpm-journal .gpm-detail-head,
-  body.printing-gpm-journal .gpm-responsibles,
-  body.printing-gpm-journal .gpm-dates { break-inside:avoid;background:#fff !important; }
-  body.printing-gpm-journal .gpm-log-section { break-before:auto; }
-  body.printing-gpm-journal .gpm-responsible-print-sheet { display:none !important; }
-  body.printing-gpm-journal .gpm-detail-head,
-  body.printing-gpm-journal .gpm-responsibles,
-  body.printing-gpm-journal .gpm-dates { display:none !important; }
-  body.printing-gpm-journal .gpm-official-sheet { break-after:auto;page-break-after:auto;margin:0;padding:0;font-size:8pt; }
-  body.printing-gpm-journal .gpm-official-sheet:not(:last-child) { break-after:page;page-break-after:always; }
-  body.printing-gpm-journal .gpm-official-appendix { font-size:6.5pt;line-height:1.1; }
-  body.printing-gpm-journal .gpm-official-sheet h4 { margin:2mm 0;font-size:10pt; }
-  body.printing-gpm-journal .gpm-monthly-inspection-banner { margin:0 0 1.5mm;padding:1.5mm;border:1.2pt solid #000;background:#eee !important;color:#000;font-size:9pt;letter-spacing:.03em; }
-  body.printing-gpm-journal .gpm-official-meta span { min-height:8mm;padding:1.5mm; }
-  body.printing-gpm-journal .gpm-official-meta { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
-  body.printing-gpm-journal .gpm-official-checks th,
-  body.printing-gpm-journal .gpm-official-checks td { padding:1.4mm;font-size:7pt;line-height:1.15; }
-  body.printing-gpm-journal .gpm-official-signatures div { min-height:11mm;padding:1.5mm;gap:1mm; }
-  body.printing-gpm-journal .gpm-official-signatures { grid-template-columns:1fr 1fr !important;break-inside:avoid;page-break-inside:avoid; }
-  body.printing-gpm-journal .gpm-official-signatures .gpm-official-resolution,
-  body.printing-gpm-journal .gpm-official-signatures .gpm-official-electromechanic { min-height:10mm; }
-  body.printing-gpm-journal .gpm-table-wrap { overflow:visible; }
-  body.printing-gpm-journal .gpm-table-wrap table { min-width:0;font-size:9pt; }
-  body.printing-gpm-journal .gpm-table-wrap thead { display:table-header-group; }
-  body.printing-gpm-journal .gpm-table-wrap tr { break-inside:avoid; }
-  body.printing-gpm-journal a { color:#000;text-decoration:none; }
-  body.printing-gpm-journal .topbar,
-  body.printing-gpm-journal .profile-bar,
-  body.printing-gpm-journal .mobile-nav,
-  body.printing-gpm-journal #gpmScreen > .panel-head,
-  body.printing-gpm-journal #gpmPanel > :not(.gpm-layout),
-  body.printing-gpm-journal .gpm-equipment-list { display:none !important; }
-  body.printing-gpm-journal .gpm-layout,
-  body.printing-gpm-journal .gpm-content { display:block !important;min-height:0 !important;height:auto !important;overflow:visible !important; }
-  body.printing-gpm-journal .app-shell,
-  body.printing-gpm-journal .screen,
-  body.printing-gpm-journal #gpmScreen,
-  body.printing-gpm-journal #gpmPanel { min-height:0 !important;height:auto !important;overflow:visible !important; }
-
-  body.printing-gpm-responsibles * { visibility:hidden !important; }
-  body.printing-gpm-responsibles [data-gpm-print-root],
-  body.printing-gpm-responsibles [data-gpm-print-root] * { visibility:visible !important; }
-  body.printing-gpm-responsibles [data-gpm-print-root] { position:absolute;inset:0;width:100%;border:0;box-shadow:none;background:#fff; }
-  body.printing-gpm-responsibles [data-gpm-print-root] > :not(.gpm-responsible-print-sheet) { display:none !important; }
-  body.printing-gpm-responsibles .gpm-responsible-print-sheet { display:block;min-height:0;padding:8mm; }
 }
 
 /* New engineer requests: calm circular halo without button blinking. */
@@ -13818,8 +13668,7 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .equipment-schedule-table td.comment-cell,
   html[data-theme="dark"] .equipment-schedule-table td.downtime-cell,
   html[data-theme="dark"] .equipment-schedule-table td.request-cell,
-  html[data-theme="dark"] .equipment-schedule-table td.operational-paused-day,
-  html[data-theme="dark"] .equipment-schedule-table td.modern-crane-workflow-cell {
+  html[data-theme="dark"] .equipment-schedule-table td.operational-paused-day {
     border-color: #2a3942 !important;
     background: #111b21 !important;
     color: #e9edef !important;
@@ -14965,103 +14814,7 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .work-permit-instruction-card details li {
     color: #c7d0d5;
   }
-
-  html[data-theme="dark"] .gpm-equipment-list > button,
-  html[data-theme="dark"] .gpm-manager-settings,
-  html[data-theme="dark"] .gpm-manager-settings form,
-  html[data-theme="dark"] .gpm-detail,
-  html[data-theme="dark"] .gpm-admin-form,
-  html[data-theme="dark"] .gpm-entry-form {
-    border-color: #2a3942;
-    background: #111b21;
-    color: #e9edef;
-    box-shadow: none;
-  }
-
-  html[data-theme="dark"] .gpm-detail-head,
-  html[data-theme="dark"] .gpm-responsibles,
-  html[data-theme="dark"] .gpm-dates,
-  html[data-theme="dark"] .gpm-work-grid,
-  html[data-theme="dark"] .gpm-responsibles > div,
-  html[data-theme="dark"] .gpm-dates > div {
-    border-color: #2a3942;
-    background: #111b21;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-qr-only,
-  html[data-theme="dark"] .gpm-official-sheet {
-    border-color: #3b4a54;
-    background: #111b21;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-official-meta,
-  html[data-theme="dark"] .gpm-official-meta span,
-  html[data-theme="dark"] .gpm-official-checks th,
-  html[data-theme="dark"] .gpm-official-checks td,
-  html[data-theme="dark"] .gpm-official-signatures,
-  html[data-theme="dark"] .gpm-official-signatures div,
-  html[data-theme="dark"] .gpm-official-signatures span {
-    border-color: #3b4a54;
-  }
-
-  html[data-theme="dark"] .gpm-official-checks th {
-    background: #0f3447;
-    color: #f0f5f7;
-  }
-
-  html[data-theme="dark"] .gpm-official-checks td {
-    background: #111b21;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-detail-head span,
-  html[data-theme="dark"] .gpm-detail-head p,
-  html[data-theme="dark"] .gpm-responsibles span,
-  html[data-theme="dark"] .gpm-dates span,
-  html[data-theme="dark"] .gpm-equipment-list > button small,
-  html[data-theme="dark"] .gpm-manager-settings p {
-    color: #aebac1;
-  }
-
-  html[data-theme="dark"] .gpm-detail-head h2,
-  html[data-theme="dark"] .gpm-responsibles strong,
-  html[data-theme="dark"] .gpm-dates strong,
-  html[data-theme="dark"] .gpm-equipment-list > button strong,
-  html[data-theme="dark"] .gpm-manager-settings summary {
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-qr-print-actions button,
-  html[data-theme="dark"] .gpm-form-actions button.secondary,
-  html[data-theme="dark"] .gpm-admin-form input,
-  html[data-theme="dark"] .gpm-admin-form select,
-  html[data-theme="dark"] .gpm-admin-form textarea,
-  html[data-theme="dark"] .gpm-manager-settings select,
-  html[data-theme="dark"] .journal-month-control,
-  html[data-theme="dark"] .journal-month-control input {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .gpm-admin-form label,
-  html[data-theme="dark"] .gpm-admin-form label > span,
-  html[data-theme="dark"] .gpm-admin-form small {
-    color: #c7d0d5;
-  }
-
-  html[data-theme="dark"] .send-kind-dialog,
-  html[data-theme="dark"] .admin-close-performers,
-  html[data-theme="dark"] .admin-close-performers label {
-    border-color: #3b4a54;
-    background: #111b21;
-    color: #e9edef;
-    box-shadow: none;
-  }
-
-  html[data-theme="dark"] .send-kind-dialog > strong,
+html[data-theme="dark"] .send-kind-dialog > strong,
   html[data-theme="dark"] .send-kind-dialog label > span,
   html[data-theme="dark"] .admin-close-performers legend,
   html[data-theme="dark"] .admin-close-performers label span {
@@ -15108,12 +14861,3 @@ html[data-theme="dark"] .pull-refresh-indicator {
     color: #000 !important;
   }
 }
-.gpm-operator-home{max-width:720px;margin:24px auto;text-align:left}
-.gpm-operator-assigned-list{display:grid;gap:10px;margin:18px 0}
-.gpm-operator-assigned-list>div{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
-.gpm-operator-assigned-list p{display:grid;gap:4px;margin:0}
-.gpm-operator-assigned-list small{color:var(--muted)}
-.gpm-inspector-picker{display:grid;gap:8px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px}
-.gpm-inspector-picker label{display:flex;align-items:center;gap:9px;min-height:40px;padding:7px 9px;border-radius:9px;background:var(--panel)}
-.gpm-inspector-picker input{width:22px;height:22px;flex:0 0 auto}
-.gpm-inspector-picker small{color:var(--muted)}

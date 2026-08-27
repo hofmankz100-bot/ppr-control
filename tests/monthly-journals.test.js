@@ -12,7 +12,5 @@ test("existing journals share one month selector and filter records before print
   assert.match(app, /aggregateJournalItems[\s\S]*?!journalMonthMatches\(date\)/);
   assert.match(app, /compressorJournalFilledRows[\s\S]*?journalMonthMatches\(row\?\.date\)/);
   assert.match(app, /gasJournalPrintableSection[\s\S]*?journalMonthMatches\(row\?\.date\)/);
-  assert.match(app, /gpmInspectionRows\(item\)\.filter\(entry => journalMonthMatches/);
   assert.match(app, /bindJournalMonthControl\(ui\.aggregateJournalList, renderAggregateJournal\)/);
-  assert.match(app, /bindJournalMonthControl\(ui\.gpmPanel, renderGpmJournal\)/);
 });

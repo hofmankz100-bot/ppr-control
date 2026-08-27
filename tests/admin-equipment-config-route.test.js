@@ -12,7 +12,7 @@ function createHarness(database = {}) {
     broadcastState: (...args) => { broadcasts.push(args); return "state-v3"; },
     enqueueStateWrite: async task => task(),
     now: () => new Date("2026-08-24T08:00:00.000Z"),
-    publicState: db => ({ catalog: db.catalog, gpmJournal: db.gpmJournal }),
+    publicState: db => ({ catalog: db.catalog }),
     randomBytes: size => Buffer.alloc(size, size),
     readBody: async req => req.body || {},
     readDb: () => database,
@@ -54,14 +54,12 @@ test("equipment creation stores an ordinary item and broadcasts public state", a
   assert.equal(responses[0].payload.stateVersion, "state-v3");
 });
 
-test("legacy special equipment input creates ordinary equipment without a GPM record", async () => {
+test("legacy type input still creates ordinary equipment", async () => {
   const database = {};
   const { handler, responses } = createHarness(database);
   await handler({ method: "POST", authUser: { role: "editor" }, body: { type: "forklift", name: "Погрузчик", area: "Склад", capacity: "5 т" } }, {}, "/api/admin/equipment/create");
   const item = database.catalog.equipment[responses[0].payload.equipmentId];
   assert.equal(item.equipmentKind, "ordinary");
-  assert.equal(responses[0].payload.gpmId, "");
-  assert.equal(database.gpmJournal, undefined);
 });
 
 test("journal schema is normalized, versioned and audited", async () => {

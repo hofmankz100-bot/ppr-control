@@ -15,11 +15,8 @@ test("operational pause is the shared switch for PPR, reports and factory counte
   assert.match(source, /function engineerMonthlyStats[\s\S]*?operationalItemEnabled/);
 });
 
-test("QR plans count only nodes and linked GPM equipment active on the calculation date", () => {
+test("QR plans count only active equipment nodes on the calculation date", () => {
   assert.match(source, /activeNodeIndexes[\s\S]*?operationalControlEnabled\(eq, nodeIndex, date\)[\s\S]*?qrPlan \+= activeNodeIndexes\.length/);
-  assert.match(source, /function gpmOperationalControlEnabled/);
-  assert.match(source, /craneEquipment\.filter\(item => gpmOperationalControlEnabled\(item, date\)\)/);
-  assert.match(source, /forkliftEquipment\.filter\(item => gpmOperationalControlEnabled\(item, date\)\)/);
 });
 
 test("resume is automatic because all exclusions use dated pause history", () => {

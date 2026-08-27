@@ -22,13 +22,9 @@ function createAdminEquipmentConfigRoute({
 
     const body = await readBody(req).catch(() => ({}));
     if (isCreate) {
-      // Forklifts are ordinary equipment now. A fleet is represented by one
-      // catalog card and every forklift is one of its QR nodes.
-      const type = "ordinary";
       const name = String(body.name || "").trim().slice(0, 200);
       const area = String(body.area || "").trim().slice(0, 200);
       const firstNode = String(body.firstNode || "").trim().slice(0, 200) || "Основное оборудование";
-      const capacity = String(body.capacity || "").trim().slice(0, 100);
       if (!name || !area) {
         sendJson(res, 400, { ok: false, error: "equipment_create_invalid" });
         return true;
@@ -45,7 +41,7 @@ function createAdminEquipmentConfigRoute({
         const equipmentId = Math.max(999, ...usedIds) + 1;
         const createdAt = now();
         const timestamp = createdAt.toISOString();
-        const nodes = [type === "ordinary" ? firstNode : "Вахтенный осмотр кран-балки"];
+        const nodes = [firstNode];
         const catalogItem = {
           id: equipmentId,
           created: true,
@@ -54,7 +50,7 @@ function createAdminEquipmentConfigRoute({
           updatedAt: timestamp,
           name,
           area,
-          equipmentKind: type,
+          equipmentKind: "ordinary",
           nodes,
           nodeCreatedAt: { 0: timestamp },
           qrTokens: { 0: randomBytes(12).toString("hex") },
@@ -64,41 +60,13 @@ function createAdminEquipmentConfigRoute({
           nodeOperationalPauses: {}
         };
         db.catalog.equipment[equipmentId] = catalogItem;
-        let gpmId = "";
-        if (type !== "ordinary") {
-          db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
-          db.gpmJournal.equipment ||= {};
-          gpmId = `gpm:${createdAt.getTime()}:${randomBytes(5).toString("hex")}`;
-          const due = new Date(createdAt.getTime());
-          due.setDate(due.getDate() + 30);
-          if (due.getDay() === 6) due.setDate(due.getDate() + 2);
-          if (due.getDay() === 0) due.setDate(due.getDate() + 1);
-          const dueDate = due.toISOString().slice(0, 10);
-          db.gpmJournal.equipment[gpmId] = {
-            id: gpmId,
-            sourceEquipmentId: equipmentId,
-            sourceEquipmentName: name,
-            equipmentKind: type,
-            name,
-            location: area,
-            capacity,
-            operationStatus: "allowed",
-            inspectorKeys: [],
-            engineerKeys: [],
-            nextMonthlyInspectionDate: dueDate,
-            nextMaintenanceDate: "",
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            updatedByName: String(req.authUser?.name || "Администратор")
-          };
-        }
         writeDb(db, { action: "equipment_created", user: req.authUser, targetId: String(equipmentId), targetLabel: `${name} · ${area}` });
-        return { state: publicState(db), equipmentId, gpmId };
+        return { state: publicState(db), equipmentId };
       });
       if (result.error) sendJson(res, 409, { ok: false, error: result.error });
       else {
         const stateVersion = broadcastState("equipment-created", "", result.state, true);
-        sendJson(res, 200, { ok: true, equipmentId: result.equipmentId, gpmId: result.gpmId, state: result.state, stateVersion });
+        sendJson(res, 200, { ok: true, equipmentId: result.equipmentId, state: result.state, stateVersion });
       }
       return true;
     }

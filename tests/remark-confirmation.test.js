@@ -809,14 +809,11 @@ test("admin can create complete equipment cards from the main screen", () => {
   assert.match(client, /data-create-equipment/);
   assert.match(client, /function openCreateEquipmentDialog\(\)/);
   assert.match(client, /Обычное оборудование/);
-  assert.match(client, /Кран-балка/);
-  assert.match(client, /Вилочный погрузчик/);
   assert.match(client, /\/api\/admin\/equipment\/create/);
   assert.match(client, /item\?\.created === true/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/create"/);
   assert.match(server, /equipmentId = Math\.max\(999, \.\.\.usedIds\) \+ 1/);
   assert.match(server, /created: true/);
-  assert.match(server, /db\.gpmJournal\.equipment\[gpmId\]/);
   assert.match(server, /broadcastState\("equipment-created"/);
 });
 
@@ -830,7 +827,7 @@ test("admin can move any equipment to trash and restore it with its journal", ()
   assert.match(server, /if \(!existing\) return \{ error: "equipment_not_found" \}/);
   assert.doesNotMatch(server, /body\.builtIn === true/);
   assert.match(server, /type: "equipment"/);
-  assert.match(server, /snapshot: \{[\s\S]*catalogItem: \{ \.\.\.item \},[\s\S]*gpmItems:[\s\S]*gpmInspections:[\s\S]*gpmEvents:/);
+  assert.match(server, /snapshot: \{[\s\S]*catalogItem: \{ \.\.\.item \}/);
   assert.match(maintenanceRoute, /item\.type === "equipment"/);
   assert.match(maintenanceRoute, /deleted: false/);
   assert.match(maintenanceRoute, /builtIn: true,/);

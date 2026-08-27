@@ -15,7 +15,7 @@ function createHarness(database = {}) {
     normalizedAdminConfig: () => ({ trashRetentionDays: 30 }),
     normalizedCatalogNodeName: value => String(value).trim().toLocaleLowerCase("ru-RU"),
     passwordMatches: () => true,
-    publicState: db => ({ catalog: db.catalog, gpmJournal: db.gpmJournal, checks: db.checks }),
+    publicState: db => ({ catalog: db.catalog, checks: db.checks }),
     randomBytes: size => Buffer.alloc(size, size),
     readBody: async req => req.body || {},
     readDb: () => database,
@@ -41,66 +41,19 @@ test("equipment deletion requires a reason before changing state", async () => {
   assert.deepEqual(broadcasts, []);
 });
 
-test("equipment deletion archives the catalog item and linked GPM records", async () => {
-  const database = {
-    catalog: { equipment: { 5: { id: 5, name: "Кран", nodes: ["Мост"] } } },
-    gpmJournal: {
-      equipment: { g1: { id: "g1", sourceEquipmentId: 5 } },
-      inspections: { i1: { id: "i1", gpmId: "g1" } },
-      events: { e1: { id: "e1", gpmId: "g1" } }
-    }
-  };
+test("equipment deletion archives the catalog item", async () => {
+  const database = { catalog: { equipment: { 5: { id: 5, name: "Станок", nodes: ["Привод"] } } } };
   const { handler, responses, audits, broadcasts } = createHarness(database);
   await handler({ method: "POST", authUser: { id: "a", name: "Админ", role: "editor" }, body: { equipmentId: 5, reason: "Замена" } }, {}, "/api/admin/equipment/delete");
   assert.equal(database.catalog.equipment[5].deleted, true);
-  assert.equal(database.gpmJournal.equipment.g1.deleted, true);
-  assert.equal(database.gpmJournal.inspections.i1.deleted, true);
-  assert.equal(database.gpmJournal.events.e1.deleted, true);
-  assert.equal(database.adminTrash[0].snapshot.gpmItems[0].id, "g1");
-  assert.equal(database.adminTrash[0].snapshot.gpmInspections[0].id, "i1");
-  assert.equal(database.adminTrash[0].snapshot.gpmEvents[0].id, "e1");
+  assert.equal(database.adminTrash[0].snapshot.catalogItem.id, 5);
   assert.equal(audits[0].action, "equipment_moved_to_trash");
   assert.deepEqual(broadcasts[0].slice(0, 2), ["equipment-deleted", ""]);
   assert.equal(responses[0].payload.stateVersion, "state-v4");
 });
 
-test("GPM card deletion is server-side, password protected and moved to trash", async () => {
-  const database = {
-    gpmJournal: {
-      equipment: { crane1: { id: "crane1", name: "Тестовая кран-балка" } },
-      inspections: { i1: { id: "i1", gpmId: "crane1" } },
-      events: { e1: { id: "e1", gpmId: "crane1" } }
-    }
-  };
-  const { handler, responses, audits, broadcasts } = createHarness(database);
-  await handler({ method: "POST", authUser: { id: "a", name: "Админ", role: "editor" }, body: { gpmId: "crane1", reason: "Тестовая карточка", password: "secret" } }, {}, "/api/admin/gpm/delete");
-  assert.equal(database.gpmJournal.equipment.crane1.deleted, true);
-  assert.equal(database.gpmJournal.inspections.i1.deleted, true);
-  assert.equal(database.gpmJournal.events.e1.deleted, true);
-  assert.equal(database.adminTrash[0].type, "gpm");
-  assert.equal(database.adminTrash[0].snapshot.gpmItem.deleted, undefined);
-  assert.equal(database.adminTrash[0].snapshot.gpmInspections[0].id, "i1");
-  assert.equal(database.adminTrash[0].snapshot.gpmEvents[0].id, "e1");
-  assert.equal(audits[0].action, "gpm_card_moved_to_trash");
-  assert.deepEqual(broadcasts[0].slice(0, 2), ["gpm-card-deleted", ""]);
-  assert.equal(responses[0].payload.ok, true);
-});
-
-test("linked GPM card cannot be deleted separately from its equipment", async () => {
-  const database = {
-    catalog: { equipment: { 7: { id: 7, name: "Кран", nodes: ["Осмотр"] } } },
-    gpmJournal: { equipment: { crane1: { id: "crane1", sourceEquipmentId: 7, name: "Кран" } }, inspections: {}, events: {} }
-  };
-  const { handler, responses, audits, broadcasts } = createHarness(database);
-  await handler({ method: "POST", authUser: { role: "editor" }, body: { gpmId: "crane1", reason: "Удаление", password: "secret" } }, {}, "/api/admin/gpm/delete");
-  assert.deepEqual(responses[0], { status: 409, payload: { ok: false, error: "gpm_card_linked_to_equipment" } });
-  assert.equal(database.gpmJournal.equipment.crane1.deleted, undefined);
-  assert.deepEqual(audits, []);
-  assert.deepEqual(broadcasts, []);
-});
-
 test("equipment deletion rejects an unknown id instead of creating a false trash record", async () => {
-  const database = { catalog: { equipment: {} }, gpmJournal: { equipment: {}, inspections: {}, events: {} } };
+  const database = { catalog: { equipment: {} } };
   const { handler, responses, audits, broadcasts } = createHarness(database);
   await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 9999, reason: "Удаление", password: "secret" } }, {}, "/api/admin/equipment/delete");
   assert.deepEqual(responses[0], { status: 404, payload: { ok: false, error: "equipment_not_found" } });

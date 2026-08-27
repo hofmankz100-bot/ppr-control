@@ -28,7 +28,6 @@ CATEGORIES = [
     ("Простои", "downtimes"),
     ("Компрессорный журнал", "compressorJournal"),
     ("Журнал ШГРП и ГРП", "gasJournal"),
-    ("Журналы кранов и погрузчиков", "gpmJournal.inspections"),
     ("Журнал сварочных работ", "weldingJournal"),
     ("Журнал токарных работ", "turningJournal"),
     ("Затраты и обслуживание", "serviceCosts"),
@@ -71,7 +70,7 @@ HUMAN_LABELS = {
 LABELS.update(HUMAN_LABELS)
 
 HIDDEN_FIELDS = {
-    "id","key","gpmId","equipmentId","sourceEquipmentId","sourceRecordKey","authorKey",
+    "id","key","equipmentId","sourceEquipmentId","sourceRecordKey","authorKey",
     "authorEmployeeId","createdById","resolvedById","confirmedById","closedByKey","welderId",
     "turnerId","inspectorKey","inspectorKeys","engineerKeys","shiftKey","archivedNodeIndex",
     "nodeIndex","passwordHash","photos","photo","image","requestPhoto","resultPhoto",
@@ -101,21 +100,6 @@ def records(value):
     if isinstance(value,list): return [(str(i+1),x) for i,x in enumerate(value)]
     if isinstance(value,dict): return list(value.items())
     return []
-
-def enrich_gpm_items(data, selected):
-    equipment = nested(data, "gpmJournal.equipment")
-    result = []
-    for key, raw in selected:
-        item = dict(raw) if isinstance(raw, dict) else {"result": raw}
-        card = equipment.get(item.get("gpmId"), {}) if isinstance(equipment, dict) else {}
-        item["equipmentName"] = card.get("name") or "Не указано"
-        item["area"] = card.get("location") or "Не указано"
-        item["capacity"] = card.get("capacity") or "—"
-        points = item.get("points")
-        if isinstance(points, list):
-            item["points"] = "Все пункты исправны" if points and all(bool(x) for x in points) else "Есть отклонения"
-        result.append((key, item))
-    return result
 
 def month_match(key, item, month):
     blob = f"{key} {json.dumps(item, ensure_ascii=False, default=str)}"
@@ -188,7 +172,6 @@ def main():
     manifest=[]
     for title,path in CATEGORIES:
         selected=[(k,v) for k,v in records(nested(data,path)) if month_match(k,v,a.month)]
-        if path == "gpmJournal.inspections": selected = enrich_gpm_items(data, selected)
         if not selected: continue
         folder=root/safe_name(title); folder.mkdir(exist_ok=True)
         out=folder/f"{safe_name(title)}_{a.month}.docx"
