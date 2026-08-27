@@ -32,6 +32,10 @@ function createAdminEquipmentQrRoute(dependencies = {}) {
       if (!item || !Array.isArray(item.nodes) || !item.nodes[nodeIndex]) return { error: "node_not_found" };
       item.qrTokens = item.qrTokens && typeof item.qrTokens === "object" ? item.qrTokens : {};
       item.qrTokens[nodeIndex] = randomBytes(12).toString("hex");
+      if (String(item.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ") {
+        item.upperQrTokens = item.upperQrTokens && typeof item.upperQrTokens === "object" ? item.upperQrTokens : {};
+        item.upperQrTokens[nodeIndex] = randomBytes(12).toString("hex");
+      }
       item.qrUpdatedAt = item.qrUpdatedAt && typeof item.qrUpdatedAt === "object" ? item.qrUpdatedAt : {};
       item.qrUpdatedAt[nodeIndex] = new Date(now()).toISOString();
       item.updatedAt = item.qrUpdatedAt[nodeIndex];

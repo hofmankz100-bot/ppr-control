@@ -167,6 +167,10 @@ function createAdminEquipmentMaintenanceRoute({
       catalogItem.nodeCreatedAt[nodeIndex] = new Date().toISOString();
       catalogItem.qrTokens = catalogItem.qrTokens && typeof catalogItem.qrTokens === "object" ? catalogItem.qrTokens : {};
       catalogItem.qrTokens[nodeIndex] = randomBytes(12).toString("hex");
+      if (String(catalogItem.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ") {
+        catalogItem.upperQrTokens = catalogItem.upperQrTokens && typeof catalogItem.upperQrTokens === "object" ? catalogItem.upperQrTokens : {};
+        catalogItem.upperQrTokens[nodeIndex] = randomBytes(12).toString("hex");
+      }
       catalogItem.area ||= String(body.area || "").trim().slice(0, 200);
       catalogItem.updatedAt = new Date().toISOString();
       db.catalog.equipment[equipmentId] = catalogItem;

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v651-shared-equipment-journals-1";
+const APP_VERSION = "v652-shared-gpm-upper-qr-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4561,27 +4561,29 @@ const mobileJournalLabelObserver = new MutationObserver(() => {
 mobileJournalLabelObserver.observe(document.body, { childList: true, subtree: true });
 refreshMobileJournalActionLabels();
 
-function nodeQrPayload(equipmentId, nodeIndex) {
-  const token = String(equipmentById(Number(equipmentId))?.qrTokens?.[Number(nodeIndex)] || "").trim();
-  return `PPRQR|NODE|${Number(equipmentId)}|${Number(nodeIndex)}${token ? `|${token}` : ""}`;
+function nodeQrPayload(equipmentId, nodeIndex, kind = "lower") {
+  const eq = equipmentById(Number(equipmentId));
+  const token = String((kind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(nodeIndex)] || "").trim();
+  return `PPRQR|NODE|${Number(equipmentId)}|${Number(nodeIndex)}${token ? `|${token}` : ""}${kind === "upper" ? "|upper" : ""}`;
 }
 
 function nodeQrShortCode(equipmentId, nodeIndex) {
   return `${Number(equipmentId)}-${Number(nodeIndex)}`;
 }
 
-function nodeQrDisplayCode(equipmentId, nodeIndex) {
-  const token = String(equipmentById(Number(equipmentId))?.qrTokens?.[Number(nodeIndex)] || "").trim();
-  return `QR-${Number(equipmentId)}-${Number(nodeIndex)}${token ? `-${token.slice(0, 6).toUpperCase()}` : ""}`;
+function nodeQrDisplayCode(equipmentId, nodeIndex, kind = "lower") {
+  const eq = equipmentById(Number(equipmentId));
+  const token = String((kind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(nodeIndex)] || "").trim();
+  return `QR-${Number(equipmentId)}-${Number(nodeIndex)}${kind === "upper" ? "-TOP" : ""}${token ? `-${token.slice(0, 6).toUpperCase()}` : ""}`;
 }
 
 function nodeQrBaseUrl() {
   return PUBLIC_APP_URL;
 }
 
-function nodeQrUrl(equipmentId, nodeIndex) {
+function nodeQrUrl(equipmentId, nodeIndex, kind = "lower") {
   const url = new URL("/", nodeQrBaseUrl());
-  url.searchParams.set("qr", nodeQrPayload(equipmentId, nodeIndex));
+  url.searchParams.set("qr", nodeQrPayload(equipmentId, nodeIndex, kind));
   return url.toString();
 }
 
@@ -4603,15 +4605,16 @@ function parseNodeQrPayload(value) {
     if (Number.isFinite(equipmentId) && Number.isFinite(nodeIndex)) return { equipmentId, nodeIndex };
   }
   const parts = text.split("|");
-  if (![4, 5].includes(parts.length) || parts[0] !== "PPRQR" || parts[1] !== "NODE") return null;
+  if (![4, 5, 6].includes(parts.length) || parts[0] !== "PPRQR" || parts[1] !== "NODE") return null;
   const equipmentId = Number(parts[2]);
   const nodeIndex = Number(parts[3]);
   if (!Number.isFinite(equipmentId) || !Number.isFinite(nodeIndex)) return null;
-  return { equipmentId, nodeIndex, qrToken: String(parts[4] || "") };
+  return { equipmentId, nodeIndex, qrToken: String(parts[4] || ""), qrKind: parts[5] === "upper" ? "upper" : "lower" };
 }
 
 function currentNodeQrMatches(parsed = {}) {
-  const expected = String(equipmentById(Number(parsed.equipmentId))?.qrTokens?.[Number(parsed.nodeIndex)] || "").trim();
+  const eq = equipmentById(Number(parsed.equipmentId));
+  const expected = String((parsed.qrKind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(parsed.nodeIndex)] || "").trim();
   return !expected || expected === String(parsed.qrToken || "").trim();
 }
 
@@ -5147,23 +5150,23 @@ function printEquipmentQrCodes(eq) {
     window.alert("Разрешите всплывающие окна для печати QR.");
     return;
   }
-  const cards = eq.nodes.map((nodeName, nodeIndex) => {
-    const payload = nodeQrPayload(eq.id, nodeIndex);
-    const qrLink = nodeQrUrl(eq.id, nodeIndex);
-    const displayCode = nodeQrDisplayCode(eq.id, nodeIndex);
+  const gpmSharedCard = String(eq.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ";
+  const cards = eq.nodes.flatMap((nodeName, nodeIndex) => (gpmSharedCard ? ["lower", "upper"] : ["lower"]).map(kind => {
+    const qrLink = nodeQrUrl(eq.id, nodeIndex, kind);
+    const displayCode = nodeQrDisplayCode(eq.id, nodeIndex, kind);
     const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
     return `
       <section class="qr-card">
         <div class="qr-title">${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</div>
         <div class="qr-area">${escapeHtml(eq.area || "")}</div>
-        <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}</div>
+        <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}<br><small>${kind === "upper" ? "ВЕРХНИЙ QR · ПЛАНОВЫЙ ОСМОТР" : gpmSharedCard ? "НИЖНИЙ QR · ЕЖЕСМЕННЫЙ ОСМОТР" : ""}</small></div>
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
         <div class="qr-code">${escapeHtml(displayCode)}</div>
         <div class="qr-payload">${escapeHtml(qrLink)}</div>
         <div class="qr-hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</div>
       </section>
     `;
-  });
+  }));
   const pages = [];
   for (let index = 0; index < cards.length; index += 4) {
     pages.push(`<main class="qr-page">${cards.slice(index, index + 4).join("")}</main>`);

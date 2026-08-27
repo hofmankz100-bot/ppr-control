@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v651-shared-equipment-journals-1";
+const SERVER_VERSION = "v652-shared-gpm-upper-qr-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -578,6 +578,7 @@ function consolidateSpecialEquipmentCards(db) {
     target.equipmentKind = "ordinary";
     target.nodes = nodes;
     target.qrTokens = Object.fromEntries(nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
+    if (name === "ГПМ") target.upperQrTokens = Object.fromEntries(nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
     target.nodeCreatedAt = Object.fromEntries(nodes.map((_, index) => [index, now]));
     target.journalSchema = { ...target.journalSchema, title, scope: "equipment", nodeIndex: null,
       version: Number(target.journalSchema?.version || 0) + 1, updatedAt: now, updatedByName: "Системная миграция" };
@@ -5898,8 +5899,8 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
       return true;
     }
-    const expectedQrToken = String(qrCatalogItem?.qrTokens?.[nodeIndex] || "").trim();
-    if (expectedQrToken && expectedQrToken !== String(body.qrToken || "").trim()) {
+    const expectedQrTokens = [qrCatalogItem?.qrTokens?.[nodeIndex], qrCatalogItem?.upperQrTokens?.[nodeIndex]].map(value => String(value || "").trim()).filter(Boolean);
+    if (expectedQrTokens.length && !expectedQrTokens.includes(String(body.qrToken || "").trim())) {
       sendJson(res, 410, { ok: false, error: "node_qr_replaced" });
       return true;
     }
