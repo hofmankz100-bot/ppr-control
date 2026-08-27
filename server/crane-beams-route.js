@@ -30,6 +30,19 @@ function inferWorkshop(asset = {}, equipment = {}) {
 function ensureCraneBeams(db) {
   db.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "" };
   for (const key of ["assets", "inspections", "defects", "installationJournal"]) db.craneBeams[key] ||= {};
+  const removedNestedEquipmentIds = new Set();
+  Object.entries(db.catalog?.equipment || {}).forEach(([equipmentId, card]) => {
+    if (card?.equipmentKind !== "craneBeam") return;
+    removedNestedEquipmentIds.add(Number(equipmentId));
+    delete db.catalog.equipment[equipmentId];
+  });
+  Object.values(db.catalog?.equipment || {}).forEach(card => {
+    if (Array.isArray(card?.childEquipmentIds)) card.childEquipmentIds = card.childEquipmentIds.filter(id => !removedNestedEquipmentIds.has(Number(id)));
+  });
+  Object.values(db.craneBeams.assets).forEach(asset => {
+    if (!asset) return;
+    delete asset.catalogEquipmentId;
+  });
   const ordinaryNodeAssetIds = new Set(Object.values(db.craneBeams.assets)
     .filter(asset => asset && /финишн(?:ая|ый)?\s*пил/iu.test(text(asset.name, 240)))
     .map(asset => String(asset.id)));

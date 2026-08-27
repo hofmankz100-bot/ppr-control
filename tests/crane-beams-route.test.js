@@ -102,3 +102,18 @@ test("finish saw stays an ordinary press node and is removed only from crane ass
   assert.deepEqual(db.catalog.equipment[1].nodes, [saw]);
   assert.deepEqual(db.catalog.equipment[1].craneBeamNodes, {});
 });
+
+test("undo removes generated nested catalog equipment but keeps crane assets and journals", () => {
+  const db = {
+    catalog: { equipment: {
+      18: { name: "Сгп", area: "сгп", nodes: ["ЩИТ"], childEquipmentIds: [1002] },
+      1002: { id: 1002, name: "Кран N2", equipmentKind: "craneBeam", parentEquipmentId: 18, craneBeamId: "kb" }
+    } },
+    craneBeams: { migrationVersion: "retired-archive-v1", assets: { kb: { id: "kb", name: "Кран балка N2 СГП северная", workshop: "Сгп", catalogEquipmentId: 1002 } }, inspections: { one: { id: "one", craneId: "kb" } }, defects: {}, installationJournal: {} }
+  };
+  ensureCraneBeams(db);
+  assert.equal(db.catalog.equipment[1002], undefined);
+  assert.deepEqual(db.catalog.equipment[18].childEquipmentIds, []);
+  assert.equal(db.craneBeams.assets.kb.catalogEquipmentId, undefined);
+  assert.equal(db.craneBeams.inspections.one.craneId, "kb");
+});
