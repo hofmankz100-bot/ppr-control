@@ -31,6 +31,20 @@ function same(value, expected) { return text(value).toLocaleLowerCase("ru-RU") =
 function actor(user = {}) { return { id: text(user.id || user.employeeId, 120), employeeId: text(user.employeeId, 80), name: text(user.name || "Сотрудник", 200), role: roleOf(user), jobRole: text(user.jobRole, 100), area: text(user.area, 200) }; }
 function newId(prefix) { return `${prefix}:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`; }
 
+function archivedQrAliases(saved = {}) {
+  const sourceEquipmentId = Number(saved.sourceEquipmentId);
+  const match = /^catalog:(\d+):(\d+)$/u.exec(text(saved.id, 120));
+  const equipmentId = sourceEquipmentId || Number(match?.[1]);
+  const nodeIndex = Number(match?.[2]);
+  if (!Number.isInteger(equipmentId) || equipmentId <= 0 || !Number.isInteger(nodeIndex) || nodeIndex < 0) return [];
+  const lowerToken = text(saved.lowerQrToken, 200);
+  const upperToken = text(saved.upperQrToken, 200);
+  return [
+    { type: "shift", payload: `PPRQR|NODE|${equipmentId}|${nodeIndex}${lowerToken ? `|${lowerToken}` : ""}` },
+    { type: "monthly", payload: `PPRQR|NODE|${equipmentId}|${nodeIndex}${upperToken ? `|${upperToken}` : ""}|upper` }
+  ];
+}
+
 function normalized(value) {
   return text(value, 300).toLocaleLowerCase("ru-RU").replaceAll("ё", "е").replace(/[^a-zа-я0-9]+/giu, " ").trim();
 }
@@ -89,10 +103,11 @@ function removeLegacyCraneNodes(db, excludedAssetIds = new Set()) {
   });
 }
 
-function ensureCraneBeams(db) {
+function ensureCraneBeams(db, builtInEquipment = {}) {
   db.craneBeams ||= { schemaVersion: 1, assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: {}, migrationVersion: "" };
   db.craneBeams.schemaVersion = 1;
   for (const key of ["assets", "inspections", "defects", "installationJournal", "unresolvedArchive"]) db.craneBeams[key] ||= {};
+  const equipmentReference = { ...(builtInEquipment || {}), ...(db.catalog?.equipment || {}) };
   const removedNestedEquipmentIds = new Set();
   Object.entries(db.catalog?.equipment || {}).forEach(([equipmentId, card]) => {
     if (card?.equipmentKind !== "craneBeam") return;
@@ -128,9 +143,17 @@ function ensureCraneBeams(db) {
     });
   }
   removeLegacyCraneNodes(db, ordinaryNodeAssetIds);
+  Object.entries(db.craneBeams.unresolvedArchive).forEach(([id, saved]) => {
+    if (!resolveWorkshop(saved, equipmentReference)) return;
+    db.craneBeams.assets[id] = { ...saved };
+    delete db.craneBeams.assets[id].archiveStatus;
+    delete db.craneBeams.assets[id].archivedAt;
+    delete db.craneBeams.unresolvedArchive[id];
+  });
+  const archivedById = new Map((Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : []).map(item => [String(item?.id || ""), item]));
   Object.entries(db.craneBeams.assets).forEach(([id, asset]) => {
     if (!asset) return;
-    const resolved = resolveWorkshop(asset, db.catalog?.equipment);
+    const resolved = resolveWorkshop(asset, equipmentReference);
     if (!resolved) {
       db.craneBeams.unresolvedArchive[id] = { ...asset, archiveStatus: "workshop_unresolved", archivedAt: asset.archivedAt || new Date().toISOString() };
       delete db.craneBeams.assets[id];
@@ -141,6 +164,8 @@ function ensureCraneBeams(db) {
     asset.parentEquipmentId = resolved.parentEquipmentId;
     asset.parentEquipmentName = resolved.parentName;
     asset.entityType = "nestedEquipment";
+    const archivedSource = archivedById.get(String(id));
+    if (archivedSource) asset.legacyQrAliases = archivedQrAliases(archivedSource);
     delete asset.parentNodeIndex;
     delete db.craneBeams.unresolvedArchive[id];
   });
@@ -150,7 +175,7 @@ function ensureCraneBeams(db) {
   archived.forEach((saved, index) => {
     const id = text(saved.id, 120) || `crane-${index + 1}`;
     if (db.craneBeams.assets[id]) return;
-    const resolved = resolveWorkshop(saved, db.catalog?.equipment);
+    const resolved = resolveWorkshop(saved, equipmentReference);
     if (!resolved) {
       db.craneBeams.unresolvedArchive[id] = { ...saved, id, archiveStatus: "workshop_unresolved", archivedAt: now };
       return;
@@ -163,6 +188,7 @@ function ensureCraneBeams(db) {
       installationDate: text(saved.installationDate, 10), installationStatus: "installed", installed: true,
       lowerQr: text(saved.lowerQr, 300) || `PPRGPM|SHIFT|${id}`,
       upperQr: text(saved.upperQr, 300) || `PPRGPM|MONTHLY|${id}`,
+      legacyQrAliases: archivedQrAliases(saved),
       checklistVersion: 1, checklist: DEFAULT_CHECKLIST.map((label, itemIndex) => ({ id: `check-${itemIndex + 1}`, label })),
       monthlyDay: 1, createdAt: now, restoredFromArchive: true, operationalPaused: false
     };
@@ -186,14 +212,14 @@ function closesCounter(user, asset, type) {
   return ["operator", "shop"].includes(role) && userAreas(user).some(area => same(area, asset.workshop));
 }
 
-function publicCraneState(db, user) {
-  ensureCraneBeams(db);
+function publicCraneState(db, user, builtInEquipment = {}) {
+  ensureCraneBeams(db, builtInEquipment);
   const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
   const canManage = roleOf(user) === "editor";
   return { assets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
-function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
+function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
   return async function handleCraneBeamsRoute(req, res, pathname, url) {
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
       const mode = String(url.searchParams.get("mode") || "shift").toLowerCase() === "monthly" ? "monthly" : "shift";
@@ -202,11 +228,11 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
     }
     if (!pathname.startsWith("/api/crane-beams")) return false;
     if (!req.authUser) { sendJson(res, 401, { ok: false, error: "auth_required" }); return true; }
-    if (pathname === "/api/crane-beams" && req.method === "GET") { sendJson(res, 200, { ok: true, ...publicCraneState(readDb(), req.authUser) }); return true; }
+    if (pathname === "/api/crane-beams" && req.method === "GET") { sendJson(res, 200, { ok: true, ...publicCraneState(readDb(), req.authUser, builtInEquipment) }); return true; }
     const body = await readBody(req).catch(() => ({}));
     if (pathname === "/api/crane-beams/inspect" && req.method === "POST") {
       const result = await enqueueStateWrite(async () => {
-        const db = readDb(); ensureCraneBeams(db);
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment);
         const asset = db.craneBeams.assets[text(body.craneId, 120)];
         const type = body.type === "monthly" ? "monthly" : "shift";
         if (!asset || asset.archived || !asset.installed || asset.operationalPaused) return { error: "crane_unavailable" };
@@ -225,17 +251,17 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
         if (type === "monthly" && inspection.counterApplied) asset.lastMonthlyAt = inspection.at;
         if (type === "shift" && inspection.counterApplied) asset.lastShiftAt = inspection.at;
         writeDb(db, { action: "crane_beam_inspection_saved", user: req.authUser, craneId: asset.id, inspectionId: id, type });
-        return { inspection, state: publicCraneState(db, req.authUser) };
+        return { inspection, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
       if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
     if (pathname === "/api/crane-beams/save" && req.method === "POST") {
       if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
       const result = await enqueueStateWrite(async () => {
-        const db = readDb(); ensureCraneBeams(db); const now = new Date().toISOString();
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment); const now = new Date().toISOString();
         const id = text(body.id, 120) || newId("crane"); const previous = db.craneBeams.assets[id];
         const name = text(body.name, 200), workshopInput = text(body.workshop, 200); if (!name || !workshopInput) return { error: "crane_fields_required" };
-        const resolved = resolveWorkshop({ ...(previous || {}), name, workshop: workshopInput, installationPlace: body.installationPlace, parentEquipmentId: body.parentEquipmentId || previous?.parentEquipmentId }, db.catalog?.equipment);
+        const resolved = resolveWorkshop({ ...(previous || {}), name, workshop: workshopInput, installationPlace: body.installationPlace, parentEquipmentId: body.parentEquipmentId || previous?.parentEquipmentId }, { ...builtInEquipment, ...(db.catalog?.equipment || {}) });
         if (!resolved) return { error: "crane_workshop_unresolved" };
         const workshop = resolved.workshop;
         const checklist = Array.isArray(body.checklist) ? body.checklist.map((label, index) => ({ id: previous?.checklist?.[index]?.id || `check-${index + 1}`, label: text(typeof label === "string" ? label : label?.label, 240) })).filter(item => item.label) : previous?.checklist || DEFAULT_CHECKLIST.map((label, index) => ({ id: `check-${index + 1}`, label }));
@@ -245,13 +271,13 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
         db.craneBeams.assets[id] = asset;
         const changedInstallation = !previous || previous.workshop !== asset.workshop || previous.installationPlace !== asset.installationPlace || previous.installationStatus !== asset.installationStatus || previous.installationDate !== asset.installationDate;
         if (changedInstallation) { const eventId = newId("installation"); db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: previous ? (status === "installed" ? "installed_or_moved" : status) : "installed", status, workshop, previousWorkshop: previous?.workshop || "", place: asset.installationPlace, date: asset.installationDate, at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: text(body.installationComment, 1000) }; }
-        writeDb(db, { action: "crane_beam_saved", user: req.authUser, craneId: id }); return { asset, state: publicCraneState(db, req.authUser) };
+        writeDb(db, { action: "crane_beam_saved", user: req.authUser, craneId: id }); return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
       if (result.error) sendJson(res, 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
     if (pathname === "/api/crane-beams/defect" && req.method === "POST") {
       const result = await enqueueStateWrite(async () => {
-        const db = readDb(); ensureCraneBeams(db); const defect = db.craneBeams.defects[text(body.defectId, 160)];
+        const db = readDb(); ensureCraneBeams(db, builtInEquipment); const defect = db.craneBeams.defects[text(body.defectId, 160)];
         if (!defect) return { error: "crane_defect_not_found" };
         const action = text(body.action, 30), role = roleOf(req.authUser), now = new Date().toISOString(), who = actor(req.authUser);
         if (action === "resolve") {
@@ -263,7 +289,7 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
           defect.confirmation = { at: now, actor: who, accepted: action === "confirm", comment: text(body.comment, 1500) }; defect.status = action === "confirm" ? "closed" : "returned";
         } else return { error: "crane_defect_action_invalid" };
         writeDb(db, { action: `crane_beam_defect_${action}`, user: req.authUser, defectId: defect.id, craneId: defect.craneId });
-        return { defect, state: publicCraneState(db, req.authUser) };
+        return { defect, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
       if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }

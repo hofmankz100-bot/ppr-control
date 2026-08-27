@@ -75,7 +75,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v673-clean-nested-crane-model-1";
+const SERVER_VERSION = "v674-restore-crane-workshops-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -572,7 +572,7 @@ function normalizeDb(db) {
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   archiveAndRemoveCraneBeamData(db);
-  ensureCraneBeams(db);
+  ensureCraneBeams(db, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -2664,6 +2664,15 @@ const DEFAULT_EQUIPMENT_AREAS_SERVER = Object.freeze({
   "19": "Резерв",
   "20": "Резерв"
 });
+
+const DEFAULT_EQUIPMENT_REFERENCE_SERVER = Object.freeze(Object.fromEntries(
+  Object.entries(DEFAULT_EQUIPMENT_AREAS_SERVER).map(([id, area]) => [id, {
+    id: Number(id),
+    name: id === "1" ? "Пресс 2400 EGE" : id === "2" ? "Пресс 1540 EGE" : area,
+    area,
+    nodes: []
+  }])
+));
 
 function remarkEquipmentAreaServer(db, recordKey, requestedArea = "") {
   const equipmentId = String(recordKey || "").split(":")[0];
@@ -4961,6 +4970,7 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
 });
 
 const handleCraneBeamsRoute = createCraneBeamsRoute({
+  builtInEquipment: DEFAULT_EQUIPMENT_REFERENCE_SERVER,
   enqueueStateWrite,
   readBody,
   readDb,

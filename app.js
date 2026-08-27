@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v673-clean-nested-crane-model-1";
+const APP_VERSION = "v674-restore-crane-workshops-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -19023,11 +19023,15 @@ function parseCraneQrPayload(value) {
   try {
     const url = new URL(raw);
     if (["/api/gpm-qr", "/api/crane-beam-qr"].includes(url.pathname)) return { craneId: url.searchParams.get("id") || "", craneType: url.searchParams.get("mode") === "monthly" ? "monthly" : "shift" };
-    raw = url.searchParams.get("craneQr") || raw;
+    raw = url.searchParams.get("craneQr") || url.searchParams.get("qr") || raw;
   } catch {}
   const parts = raw.split("|");
   if (parts[0] === "PPRGPM" && parts.length === 3) return { craneId: parts[2], craneType: parts[1] === "MONTHLY" ? "monthly" : "shift" };
   if (parts[0] === "CRANE" && parts.length === 3) return { craneId: parts[2], craneType: parts[1] === "MONTHLY" ? "monthly" : "shift" };
+  for (const asset of craneBeamState.assets || []) {
+    const alias = (asset.legacyQrAliases || []).find(item => String(item?.payload || "") === raw);
+    if (alias) return { craneId: asset.id, craneType: alias.type === "monthly" ? "monthly" : "shift" };
+  }
   return null;
 }
 
@@ -19139,13 +19143,15 @@ function editCraneAsset(asset = {}) {
 }
 
 async function handleIncomingCraneQrFromUrl() {
-  const params = new URLSearchParams(location.search); let value = params.get("craneQr") || "";
+  const params = new URLSearchParams(location.search); const value = params.get("craneQr") || params.get("qr") || "";
   if (!value) return false;
+  await loadCraneBeams();
+  const parsed = parseCraneQrPayload(value);
+  if (!parsed) return false;
   history.replaceState({}, "", location.pathname);
-  const parts = value.split("|"); if (parts.length !== 3 || parts[0] !== "CRANE") return false;
-  await loadCraneBeams(); const asset = craneBeamState.assets.find(item => item.id === parts[2]);
+  const asset = craneBeamState.assets.find(item => item.id === parsed.craneId);
   if (!asset) { window.alert("Кран-балка не найдена."); return true; }
-  openCraneInspection(asset, parts[1] === "MONTHLY" ? "monthly" : "shift"); return true;
+  openCraneInspection(asset, parsed.craneType); return true;
 }
 
 

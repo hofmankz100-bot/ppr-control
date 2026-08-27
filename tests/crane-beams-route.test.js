@@ -113,12 +113,30 @@ test("unresolved crane stays in protected archive instead of an arbitrary worksh
   assert.equal(db.craneBeams.unresolvedArchive.mystery.archiveStatus, "workshop_unresolved");
 });
 
+test("protected crane is restored when the built-in workshop reference becomes available", () => {
+  const db = { craneBeams: { assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: { kb: { id: "kb", name: "Кран-балка Пресс 2400", workshop: "Прессовый участок", lowerQr: "old-lower", upperQr: "old-upper" } }, migrationVersion: "retired-archive-v1" } };
+  ensureCraneBeams(db, { 1: { id: 1, name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [] } });
+  assert.equal(db.craneBeams.unresolvedArchive.kb, undefined);
+  assert.equal(db.craneBeams.assets.kb.parentEquipmentId, "1");
+  assert.equal(db.craneBeams.assets.kb.lowerQr, "old-lower");
+  assert.equal(db.craneBeams.assets.kb.upperQr, "old-upper");
+});
+
 test("new crane checklist contains the specified 16 inspection points", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "kb", name: "Кран-балка Пресс 2400" }] } };
   ensureCraneBeams(db);
   assert.equal(db.craneBeams.assets.kb.checklist.length, 16);
   assert.equal(db.craneBeams.assets.kb.checklist[0].label, "Металлоконструкция и крепления");
   assert.equal(db.craneBeams.assets.kb.checklist[15].label, "Рабочая зона и путь перемещения");
+});
+
+test("archived ordinary-node QR identities remain aliases of the restored crane", () => {
+  const db = { catalog: { equipment: { 7: { name: "Литейный цех", area: "Литейный цех", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "catalog:7:3", name: "Кран-балка литейного цеха", workshop: "Литейный цех", sourceEquipmentId: 7, lowerQrToken: "low-token", upperQrToken: "top-token" }] } };
+  ensureCraneBeams(db);
+  assert.deepEqual(db.craneBeams.assets["catalog:7:3"].legacyQrAliases, [
+    { type: "shift", payload: "PPRQR|NODE|7|3|low-token" },
+    { type: "monthly", payload: "PPRQR|NODE|7|3|top-token|upper" }
+  ]);
 });
 
 test("undo removes generated nested catalog equipment but keeps crane assets and journals", () => {
