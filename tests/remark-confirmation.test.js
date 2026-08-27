@@ -1725,6 +1725,24 @@ test("production stops do not reduce the factory reliability score", () => {
   assert.doesNotMatch(client, /\[\.\.\.createdRemarks, \.\.\.downtimeItems\]\.forEach/);
 });
 
+test("PPR resolution drafts survive background rerenders before a mark is submitted", () => {
+  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(source, /querySelectorAll\("\[data-ppr-resolution-input\]"\)/);
+  assert.match(source, /row\.resolutionComment = input\.value/);
+  assert.match(source, /row\.draftUpdatedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /touchPprSheet\(sheet, false\)/);
+  assert.match(source, /publishPprSheetAction\(date, "draft"/);
+  assert.match(source, />\$\{escapeHtml\(row\.resolutionComment \|\| ""\)\}<\/textarea>/);
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(server, /\["draft", "mark", "add-row", "approve"\]/);
+  assert.match(server, /row\.draftByName = name/);
+  assert.match(source, /function mergePprSheetRowsLocal\(currentRows = \[\], incomingRows = \[\]\)/);
+  assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets\)/);
+  assert.doesNotMatch(source, /state\.pprSheets = preferRemote\s*\? \{ \.\.\.\(remote\.pprSheets/);
+  assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
+  assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
+});
+
 test("month closing API remains compatible but its panel is removed from the report", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");

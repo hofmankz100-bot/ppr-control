@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v644-multi-workshop-access-1";
+const SERVER_VERSION = "v645-ppr-draft-persistence-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4416,6 +4416,43 @@ function linkResolvedCompressorRemarkToJournalServer(db, recordKey, remark, acto
   return { [rowId]: row };
 }
 
+function pprRowFreshness(row = {}) {
+  return Math.max(
+    Date.parse(row.updatedAt || "") || 0,
+    Date.parse(row.draftUpdatedAt || "") || 0,
+    Date.parse(row.markedAt || "") || 0,
+    Date.parse(row.createdAt || "") || 0
+  );
+}
+
+function mergePprRows(currentRows = [], incomingRows = []) {
+  const currentMap = new Map((Array.isArray(currentRows) ? currentRows : []).filter(Boolean).map(row => [String(row.id || ""), row]));
+  const incomingMap = new Map((Array.isArray(incomingRows) ? incomingRows : []).filter(Boolean).map(row => [String(row.id || ""), row]));
+  const order = [...new Set([...incomingMap.keys(), ...currentMap.keys()])].filter(Boolean);
+  return order.map(id => {
+    const currentRow = currentMap.get(id);
+    const incomingRow = incomingMap.get(id);
+    if (!currentRow) return incomingRow;
+    if (!incomingRow) return currentRow;
+    const currentTime = pprRowFreshness(currentRow);
+    const incomingTime = pprRowFreshness(incomingRow);
+    if (incomingTime !== currentTime) return incomingTime > currentTime ? incomingRow : currentRow;
+    const currentHasContent = Boolean(String(currentRow.work || "").trim() || String(currentRow.resolutionComment || "").trim() || currentRow.mark);
+    const incomingHasContent = Boolean(String(incomingRow.work || "").trim() || String(incomingRow.resolutionComment || "").trim() || incomingRow.mark);
+    if (currentHasContent !== incomingHasContent) return incomingHasContent ? incomingRow : currentRow;
+    return { ...currentRow, ...incomingRow };
+  });
+}
+
+function mergePprSheetsByFreshness(current = {}, incoming = {}) {
+  const merged = mergeObjectRecordsByFreshness(current, incoming);
+  for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
+    if (!current?.[date] || !incoming?.[date]) continue;
+    merged[date] = { ...merged[date], rows: mergePprRows(current[date].rows, incoming[date].rows) };
+  }
+  return merged;
+}
+
 function remarkDeletionKeyServer(recordKey, remarkId) {
   return `${String(recordKey || "")}\u0001${String(remarkId || "")}`;
 }
@@ -6504,7 +6541,7 @@ async function handleApi(req, res, pathname, url) {
         };
         db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.turningJournal = mergeObjectRecordsByFreshness(db.turningJournal, body.turningJournal);
-        db.pprSheets = mergeObjectRecordsByFreshness(db.pprSheets, body.pprSheets);
+        db.pprSheets = mergePprSheetsByFreshness(db.pprSheets, body.pprSheets);
         db.annualPpr = mergeObjectRecordsByFreshness(db.annualPpr, body.annualPpr);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
@@ -6754,11 +6791,11 @@ async function handleApi(req, res, pathname, url) {
     const name = String(req.authUser?.name || "").trim();
     const allowedPlan = new Set(["engineer", "editor"]);
     const allowedMark = new Set(["mechanic", "electrician", "editor"]);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["mark", "add-row", "approve"].includes(action) || !name) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["draft", "mark", "add-row", "approve"].includes(action) || !name) {
       sendJson(res, 400, { ok: false, error: "ppr_action_invalid" });
       return true;
     }
-    if ((action === "mark" && !allowedMark.has(role)) || (action !== "mark" && !allowedPlan.has(role))) {
+    if ((["draft", "mark"].includes(action) && !allowedMark.has(role)) || (!["draft", "mark"].includes(action) && !allowedPlan.has(role))) {
       sendJson(res, 403, { ok: false, error: "ppr_action_forbidden" });
       return true;
     }
@@ -6772,7 +6809,15 @@ async function handleApi(req, res, pathname, url) {
       const now = new Date().toISOString();
       let notifyEngineers = false;
       let clearEngineerApproval = false;
-      if (action === "mark") {
+      if (action === "draft") {
+        const row = sheet.rows.find(item => String(item?.id || "") === rowId);
+        if (!row || row.mark || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
+        row.resolutionComment = String(body.resolutionComment || "").trim().slice(0, 2000);
+        row.draftUpdatedAt = now;
+        row.updatedAt = now;
+        row.draftByName = name;
+        row.draftByRole = role;
+      } else if (action === "mark") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         const mark = String(body.mark || "");
         if (!row || !String(row.work || "").trim() || !["", "done", "na"].includes(mark)) return { error: "ppr_row_invalid" };
@@ -6783,6 +6828,7 @@ async function handleApi(req, res, pathname, url) {
         row.markedByRole = mark ? role : "";
         row.markedAt = mark ? now : "";
         row.resolutionComment = mark ? resolutionComment : "";
+        row.updatedAt = now;
         row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
         row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
         row.node = String(body.node || row.node || "").slice(0, 300);

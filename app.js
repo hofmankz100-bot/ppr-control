@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v644-multi-workshop-access-1";
+const APP_VERSION = "v645-ppr-draft-persistence-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -2269,6 +2269,46 @@ function mergeObjectByFreshnessLocal(current = {}, incoming = {}) {
   return next;
 }
 
+function pprRowFreshnessLocal(row = {}) {
+  return Math.max(
+    Date.parse(row.updatedAt || "") || 0,
+    Date.parse(row.draftUpdatedAt || "") || 0,
+    Date.parse(row.markedAt || "") || 0,
+    Date.parse(row.createdAt || "") || 0
+  );
+}
+
+function mergePprSheetRowsLocal(currentRows = [], incomingRows = []) {
+  const currentMap = new Map((Array.isArray(currentRows) ? currentRows : []).filter(Boolean).map(row => [String(row.id || ""), row]));
+  const incomingMap = new Map((Array.isArray(incomingRows) ? incomingRows : []).filter(Boolean).map(row => [String(row.id || ""), row]));
+  const order = [...new Set([...incomingMap.keys(), ...currentMap.keys()])].filter(Boolean);
+  return order.map(id => {
+    const currentRow = currentMap.get(id);
+    const incomingRow = incomingMap.get(id);
+    if (!currentRow) return incomingRow;
+    if (!incomingRow) return currentRow;
+    const currentTime = pprRowFreshnessLocal(currentRow);
+    const incomingTime = pprRowFreshnessLocal(incomingRow);
+    if (incomingTime !== currentTime) return incomingTime > currentTime ? incomingRow : currentRow;
+    const currentHasContent = Boolean(String(currentRow.work || "").trim() || String(currentRow.resolutionComment || "").trim() || currentRow.mark);
+    const incomingHasContent = Boolean(String(incomingRow.work || "").trim() || String(incomingRow.resolutionComment || "").trim() || incomingRow.mark);
+    if (currentHasContent !== incomingHasContent) return incomingHasContent ? incomingRow : currentRow;
+    return { ...currentRow, ...incomingRow };
+  });
+}
+
+function mergePprSheetsLocal(current = {}, incoming = {}) {
+  const merged = mergeObjectByFreshnessLocal(current, incoming);
+  for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
+    if (!current?.[date] || !incoming?.[date]) continue;
+    merged[date] = {
+      ...merged[date],
+      rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows)
+    };
+  }
+  return merged;
+}
+
 function mergeRemarkHistoryItemsLocal(current = [], incoming = [], identity = item => String(item?.id || "")) {
   const map = new Map();
   for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
@@ -2439,9 +2479,10 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.turningJournal = preferRemote
     ? { ...(remote.turningJournal || {}) }
     : mergeObjectByFreshnessLocal(state.turningJournal || {}, remote.turningJournal || {});
-  state.pprSheets = preferRemote
-    ? { ...(remote.pprSheets || {}) }
-    : mergeObjectByFreshnessLocal(state.pprSheets || {}, remote.pprSheets || {});
+  // PPR rows can contain a phone draft that has not reached the server yet.
+  // Merge them row-by-row even during a full refresh so a stale empty server
+  // snapshot cannot erase newer local work.
+  state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {});
   state.annualPpr = preferRemote
     ? { ...(remote.annualPpr || {}) }
     : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
@@ -2500,7 +2541,7 @@ function mergeRealtimePatch(remote = {}) {
   }
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
   if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
-  if (remote.pprSheets) state.pprSheets = mergeObjectByFreshnessLocal(state.pprSheets, remote.pprSheets);
+  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets);
   if (remote.orders) state.orders = mergeObjectByFreshnessLocal(state.orders, remote.orders);
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
@@ -14183,6 +14224,7 @@ function bindPprCalendarControls(container, rerender) {
         row.markedAt = "";
       }
       row.work = input.value;
+      row.updatedAt = new Date().toISOString();
       row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
       row.equipment = input.dataset.pprEquipment || row.equipment || "";
       row.node = input.dataset.pprNode || row.node || "";
@@ -14191,6 +14233,40 @@ function bindPprCalendarControls(container, rerender) {
       sheet.plannedByRole = profile?.role || sheet.plannedByRole || "";
       sheet.plannedAt ||= new Date().toISOString();
       touchPprSheet(sheet);
+    });
+  });
+  container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
+    input.addEventListener("input", () => {
+      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
+      if (!date) return;
+      const sheet = pprSheetRecord(date, true);
+      let row = sheet.rows.find(item => item.id === input.dataset.pprResolutionInput);
+      if (!row) {
+        row = { id: input.dataset.pprResolutionInput, work: "", mark: "" };
+        sheet.rows.push(row);
+      }
+      row.resolutionComment = input.value;
+      row.draftUpdatedAt = new Date().toISOString();
+      row.updatedAt = row.draftUpdatedAt;
+      touchPprSheet(sheet, false);
+    });
+    input.addEventListener("change", async () => {
+      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
+      if (!date) return;
+      const sheet = pprSheetRecord(date, true);
+      const row = sheet.rows.find(item => item.id === input.dataset.pprResolutionInput);
+      if (!row || row.mark) return;
+      try {
+        await publishPprSheetAction(date, "draft", {
+          rowId: row.id,
+          resolutionComment: String(input.value || "").slice(0, 2000)
+        });
+      } catch {
+        // The sheet may have been created locally moments ago or the focused
+        // endpoint may be temporarily unavailable. Queue the same draft through
+        // the normal durable state sync instead of waiting for another resume.
+        saveState();
+      }
     });
   });
   container?.querySelectorAll("[data-ppr-row-mark]").forEach(button => {
@@ -14217,6 +14293,7 @@ function bindPprCalendarControls(container, rerender) {
       row.markedByName = row.mark ? profile?.name || "" : "";
       row.markedByRole = row.mark ? profile?.role || "" : "";
       row.markedAt = row.mark ? new Date().toISOString() : "";
+      row.updatedAt = new Date().toISOString();
       touchPprSheet(sheet, false);
       try {
         await publishPprSheetAction(date, "mark", {
