@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { createCraneBeamsRoute, ensureCraneBeams } = require("../server/crane-beams-route");
 
 function harness(database) {
@@ -17,6 +19,8 @@ test("archived crane beams return as workshop equipment with both permanent QR i
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "ЛПЦ" } } }, retiredCraneBeamArchive: { assets: [{ id: "kb-1", name: "Кран-балка ЛПЦ №1", lowerQr: "PPRGPM|SHIFT|kb-1", upperQr: "PPRGPM|MONTHLY|kb-1" }] } };
   assert.equal(ensureCraneBeams(db), true);
   assert.equal(db.craneBeams.assets["kb-1"].workshop, "ЛПЦ");
+  assert.equal(db.craneBeams.assets["kb-1"].entityType, "workshopNode");
+  assert.equal(db.craneBeams.assets["kb-1"].parentWorkshop, "ЛПЦ");
   assert.equal(db.craneBeams.assets["kb-1"].lowerQr, "PPRGPM|SHIFT|kb-1");
   assert.equal(db.craneBeams.assets["kb-1"].upperQr, "PPRGPM|MONTHLY|kb-1");
   assert.equal(Object.values(db.craneBeams.installationJournal).length, 1);
@@ -51,4 +55,14 @@ test("unchecked points require comments and create one grouped defect", async ()
   assert.equal(h.responses[0].status, 200);
   assert.equal(Object.values(db.craneBeams.defects).length, 1);
   assert.equal(Object.values(db.craneBeams.defects)[0].items.length, 1);
+});
+
+test("crane beams are rendered as workshop nodes without a separate home section", () => {
+  const root = path.join(__dirname, "..");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.doesNotMatch(html, /id="craneBeamsButton"/);
+  assert.match(app, /function renderCraneNodesInsideWorkshops/);
+  assert.match(app, /УЗЛЫ ЦЕХА/);
+  assert.doesNotMatch(app, /async function openCraneBeams/);
 });

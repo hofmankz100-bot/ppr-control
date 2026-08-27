@@ -30,6 +30,11 @@ function inferWorkshop(asset = {}, equipment = {}) {
 function ensureCraneBeams(db) {
   db.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "" };
   for (const key of ["assets", "inspections", "defects", "installationJournal"]) db.craneBeams[key] ||= {};
+  Object.values(db.craneBeams.assets).forEach(asset => {
+    if (!asset) return;
+    asset.entityType = "workshopNode";
+    asset.parentWorkshop = text(asset.workshop, 200);
+  });
   if (db.craneBeams.migrationVersion === "retired-archive-v1") return false;
   const archived = Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : [];
   const now = new Date().toISOString();
@@ -38,7 +43,7 @@ function ensureCraneBeams(db) {
     if (db.craneBeams.assets[id]) return;
     const workshop = inferWorkshop(saved, db.catalog?.equipment);
     const asset = {
-      id, name: text(saved.name, 200) || `Кран-балка ${index + 1}`, workshop,
+      id, name: text(saved.name, 200) || `Кран-балка ${index + 1}`, workshop, parentWorkshop: workshop, entityType: "workshopNode",
       inventoryNumber: text(saved.inventoryNumber, 120), installationPlace: text(saved.installationPlace || saved.workshop, 240),
       installationDate: text(saved.installationDate, 10), installationStatus: "installed", installed: true,
       lowerQr: text(saved.lowerQr, 300) || `PPRGPM|SHIFT|${id}`,
@@ -116,7 +121,7 @@ function createCraneBeamsRoute({ enqueueStateWrite, readBody, readDb, sendJson, 
         const name = text(body.name, 200), workshop = text(body.workshop, 200); if (!name || !workshop) return { error: "crane_fields_required" };
         const checklist = Array.isArray(body.checklist) ? body.checklist.map((label, index) => ({ id: previous?.checklist?.[index]?.id || `check-${index + 1}`, label: text(typeof label === "string" ? label : label?.label, 240) })).filter(item => item.label) : previous?.checklist || DEFAULT_CHECKLIST.map((label, index) => ({ id: `check-${index + 1}`, label }));
         const status = ["installed", "dismantled", "temporary", "archived"].includes(body.installationStatus) ? body.installationStatus : previous?.installationStatus || "installed";
-        const asset = { ...(previous || {}), id, name, workshop, inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: body.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, createdAt: previous?.createdAt || now, updatedAt: now };
+        const asset = { ...(previous || {}), id, name, workshop, parentWorkshop: workshop, entityType: "workshopNode", inventoryNumber: text(body.inventoryNumber, 120), installationPlace: text(body.installationPlace, 240), installationDate: text(body.installationDate, 10), installationStatus: status, installed: status === "installed", archived: status === "archived", operationalPaused: body.operationalPaused === true, monthlyDay: Math.max(1, Math.min(28, Number(body.monthlyDay) || 1)), checklist, checklistVersion: previous && JSON.stringify(previous.checklist) !== JSON.stringify(checklist) ? Number(previous.checklistVersion || 1) + 1 : Number(previous?.checklistVersion || 1), lowerQr: previous?.lowerQr || `PPRGPM|SHIFT|${id}`, upperQr: previous?.upperQr || `PPRGPM|MONTHLY|${id}`, createdAt: previous?.createdAt || now, updatedAt: now };
         db.craneBeams.assets[id] = asset;
         const changedInstallation = !previous || previous.workshop !== asset.workshop || previous.installationPlace !== asset.installationPlace || previous.installationStatus !== asset.installationStatus || previous.installationDate !== asset.installationDate;
         if (changedInstallation) { const eventId = newId("installation"); db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: previous ? (status === "installed" ? "installed_or_moved" : status) : "installed", status, workshop, previousWorkshop: previous?.workshop || "", place: asset.installationPlace, date: asset.installationDate, at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: text(body.installationComment, 1000) }; }
