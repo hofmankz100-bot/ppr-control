@@ -32,6 +32,13 @@ function ensureCraneBeams(db) {
   for (const key of ["assets", "inspections", "defects", "installationJournal"]) db.craneBeams[key] ||= {};
   Object.values(db.craneBeams.assets).forEach(asset => {
     if (!asset) return;
+    const name = text(asset.name, 200).toLocaleLowerCase("ru-RU");
+    if (/сгп/u.test(name)) asset.workshop = "Сгп";
+    else if (/литейн/u.test(name)) asset.workshop = "Литейный цех";
+    else if (/анод/u.test(name)) asset.workshop = "Анодный цех";
+    else if (/покрас|покраск|ванн/u.test(name)) asset.workshop = "Покрасочный цех";
+    else if (/инструмент|цианизац/u.test(name)) asset.workshop = "инструментальный цех";
+    else if (/пресс|матриц/u.test(name)) asset.workshop = "Прессовый участок";
     asset.entityType = "workshopNode";
     asset.parentWorkshop = text(asset.workshop, 200);
   });

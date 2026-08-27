@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v661-crane-beams-inside-node-screen-1";
+const APP_VERSION = "v662-crane-beams-native-node-cards-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11984,18 +11984,26 @@ function craneParentEquipment(asset) {
 
 function renderCraneBeamNodeCards(eq) {
   const assets = craneBeamState.assets.filter(asset => Number(craneParentEquipment(asset)?.id) === Number(eq.id));
-  if (!assets.length && !craneBeamState.canManage) return;
-  const section = document.createElement("section");
-  section.className = "crane-nodes-inside-equipment";
-  section.innerHTML = `<header><div><span>КРАН-БАЛКИ · УЗЛЫ ЦЕХА</span><strong>${escapeHtml(eq.name)}</strong></div><div><button type="button" data-installation-journal>Журнал установленных</button>${craneBeamState.canManage ? '<button type="button" data-add-crane>+ Добавить кран-балку</button>' : ""}</div></header><div class="crane-node-list">${assets.map(asset => { const status = craneTodayStatus(asset); return `<article class="node-card-group crane-equipment-node ${asset.installed ? "" : "inactive"}"><div class="node-card crane-node-main"><div><strong>${escapeHtml(asset.name)}</strong><span>${asset.installed ? "Установлено" : escapeHtml(asset.installationStatus)} · ${escapeHtml(asset.installationPlace || eq.name)}</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Смена ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">ТО ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div></div><div class="crane-node-actions"><button data-shift="${escapeHtml(asset.id)}">Нижний QR · осмотр</button><button data-monthly="${escapeHtml(asset.id)}">Верхний QR · ТО</button><button data-journal="${escapeHtml(asset.id)}">Вахтенный журнал</button><button data-crane-qr="${escapeHtml(asset.id)}">Показать два QR</button>${craneBeamState.canManage ? `<button data-edit="${escapeHtml(asset.id)}">Настроить узел</button>` : ""}</div></article>`; }).join("") || '<div class="empty-state">Кран-балки этого цеха ещё не добавлены.</div>'}</div>`;
-  section.querySelector("[data-installation-journal]").addEventListener("click", openCraneInstallationJournal);
-  section.querySelector("[data-add-crane]")?.addEventListener("click", () => editCraneAsset({ workshop: eq.name, parentWorkshop: eq.name, installationPlace: eq.name }));
-  section.querySelectorAll("[data-shift]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.shift), "shift")));
-  section.querySelectorAll("[data-monthly]").forEach(button => button.addEventListener("click", () => openCraneInspection(craneBeamState.assets.find(item => item.id === button.dataset.monthly), "monthly")));
-  section.querySelectorAll("[data-journal]").forEach(button => button.addEventListener("click", () => openCraneJournal(craneBeamState.assets.find(item => item.id === button.dataset.journal))));
-  section.querySelectorAll("[data-crane-qr]").forEach(button => button.addEventListener("click", () => openCraneQrCards(craneBeamState.assets.find(item => item.id === button.dataset.craneQr))));
-  section.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => editCraneAsset(craneBeamState.assets.find(item => item.id === button.dataset.edit))));
-  ui.nodeList.append(section);
+  assets.forEach(asset => {
+    const status = craneTodayStatus(asset);
+    const card = document.createElement("div");
+    card.className = `node-card-group crane-equipment-node ${asset.installed ? "" : "inactive"}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "node-card";
+    button.innerHTML = `<div><strong>${escapeHtml(asset.name)}</strong><span>Кран-балка · собственный вахтенный журнал</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Смена ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">ТО ${status.monthlyDone ? "✓" : "1"}</b>` : ""}<i>›</i></div>`;
+    button.addEventListener("click", () => openCraneNodeDetails(asset));
+    card.append(button);
+    ui.nodeList.append(card);
+  });
+  if (craneBeamState.canManage) {
+    const actions = document.createElement("div");
+    actions.className = "crane-node-admin-actions";
+    actions.innerHTML = `<button type="button" data-add-crane>+ Добавить кран-балку как узел</button><button type="button" data-installation-journal>Журнал установленных</button>`;
+    actions.querySelector("[data-add-crane]").addEventListener("click", () => editCraneAsset({ workshop: eq.name, parentWorkshop: eq.name, installationPlace: eq.name }));
+    actions.querySelector("[data-installation-journal]").addEventListener("click", openCraneInstallationJournal);
+    ui.nodeList.append(actions);
+  }
 }
 
 function renderSchedule() {
@@ -19079,6 +19087,16 @@ function openCraneInspection(asset, type = "shift") {
       craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "node" ? renderNodes() : renderEquipment();
     } catch (error) { window.alert(error.message === "crane_defect_comment_required" ? "Укажите комментарий для каждого неотмеченного пункта." : error.message); submit.disabled = false; }
   });
+}
+
+function openCraneNodeDetails(asset) {
+  const status = craneTodayStatus(asset);
+  const overlay = craneOverlay(asset.name, `<div class="crane-node-detail"><div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span></div><div class="crane-counts"><b class="${status.shiftDone ? "done" : ""}">Ежесменный осмотр ${status.shiftDone ? "✓" : "не выполнен"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячное ТО ${status.monthlyDone ? "✓" : "не выполнено"}</b>` : ""}</div><div class="crane-node-detail-actions"><button data-shift>Нижний QR · ежесменный осмотр</button><button data-monthly>Верхний QR · ежемесячное ТО</button><button data-journal>Вахтенный журнал узла</button><button data-crane-qr>Показать и распечатать два QR</button>${craneBeamState.canManage ? '<button data-edit>Настроить узел</button>' : ""}</div></div>`);
+  overlay.querySelector("[data-shift]").addEventListener("click", () => { overlay.remove(); openCraneInspection(asset, "shift"); });
+  overlay.querySelector("[data-monthly]").addEventListener("click", () => { overlay.remove(); openCraneInspection(asset, "monthly"); });
+  overlay.querySelector("[data-journal]").addEventListener("click", () => { overlay.remove(); openCraneJournal(asset); });
+  overlay.querySelector("[data-crane-qr]").addEventListener("click", () => { overlay.remove(); openCraneQrCards(asset); });
+  overlay.querySelector("[data-edit]")?.addEventListener("click", () => { overlay.remove(); editCraneAsset(asset); });
 }
 
 function openCraneJournal(asset) {
