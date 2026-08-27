@@ -31,6 +31,32 @@ function same(value, expected) { return text(value).toLocaleLowerCase("ru-RU") =
 function actor(user = {}) { return { id: text(user.id || user.employeeId, 120), employeeId: text(user.employeeId, 80), name: text(user.name || "Сотрудник", 200), role: roleOf(user), jobRole: text(user.jobRole, 100), area: text(user.area, 200) }; }
 function newId(prefix) { return `${prefix}:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`; }
 
+function craneServerMoment(now = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(now).filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  const localDate = `${parts.year}-${parts.month}-${parts.day}`, hour = Number(parts.hour);
+  if (hour >= 8 && hour < 20) return { date: localDate, shift: "day" };
+  if (hour >= 20) return { date: localDate, shift: "night" };
+  const previous = new Date(`${localDate}T12:00:00Z`); previous.setUTCDate(previous.getUTCDate() - 1);
+  return { date: previous.toISOString().slice(0, 10), shift: "night" };
+}
+
+function craneMonthlyPlanDate(asset, actualDate) {
+  const [year, month] = actualDate.split("-").map(Number);
+  const planFor = (planYear, planMonth) => {
+    const lastDay = new Date(Date.UTC(planYear, planMonth, 0)).getUTCDate();
+    const day = Math.max(1, Math.min(lastDay, Number(asset.monthlyDay || 1)));
+    const planned = new Date(Date.UTC(planYear, planMonth - 1, day));
+    const weekDay = planned.getUTCDay();
+    if (weekDay === 6) planned.setUTCDate(planned.getUTCDate() + 2);
+    if (weekDay === 0) planned.setUTCDate(planned.getUTCDate() + 1);
+    return planned.toISOString().slice(0, 10);
+  };
+  const current = planFor(year, month), early = new Date(`${current}T00:00:00Z`); early.setUTCDate(early.getUTCDate() - 2);
+  if (actualDate >= early.toISOString().slice(0, 10)) return current;
+  const previous = new Date(Date.UTC(year, month - 2, 1));
+  return planFor(previous.getUTCFullYear(), previous.getUTCMonth() + 1);
+}
+
 function archivedQrAliases(saved = {}) {
   const sourceEquipmentId = Number(saved.sourceEquipmentId);
   const match = /^catalog:(\d+):(\d+)$/u.exec(text(saved.id, 120));
@@ -236,7 +262,7 @@ function publicCraneState(db, user, builtInEquipment = {}) {
   return { assets, archivedAssets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
-function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, readBody, readDb, sendJson, writeDb }) {
+function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, nowProvider = () => new Date(), readBody, readDb, sendJson, writeDb }) {
   return async function handleCraneBeamsRoute(req, res, pathname, url) {
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
       const mode = String(url.searchParams.get("mode") || "shift").toLowerCase() === "monthly" ? "monthly" : "shift";
@@ -258,17 +284,20 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         const db = readDb(); ensureCraneBeams(db, builtInEquipment);
         const asset = db.craneBeams.assets[text(body.craneId, 120)];
         const type = body.type === "monthly" ? "monthly" : "shift";
-        if (!asset || asset.archived || !asset.installed || asset.operationalPaused) return { error: "crane_unavailable" };
+        const submissionId = text(body.submissionId, 160);
+        if (!asset || asset.archived || !asset.installed) return { error: "crane_unavailable" };
         if (!canInspect(req.authUser, asset, type)) return { error: "crane_inspection_forbidden" };
+        const submittedBefore = submissionId && Object.values(db.craneBeams.inspections).find(item => item.craneId === asset.id && item.submissionId === submissionId);
+        if (submittedBefore) return { inspection: submittedBefore, duplicateSubmission: true, state: publicCraneState(db, req.authUser, builtInEquipment) };
         const checklist = Array.isArray(asset.checklist) ? asset.checklist : [];
         const answers = checklist.map(item => { const supplied = (body.answers || {})[item.id] || {}; return { id: item.id, label: item.label, ok: supplied.ok === true, comment: text(supplied.comment, 1000), photo: text(supplied.photo, 500) }; });
         if (!answers.length || answers.some(item => !item.ok && !item.comment)) return { error: "crane_defect_comment_required" };
-        const shift = body.shift === "night" ? "night" : "day";
-        const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? body.date : new Date().toISOString().slice(0, 10);
-        const counterEligible = closesCounter(req.authUser, asset, type);
-        const duplicate = Object.values(db.craneBeams.inspections).some(item => item.craneId === asset.id && item.type === type && item.date === date && (type === "monthly" || item.shift === shift) && item.counterEligible);
+        const serverMoment = craneServerMoment(nowProvider()), shift = serverMoment.shift, date = serverMoment.date;
+        const planDate = type === "monthly" ? craneMonthlyPlanDate(asset, date) : "";
+        const counterEligible = !asset.operationalPaused && closesCounter(req.authUser, asset, type);
+        const duplicate = Object.values(db.craneBeams.inspections).some(item => item.craneId === asset.id && item.type === type && (type === "monthly" ? (item.planDate || item.date) === planDate : item.date === date && item.shift === shift) && item.counterEligible);
         const id = newId("crane-inspection"), who = actor(req.authUser), defects = answers.filter(item => !item.ok);
-        const inspection = { id, craneId: asset.id, craneName: asset.name, workshop: asset.workshop, type, date, shift, at: new Date().toISOString(), actor: who, checklistVersion: asset.checklistVersion, answers, result: defects.length ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good", decision: defects.length ? (body.decision === "prohibited" ? "prohibited" : "allowed_with_remark") : "allowed", counterEligible, counterApplied: counterEligible && !duplicate };
+        const inspection = { id, submissionId: submissionId || id, craneId: asset.id, craneName: asset.name, workshop: asset.workshop, type, date, planDate, shift, at: nowProvider().toISOString(), actor: who, checklistVersion: asset.checklistVersion, answers, result: defects.length ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good", decision: defects.length ? (body.decision === "prohibited" ? "prohibited" : "allowed_with_remark") : "allowed", unscheduled: asset.operationalPaused === true, counterEligible, counterApplied: counterEligible && !duplicate };
         db.craneBeams.inspections[id] = inspection;
         if (defects.length) {
           const defectId = newId("crane-defect");

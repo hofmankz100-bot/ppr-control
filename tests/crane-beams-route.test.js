@@ -75,7 +75,8 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /craneInspectionDraftKey/);
   assert.match(app, /Черновик восстановлен/);
   assert.match(app, /capture="environment"/);
-  assert.match(app, /shift: inspectionShift\.key/);
+  assert.match(app, /submissionId/);
+  assert.doesNotMatch(app, /shift: inspectionShift\.key/);
   assert.match(app, /function craneMonthlyCalendarItems/);
   assert.match(app, /Карточка обычного ППР не заполняется/);
   assert.match(app, /выполнить верхним QR/);
@@ -288,4 +289,19 @@ test("pending and disabled employees cannot write a crane inspection", async () 
     await h.handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ", ...blocked }, body: { craneId: "one", type: "shift", answers: { a: { ok: true } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
     assert.equal(h.responses[0].status, 403);
   }
+});
+
+test("server assigns crane date and shift, paused scans stay unscheduled, and retries are idempotent", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, operationalPaused: true, monthlyDay: 30, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const responses = [];
+  const handler = createCraneBeamsRoute({ enqueueStateWrite: fn => fn(), nowProvider: () => new Date("2026-08-28T15:00:00Z"), readBody: req => Promise.resolve(req.body || {}), readDb: () => db, sendJson: (_res, status, payload) => responses.push({ status, payload }), writeDb: () => {} });
+  const req = { method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ" }, body: { craneId: "one", type: "shift", submissionId: "same", date: "2000-01-01", shift: "day", answers: { a: { ok: true } } } };
+  await handler(req, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  await handler(req, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  assert.equal(responses[0].payload.inspection.date, "2026-08-28");
+  assert.equal(responses[0].payload.inspection.shift, "night");
+  assert.equal(responses[0].payload.inspection.unscheduled, true);
+  assert.equal(responses[0].payload.inspection.counterApplied, false);
+  assert.equal(responses[1].payload.duplicateSubmission, true);
+  assert.equal(Object.keys(db.craneBeams.inspections).length, 1);
 });
