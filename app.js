@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v666-crane-independent-counters-1";
+const APP_VERSION = "v667-cranes-as-workshop-equipment-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11681,7 +11681,7 @@ function renderEquipment() {
             <button type="button" data-aggregate-equipment="${eq.id}" class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <span class="journal-button-title">Журнал</span>
               <strong>${escapeHtml(eq.name)}</strong>
-              <span>${ordinaryNodeIndexes(eq).length} обычных узлов${craneNodeIndexes(eq).length ? ` + ${craneNodeIndexes(eq).length} кран-балка` : ""} · ${escapeHtml(eq.area)}</span>
+              <span>${ordinaryNodeIndexes(eq).length} узлов · ${escapeHtml(eq.area)}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
             </button>
             <div class="equipment-secondary-tools">
@@ -11791,9 +11791,49 @@ function renderEquipment() {
         }, "Перемещается...");
       });
       tbody.append(tr);
+      const craneRows = craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id)
+        || Object.values(eq.craneBeamNodes || {}).some(craneId => String(craneId) === String(asset.id)));
+      craneRows.forEach(asset => tbody.append(craneMainScheduleRow(asset, days)));
     });
   wrap.append(table);
   ui.equipmentList.append(wrap);
+}
+
+function craneDateProgress(asset, date) {
+  const rows = craneBeamState.inspections.filter(row => row.craneId === asset.id && row.date === date && row.counterApplied);
+  const monthlyDue = Number(asset.monthlyDay || 1) === Number(date.slice(8, 10));
+  const shiftDone = rows.some(row => row.type === "shift");
+  const monthlyDone = rows.some(row => row.type === "monthly");
+  return { done: Number(shiftDone) + Number(monthlyDue && monthlyDone), total: 1 + Number(monthlyDue), monthlyDue, shiftDone, monthlyDone };
+}
+
+function craneMainScheduleRow(asset, days) {
+  const tr = document.createElement("tr");
+  tr.className = "crane-main-schedule-row";
+  const records = craneBeamState.inspections.filter(row => row.craneId === asset.id).length;
+  tr.innerHTML = `<th class="node-name equipment-name equipment-journal-cell crane-main-equipment-cell">
+    <div class="equipment-row-tools">
+      <button type="button" class="equipment-journal-button" data-crane-main-journal><span class="journal-button-title">Вахтенный журнал кран-балки</span><strong>${escapeHtml(asset.name)}</strong><span>${escapeHtml(asset.workshop)} · отдельное оборудование цеха</span><small>${records} записей</small></button>
+      <div class="equipment-secondary-tools"><button type="button" class="equipment-installed-parts-button" data-crane-main-installation><span>Журнал установленных</span></button><button type="button" class="equipment-qr-print-button" data-crane-main-qr>Два QR-кода<br><small>нижний + верхний</small></button></div>
+    </div>
+    ${craneBeamState.canManage ? `<details class="catalog-editor"><summary>Редактировать оборудование</summary><div class="operational-pause-control ${asset.operationalPaused ? "paused" : ""}"><strong>${asset.operationalPaused ? "Оборудование временно остановлено" : "Оборудование работает"}</strong><span>${escapeHtml(asset.installationPlace || asset.workshop)}</span><button type="button" data-crane-main-edit>Изменить настройки и статус</button></div></details>` : ""}
+  </th>`;
+  days.forEach(day => {
+    const date = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const progress = craneDateProgress(asset, date);
+    const td = document.createElement("td");
+    const overdue = !asset.operationalPaused && isDueOrPast(date) && progress.done < progress.total;
+    td.className = `${asset.operationalPaused ? "operational-paused-day" : progress.done === progress.total ? "completed-day" : "to"} ${overdue ? "planned-overdue" : ""} ${date === currentWalkShift().date ? "today-cell" : ""}`;
+    td.textContent = asset.operationalPaused ? "Пауза" : progress.done === progress.total ? "✓" : `${progress.done}/${progress.total}`;
+    td.title = `${asset.name} · ${dateHuman(date)} · ежесменный осмотр${progress.monthlyDue ? " + ежемесячное ТО" : ""}`;
+    td.addEventListener("click", () => openCraneNodeDetails(asset));
+    tr.append(td);
+  });
+  tr.querySelector("[data-crane-main-journal]").addEventListener("click", () => openCraneJournal(asset));
+  tr.querySelector("[data-crane-main-installation]").addEventListener("click", openCraneInstallationJournal);
+  tr.querySelector("[data-crane-main-qr]").addEventListener("click", () => openCraneQrCards(asset));
+  tr.querySelector("[data-crane-main-edit]")?.addEventListener("click", () => editCraneAsset(asset));
+  return tr;
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
@@ -11954,49 +11994,17 @@ function nodeDocumentMemoHtml(eq, nodeName) {
   `;
 }
 
-function craneWorkshopEquipmentRow(asset) {
-  const status = craneTodayStatus(asset);
-  const inspections = craneBeamState.inspections.filter(row => row.craneId === asset.id).length;
-  const row = document.createElement("article");
-  row.className = `crane-workshop-equipment-row ${asset.operationalPaused ? "inactive" : ""}`;
-  row.innerHTML = `
-    <div class="crane-workshop-journal-cell">
-      <button type="button" data-crane-journal><span>Вахтенный журнал</span><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.workshop)} · ${inspections} записей</small></button>
-      <button type="button" data-crane-installation>Журнал установленных</button>
-    </div>
-    <div class="crane-workshop-tools">
-      <button type="button" data-crane-qr><strong>Два QR-кода</strong><small>нижний осмотр · верхний ТО</small></button>
-      ${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}
-    </div>
-    <div class="crane-workshop-state"><strong>${asset.operationalPaused ? "Временно остановлено" : "Оборудование работает"}</strong><span>${escapeHtml(asset.installationPlace || asset.workshop)}</span></div>
-    <div class="crane-counts crane-workshop-counters">
-      <button type="button" data-crane-shift class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</button>
-      ${status.monthlyDue ? `<button type="button" data-crane-monthly class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</button>` : ""}
-    </div>`;
-  row.querySelector("[data-crane-journal]").addEventListener("click", () => openCraneJournal(asset));
-  row.querySelector("[data-crane-installation]").addEventListener("click", openCraneInstallationJournal);
-  row.querySelector("[data-crane-qr]").addEventListener("click", () => openCraneQrCards(asset));
-  row.querySelector("[data-crane-edit]")?.addEventListener("click", () => editCraneAsset(asset));
-  row.querySelector("[data-crane-shift]").addEventListener("click", () => openCraneInspection(asset, "shift"));
-  row.querySelector("[data-crane-monthly]")?.addEventListener("click", () => openCraneInspection(asset, "monthly"));
-  return row;
-}
-
 function renderNodes() {
   const eq = equipmentById(current.equipmentId);
   ui.subtitle.textContent = eq.name;
   ui.equipmentTitle.textContent = eq.name;
-  ui.equipmentMeta.textContent = `${eq.area} · ${eq.nodes.length} узлов`;
+  ui.equipmentMeta.textContent = `${eq.area} · ${ordinaryNodeIndexes(eq).length} узлов`;
   const alert = hasOpenCommentEquipment(eq.id);
   ui.equipmentAlertBadge.textContent = alert ? "Есть замечания" : "Норма";
   ui.equipmentAlertBadge.classList.toggle("alert", alert);
   ui.nodeList.innerHTML = "";
-  eq.nodes.forEach((node, index) => {
-    const craneAsset = craneBeamState.assets.find(asset => String(asset.id) === String(eq.craneBeamNodes?.[index]));
-    if (craneAsset) {
-      ui.nodeList.append(craneWorkshopEquipmentRow(craneAsset));
-      return;
-    }
+  ordinaryNodeIndexes(eq).forEach(index => {
+    const node = eq.nodes[index];
     const nodeAlert = Object.entries(state.checks).some(([k, rec]) => {
       const [eqId, nodeIdx] = k.split(":").map(Number);
       return eqId === eq.id && nodeIdx === index && hasOpenCommentRecord(rec);
