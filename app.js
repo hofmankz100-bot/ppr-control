@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v648-ppr-ordered-autosave-1";
+const APP_VERSION = "v649-gpm-qr-journal-save-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -2338,6 +2338,15 @@ function mergePprSheetsLocal(current = {}, incoming = {}) {
   return merged;
 }
 
+function mergeGpmInspectionsLocal(current = {}, incoming = {}, preferRemote = false) {
+  if (!preferRemote) return mergeObjectByFreshnessLocal(current, incoming);
+  const next = { ...(incoming || {}) };
+  Object.entries(current || {}).forEach(([id, entry]) => {
+    if (entry?.syncError && !entry?.serverSavedAt && !next[id]) next[id] = entry;
+  });
+  return next;
+}
+
 function mergeRemarkHistoryItemsLocal(current = [], incoming = [], identity = item => String(item?.id || "")) {
   const map = new Map();
   for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
@@ -2490,9 +2499,11 @@ function mergeRemoteState(remote = {}, options = {}) {
     equipment: preferRemote
       ? { ...(remote.gpmJournal?.equipment || {}) }
       : mergeObjectByFreshnessLocal(state.gpmJournal?.equipment || {}, remote.gpmJournal?.equipment || {}),
-    inspections: preferRemote
-      ? { ...(remote.gpmJournal?.inspections || {}) }
-      : mergeObjectByFreshnessLocal(state.gpmJournal?.inspections || {}, remote.gpmJournal?.inspections || {}),
+    inspections: mergeGpmInspectionsLocal(
+      state.gpmJournal?.inspections || {},
+      remote.gpmJournal?.inspections || {},
+      preferRemote
+    ),
     events: preferRemote
       ? { ...(remote.gpmJournal?.events || {}) }
       : mergeObjectByFreshnessLocal(state.gpmJournal?.events || {}, remote.gpmJournal?.events || {}),
@@ -14871,6 +14882,10 @@ function gpmOperationalControlEnabled(item, date = todayISO()) {
   return operationalControlEnabled(sourceEquipmentId, sourceNodeIndex, date);
 }
 
+function gpmRecordedInspectionType(entry = {}) {
+  return String(entry.sourceInspectionType || entry.inspectionType || "");
+}
+
 function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
   const activeItems = items.filter(item => gpmOperationalControlEnabled(item, date));
   const craneIds = new Set(activeItems.map(item => String(item.id)));
@@ -14878,10 +14893,10 @@ function gpmQrInspectionCounters(date, items = gpmEquipmentList("gpm")) {
   const dueShiftKeys = walkShiftKeysDueForDate(date);
   const inspections = Object.values(gpmStore().inspections || {})
     .filter(entry => entry && craneIds.has(String(entry.gpmId || "")));
-  const shiftDone = inspections.filter(entry => entry.inspectionType === "shift"
+  const shiftDone = inspections.filter(entry => gpmRecordedInspectionType(entry) === "shift"
     && String(entry.shiftDate || "") === date
     && dueShiftKeys.includes(entry.shiftKey === "night" ? "night" : "day")).length;
-  const monthlyDone = inspections.filter(entry => entry.inspectionType === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
+  const monthlyDone = inspections.filter(entry => gpmRecordedInspectionType(entry) === "monthly" && String(entry.shiftDate || entry.createdAt || "").slice(0, 7) === month).length;
   return {
     shiftDone,
     shiftTotal: activeItems.length * dueShiftKeys.length,
@@ -15469,7 +15484,7 @@ function gpmQrInspectionScreenHtml(item) {
     </section>`;
 }
 
-function saveGpmInspectionResult(item, inspectionType, checked, defects = "", immediateResolution = {}) {
+async function saveGpmInspectionResult(item, inspectionType, checked, defects = "", immediateResolution = {}) {
   const hasDefect = !checked.every(Boolean);
   if (hasDefect && !String(defects || "").trim()) return false;
   const now = new Date().toISOString();
@@ -15482,25 +15497,47 @@ function saveGpmInspectionResult(item, inspectionType, checked, defects = "", im
   const previous = gpmStore().inspections[id] || {};
   // One immutable journal entry per shift (or per month for the upper QR).
   // A repeated scan is successful but must not overwrite the saved result.
-  if (previous.id && previous.deleted !== true) return true;
+  if (previous.id && previous.deleted !== true && previous.serverSavedAt) return true;
   const decision = hasDefect ? "prohibited" : "allowed";
-  gpmStore().inspections[id] = { ...previous, id, gpmId: item.id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
+  const inspection = { ...previous, id, gpmId: item.id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, shiftDate: shift.date, shiftKey: shift.key, shiftLabel: shift.label, points: checked, defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", authorEmployeeId: profile?.employeeId || "", authorRole: profile?.role || "", createdAt: previous.createdAt || now, updatedAt: now };
+  gpmStore().inspections[id] = inspection;
   if (!hasDefect && inspectionType === "monthly") {
     item.lastMonthlyInspectionDate = shift.date;
     item.nextMonthlyInspectionDate = gpmDatePlusMonth(shift.date);
     if (gpmItemKind(item) === "forklift") item.nextMaintenanceDate = item.nextMonthlyInspectionDate;
   }
+  let inspectionEvent = null;
   if (hasDefect) {
     const eventId = `gpm-event:${id}`;
     const oldEvent = gpmStore().events[eventId] || {};
     const resolvedNow = immediateResolution.enabled === true && String(immediateResolution.comment || "").trim();
-    gpmStore().events[eventId] = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, type: "defect", completedDate: shift.date, result: resolvedNow ? "Устранено во время осмотра; ожидает подтверждения инженера" : "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: resolvedNow ? "awaitingEngineer" : "open", resolutionComment: resolvedNow ? String(immediateResolution.comment).trim() : "", resolvedAt: resolvedNow ? now : "", resolvedByKey: resolvedNow ? gpmUserKey() : "", resolvedByName: resolvedNow ? (profile?.name || "") : "", resolvedByRole: resolvedNow ? (profile?.role || "") : "", resolvedDuringInspection: Boolean(resolvedNow), createdAt: oldEvent.createdAt || now, updatedAt: now };
+    inspectionEvent = { ...oldEvent, id: eventId, gpmId: item.id, inspectionId: id, inspectionType: recordedInspectionType, sourceInspectionType: inspectionType, type: "defect", completedDate: shift.date, result: resolvedNow ? "Устранено во время осмотра; ожидает подтверждения инженера" : "Эксплуатация запрещена", defects: String(defects || "").trim(), decision, authorKey: gpmUserKey(), authorName: profile?.name || "", status: resolvedNow ? "awaitingEngineer" : "open", resolutionComment: resolvedNow ? String(immediateResolution.comment).trim() : "", resolvedAt: resolvedNow ? now : "", resolvedByKey: resolvedNow ? gpmUserKey() : "", resolvedByName: resolvedNow ? (profile?.name || "") : "", resolvedByRole: resolvedNow ? (profile?.role || "") : "", resolvedDuringInspection: Boolean(resolvedNow), createdAt: oldEvent.createdAt || now, updatedAt: now };
+    gpmStore().events[eventId] = inspectionEvent;
   }
   item.operationStatus = hasDefect || gpmOpenDefects(item).length ? "prohibited" : "allowed";
   item.updatedAt = now;
-  current.gpmScanMode = "";
-  current.gpmInspectionStep = "decision";
-  saveState();
+  persistStateLocally(state);
+  try {
+    const result = await apiJson("/api/gpm/inspection", {
+      method: "POST",
+      timeout: 20000,
+      body: JSON.stringify({
+        inspection,
+        event: inspectionEvent,
+        actionId: nextActionId(),
+        clientId: CLIENT_ID
+      })
+    });
+    if (result?.state) mergeRealtimePatch(result.state);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+    current.gpmScanMode = "";
+    current.gpmInspectionStep = "decision";
+  } catch (error) {
+    inspection.syncError = error?.message || "gpm_inspection_save_failed";
+    inspection.updatedAt = new Date().toISOString();
+    persistStateLocally(state);
+    throw error;
+  }
   return true;
 }
 
@@ -15708,9 +15745,9 @@ function renderGpmJournal() {
   ui.gpmPanel.querySelectorAll("[data-gpm-print-qr]").forEach(button => button.addEventListener("click", () => {
     printGpmQr(selected, button.dataset.gpmPrintQr);
   }));
-  ui.gpmPanel.querySelector("[data-gpm-all-good]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+  ui.gpmPanel.querySelector("[data-gpm-all-good]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     const inspectionType = current.gpmScanMode === "monthly" ? "monthly" : "shift";
-    saveGpmInspectionResult(selected, inspectionType, gpmInspectionPoints(selected).map(() => true), "");
+    await saveGpmInspectionResult(selected, inspectionType, gpmInspectionPoints(selected).map(() => true), "");
     show(homeViewForProfile(profile?.role));
     showAppToast("Все пункты отмечены исправными. Вахтенный журнал заполнен автоматически.", "ok");
   }, "Заполняем журнал..."));
@@ -15739,7 +15776,7 @@ function renderGpmJournal() {
     current.gpmInspectionStep = "decision";
     show(homeViewForProfile(profile?.role));
   });
-  ui.gpmPanel.querySelector("[data-gpm-inspection-form]")?.addEventListener("submit", event => {
+  ui.gpmPanel.querySelector("[data-gpm-inspection-form]")?.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const checked = gpmInspectionPoints(selected).map((_, index) => Boolean(form.elements[`point-${index}`]?.checked));
@@ -15751,10 +15788,18 @@ function renderGpmJournal() {
     if (resolvedDuringInspection && !hasDefect) return window.alert("Сначала отметьте неисправный пункт и опишите замечание.");
     if (resolvedDuringInspection && !resolutionComment) return window.alert("Опишите, что было сделано для устранения.");
     const inspectionType = form.dataset.inspectionType === "monthly" ? "monthly" : "shift";
-    saveGpmInspectionResult(selected, inspectionType, checked, defects, { enabled: resolvedDuringInspection, comment: resolutionComment });
-    show(homeViewForProfile(profile?.role));
-    const equipmentLabel = gpmItemKind(selected) === "forklift" ? "Погрузчик" : "Кран";
-    showAppToast(resolvedDuringInspection ? "Устранение отправлено инженеру на обязательное подтверждение." : hasDefect ? `Неисправность записана. Эксплуатация ${equipmentLabel.toLocaleLowerCase("ru-RU")} запрещена.` : `Осмотр записан. ${equipmentLabel} исправен.`, hasDefect && !resolvedDuringInspection ? "error" : "ok");
+    const submitButton = form.querySelector('button[type="submit"]');
+    setButtonBusy(submitButton, true, "Сохраняем в журнал…");
+    try {
+      await saveGpmInspectionResult(selected, inspectionType, checked, defects, { enabled: resolvedDuringInspection, comment: resolutionComment });
+      show(homeViewForProfile(profile?.role));
+      const equipmentLabel = gpmItemKind(selected) === "forklift" ? "Погрузчик" : "Кран";
+      showAppToast(resolvedDuringInspection ? "Устранение отправлено инженеру на обязательное подтверждение." : hasDefect ? `Неисправность записана. Эксплуатация ${equipmentLabel.toLocaleLowerCase("ru-RU")} запрещена.` : `Осмотр записан. ${equipmentLabel} исправен.`, hasDefect && !resolvedDuringInspection ? "error" : "ok");
+    } catch (error) {
+      window.alert(error?.message === "gpm_inspection_forbidden" ? "Сервер не подтвердил доступ к этому оборудованию. Проверьте назначение оператора." : "Осмотр пока не записан на сервер. Данные сохранены на этом устройстве — нажмите завершение ещё раз.");
+    } finally {
+      if (submitButton?.isConnected) setButtonBusy(submitButton, false);
+    }
   });
   ui.gpmPanel.querySelectorAll("[data-gpm-resolve]").forEach(button => button.addEventListener("click", () => {
     const entry = gpmStore().events[button.dataset.gpmResolve];
@@ -16304,12 +16349,12 @@ function directorAnnualStats(year = directorAnnualYear()) {
       craneEquipment.filter(item => gpmOperationalControlEnabled(item, date)).forEach(item => {
         months[month].craneShiftQrPlan += dueShiftKeys.length;
         months[month].craneShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
-          && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
+          && gpmRecordedInspectionType(entry) === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
       });
       forkliftEquipment.filter(item => gpmOperationalControlEnabled(item, date)).forEach(item => {
         months[month].forkliftShiftQrPlan += dueShiftKeys.length;
         months[month].forkliftShiftQrDone += dueShiftKeys.filter(shiftKey => craneInspections.some(entry => entry.gpmId === item.id
-          && entry.inspectionType === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
+          && gpmRecordedInspectionType(entry) === "shift" && entry.shiftDate === date && entry.shiftKey === shiftKey)).length;
       });
     }
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -16319,10 +16364,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
       const activeForklifts = forkliftEquipment.filter(item => gpmOperationalControlEnabled(item, monthControlDate));
       months[month].craneMonthlyQrPlan += activeCranes.length;
       months[month].craneMonthlyQrDone += activeCranes.filter(item => craneInspections.some(entry => entry.gpmId === item.id
-        && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
+        && gpmRecordedInspectionType(entry) === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
       months[month].forkliftMonthlyQrPlan += activeForklifts.length;
       months[month].forkliftMonthlyQrDone += activeForklifts.filter(item => craneInspections.some(entry => entry.gpmId === item.id
-        && entry.inspectionType === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
+        && gpmRecordedInspectionType(entry) === "monthly" && String(entry.shiftDate || "").slice(0, 7) === monthKey)).length;
     }
     // Ежесменный QR кран-балки контролируется и хранится в журнале,
     // но операторский обход не влияет на индекс состояния завода.

@@ -558,6 +558,19 @@ test("production API requires a server session and rate-limits failed logins", a
       headers: { cookie: operatorCookie, "content-type": "application/json", "x-app-version": APP_VERSION, "x-client-protocol": CLIENT_PROTOCOL_VERSION },
       body: JSON.stringify({ actionId, clientId: "operator-access-test", gpmJournal: { equipment: {}, inspections: { [inspection.id]: inspection }, events } })
     });
+    const saveFocusedInspection = (operatorCookie, inspection) => fetch(`${baseUrl}/api/gpm/inspection`, {
+      method: "POST",
+      headers: { cookie: operatorCookie, "content-type": "application/json", "x-app-version": APP_VERSION },
+      body: JSON.stringify({ actionId: `focused-${inspection.id}`, clientId: "focused-gpm-test", inspection })
+    });
+    const focusedInspection = {
+      ...operatorInspection("focused-assigned-inspection", `id:${areaOperator.id}`),
+      sourceInspectionType: "shift", shiftDate: "2026-08-27", shiftKey: "day"
+    };
+    assert.equal((await saveFocusedInspection(assignedOperatorCookie, focusedInspection)).status, 200);
+    assert.equal((await saveFocusedInspection(otherOperatorCookie, {
+      ...focusedInspection, id: "focused-forbidden-inspection", authorKey: `id:${otherAreaOperator.id}`
+    })).status, 403);
     assert.equal((await syncAsOperator(assignedOperatorCookie, "assigned-operator-inspection", operatorInspection("assigned-inspection", `id:${areaOperator.id}`))).status, 200);
     assert.equal((await syncAsOperator(otherOperatorCookie, "other-operator-inspection", operatorInspection("forbidden-inspection", `id:${otherAreaOperator.id}`))).status, 200);
     const publicDefectInspection = {
@@ -572,6 +585,7 @@ test("production API requires a server session and rate-limits failed logins", a
     };
     assert.equal((await syncAsOperator(otherOperatorCookie, "public-defect-report", publicDefectInspection, { [publicDefectEvent.id]: publicDefectEvent })).status, 200);
     const operatorAccessState = await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
+    assert.ok(operatorAccessState.gpmJournal.inspections[focusedInspection.id]?.serverSavedAt);
     assert.ok(operatorAccessState.gpmJournal.inspections["assigned-inspection"]);
     assert.equal(operatorAccessState.gpmJournal.inspections["forbidden-inspection"], undefined);
     assert.equal(operatorAccessState.gpmJournal.inspections["public-defect-inspection"].defects, "Обнаружена неисправность");

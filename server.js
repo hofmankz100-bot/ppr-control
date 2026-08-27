@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v648-ppr-ordered-autosave-1";
+const SERVER_VERSION = "v649-gpm-qr-journal-save-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4591,6 +4591,7 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
   const stored = db.gpmJournal || { equipment: {}, inspections: {}, events: {}, managers: {} };
   const actorKey = resolutionUserKeyServer(user);
   const rawRole = String(user.role || "");
+  const effectiveRole = [user.role, user.jobRole].includes("forkliftDriver") ? "forkliftDriver" : rawRole;
   const baseRole = permissionBaseRoleServer(rawRole);
   const manager = Object.values(stored.managers || {}).some(grant => grant?.active && String(grant.userKey || "") === actorKey);
   const canManage = baseRole === "editor" || manager;
@@ -4637,9 +4638,9 @@ function authorizedGpmSyncPayload(db = {}, incoming = {}, user = {}) {
     if (defectReport) return true;
     if (!gpmOperationalControlEnabledServer(db, item)) return false;
     if (isEngineer || [item.operationResponsibleKey, item.conditionResponsibleKey].includes(actorKey)) return true;
-    if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(rawRole)) return true;
+    if (entry?.inspectionType === "monthly" && ["mechanic", "electrician"].includes(effectiveRole)) return true;
     const assigned = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-    if (["operator", "forkliftDriver"].includes(rawRole)) return assigned.includes(actorKey);
+    if (["operator", "forkliftDriver"].includes(effectiveRole)) return assigned.includes(actorKey);
     return assigned.includes(actorKey) || String(item.inspectorKey || "") === actorKey;
   };
   const inspections = {};
@@ -6808,6 +6809,89 @@ async function handleApi(req, res, pathname, url) {
       });
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, request: result.request, submittedCount: result.submittedCount });
+    return true;
+  }
+
+  if (pathname === "/api/gpm/inspection" && req.method === "POST") {
+    const body = await readBody(req);
+    const rawInspection = body.inspection && typeof body.inspection === "object" ? body.inspection : null;
+    const inspectionId = String(rawInspection?.id || "").trim();
+    const gpmId = String(rawInspection?.gpmId || "").trim();
+    const actor = req.authUser || {};
+    const actorKey = resolutionUserKeyServer(actor);
+    if (!inspectionId || !gpmId || !actorKey || !["shift", "monthly", "defectReport"].includes(String(rawInspection?.inspectionType || ""))) {
+      sendJson(res, 400, { ok: false, error: "gpm_inspection_invalid" });
+      return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      db.gpmJournal ||= { equipment: {}, inspections: {}, events: {}, managers: {} };
+      db.gpmJournal.equipment ||= {};
+      db.gpmJournal.inspections ||= {};
+      db.gpmJournal.events ||= {};
+      const existing = db.gpmJournal.inspections[inspectionId];
+      if (existing && existing.deleted !== true) {
+        return { actionId: String(body.actionId || ""), origin: body.clientId || "api", patch: { gpmJournal: { inspections: { [inspectionId]: existing } } } };
+      }
+      const now = new Date().toISOString();
+      const inspection = {
+        ...rawInspection,
+        id: inspectionId,
+        gpmId,
+        authorKey: actorKey,
+        authorName: String(actor.name || ""),
+        authorEmployeeId: String(actor.employeeId || ""),
+        authorRole: String(actor.role || ""),
+        createdAt: String(rawInspection.createdAt || now),
+        updatedAt: now,
+        serverSavedAt: now,
+        deleted: false
+      };
+      const rawEvent = body.event && typeof body.event === "object" ? body.event : null;
+      const event = rawEvent ? {
+        ...rawEvent,
+        id: String(rawEvent.id || `gpm-event:${inspectionId}`),
+        gpmId,
+        inspectionId,
+        authorKey: actorKey,
+        authorName: String(actor.name || ""),
+        createdAt: String(rawEvent.createdAt || now),
+        updatedAt: now,
+        serverSavedAt: now,
+        deleted: false
+      } : null;
+      const allowed = authorizedGpmSyncPayload(db, {
+        inspections: { [inspectionId]: inspection },
+        events: event ? { [event.id]: event } : {}
+      }, actor);
+      if (!allowed.inspections[inspectionId]) return { error: "gpm_inspection_forbidden" };
+      db.gpmJournal.inspections = mergeObjectRecordsByFreshness(db.gpmJournal.inspections, allowed.inspections);
+      if (event && !allowed.events[event.id]) return { error: "gpm_event_forbidden" };
+      if (event) db.gpmJournal.events = mergeObjectRecordsByFreshness(db.gpmJournal.events, allowed.events);
+      const item = db.gpmJournal.equipment[gpmId];
+      if (item) {
+        const hasDefect = inspection.inspectionType === "defectReport" || inspection.decision === "prohibited";
+        item.operationStatus = hasDefect ? "prohibited" : item.operationStatus || "allowed";
+        if (!hasDefect && (inspection.sourceInspectionType === "monthly" || inspection.inspectionType === "monthly")) {
+          item.lastMonthlyInspectionDate = String(inspection.shiftDate || now.slice(0, 10));
+        }
+        item.updatedAt = now;
+      }
+      const actionId = String(body.actionId || "");
+      const patch = { gpmJournal: {
+        equipment: item ? { [gpmId]: item } : {},
+        inspections: { [inspectionId]: db.gpmJournal.inspections[inspectionId] },
+        events: event ? { [event.id]: db.gpmJournal.events[event.id] } : {}
+      } };
+      writeDb(db, { action: "gpm_inspection_save", actionId, clientId: String(body.clientId || ""), user: actor, inspectionId, gpmId });
+      return { actionId, origin: body.clientId || "api", patch };
+    });
+    if (result.error) {
+      sendJson(res, result.error === "gpm_inspection_forbidden" || result.error === "gpm_event_forbidden" ? 403 : 400, { ok: false, error: result.error });
+      return true;
+    }
+    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
     return true;
   }
 

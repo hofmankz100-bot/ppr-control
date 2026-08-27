@@ -446,3 +446,20 @@ test("forklifts use one QR for shift inspection and monthly maintenance", () => 
   assert.match(app, /journalKind === "gpm" \? `[\s\S]{0,180}Следующее частичное освидетельствование/);
   assert.match(app, /\$\{forklift \? "" : `[\s\S]{0,180}Частичное освидетельствование/);
 });
+
+test("GPM and forklift QR inspections wait for confirmed server journal storage", () => {
+  assert.match(app, /async function saveGpmInspectionResult\(/);
+  assert.match(app, /apiJson\("\/api\/gpm\/inspection"/);
+  assert.match(app, /await saveGpmInspectionResult\(selected, inspectionType/);
+  assert.match(app, /persistStateLocally\(state\)/);
+  assert.match(server, /pathname === "\/api\/gpm\/inspection"/);
+  assert.match(server, /gpm_inspection_forbidden/);
+  assert.match(server, /serverSavedAt: now/);
+  assert.match(server, /const effectiveRole = \[user\.role, user\.jobRole\]\.includes\("forkliftDriver"\)/);
+  assert.match(server, /broadcastState\(result\.origin, result\.actionId, result\.patch, true\)/);
+  assert.match(app, /function gpmRecordedInspectionType\(entry = \{\}\)/);
+  assert.match(app, /gpmRecordedInspectionType\(entry\) === "shift"/);
+  assert.match(app, /gpmRecordedInspectionType\(entry\) === "monthly"/);
+  assert.match(app, /function mergeGpmInspectionsLocal\(current = \{\}, incoming = \{\}, preferRemote = false\)/);
+  assert.match(app, /entry\?\.syncError && !entry\?\.serverSavedAt/);
+});
