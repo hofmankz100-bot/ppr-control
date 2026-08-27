@@ -6,18 +6,30 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createCraneBeamsRoute, ensureCraneBeams } = require("../server/crane-beams-route");
 
-function harness(database, builtInEquipment = {}) {
+function harness(database, builtInEquipment = {}, routeOptions = {}) {
   Object.values(database.craneBeams?.assets || {}).forEach(asset => {
     if (asset.checklistSchemaVersion === 2 && (asset.checklist || []).length < 6) asset.checklistSchemaVersion = 3;
   });
   const responses = [];
   const handler = createCraneBeamsRoute({
+    ...routeOptions,
     builtInEquipment,
     enqueueStateWrite: fn => fn(), readBody: req => Promise.resolve(req.body || {}), readDb: () => database,
     sendJson: (_res, status, payload) => responses.push({ status, payload }), writeDb: () => {}
   });
   return { handler, responses };
 }
+
+test("admin preview hides crane beams and blocks inspections for every other role", async () => {
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistSchemaVersion: 3, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const h = harness(db, {}, { adminPreviewOnly: true });
+  await h.handler({ method: "GET", authUser: { id: "u", role: "operator", area: "ЛПЦ" } }, {}, "/api/crane-beams", new URL("http://test/api/crane-beams"));
+  await h.handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ" }, body: { craneId: "one", answers: { a: { ok: true } } } }, {}, "/api/crane-beams/inspect", new URL("http://test/api/crane-beams/inspect"));
+  assert.deepEqual(h.responses[0].payload.assets, []);
+  assert.equal(h.responses[0].payload.previewRestricted, true);
+  assert.equal(h.responses[1].status, 403);
+  assert.equal(h.responses[1].payload.error, "crane_preview_admin_only");
+});
 
 test("archived crane beams return as workshop equipment with both permanent QR identities", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "ЛПЦ" } } }, retiredCraneBeamArchive: { assets: [{ id: "kb-1", name: "Кран-балка ЛПЦ №1", lowerQr: "PPRGPM|SHIFT|kb-1", upperQr: "PPRGPM|MONTHLY|kb-1" }] } };

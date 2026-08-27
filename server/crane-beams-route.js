@@ -244,17 +244,20 @@ function closesCounter(user, asset, type) {
   return ["operator", "shop"].includes(role) && userAreas(user).some(area => same(area, asset.workshop));
 }
 
-function publicCraneState(db, user, builtInEquipment = {}) {
+function publicCraneState(db, user, builtInEquipment = {}, adminPreviewOnly = false) {
   ensureCraneBeams(db, builtInEquipment);
+  if (adminPreviewOnly && roleOf(user) !== "editor") return { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], unresolvedArchive: [], canManage: false, previewRestricted: true };
   const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
   const canManage = roleOf(user) === "editor";
   const archivedAssets = canManage ? Object.values(db.craneBeams.assets).filter(item => item?.archived === true).map(item => ({ ...item })) : [];
   return { assets, archivedAssets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
-function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, nowProvider = () => new Date(), readBody, readDb, sendJson, writeDb }) {
+function createCraneBeamsRoute({ adminPreviewOnly = false, builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, nowProvider = () => new Date(), readBody, readDb, sendJson, writeDb }) {
+  const stateFor = (db, user) => publicCraneState(db, user, builtInEquipment, adminPreviewOnly);
   return async function handleCraneBeamsRoute(req, res, pathname, url) {
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
+      if (adminPreviewOnly && roleOf(req.authUser) !== "editor") { res.writeHead(302, { Location: "/?craneQr=INVALID", "Cache-Control": "no-store" }); res.end(); return true; }
       const mode = String(url.searchParams.get("mode") || "shift").toLowerCase() === "monthly" ? "monthly" : "shift";
       const id = text(url.searchParams.get("id"), 120);
       const db = readDb(); ensureCraneBeams(db, builtInEquipment);
@@ -267,7 +270,8 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
     }
     if (!pathname.startsWith("/api/crane-beams")) return false;
     if (!req.authUser) { sendJson(res, 401, { ok: false, error: "auth_required" }); return true; }
-    if (pathname === "/api/crane-beams" && req.method === "GET") { sendJson(res, 200, { ok: true, ...publicCraneState(readDb(), req.authUser, builtInEquipment) }); return true; }
+    if (pathname === "/api/crane-beams" && req.method === "GET") { sendJson(res, 200, { ok: true, ...stateFor(readDb(), req.authUser) }); return true; }
+    if (adminPreviewOnly && roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "crane_preview_admin_only" }); return true; }
     const body = await readBody(req).catch(() => ({}));
     if (pathname === "/api/crane-beams/inspect" && req.method === "POST") {
       const result = await enqueueStateWrite(async () => {
@@ -276,15 +280,15 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         const type = body.type === "monthly" ? "monthly" : "shift";
         const submissionId = text(body.submissionId, 160);
         if (!asset || asset.archived || !asset.installed) return { error: "crane_unavailable" };
-        if (!canInspect(req.authUser, asset, type)) return { error: "crane_inspection_forbidden" };
+        if (!(adminPreviewOnly && roleOf(req.authUser) === "editor") && !canInspect(req.authUser, asset, type)) return { error: "crane_inspection_forbidden" };
         const submittedBefore = submissionId && Object.values(db.craneBeams.inspections).find(item => item.craneId === asset.id && item.submissionId === submissionId);
-        if (submittedBefore) return { inspection: submittedBefore, duplicateSubmission: true, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        if (submittedBefore) return { inspection: submittedBefore, duplicateSubmission: true, state: stateFor(db, req.authUser) };
         const checklist = Array.isArray(asset.checklist) ? asset.checklist : [];
         const answers = checklist.map(item => { const supplied = (body.answers || {})[item.id] || {}; return { id: item.id, label: item.label, ok: supplied.ok === true, comment: text(supplied.comment, 1000), photo: text(supplied.photo, 500) }; });
         if (!answers.length || answers.some(item => !item.ok && !item.comment)) return { error: "crane_defect_comment_required" };
         const serverMoment = craneServerMoment(nowProvider()), shift = serverMoment.shift, date = serverMoment.date;
         const planDate = type === "monthly" ? craneMonthlyPlanDate(asset, date) : "";
-        const counterEligible = !asset.operationalPaused && closesCounter(req.authUser, asset, type);
+        const counterEligible = !asset.operationalPaused && ((adminPreviewOnly && roleOf(req.authUser) === "editor") || closesCounter(req.authUser, asset, type));
         const duplicate = Object.values(db.craneBeams.inspections).some(item => item.craneId === asset.id && item.type === type && (type === "monthly" ? (item.planDate || item.date) === planDate : item.date === date && item.shift === shift) && item.counterEligible);
         const id = newId("crane-inspection"), who = actor(req.authUser), defects = answers.filter(item => !item.ok);
         const inspection = { id, submissionId: submissionId || id, craneId: asset.id, craneName: asset.name, workshop: asset.workshop, type, date, planDate, shift, at: nowProvider().toISOString(), actor: who, checklistVersion: asset.checklistVersion, answers, result: defects.length ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good", decision: defects.length ? (body.decision === "prohibited" ? "prohibited" : "allowed_with_remark") : "allowed", unscheduled: asset.operationalPaused === true, counterEligible, counterApplied: counterEligible && !duplicate };
@@ -301,7 +305,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         if (type === "monthly" && inspection.counterApplied) asset.lastMonthlyAt = inspection.at;
         if (type === "shift" && inspection.counterApplied) asset.lastShiftAt = inspection.at;
         writeDb(db, { action: "crane_beam_inspection_saved", user: req.authUser, craneId: asset.id, inspectionId: id, type });
-        return { inspection, notification: defects.length ? { event: "defect_opened", craneId: asset.id, craneName: asset.name, workshop: asset.workshop, prohibited: inspection.decision === "prohibited" } : null, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { inspection, notification: !adminPreviewOnly && defects.length ? { event: "defect_opened", craneId: asset.id, craneName: asset.name, workshop: asset.workshop, prohibited: inspection.decision === "prohibited" } : null, state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : 400, { ok: false, error: result.error }); else { if (result.notification) await Promise.resolve(notifyCraneEvent(result.notification, req)).catch(() => {}); sendJson(res, 200, { ok: true, ...result }); } return true;
     }
@@ -321,7 +325,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         db.craneBeams.assets[id] = asset;
         const changedInstallation = !previous || previous.workshop !== asset.workshop || previous.installationPlace !== asset.installationPlace || previous.installationStatus !== asset.installationStatus || previous.installationDate !== asset.installationDate;
         if (changedInstallation) { const eventId = newId("installation"); db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: previous ? (status === "installed" ? "installed_or_moved" : status) : "installed", status, workshop, previousWorkshop: previous?.workshop || "", place: asset.installationPlace, date: asset.installationDate, at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: text(body.installationComment, 1000) }; }
-        writeDb(db, { action: "crane_beam_saved", user: req.authUser, craneId: id }); return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        writeDb(db, { action: "crane_beam_saved", user: req.authUser, craneId: id }); return { asset, state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
@@ -352,7 +356,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         const correctionId = newId("crane-correction");
         db.craneBeams.corrections[correctionId] = { id: correctionId, inspectionId: inspection.id, craneId: inspection.craneId, at: inspection.correctedAt, reason, actor: actor(req.authUser), before, after: structuredClone(inspection) };
         writeDb(db, { action: "crane_beam_inspection_corrected", user: req.authUser, craneId: inspection.craneId, inspectionId: inspection.id, correctionId, reason });
-        return { inspection, correction: db.craneBeams.corrections[correctionId], state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { inspection, correction: db.craneBeams.corrections[correctionId], state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
@@ -372,7 +376,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
           asset.operationalPaused = false; asset.pauseReason = ""; asset.resumedAt = now;
         }
         writeDb(db, { action: `crane_beam_${action}d`, user: req.authUser, craneId: asset.id, reason: asset.pauseReason });
-        return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { asset, state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
@@ -390,7 +394,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         const eventId = newId("installation");
         db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: asset.id, action: restore ? "restored" : "archived", status: restore ? asset.installationStatus : "archived", workshop: asset.workshop, place: asset.installationPlace, date: now.slice(0, 10), at: now, byName: text(req.authUser.name, 200), byRole: roleOf(req.authUser), comment: reason };
         writeDb(db, { action: restore ? "crane_beam_restored" : "crane_beam_archived", user: req.authUser, craneId: asset.id, reason });
-        return { state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
@@ -403,7 +407,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         if (kind === "monthly") { asset.upperQrToken = crypto.randomBytes(12).toString("hex"); asset.upperQrRotated = true; asset.upperQrUpdatedAt = now; }
         else { asset.lowerQrToken = crypto.randomBytes(12).toString("hex"); asset.lowerQrRotated = true; asset.lowerQrUpdatedAt = now; }
         writeDb(db, { action: "crane_beam_qr_rotated", user: req.authUser, craneId: asset.id, kind });
-        return { asset, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { asset, state: stateFor(db, req.authUser) };
       });
       if (result.error) sendJson(res, 404, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
     }
@@ -413,7 +417,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         if (!defect) return { error: "crane_defect_not_found" };
         const action = text(body.action, 30), role = roleOf(req.authUser), now = new Date().toISOString(), who = actor(req.authUser);
         if (action === "resolve") {
-          if (!["mechanic", "electrician", "engineer"].includes(role)) return { error: "crane_defect_resolution_forbidden" };
+          if (!(adminPreviewOnly && role === "editor") && !["mechanic", "electrician", "engineer"].includes(role)) return { error: "crane_defect_resolution_forbidden" };
           const comment = text(body.comment, 1500); if (!comment) return { error: "crane_resolution_comment_required" };
           defect.resolution = { at: now, actor: who, comment, parts: text(body.parts, 1000), photo: text(body.photo, 500) }; defect.status = "awaiting_confirmation";
           if (defect.resolution.parts) {
@@ -422,7 +426,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
             db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: defect.craneId, defectId: defect.id, action: "parts_installed", status: "installed", workshop: asset?.workshop || "", place: asset?.installationPlace || "", date: now.slice(0, 10), at: now, byName: who.name, byRole: who.role, parts: defect.resolution.parts, comment: `Установлено: ${defect.resolution.parts}. ${comment}` };
           }
         } else if (["confirm", "return"].includes(action)) {
-          if (role !== "engineer") return { error: "crane_defect_confirmation_forbidden" };
+          if (role !== "engineer" && !(adminPreviewOnly && role === "editor")) return { error: "crane_defect_confirmation_forbidden" };
           defect.confirmation = { at: now, actor: who, accepted: action === "confirm", comment: text(body.comment, 1500) }; defect.status = action === "confirm" ? "closed" : "returned";
           if (action === "confirm") {
             const asset = db.craneBeams.assets[defect.craneId];
@@ -437,9 +441,9 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notif
         } else return { error: "crane_defect_action_invalid" };
         writeDb(db, { action: `crane_beam_defect_${action}`, user: req.authUser, defectId: defect.id, craneId: defect.craneId });
         const asset = db.craneBeams.assets[defect.craneId];
-        return { defect, notification: { event: action === "resolve" ? "awaiting_confirmation" : action === "confirm" ? "confirmed" : "returned", craneId: defect.craneId, craneName: asset?.name || defect.craneId, workshop: asset?.workshop || "" }, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { defect, notification: adminPreviewOnly ? null : { event: action === "resolve" ? "awaiting_confirmation" : action === "confirm" ? "confirmed" : "returned", craneId: defect.craneId, craneName: asset?.name || defect.craneId, workshop: asset?.workshop || "" }, state: stateFor(db, req.authUser) };
       });
-      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else { await Promise.resolve(notifyCraneEvent(result.notification, req)).catch(() => {}); sendJson(res, 200, { ok: true, ...result }); } return true;
+      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else { if (result.notification) await Promise.resolve(notifyCraneEvent(result.notification, req)).catch(() => {}); sendJson(res, 200, { ok: true, ...result }); } return true;
     }
     sendJson(res, 404, { ok: false, error: "not_found" }); return true;
   };
