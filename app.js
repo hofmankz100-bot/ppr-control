@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v690-mobile-crane-inspection-style-1";
+const APP_VERSION = "v691-ordinary-equipment-inspection-style-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -19150,12 +19150,13 @@ function readCraneInspectionDraft(key) {
 }
 
 function saveCraneInspectionDraft(key, form, checklist) {
+  const sharedComment = String(form.elements.craneComment?.value || "").trim();
   const draft = {
     savedAt: new Date().toISOString(),
     decision: form.elements.decision?.value || "allowed_with_remark",
     answers: Object.fromEntries(checklist.map(item => [item.id, {
       ok: Boolean(form.elements[item.id]?.checked),
-      comment: String(form.elements[`comment-${item.id}`]?.value || "").trim()
+      comment: form.elements[item.id]?.checked ? "" : sharedComment
     }]))
   };
   try { localStorage.setItem(key, JSON.stringify(draft)); } catch {}
@@ -19169,20 +19170,34 @@ function openCraneInspection(asset, type = "shift") {
   const draftKey = craneInspectionDraftKey(asset.id, type, inspectionDate, monthly ? "monthly" : inspectionShift.key);
   const draft = readCraneInspectionDraft(draftKey);
   const submissionId = globalThis.crypto?.randomUUID?.() || `crane-submit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const overlay = craneOverlay(`${asset.name} · ${monthly ? "Ежемесячное ТО" : "Ежесменный осмотр"}`, `
-    <div class="crane-inspection-meta"><strong>${escapeHtml(asset.workshop)}</strong><span>${escapeHtml(asset.installationPlace || "Место установки не указано")}</span><span>${escapeHtml(dateHuman(inspectionDate))}${monthly ? " · ежемесячный осмотр" : ` · ${escapeHtml(inspectionShift.label)}`}</span></div>
+  const overlay = document.createElement("div");
+  overlay.className = "qr-result-overlay";
+  overlay.innerHTML = `<section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Осмотр кран-балки">
+    <div class="qr-result-progress">${escapeHtml(dateHuman(inspectionDate))} · ${monthly ? "Ежемесячное ТО" : escapeHtml(inspectionShift.label)}</div>
+    <h2>${escapeHtml(asset.name)}</h2>
+    <p class="qr-result-node">${escapeHtml(asset.workshop)}${asset.installationPlace ? ` · ${escapeHtml(asset.installationPlace)}` : ""}</p>
     <form class="crane-inspection-form">
-      <div class="crane-form-actions"><button type="button" data-all-good>✓ Всё исправно</button><small data-crane-draft-status>${draft ? "Черновик восстановлен" : "Дата и смена определены автоматически"}</small></div>
-      <div class="crane-checklist">${checklist.map(item => `<article><label><input type="checkbox" name="${escapeHtml(item.id)}"><span><strong>${escapeHtml(item.label)}</strong><small>Отметьте, если исправно</small></span></label><textarea name="comment-${escapeHtml(item.id)}" placeholder="Комментарий обязателен, если пункт не отмечен"></textarea><label class="crane-photo-field"><span>Фото замечания</span><input type="file" name="photo-${escapeHtml(item.id)}" accept="image/*" capture="environment"></label></article>`).join("")}</div>
-      <label class="crane-decision"><span>Решение при замечании</span><select name="decision"><option value="allowed_with_remark">Работа разрешена с замечанием</option><option value="prohibited">Эксплуатация запрещена</option></select></label>
-      <button type="submit" class="crane-save-inspection">Записать в вахтенный журнал</button>
-    </form>`);
+      <small data-crane-draft-status>${draft ? "Черновик восстановлен" : "Дата и смена определены автоматически"}</small>
+      <div class="qr-result-actions" data-crane-result-choice ${draft ? "hidden" : ""}>
+        <button type="button" class="qr-good-button" data-crane-good>✓ Всё исправно</button>
+        <button type="button" class="qr-remark-button" data-crane-remark>! С комментарием</button>
+        <button type="button" class="qr-finish-button" data-crane-close>Закрыть</button>
+      </div>
+      <div class="qr-remark-form" data-crane-remark-details ${draft ? "" : "hidden"}>
+        <div class="crane-checklist">${checklist.map(item => `<article class="node-walk-row node-walk-detail"><label><input type="checkbox" name="${escapeHtml(item.id)}" checked><span><strong>${escapeHtml(item.label)}</strong><small>Снимите галочку, если есть замечание</small></span></label></article>`).join("")}</div>
+        <label><span>Общий комментарий к замечанию</span><textarea name="craneComment" rows="4" placeholder="Опишите замечание..."></textarea></label>
+        <label><span>Фото (необязательно)</span><input type="file" name="cranePhoto" accept="image/*" capture="environment"></label>
+        <label class="crane-decision"><span>Решение при замечании</span><select name="decision"><option value="allowed_with_remark">Работа разрешена с замечанием</option><option value="prohibited">Эксплуатация запрещена</option></select></label>
+        <div class="qr-result-actions single"><button type="submit" class="qr-save-remark-button crane-save-inspection">Записать в вахтенный журнал</button><button type="button" class="qr-rescan-button" data-crane-back>Назад</button></div>
+      </div>
+    </form></section>`;
+  document.body.append(overlay);
   const form = overlay.querySelector("form");
   if (draft) {
     form.elements.decision.value = draft.decision || "allowed_with_remark";
+    form.elements.craneComment.value = Object.values(draft.answers || {}).find(answer => answer?.comment)?.comment || "";
     checklist.forEach(item => {
       form.elements[item.id].checked = draft.answers?.[item.id]?.ok === true;
-      form.elements[`comment-${item.id}`].value = draft.answers?.[item.id]?.comment || "";
     });
   }
   const persistDraft = () => {
@@ -19192,14 +19207,21 @@ function openCraneInspection(asset, type = "shift") {
   };
   form.addEventListener("input", persistDraft);
   form.addEventListener("change", persistDraft);
-  overlay.querySelector("[data-all-good]").addEventListener("click", () => { form.querySelectorAll('.crane-checklist input[type="checkbox"]').forEach(input => { input.checked = true; }); persistDraft(); });
+  const choice = overlay.querySelector("[data-crane-result-choice]");
+  const details = overlay.querySelector("[data-crane-remark-details]");
+  overlay.querySelector("[data-crane-close]")?.addEventListener("click", () => overlay.remove());
+  overlay.querySelector("[data-crane-remark]")?.addEventListener("click", () => { choice.hidden = true; details.hidden = false; form.elements.craneComment.focus(); });
+  overlay.querySelector("[data-crane-back]")?.addEventListener("click", () => { details.hidden = true; choice.hidden = false; });
+  overlay.querySelector("[data-crane-good]")?.addEventListener("click", () => { form.querySelectorAll('.crane-checklist input[type="checkbox"]').forEach(input => { input.checked = true; }); form.elements.craneComment.value = ""; form.elements.decision.value = "allowed_with_remark"; form.requestSubmit(); });
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
-    const answerRows = await Promise.all(checklist.map(async item => {
-      const file = form.elements[`photo-${item.id}`]?.files?.[0];
-      return [item.id, { ok: form.elements[item.id].checked, comment: form.elements[`comment-${item.id}`].value.trim(), photo: file ? await readPhotoFile(file) : "" }];
-    }));
+    const file = form.elements.cranePhoto?.files?.[0];
+    const sharedPhoto = file ? await readPhotoFile(file) : "";
+    const answerRows = checklist.map(item => {
+      const ok = form.elements[item.id].checked;
+      return [item.id, { ok, comment: ok ? "" : form.elements.craneComment.value.trim(), photo: ok ? "" : sharedPhoto }];
+    });
     const answers = Object.fromEntries(answerRows);
     try {
       const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, submissionId, decision: form.elements.decision.value, answers }) });

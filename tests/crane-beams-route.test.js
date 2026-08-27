@@ -77,6 +77,12 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /name="parentEquipmentId"/);
   assert.match(app, /craneInspectionDraftKey/);
   assert.match(app, /Черновик восстановлен/);
+  assert.match(app, /data-crane-good>✓ Всё исправно/);
+  assert.match(app, /data-crane-remark>! С комментарием/);
+  assert.match(app, /name="craneComment"/);
+  assert.match(app, /name="cranePhoto"/);
+  assert.doesNotMatch(app, /name="comment-\$\{escapeHtml\(item\.id\)\}"/);
+  assert.doesNotMatch(app, /name="photo-\$\{escapeHtml\(item\.id\)\}"/);
   assert.match(app, /capture="environment"/);
   assert.match(app, /submissionId/);
   assert.doesNotMatch(app, /shift: inspectionShift\.key/);
