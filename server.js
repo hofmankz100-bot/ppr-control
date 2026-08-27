@@ -28,6 +28,7 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
+const { createCraneBeamsRoute, ensureCraneBeams } = require("./server/crane-beams-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -74,7 +75,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v658-remove-crane-beam-system-1";
+const SERVER_VERSION = "v659-crane-beams-watch-journal-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -571,6 +572,7 @@ function normalizeDb(db) {
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   archiveAndRemoveCraneBeamData(db);
+  ensureCraneBeams(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -4956,10 +4958,20 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
   writeDb
 });
 
+const handleCraneBeamsRoute = createCraneBeamsRoute({
+  enqueueStateWrite,
+  readBody,
+  readDb,
+  sendJson,
+  writeDb
+});
+
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
+    || pathname === "/api/crane-beam-qr"
+    || pathname === "/api/gpm-qr"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -4976,6 +4988,7 @@ async function handleApi(req, res, pathname, url) {
   }
   const publicRequest = pathname === "/api/health"
     || (pathname === "/api/qr" && req.method === "GET")
+    || (["/api/crane-beam-qr", "/api/gpm-qr"].includes(pathname) && req.method === "GET")
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
@@ -4994,6 +5007,8 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
+
+  if (await handleCraneBeamsRoute(req, res, pathname, url)) return true;
 
   if (await handleAdminStorageRoute(req, res, pathname)) return true;
 

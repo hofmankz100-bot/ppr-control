@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v658-remove-crane-beam-system-1";
+const CACHE_NAME = "ppr-v659-crane-beams-watch-journal-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=v658-remove-crane-beam-system-1",
+  "./styles.css?v=v659-crane-beams-watch-journal-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -10,12 +10,12 @@ const ASSETS = [
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
   "./node_modules/html2canvas/dist/html2canvas.min.js?v=421-annual-ppr-equipment-acts",
-  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v658-remove-crane-beam-system-1",
-  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v658-remove-crane-beam-system-1",
+  "./node_modules/jspdf/dist/jspdf.umd.min.js?v=v659-crane-beams-watch-journal-1",
+  "./node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v659-crane-beams-watch-journal-1",
   "./node_modules/mammoth/mammoth.browser.min.js?v=421-annual-ppr-equipment-acts",
   "./modules/work-permit.js?v=658-cleanup",
-  "./app.js?v=v658-remove-crane-beam-system-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v658-remove-crane-beam-system-1",
+  "./app.js?v=v659-crane-beams-watch-journal-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v659-crane-beams-watch-journal-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
