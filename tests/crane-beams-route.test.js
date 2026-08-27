@@ -6,9 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createCraneBeamsRoute, ensureCraneBeams } = require("../server/crane-beams-route");
 
-function harness(database) {
+function harness(database, builtInEquipment = {}) {
   const responses = [];
   const handler = createCraneBeamsRoute({
+    builtInEquipment,
     enqueueStateWrite: fn => fn(), readBody: req => Promise.resolve(req.body || {}), readDb: () => database,
     sendJson: (_res, status, payload) => responses.push({ status, payload }), writeDb: () => {}
   });
@@ -69,6 +70,8 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /Вахтенный журнал/);
   assert.match(app, /Два QR-кода/);
   assert.match(app, /ordinaryNodeIndexes/);
+  assert.match(app, /Внутри оборудования/);
+  assert.match(app, /name="parentEquipmentId"/);
   assert.match(app, /remote\.craneBeams/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
@@ -104,6 +107,19 @@ test("finish saw stays an ordinary press node and is removed only from crane ass
   assert.equal(db.craneBeams.assets.saw, undefined);
   assert.deepEqual(db.catalog.equipment[1].nodes, [saw]);
   assert.equal(db.catalog.equipment[1].craneBeamNodes, undefined);
+});
+
+test("admin-selected parent equipment wins over words in the crane name", async () => {
+  const db = { catalog: { equipment: {} }, craneBeams: { assets: {}, inspections: {}, defects: {}, installationJournal: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1" } };
+  const builtIn = {
+    1: { id: 1, name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [] },
+    3: { id: 3, name: "Литейный цех", area: "Литейный цех", nodes: [] }
+  };
+  const h = harness(db, builtIn);
+  await h.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { name: "Кран-балка 2400 после переноса", workshop: "Литейный цех", parentEquipmentId: "3", installationStatus: "installed" } }, {}, "/api/crane-beams/save", new URL("http://test"));
+  assert.equal(h.responses[0].status, 200);
+  assert.equal(h.responses[0].payload.asset.parentEquipmentId, "3");
+  assert.equal(h.responses[0].payload.asset.workshop, "Литейный цех");
 });
 test("unresolved crane stays in protected archive instead of an arbitrary workshop", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "mystery", name: "Кран-балка без цеха" }] } };

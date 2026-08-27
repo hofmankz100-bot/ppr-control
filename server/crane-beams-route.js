@@ -63,6 +63,7 @@ function workshopHint(asset = {}) {
 function resolveWorkshop(asset = {}, equipment = {}) {
   const entries = Object.entries(equipment || {}).filter(([, card]) => card && card.deleted !== true && card.equipmentKind !== "craneBeam");
   const source = normalized(`${asset.name || ""} ${asset.workshop || ""} ${asset.installationPlace || ""}`);
+  const preferredParent = entries.find(([id]) => String(id) === String(asset.preferredParentEquipmentId || ""));
   const savedParent = entries.find(([id]) => String(id) === String(asset.parentEquipmentId || ""));
   const numberedParent = /\b1540\b/u.test(source)
     ? entries.find(([, card]) => normalized(card.name).includes("1540"))
@@ -73,7 +74,7 @@ function resolveWorkshop(asset = {}, equipment = {}) {
   ]).filter(item => item.value && source.includes(normalized(item.value))).sort((a, b) => normalized(b.value).length - normalized(a.value).length);
   const hint = workshopHint(asset);
   const hintedParent = hint ? entries.find(([, card]) => normalized(`${card.name || ""} ${card.area || ""}`).includes(hint)) : null;
-  const parent = numberedParent || areas[0] && [areas[0].id, areas[0].card] || hintedParent || savedParent;
+  const parent = preferredParent || savedParent || numberedParent || areas[0] && [areas[0].id, areas[0].card] || hintedParent;
   if (!parent) return null;
   const [parentEquipmentId, card] = parent;
   return { parentEquipmentId: String(parentEquipmentId), workshop: text(card.area || card.name, 200), parentName: text(card.name, 200) };
@@ -271,7 +272,7 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         const db = readDb(); ensureCraneBeams(db, builtInEquipment); const now = new Date().toISOString();
         const id = text(body.id, 120) || newId("crane"); const previous = db.craneBeams.assets[id];
         const name = text(body.name, 200), workshopInput = text(body.workshop, 200); if (!name || !workshopInput) return { error: "crane_fields_required" };
-        const resolved = resolveWorkshop({ ...(previous || {}), name, workshop: workshopInput, installationPlace: body.installationPlace, parentEquipmentId: body.parentEquipmentId || previous?.parentEquipmentId }, { ...builtInEquipment, ...(db.catalog?.equipment || {}) });
+        const resolved = resolveWorkshop({ ...(previous || {}), name, workshop: workshopInput, installationPlace: body.installationPlace, parentEquipmentId: previous?.parentEquipmentId, preferredParentEquipmentId: body.parentEquipmentId }, { ...builtInEquipment, ...(db.catalog?.equipment || {}) });
         if (!resolved) return { error: "crane_workshop_unresolved" };
         const workshop = resolved.workshop;
         const checklist = Array.isArray(body.checklist) ? body.checklist.map((label, index) => ({ id: previous?.checklist?.[index]?.id || `check-${index + 1}`, label: text(typeof label === "string" ? label : label?.label, 240) })).filter(item => item.label) : previous?.checklist || DEFAULT_CHECKLIST.map((label, index) => ({ id: `check-${index + 1}`, label }));
