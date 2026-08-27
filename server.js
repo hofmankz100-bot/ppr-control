@@ -75,7 +75,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v662-crane-beams-native-node-cards-1";
+const SERVER_VERSION = "v663-crane-beams-in-main-state-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2215,6 +2215,7 @@ function publicState(db = readDb()) {
     orders: db.orders,
     inventory: db.inventory,
     catalog: db.catalog,
+    craneBeams: db.craneBeams || { assets: {}, inspections: {}, defects: {}, installationJournal: {} },
     adminConfig: {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
       departments: normalizedAdminConfig(db.adminConfig).departments,
@@ -4182,7 +4183,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "craneBeams", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }

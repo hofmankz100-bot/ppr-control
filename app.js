@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v662-crane-beams-native-node-cards-1";
+const APP_VERSION = "v663-crane-beams-in-main-state-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -962,6 +962,7 @@ function loadState() {
     parsed.inventory ||= {};
     parsed.catalog ||= { equipment: {} };
     parsed.catalog.equipment ||= {};
+    parsed.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {} };
     parsed.adminConfig ||= { companyName: "ТОО «Aluminium of Kazakhstan»", departments: [], positions: [] };
     parsed.serviceCosts ||= [];
     parsed.downtimes ||= [];
@@ -2389,6 +2390,8 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.inventory = {};
   state.catalog ||= { equipment: {} };
   state.catalog.equipment = { ...(remote.catalog?.equipment || {}) };
+  state.craneBeams = remote.craneBeams || state.craneBeams || { assets: {}, inspections: {}, defects: {}, installationJournal: {} };
+  if (remote.craneBeams) craneBeamState = { assets: Object.values(remote.craneBeams.assets || {}), inspections: Object.values(remote.craneBeams.inspections || {}), defects: Object.values(remote.craneBeams.defects || {}), installationJournal: Object.values(remote.craneBeams.installationJournal || {}), canManage: profile?.role === "editor" };
   state.adminConfig = { ...(state.adminConfig || {}), ...(remote.adminConfig || {}) };
   applyRoleLabelOverrides(state.adminConfig);
   state.serviceCosts = [];
@@ -2449,6 +2452,10 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.catalog?.equipment) {
     state.catalog ||= { equipment: {} };
     state.catalog.equipment = { ...(state.catalog.equipment || {}), ...remote.catalog.equipment };
+  }
+  if (remote.craneBeams) {
+    state.craneBeams = remote.craneBeams;
+    craneBeamState = { assets: Object.values(remote.craneBeams.assets || {}), inspections: Object.values(remote.craneBeams.inspections || {}), defects: Object.values(remote.craneBeams.defects || {}), installationJournal: Object.values(remote.craneBeams.installationJournal || {}), canManage: profile?.role === "editor" };
   }
   if (remote.adminConfig) state.adminConfig = { ...(state.adminConfig || {}), ...remote.adminConfig };
   if (remote.adminConfig) applyRoleLabelOverrides(state.adminConfig);

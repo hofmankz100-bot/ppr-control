@@ -64,6 +64,7 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.doesNotMatch(html, /id="craneBeamsButton"/);
   assert.match(app, /function renderCraneBeamNodeCards/);
   assert.match(app, /Кран-балка · собственный вахтенный журнал/);
+  assert.match(app, /remote\.craneBeams/);
   assert.match(app, /ui\.nodeList\.append\(card\)/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
