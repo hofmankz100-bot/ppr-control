@@ -216,8 +216,10 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
 
 function canInspect(user, asset, type) {
   const role = roleOf(user);
+  const activeRegisteredUser = Boolean(user?.id || user?.employeeId) && Boolean(role) && user?.approved !== false && user?.pendingApproval !== true && user?.disabled !== true && user?.deleted !== true;
+  if (!activeRegisteredUser) return false;
   if (type === "monthly") return role === "engineer" || ["mechanic", "electrician"].includes(role);
-  return Boolean(user?.id || user?.employeeId) && user?.approved !== false;
+  return true;
 }
 
 function closesCounter(user, asset, type) {
@@ -234,7 +236,7 @@ function publicCraneState(db, user, builtInEquipment = {}) {
   return { assets, archivedAssets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
 }
 
-function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readBody, readDb, sendJson, writeDb }) {
+function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, readBody, readDb, sendJson, writeDb }) {
   return async function handleCraneBeamsRoute(req, res, pathname, url) {
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
       const mode = String(url.searchParams.get("mode") || "shift").toLowerCase() === "monthly" ? "monthly" : "shift";
@@ -280,9 +282,9 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
         if (type === "monthly" && inspection.counterApplied) asset.lastMonthlyAt = inspection.at;
         if (type === "shift" && inspection.counterApplied) asset.lastShiftAt = inspection.at;
         writeDb(db, { action: "crane_beam_inspection_saved", user: req.authUser, craneId: asset.id, inspectionId: id, type });
-        return { inspection, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        return { inspection, notification: defects.length ? { event: "defect_opened", craneId: asset.id, craneName: asset.name, workshop: asset.workshop, prohibited: inspection.decision === "prohibited" } : null, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
-      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : 400, { ok: false, error: result.error }); else { if (result.notification) await Promise.resolve(notifyCraneEvent(result.notification, req)).catch(() => {}); sendJson(res, 200, { ok: true, ...result }); } return true;
     }
     if (pathname === "/api/crane-beams/save" && req.method === "POST") {
       if (roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
@@ -415,9 +417,10 @@ function createCraneBeamsRoute({ builtInEquipment = {}, enqueueStateWrite, readB
           }
         } else return { error: "crane_defect_action_invalid" };
         writeDb(db, { action: `crane_beam_defect_${action}`, user: req.authUser, defectId: defect.id, craneId: defect.craneId });
-        return { defect, state: publicCraneState(db, req.authUser, builtInEquipment) };
+        const asset = db.craneBeams.assets[defect.craneId];
+        return { defect, notification: { event: action === "resolve" ? "awaiting_confirmation" : action === "confirm" ? "confirmed" : "returned", craneId: defect.craneId, craneName: asset?.name || defect.craneId, workshop: asset?.workshop || "" }, state: publicCraneState(db, req.authUser, builtInEquipment) };
       });
-      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else sendJson(res, 200, { ok: true, ...result }); return true;
+      if (result.error) sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400, { ok: false, error: result.error }); else { await Promise.resolve(notifyCraneEvent(result.notification, req)).catch(() => {}); sendJson(res, 200, { ok: true, ...result }); } return true;
     }
     sendJson(res, 404, { ok: false, error: "not_found" }); return true;
   };

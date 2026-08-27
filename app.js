@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v681-crane-lifecycle-controls-1";
+const APP_VERSION = "v682-crane-notifications-security-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11962,7 +11962,7 @@ function nestedCraneEquipmentCard(asset) {
   section.innerHTML = `
     <header>
       <button type="button" class="nested-crane-title" data-crane-open><span>Вложенное оборудование</span><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.workshop)} · ${nodes.length} пунктов осмотра</small></button>
-      <div class="crane-counts">${asset.operationStatus === "prohibited" ? '<b class="prohibited">Эксплуатация запрещена</b>' : ""}<b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}</div>
+      <div class="crane-counts">${asset.operationStatus === "prohibited" ? '<b class="prohibited">Эксплуатация запрещена</b>' : ""}<b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}${status.openDefects ? `<b class="due">Открытые замечания: ${status.openDefects}</b>` : ""}${status.awaitingConfirmation ? `<b class="due">Ждут подтверждения: ${status.awaitingConfirmation}</b>` : ""}</div>
     </header>
     <div class="nested-crane-actions"><button type="button" data-crane-shift>Нижний QR · осмотр</button><button type="button" data-crane-monthly>Верхний QR · ТО</button><button type="button" data-crane-journal>Вахтенный журнал</button><button type="button" data-crane-qr>Два QR-кода</button>${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}</div>
     <div class="nested-crane-nodes">${nodes.map((node, index) => `<button type="button" class="node-card nested-crane-node" data-crane-node="${index}"><div><strong>${escapeHtml(node.label)}</strong><span>Обычный узел кран-балки</span></div><div class="small-status">Открыть осмотр</div></button>`).join("") || '<div class="empty-state">Узлы ещё не добавлены</div>'}</div>`;
@@ -19113,7 +19113,11 @@ function craneTodayStatus(asset) {
   const shiftDone = rows.some(row => row.type === "shift" && row.shift === shift);
   const monthlyDue = asset.installed && !asset.operationalPaused && Number(asset.monthlyDay || 1) === Number(date.slice(8, 10));
   const monthlyDone = rows.some(row => row.type === "monthly");
-  return { shiftDone, monthlyDue, monthlyDone, missing: Number(!shiftDone) + Number(monthlyDue && !monthlyDone) };
+  const openDefects = craneBeamState.defects.filter(item => item.craneId === asset.id && ["open", "returned"].includes(item.status)).length;
+  const awaitingConfirmation = craneBeamState.defects.filter(item => item.craneId === asset.id && item.status === "awaiting_confirmation").length;
+  const todayDay = Number(date.slice(8, 10)), monthlyDay = Number(asset.monthlyDay || 1);
+  const monthlyState = monthlyDone ? "done" : todayDay > monthlyDay ? "overdue" : todayDay === monthlyDay ? "today" : "upcoming";
+  return { shiftDone, monthlyDue, monthlyDone, monthlyState, openDefects, awaitingConfirmation, missing: Number(!shiftDone) + Number(monthlyDue && !monthlyDone) };
 }
 
 function refreshCraneBeamBadge() {

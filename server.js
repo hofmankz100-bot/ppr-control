@@ -75,7 +75,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v681-crane-lifecycle-controls-1";
+const SERVER_VERSION = "v682-crane-notifications-security-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2341,6 +2341,40 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
     writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
   } else if (configChanged) {
     writeDb(db, { action: "push_config_created" });
+  }
+}
+
+async function sendCraneEventPushNotifications(event = {}, req = {}) {
+  if (!event?.event) return;
+  const db = readDb();
+  ensurePushConfig(db);
+  const origin = String(req.headers?.["x-client-id"] || "");
+  const targets = (db.pushNotifications.subscriptions || []).map(entry => currentPushEntry(db, entry)).filter(entry => {
+    if (origin && entry.clientId === origin) return false;
+    const profile = entry.profile || {}, role = permissionBaseRoleServer(profile.role);
+    if (["editor", "engineer", "mechanic", "electrician"].includes(role)) return true;
+    return ["operator", "shop"].includes(role) && userHasAreaServer(profile, event.workshop);
+  });
+  if (!targets.length) return;
+  const labels = {
+    defect_opened: event.prohibited ? "Эксплуатация запрещена — новое замечание" : "Новое замечание по осмотру",
+    awaiting_confirmation: "Устранение ожидает подтверждения инженера",
+    confirmed: "Устранение подтверждено инженером",
+    returned: "Устранение возвращено на доработку"
+  };
+  webPush.setVapidDetails("https://ppr-control-ramazan.onrender.com", db.pushNotifications.vapid.publicKey, db.pushNotifications.vapid.privateKey);
+  const expired = new Set();
+  await Promise.allSettled(targets.map(async entry => {
+    try {
+      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer({ type: "crane-beam", title: "ALKZ — кран-балка", body: `${event.craneName}: ${labels[event.event] || "изменение состояния"}`, url: "/?view=equipment", entityId: event.craneId, tag: `crane:${event.craneId}:${event.event}` }, entry), { TTL: 86400, urgency: "high" });
+    } catch (error) {
+      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+      else console.error(`Crane push failed: ${error?.message || error}`);
+    }
+  }));
+  if (expired.size) {
+    db.pushNotifications.subscriptions = (db.pushNotifications.subscriptions || []).filter(entry => !expired.has(entry.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
   }
 }
 
@@ -4972,6 +5006,7 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
 const handleCraneBeamsRoute = createCraneBeamsRoute({
   builtInEquipment: DEFAULT_EQUIPMENT_REFERENCE_SERVER,
   enqueueStateWrite,
+  notifyCraneEvent: sendCraneEventPushNotifications,
   readBody,
   readDb,
   sendJson,

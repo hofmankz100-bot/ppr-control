@@ -271,3 +271,21 @@ test("client exposes lifecycle controls, recoverable trash, and tokenized dual Q
   assert.match(app, /upperQrToken/);
   assert.doesNotMatch(app, /name="operationalPaused"/);
 });
+
+test("crane defect lifecycle emits addressable notification events", async () => {
+  const events = [];
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } };
+  const handler = createCraneBeamsRoute({ enqueueStateWrite: fn => fn(), notifyCraneEvent: event => events.push(event), readBody: req => Promise.resolve(req.body || {}), readDb: () => db, sendJson: () => {}, writeDb: () => {} });
+  await handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ" }, body: { craneId: "one", type: "shift", date: "2026-08-27", shift: "day", answers: { a: { ok: false, comment: "Износ" } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+  assert.equal(events[0].event, "defect_opened");
+  assert.equal(events[0].workshop, "ЛПЦ");
+});
+
+test("pending and disabled employees cannot write a crane inspection", async () => {
+  const makeDb = () => ({ catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", installed: true, checklistVersion: 2, checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1" } });
+  for (const blocked of [{ pendingApproval: true }, { disabled: true }]) {
+    const h = harness(makeDb());
+    await h.handler({ method: "POST", authUser: { id: "u", role: "operator", area: "ЛПЦ", ...blocked }, body: { craneId: "one", type: "shift", answers: { a: { ok: true } } } }, {}, "/api/crane-beams/inspect", new URL("http://test"));
+    assert.equal(h.responses[0].status, 403);
+  }
+});
