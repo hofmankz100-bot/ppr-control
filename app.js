@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v691-ordinary-equipment-inspection-style-1";
+const APP_VERSION = "v692-qr-scan-only-crane-inspection-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -11963,9 +11963,7 @@ function nestedCraneEquipmentCard(asset) {
       <div class="nested-crane-title"><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.workshop)}</small></div>
       <div class="crane-counts">${asset.operationStatus === "prohibited" ? '<b class="prohibited">Эксплуатация запрещена</b>' : ""}<b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}${status.openDefects ? `<b class="due">Открытые замечания: ${status.openDefects}</b>` : ""}${status.awaitingConfirmation ? `<b class="due">Ждут подтверждения: ${status.awaitingConfirmation}</b>` : ""}</div>
     </header>
-    <div class="nested-crane-actions"><button type="button" data-crane-shift>Нижний QR · осмотр</button><button type="button" data-crane-monthly>Верхний QR · ТО</button><button type="button" data-crane-journal>Вахтенный журнал</button><button type="button" data-crane-qr>Два QR-кода</button>${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}</div>`;
-  section.querySelector("[data-crane-shift]").addEventListener("click", () => openCraneInspection(asset, "shift"));
-  section.querySelector("[data-crane-monthly]").addEventListener("click", () => openCraneInspection(asset, "monthly"));
+    <div class="nested-crane-actions"><button type="button" data-crane-journal>Вахтенный журнал</button><button type="button" data-crane-qr>Два QR-кода</button>${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}</div>`;
   section.querySelector("[data-crane-journal]").addEventListener("click", () => openCraneJournal(asset));
   section.querySelector("[data-crane-qr]").addEventListener("click", () => openCraneQrCards(asset));
   section.querySelector("[data-crane-edit]")?.addEventListener("click", () => editCraneAsset(asset));
