@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v650-ordinary-equipment-only-1";
+const SERVER_VERSION = "v651-shared-equipment-journals-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -558,6 +558,39 @@ function migrateGpmToOrdinaryEquipment(db) {
   return true;
 }
 
+function consolidateSpecialEquipmentCards(db) {
+  const version = "shared-equipment-cards-v2";
+  db.targetedCleanupVersions ||= {};
+  if (db.targetedCleanupVersions[version]) return false;
+  const now = new Date().toISOString();
+  const cards = Object.values(db.catalog?.equipment || {}).filter(item => item && !item.deleted
+    && item.created === true
+    && String(item.journalSchema?.updatedByName || "") === "Системная миграция");
+  const forkliftCards = cards.filter(item => /вилоч|погрузчик/i.test(`${item.name || ""} ${(item.nodes || []).join(" ")}`));
+  const gpmCards = cards.filter(item => !forkliftCards.includes(item)
+    && /гпм|кран|грузопод/i.test(`${item.name || ""} ${(item.nodes || []).join(" ")}`));
+  const consolidate = (group, name, area, title) => {
+    if (!group.length) return null;
+    const target = group.find(item => String(item.name || "").trim().toLocaleLowerCase("ru-RU") === name.toLocaleLowerCase("ru-RU")) || group[0];
+    const nodes = [...new Set(group.flatMap(item => item.nodes || []).map(value => String(value || "").trim()).filter(Boolean))];
+    target.name = name;
+    target.area = area;
+    target.equipmentKind = "ordinary";
+    target.nodes = nodes;
+    target.qrTokens = Object.fromEntries(nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
+    target.nodeCreatedAt = Object.fromEntries(nodes.map((_, index) => [index, now]));
+    target.journalSchema = { ...target.journalSchema, title, scope: "equipment", nodeIndex: null,
+      version: Number(target.journalSchema?.version || 0) + 1, updatedAt: now, updatedByName: "Системная миграция" };
+    target.updatedAt = now;
+    group.forEach(item => { if (Number(item.id) !== Number(target.id)) delete db.catalog.equipment[item.id]; });
+    return target;
+  };
+  const forklift = consolidate(forkliftCards, "Вилочные погрузчики", "Вилочные погрузчики", "Журнал вилочных погрузчиков");
+  const gpm = consolidate(gpmCards, "ГПМ", "ГПМ", "Журнал ГПМ");
+  db.targetedCleanupVersions[version] = { at: now, forkliftEquipmentId: forklift?.id || null, gpmEquipmentId: gpm?.id || null };
+  return true;
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -592,6 +625,7 @@ function normalizeDb(db) {
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   migrateForkliftsToOrdinaryEquipment(db);
   migrateGpmToOrdinaryEquipment(db);
+  consolidateSpecialEquipmentCards(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
