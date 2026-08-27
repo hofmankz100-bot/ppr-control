@@ -79,3 +79,19 @@ test("legacy GPM parent is replaced from the crane beam name", () => {
   assert.deepEqual(db.catalog.equipment[4].nodes, ["Щит", "Кран балка N6 покраска ванна"]);
   assert.equal(db.catalog.equipment[4].craneBeamNodes[1], "a");
 });
+
+test("finish saw stays an ordinary press node and is removed only from crane assets", () => {
+  const saw = "Финишный пила (экран управление,лапа,размер проф)";
+  const db = {
+    catalog: { equipment: { 1: { name: "Пресс 2400 EGE", area: "Прессовый участок", nodes: [saw], craneBeamNodes: { 0: "saw" } } } },
+    craneBeams: {
+      migrationVersion: "retired-archive-v1",
+      assets: { saw: { id: "saw", name: saw, workshop: "Прессовый участок" } },
+      inspections: {}, defects: {}, installationJournal: {}
+    }
+  };
+  ensureCraneBeams(db);
+  assert.equal(db.craneBeams.assets.saw, undefined);
+  assert.deepEqual(db.catalog.equipment[1].nodes, [saw]);
+  assert.deepEqual(db.catalog.equipment[1].craneBeamNodes, {});
+});

@@ -30,6 +30,27 @@ function inferWorkshop(asset = {}, equipment = {}) {
 function ensureCraneBeams(db) {
   db.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {}, migrationVersion: "" };
   for (const key of ["assets", "inspections", "defects", "installationJournal"]) db.craneBeams[key] ||= {};
+  const ordinaryNodeAssetIds = new Set(Object.values(db.craneBeams.assets)
+    .filter(asset => asset && /финишн(?:ая|ый)?\s*пил/iu.test(text(asset.name, 240)))
+    .map(asset => String(asset.id)));
+  if (ordinaryNodeAssetIds.size) {
+    ordinaryNodeAssetIds.forEach(id => delete db.craneBeams.assets[id]);
+    Object.values(db.catalog?.equipment || {}).forEach(card => {
+      if (!card?.craneBeamNodes) return;
+      Object.entries(card.craneBeamNodes).forEach(([index, craneId]) => {
+        if (ordinaryNodeAssetIds.has(String(craneId))) delete card.craneBeamNodes[index];
+      });
+    });
+    Object.entries(db.craneBeams.inspections).forEach(([id, row]) => {
+      if (ordinaryNodeAssetIds.has(String(row?.craneId))) delete db.craneBeams.inspections[id];
+    });
+    Object.entries(db.craneBeams.defects).forEach(([id, row]) => {
+      if (ordinaryNodeAssetIds.has(String(row?.craneId))) delete db.craneBeams.defects[id];
+    });
+    Object.entries(db.craneBeams.installationJournal).forEach(([id, row]) => {
+      if (ordinaryNodeAssetIds.has(String(row?.craneId))) delete db.craneBeams.installationJournal[id];
+    });
+  }
   Object.values(db.craneBeams.assets).forEach(asset => {
     if (!asset) return;
     const name = text(asset.name, 200).toLocaleLowerCase("ru-RU");
