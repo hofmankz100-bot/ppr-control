@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v693-six-grouped-crane-checks-1";
+const APP_VERSION = "v694-crane-defects-in-warnings-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -9375,7 +9375,38 @@ function allOpenCommentTargets() {
           deferredByName: entry.deferredByName || ""
         }));
     });
-  return equipmentTargets
+  const craneTargets = (craneBeamState.defects || []).flatMap(defect => {
+    if (!defect || defect.status === "closed") return [];
+    const asset = (craneBeamState.assets || []).find(item => String(item.id) === String(defect.craneId));
+    if (!asset) return [];
+    const role = permissionBaseRole(profile?.role);
+    const visible = ["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(role)
+      || (["shop", "operator"].includes(profile?.role) && userHasArea(profile, asset.workshop));
+    if (!visible) return [];
+    const inspection = (craneBeamState.inspections || []).find(item => item.id === defect.inspectionId);
+    return [{
+      craneDefect: true,
+      craneId: asset.id,
+      remarkId: defect.id,
+      date: inspection?.date || String(defect.createdAt || "").slice(0, 10),
+      text: (defect.items || []).map(item => `${item.label}: ${item.comment}`).join("; ") || "Замечание по осмотру кран-балки",
+      author: defect.createdBy?.name || "Сотрудник",
+      areaName: asset.workshop || "",
+      equipmentName: asset.name || "Кран-балка",
+      nodeName: "Осмотр кран-балки",
+      at: defect.createdAt || inspection?.at || "",
+      pendingConfirmation: defect.status === "awaiting_confirmation",
+      submittedAt: defect.resolution?.at || "",
+      submittedBy: defect.resolution?.actor?.name || "",
+      submittedComment: defect.resolution?.comment || "",
+      confirmationLabel: "Инженер",
+      canConfirm: role === "engineer",
+      returnedToRework: defect.status === "returned",
+      returnReason: defect.confirmation?.comment || "",
+      deferred: false
+    }];
+  });
+  return [...equipmentTargets, ...craneTargets]
     .sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)) || String(a.equipmentName || "").localeCompare(String(b.equipmentName || ""), "ru"));
 }
 
@@ -9414,10 +9445,11 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
-              ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
-              ${canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
-              <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
+              ${target.craneDefect ? `<button type="button" data-open-crane-defect data-crane-id="${escapeHtml(target.craneId)}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation && target.canConfirm ? "Проверить и подтвердить" : "Открыть вахтенный журнал"}</button>` : `
+                ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+                ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
+                ${canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
+                <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>`}
             </footer>
           </article>
         `).join("")}
@@ -9480,6 +9512,12 @@ function openAllRemarkCards() {
     current.returnToRemarkListAfterResolve = true;
     close();
     show("checklist");
+  }));
+  overlay.querySelectorAll("[data-open-crane-defect]").forEach(button => button.addEventListener("click", () => {
+    const asset = (craneBeamState.assets || []).find(item => String(item.id) === String(button.dataset.craneId));
+    if (!asset) return;
+    close();
+    openCraneJournal(asset, String(button.dataset.date || todayISO()).slice(0, 7));
   }));
   document.body.append(overlay);
   translateUserTextsForCurrentProfile();

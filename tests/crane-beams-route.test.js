@@ -93,6 +93,8 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /Карточка обычного ППР не заполняется/);
   assert.match(app, /выполнить верхним QR/);
   assert.match(app, /remote\.craneBeams/);
+  assert.match(app, /const craneTargets = \(craneBeamState\.defects \|\| \[\]\)/);
+  assert.match(app, /data-open-crane-defect/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
   assert.doesNotMatch(app, /function renderCraneNodesInsideWorkshops/);
