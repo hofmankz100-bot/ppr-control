@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v647-ppr-field-merge-1";
+const SERVER_VERSION = "v648-ppr-ordered-autosave-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -6841,12 +6841,17 @@ async function handleApi(req, res, pathname, url) {
       if (action === "draft") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         if (!row || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
-        row.resolutionComment = String(body.resolutionComment || "").trim().slice(0, 2000);
-        row.draftUpdatedAt = now;
-        row.resolutionUpdatedAt = now;
-        row.updatedAt = now;
-        row.draftByName = name;
-        row.draftByRole = role;
+        const clientUpdatedAt = String(body.resolutionUpdatedAt || "");
+        const incomingTime = Date.parse(clientUpdatedAt) || Date.parse(now);
+        const savedTime = pprFieldTime(row, "resolution");
+        if (!savedTime || incomingTime >= savedTime) {
+          row.resolutionComment = String(body.resolutionComment || "").trim().slice(0, 2000);
+          row.draftUpdatedAt = clientUpdatedAt || now;
+          row.resolutionUpdatedAt = clientUpdatedAt || now;
+          row.updatedAt = new Date(Math.max(Date.parse(row.updatedAt || "") || 0, incomingTime)).toISOString();
+          row.draftByName = name;
+          row.draftByRole = role;
+        }
       } else if (action === "mark") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         const mark = String(body.mark || "");

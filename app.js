@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v647-ppr-field-merge-1";
+const APP_VERSION = "v648-ppr-ordered-autosave-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -14246,14 +14246,16 @@ function bindPprCalendarControls(container, rerender) {
         row = { id: input.dataset.pprWorkInput, work: "", mark: "" };
         sheet.rows.push(row);
       }
+      const changedAt = new Date().toISOString();
       if (row.work !== input.value && row.mark) {
         row.mark = "";
         row.markedByName = "";
         row.markedByRole = "";
         row.markedAt = "";
+        row.markUpdatedAt = changedAt;
       }
       row.work = input.value;
-      row.workUpdatedAt = new Date().toISOString();
+      row.workUpdatedAt = changedAt;
       row.updatedAt = row.workUpdatedAt;
       row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
       row.equipment = input.dataset.pprEquipment || row.equipment || "";
@@ -14267,6 +14269,7 @@ function bindPprCalendarControls(container, rerender) {
   });
   container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
     let draftSaveTimer = null;
+    let draftSaveChain = Promise.resolve();
     const publishDraft = async () => {
       const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
       if (!date) return;
@@ -14276,13 +14279,18 @@ function bindPprCalendarControls(container, rerender) {
       try {
         await publishPprSheetAction(date, "draft", {
           rowId: row.id,
-          resolutionComment: String(input.value || "").slice(0, 2000)
+          resolutionComment: String(input.value || "").slice(0, 2000),
+          resolutionUpdatedAt: row.resolutionUpdatedAt || row.draftUpdatedAt || ""
         });
       } catch {
         // Keep the same draft in the normal durable synchronization queue if
         // the focused endpoint or a newly-created server sheet is unavailable.
         saveState();
       }
+    };
+    const queueDraftSave = () => {
+      draftSaveChain = draftSaveChain.catch(() => {}).then(publishDraft);
+      return draftSaveChain;
     };
     input.addEventListener("input", () => {
       const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
@@ -14299,11 +14307,11 @@ function bindPprCalendarControls(container, rerender) {
       row.updatedAt = row.draftUpdatedAt;
       touchPprSheet(sheet, false);
       clearTimeout(draftSaveTimer);
-      draftSaveTimer = window.setTimeout(publishDraft, 700);
+      draftSaveTimer = window.setTimeout(queueDraftSave, 700);
     });
     input.addEventListener("change", async () => {
       clearTimeout(draftSaveTimer);
-      await publishDraft();
+      await queueDraftSave();
     });
   });
   container?.querySelectorAll("[data-ppr-row-mark]").forEach(button => {

@@ -1732,7 +1732,8 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(source, /row\.draftUpdatedAt = new Date\(\)\.toISOString\(\)/);
   assert.match(source, /touchPprSheet\(sheet, false\)/);
   assert.match(source, /publishPprSheetAction\(date, "draft"/);
-  assert.match(source, /window\.setTimeout\(publishDraft, 700\)/);
+  assert.match(source, /window\.setTimeout\(queueDraftSave, 700\)/);
+  assert.match(source, /draftSaveChain = draftSaveChain\.catch\(\(\) => \{\}\)\.then\(publishDraft\)/);
   assert.match(source, />\$\{escapeHtml\(row\.resolutionComment \|\| ""\)\}<\/textarea>/);
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(server, /\["draft", "mark", "add-row", "approve"\]/);
@@ -1744,10 +1745,12 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
   assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
   assert.match(source, /function mergePprRowFieldsLocal\(currentRow, incomingRow\)/);
-  assert.match(source, /row\.workUpdatedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(source, /row\.workUpdatedAt = changedAt/);
   assert.match(source, /row\.resolutionUpdatedAt = row\.draftUpdatedAt/);
   assert.match(server, /function mergePprRowFields\(currentRow, incomingRow\)/);
   assert.match(server, /row\.markUpdatedAt = now/);
+  assert.match(source, /row\.markUpdatedAt = changedAt/);
+  assert.match(server, /incomingTime >= savedTime/);
 });
 
 test("PPR synchronization merges concurrent edits to separate fields of the same row", () => {
