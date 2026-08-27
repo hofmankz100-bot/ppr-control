@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v654-restore-legacy-gpm-qr-1";
+const APP_VERSION = "v655-operator-shared-gpm-access-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -18379,13 +18379,12 @@ function renderDirector() {
       const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
       const areas = [...(row?.querySelectorAll("[data-user-extra-area]:checked") || [])].map(input => input.value);
-      const assignedGpmIds = [...(row?.querySelectorAll("[data-pending-crane-id]:checked") || [])].map(input => input.value);
       if (!role) {
         window.alert("Сначала назначьте должность сотрудника.");
         return;
       }
-      if (role === "operator" && !assignedGpmIds.length) {
-        window.alert("Выберите хотя бы одну кран-балку для оператора.");
+      if (role === "operator" && !row?.querySelector("[data-pending-gpm-access]")?.checked) {
+        window.alert("Выберите «ГПМ — все краны».");
         return;
       }
       if (!window.confirm(`Подтвердить регистрацию и назначить сотрудника: ${user.name || user.phone || ""}?`)) return;
@@ -18394,13 +18393,14 @@ function renderDirector() {
       user.registrationPending = false;
       user.status = "approved";
       user.role = role;
-      user.craneOnly = role === "operator";
-      if (needsArea(role) && !area) {
+      user.craneOnly = false;
+      const assignedArea = role === "operator" ? "ГПМ" : area;
+      if (needsArea(role) && !assignedArea) {
         window.alert("Для этой должности сначала выберите участок.");
         return;
       }
-      user.area = needsArea(role) ? area : "";
-      user.areas = needsArea(role) ? [...new Set([area, ...areas].filter(Boolean))] : [];
+      user.area = needsArea(role) ? assignedArea : "";
+      user.areas = needsArea(role) ? [...new Set([assignedArea, ...areas].filter(Boolean))] : [];
       user.approvedAt = new Date().toISOString();
       user.approvedBy = profile?.name || "";
       userApprovalDrafts.delete(userKey);
@@ -18411,7 +18411,6 @@ function renderDirector() {
           body: JSON.stringify({
             ...user,
             areas: user.areas,
-            assignedGpmIds,
             actor: { name: authenticatedProfile?.name || profile?.name || "", role: authenticatedProfile?.role || "" },
             actionId: nextActionId(),
             clientId: CLIENT_ID
@@ -19556,8 +19555,6 @@ function renderDirectorUsers() {
         const pending = user.approved === false || user.pendingApproval;
         const selectedRole = draft.role ?? user.role ?? "";
         const selectedAreas = new Set(Array.isArray(draft.areas) ? draft.areas : userAreas(user));
-        const selectedCraneIds = new Set(Array.isArray(draft.assignedGpmIds) ? draft.assignedGpmIds : []);
-        const assignableCranes = pending ? gpmEquipmentList("gpm") : [];
         const login = user.loginDiagnostics || null;
         const loginWarnings = [
           login && !login.hasPassword ? "Пароль не задан" : "",
@@ -19579,7 +19576,7 @@ function renderDirectorUsers() {
             <label class="user-access-field"><span>Основной участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
             <fieldset class="user-area-picker"><legend>Все доступные участки</legend>${assignableEquipmentAreas().map(area => `<label><input type="checkbox" data-user-extra-area value="${escapeHtml(area)}" ${selectedAreas.has(area) ? "checked" : ""}><span>${escapeHtml(area)}</span></label>`).join("")}<small>Основной участок также должен быть отмечен. Можно выбрать несколько.</small></fieldset>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${userAreas(user).length ? ` · ${escapeHtml(userAreas(user).join(", "))}` : ""}</span>`}
-          ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Назначенные кран-балки</legend>${assignableCranes.length ? assignableCranes.map(item => `<label><input type="checkbox" data-pending-crane-id value="${escapeHtml(item.id)}" ${selectedCraneIds.has(String(item.id)) ? "checked" : ""}><span>${escapeHtml(item.name)}${item.location ? ` · ${escapeHtml(item.location)}` : ""}</span></label>`).join("") : `<small>Карточки кран-балок ещё не созданы.</small>`}<small>Можно выбрать несколько. Оператор увидит только назначенные краны.</small></fieldset>` : ""}
+          ${isEditorSession() && pending ? `<fieldset class="director-crane-picker" data-pending-crane-picker ${selectedRole === "operator" ? "" : "hidden"}><legend>Выбор оборудования</legend><label><input type="checkbox" data-pending-gpm-access><span><strong>ГПМ</strong> — все краны общей карточки</span></label></fieldset>` : ""}
           <span class="user-approval-status">${pending ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}

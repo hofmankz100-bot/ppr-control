@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v654-restore-legacy-gpm-qr-1";
+const SERVER_VERSION = "v655-operator-shared-gpm-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -8129,7 +8129,7 @@ async function handleApi(req, res, pathname, url) {
     const role = String(body.role || "").trim();
     const area = String(body.area || "").trim();
     const areas = normalizedUserAreasServer({ area, areas: Array.isArray(body.areas) ? body.areas : [] });
-    const craneOnly = role === "operator" && body.craneOnly === true;
+    const craneOnly = false;
     if (!role || role === "warehouse") {
       sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
       return true;
@@ -8146,7 +8146,11 @@ async function handleApi(req, res, pathname, url) {
       target.role = role;
       target.area = areas[0] || "";
       target.areas = areas;
-      target.craneOnly = craneOnly;
+      target.craneOnly = false;
+      if (role === "operator") {
+        target.area = "ГПМ";
+        target.areas = [...new Set(["ГПМ", ...(target.areas || [])])];
+      }
       target.roleUpdatedAt = new Date().toISOString();
       target.roleUpdatedBy = String(req.authUser?.name || "Администратор");
       syncPushProfilesForUser(db, target);
@@ -8246,9 +8250,6 @@ async function handleApi(req, res, pathname, url) {
       const name = String(user.name || "").trim();
       const actionId = String(user.actionId || "");
       const employeeId = String(user.employeeId || "").trim();
-      const requestedGpmIds = Array.isArray(user.assignedGpmIds)
-        ? cleanStringList(user.assignedGpmIds, 500)
-        : null;
       const sameUserForUpdate = item =>
         (user.id && item.id === user.id) ||
         (employeeId && item.employeeId === employeeId) ||
@@ -8314,32 +8315,12 @@ async function handleApi(req, res, pathname, url) {
       };
       nextUser.areas = normalizedUserAreasServer(nextUser);
       nextUser.area = nextUser.areas[0] || "";
-      const equipment = db.gpmJournal?.equipment || {};
-      const validGpmIds = requestedGpmIds && safeUser.role === "operator"
-        ? requestedGpmIds.filter(id => Object.entries(equipment).some(([itemId, item]) =>
-          item && !item.deleted && item.equipmentKind !== "forklift" && String(item.id || itemId) === String(id)))
-        : [];
-      if (requestedGpmIds && safeUser.role === "operator" && !validGpmIds.length) {
-        return { actionId, origin: user.clientId || "user", error: "operator_crane_required" };
+      if (safeUser.role === "operator") {
+        nextUser.area = "ГПМ";
+        nextUser.areas = [...new Set(["ГПМ", ...nextUser.areas])];
+        nextUser.craneOnly = false;
       }
       db.users = (db.users || []).filter(item => !sameUserForUpdate(item));
-      if (requestedGpmIds && safeUser.role === "operator") {
-        const operatorKey = resolutionUserKeyServer(nextUser);
-        const validSet = new Set(validGpmIds);
-        Object.entries(equipment).forEach(([itemId, item]) => {
-          if (!item || item.deleted || item.equipmentKind === "forklift" || !validSet.has(String(item.id || itemId))) return;
-          const keys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.map(String) : [];
-          item.inspectorKeys = [...new Set([...keys, operatorKey])];
-          item.inspectorKey = item.inspectorKeys[0] || "";
-          const names = item.inspectorKeys.map(key => key === operatorKey
-            ? String(nextUser.name || "").trim()
-            : String((db.users || []).find(candidate => resolutionUserKeyServer(candidate) === key)?.name || "").trim()).filter(Boolean);
-          item.inspectorNames = [...new Set(names)].join(", ");
-          item.updatedAt = new Date().toISOString();
-          item.updatedByName = String(req.authUser?.name || "Администратор");
-        });
-        nextUser.craneOnly = true;
-      }
       if (user.newPassword) nextUser.passwordHash = hashPassword(user.newPassword);
       delete nextUser.newPassword;
       db.users.push(nextUser);
