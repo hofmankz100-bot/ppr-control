@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v649-gpm-qr-journal-save-1";
+const SERVER_VERSION = "v650-ordinary-equipment-only-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -449,6 +449,115 @@ function restorePress2400Catalog(db) {
   return true;
 }
 
+function migrateForkliftsToOrdinaryEquipment(db) {
+  const version = "ordinary-forklift-fleet-v1";
+  db.targetedCleanupVersions ||= {};
+  if (db.targetedCleanupVersions[version]) return false;
+  const equipment = db.gpmJournal?.equipment || {};
+  const forklifts = Object.values(equipment).filter(item => item && !item.deleted
+    && (item.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(`${item.name || ""} ${item.sourceEquipmentName || ""}`)));
+  const sourceIds = new Set(forklifts.map(item => Number(item.sourceEquipmentId || 0)).filter(Boolean));
+  let fleet = Object.values(db.catalog?.equipment || {}).find(item => item && !item.deleted
+    && String(item.name || "").trim().toLocaleLowerCase("ru-RU") === "вилочные погрузчики");
+  if (!fleet && sourceIds.size) fleet = db.catalog.equipment[[...sourceIds][0]];
+  if (!fleet && forklifts.length) {
+    const usedIds = Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger);
+    const id = Math.max(999, ...usedIds) + 1;
+    fleet = { id, created: true, name: "Вилочные погрузчики", area: forklifts[0].location || "Транспортный участок" };
+    db.catalog.equipment[id] = fleet;
+  }
+  const now = new Date().toISOString();
+  if (fleet) {
+    const names = [...new Set(forklifts.map(item => String(item.name || "").trim()).filter(Boolean))];
+    fleet.created = true;
+    fleet.equipmentKind = "ordinary";
+    fleet.name = "Вилочные погрузчики";
+    fleet.nodes = names.length ? names : (fleet.nodes || []).filter(name => !/вахтенный осмотр/i.test(String(name)));
+    if (!fleet.nodes.length) fleet.nodes = ["Погрузчик №1"];
+    fleet.qrTokens = Object.fromEntries(fleet.nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
+    fleet.nodeCreatedAt = Object.fromEntries(fleet.nodes.map((_, index) => [index, now]));
+    fleet.reminders ||= {};
+    fleet.reminderMeta ||= {};
+    fleet.operationalPauses ||= [];
+    fleet.nodeOperationalPauses ||= {};
+    fleet.journalSchema = {
+      version: Number(fleet.journalSchema?.version || 0) + 1,
+      title: "Журнал вилочных погрузчиков",
+      scope: "equipment", nodeIndex: null, fieldsTiming: "immediate", resultMode: "both", frequency: "twoShifts",
+      columns: [
+        { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all", options: [] },
+        { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all", options: [] },
+        { id: "shift", label: "Смена", type: "autoShift", required: true, nodeIndex: "all", options: [] },
+        { id: "employee", label: "Водитель", type: "autoEmployee", required: true, nodeIndex: "all", options: [] },
+        { id: "node", label: "Погрузчик", type: "autoNode", required: true, nodeIndex: "all", options: [] },
+        { id: "result", label: "Результат осмотра", type: "result", required: true, nodeIndex: "all", options: [] },
+        { id: "comment", label: "Комментарий", type: "text", required: false, nodeIndex: "all", options: [] }
+      ], updatedAt: now, updatedByName: "Системная миграция"
+    };
+    fleet.updatedAt = now;
+  }
+  const forkliftIds = new Set(forklifts.map(item => String(item.id || "")));
+  Object.keys(equipment).forEach(id => { if (forkliftIds.has(String(id))) delete equipment[id]; });
+  Object.keys(db.gpmJournal?.inspections || {}).forEach(id => { if (forkliftIds.has(String(db.gpmJournal.inspections[id]?.gpmId || ""))) delete db.gpmJournal.inspections[id]; });
+  Object.keys(db.gpmJournal?.events || {}).forEach(id => { if (forkliftIds.has(String(db.gpmJournal.events[id]?.gpmId || ""))) delete db.gpmJournal.events[id]; });
+  sourceIds.forEach(id => { if (fleet && Number(fleet.id) !== id) delete db.catalog.equipment[id]; });
+  db.targetedCleanupVersions[version] = { at: now, migrated: forklifts.length, equipmentId: fleet?.id || null };
+  return true;
+}
+
+function migrateGpmToOrdinaryEquipment(db) {
+  const version = "ordinary-equipment-only-v1";
+  db.targetedCleanupVersions ||= {};
+  if (db.targetedCleanupVersions[version]) return false;
+  const now = new Date().toISOString();
+  const items = Object.values(db.gpmJournal?.equipment || {}).filter(item => item && !item.deleted);
+  const groups = new Map();
+  items.forEach(item => {
+    const sourceId = Number(item.sourceEquipmentId || 0);
+    const key = sourceId ? `source:${sourceId}` : `item:${item.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  groups.forEach(group => {
+    const sourceId = Number(group[0]?.sourceEquipmentId || 0);
+    let card = sourceId ? db.catalog.equipment[sourceId] : null;
+    if (!card) {
+      const usedIds = Object.keys(db.catalog.equipment).map(Number).filter(Number.isSafeInteger);
+      const id = Math.max(999, ...usedIds) + 1;
+      card = { id, created: true, name: group[0]?.sourceEquipmentName || group[0]?.name || "Оборудование", area: group[0]?.location || "Без участка" };
+      db.catalog.equipment[id] = card;
+    }
+    const names = [...new Set(group.map(item => String(item.name || "").trim()).filter(Boolean))];
+    card.created = true;
+    card.equipmentKind = "ordinary";
+    card.nodes = names.length ? names : ["Основное оборудование"];
+    card.qrTokens = Object.fromEntries(card.nodes.map((_, index) => [index, crypto.randomBytes(12).toString("hex")]));
+    card.nodeCreatedAt = Object.fromEntries(card.nodes.map((_, index) => [index, now]));
+    card.reminders ||= {};
+    card.reminderMeta ||= {};
+    card.operationalPauses ||= [];
+    card.nodeOperationalPauses ||= {};
+    card.journalSchema = {
+      version: Number(card.journalSchema?.version || 0) + 1,
+      title: `Журнал ${card.name}`,
+      scope: "equipment", nodeIndex: null, fieldsTiming: "immediate", resultMode: "both", frequency: "twoShifts",
+      columns: [
+        { id: "date", label: "Дата", type: "autoDate", required: true, nodeIndex: "all", options: [] },
+        { id: "time", label: "Время", type: "autoTime", required: true, nodeIndex: "all", options: [] },
+        { id: "shift", label: "Смена", type: "autoShift", required: true, nodeIndex: "all", options: [] },
+        { id: "employee", label: "Сотрудник", type: "autoEmployee", required: true, nodeIndex: "all", options: [] },
+        { id: "node", label: "Оборудование", type: "autoNode", required: true, nodeIndex: "all", options: [] },
+        { id: "result", label: "Результат", type: "result", required: true, nodeIndex: "all", options: [] },
+        { id: "comment", label: "Комментарий", type: "text", required: false, nodeIndex: "all", options: [] }
+      ], updatedAt: now, updatedByName: "Системная миграция"
+    };
+    card.updatedAt = now;
+  });
+  db.gpmJournal = { equipment: {}, inspections: {}, events: {}, managers: {}, removedAt: now };
+  db.targetedCleanupVersions[version] = { at: now, migrated: items.length };
+  return true;
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -481,6 +590,8 @@ function normalizeDb(db) {
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
+  migrateForkliftsToOrdinaryEquipment(db);
+  migrateGpmToOrdinaryEquipment(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -6530,7 +6641,7 @@ async function handleApi(req, res, pathname, url) {
       }
       const operationalFields = [
         "checks", "requests", "serviceCosts", "downtimes",
-        "compressorJournal", "gasJournal", "gpmJournal", "weldingJournal", "turningJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
+        "compressorJournal", "gasJournal", "weldingJournal", "turningJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
       const hasOperationalPayload = operationalFields.some(field => Object.prototype.hasOwnProperty.call(body, field));

@@ -54,14 +54,14 @@ test("equipment creation stores an ordinary item and broadcasts public state", a
   assert.equal(responses[0].payload.stateVersion, "state-v3");
 });
 
-test("forklift creation links a GPM item with a weekday due date", async () => {
+test("legacy special equipment input creates ordinary equipment without a GPM record", async () => {
   const database = {};
   const { handler, responses } = createHarness(database);
   await handler({ method: "POST", authUser: { role: "editor" }, body: { type: "forklift", name: "Погрузчик", area: "Склад", capacity: "5 т" } }, {}, "/api/admin/equipment/create");
-  const gpm = database.gpmJournal.equipment[responses[0].payload.gpmId];
-  assert.equal(gpm.sourceEquipmentId, 1000);
-  assert.equal(gpm.nextMonthlyInspectionDate, "2026-09-23");
-  assert.equal(gpm.nextMaintenanceDate, "2026-09-23");
+  const item = database.catalog.equipment[responses[0].payload.equipmentId];
+  assert.equal(item.equipmentKind, "ordinary");
+  assert.equal(responses[0].payload.gpmId, "");
+  assert.equal(database.gpmJournal, undefined);
 });
 
 test("journal schema is normalized, versioned and audited", async () => {

@@ -22,7 +22,9 @@ function createAdminEquipmentConfigRoute({
 
     const body = await readBody(req).catch(() => ({}));
     if (isCreate) {
-      const type = ["ordinary", "gpm", "forklift"].includes(String(body.type || "")) ? String(body.type) : "ordinary";
+      // Forklifts are ordinary equipment now. A fleet is represented by one
+      // catalog card and every forklift is one of its QR nodes.
+      const type = "ordinary";
       const name = String(body.name || "").trim().slice(0, 200);
       const area = String(body.area || "").trim().slice(0, 200);
       const firstNode = String(body.firstNode || "").trim().slice(0, 200) || "Основное оборудование";
@@ -43,7 +45,7 @@ function createAdminEquipmentConfigRoute({
         const equipmentId = Math.max(999, ...usedIds) + 1;
         const createdAt = now();
         const timestamp = createdAt.toISOString();
-        const nodes = [type === "ordinary" ? firstNode : type === "forklift" ? "Вахтенный осмотр погрузчика" : "Вахтенный осмотр кран-балки"];
+        const nodes = [type === "ordinary" ? firstNode : "Вахтенный осмотр кран-балки"];
         const catalogItem = {
           id: equipmentId,
           created: true,
@@ -84,7 +86,7 @@ function createAdminEquipmentConfigRoute({
             inspectorKeys: [],
             engineerKeys: [],
             nextMonthlyInspectionDate: dueDate,
-            nextMaintenanceDate: type === "forklift" ? dueDate : "",
+            nextMaintenanceDate: "",
             createdAt: timestamp,
             updatedAt: timestamp,
             updatedByName: String(req.authUser?.name || "Администратор")

@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v649-gpm-qr-journal-save-1";
+const APP_VERSION = "v650-ordinary-equipment-only-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const GPM_MONTHLY_SCHEDULE_VERSION = "one-crane-per-weekday-v3";
 const TMC_REQUESTS_DISABLED = true;
@@ -4076,7 +4076,10 @@ function visibleEquipment() {
   const mode = roleAccess().equipment;
   if (mode === "none") return [];
   const equipment = allEquipment();
-  if (profile?.jobRole === "forkliftDriver") return equipment.filter(isForkliftEquipment);
+  if (profile?.jobRole === "forkliftDriver") return equipment.filter(eq => {
+    const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
+    return String(eq?.equipmentKind || "ordinary") === "ordinary" && (text.includes("вилоч") || text.includes("погрузчик"));
+  });
   if (mode === "area") return equipment.filter(eq => areaAllowed(equipmentEmployeeArea(eq)));
   return equipment;
 }
@@ -8617,15 +8620,11 @@ function equipmentRowColor(eq) {
 }
 
 function isForkliftEquipment(eq) {
-  if (eq?.equipmentKind === "forklift") return true;
-  const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
-  return text.includes("вилоч") || text.includes("погрузчик");
+  return eq?.equipmentKind === "forklift";
 }
 
 function isGpmEquipment(eq) {
-  if (["gpm", "forklift"].includes(eq?.equipmentKind)) return true;
-  const text = `${eq?.name || ""} ${eq?.area || ""}`.toLocaleLowerCase("ru-RU");
-  return text.includes("гпм") || text.includes("грузопод") || isForkliftEquipment(eq);
+  return eq?.equipmentKind === "gpm";
 }
 
 function linkedCraneJournalForEquipment(equipmentOrId) {
@@ -11700,9 +11699,9 @@ function openCreateEquipmentDialog() {
   const overlay = document.createElement("div");
   overlay.className = "qr-result-overlay equipment-create-overlay";
   overlay.innerHTML = `<section class="qr-result-panel equipment-create-panel" role="dialog" aria-modal="true" aria-label="Создать оборудование">
-    <header><div><h2>Создать оборудование</h2><p>Карточка автоматически появится во всех связанных разделах.</p></div><button type="button" class="secondary" data-equipment-create-close>Закрыть</button></header>
+    <header><div><h2>Создать оборудование</h2><p>Обычное оборудование: одна карточка, узлы, QR-обходы и один журнал.</p></div><button type="button" class="secondary" data-equipment-create-close>Закрыть</button></header>
     <form data-equipment-create-form>
-      <label><span>Тип оборудования</span><select name="type"><option value="ordinary">Обычное оборудование</option><option value="gpm">Кран-балка</option><option value="forklift">Вилочный погрузчик</option></select></label>
+      <input type="hidden" name="type" value="ordinary">
       <label><span>Название</span><input name="name" maxlength="200" required placeholder="Полное название оборудования"></label>
       <label><span>Участок / место установки</span><input name="area" maxlength="200" required placeholder="Цех или участок"></label>
       <label data-equipment-first-node><span>Первый узел</span><input name="firstNode" maxlength="200" required value="Основное оборудование"></label>
@@ -11715,7 +11714,7 @@ function openCreateEquipmentDialog() {
   const form = overlay.querySelector("[data-equipment-create-form]");
   const type = form.elements.type;
   const updateType = () => {
-    const special = ["gpm", "forklift"].includes(type.value);
+    const special = false;
     overlay.querySelector("[data-equipment-first-node]").hidden = special;
     form.elements.firstNode.required = !special;
     overlay.querySelector("[data-equipment-capacity]").hidden = !special;
@@ -11834,26 +11833,6 @@ function renderEquipment() {
       <button type="button" data-open-production-work>Открыть производственные работы</button>
     </section>`;
     ui.equipmentList.querySelector("[data-open-production-work]")?.addEventListener("click", () => show("welding"));
-    return;
-  }
-  if (isForkliftDriverProfile()) {
-    const key = gpmUserKey();
-    const assigned = gpmEquipmentList("forklift").filter(item => {
-      const inspectorKeys = Array.isArray(item.inspectorKeys) ? item.inspectorKeys.filter(Boolean) : [];
-      return inspectorKeys.includes(key);
-    });
-    ui.subtitle.textContent = "Вилочные погрузчики";
-    ui.equipmentList.innerHTML = `<section class="forklift-driver-home">
-      <header><span>Рабочее место карщика</span><h1>Назначенные погрузчики</h1><p>Осмотр и Плановое ТО открываются только единым QR-кодом на погрузчике.</p></header>
-      <button type="button" class="forklift-driver-scan" data-forklift-driver-scan>Сканировать QR погрузчика</button>
-      <div class="forklift-driver-assigned">${assigned.length ? assigned.map(item => {
-        const active = gpmOperationalControlEnabled(item, todayISO());
-        const status = active ? gpmStatus(item) : { key: "paused", label: "Временно остановлен — осмотр отключён" };
-        return `<article><span class="gpm-status-dot ${status.key}"></span><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.location || "Место не указано")} · ${escapeHtml(status.label)}</small></div></article>`;
-      }).join("") : `<div class="empty-state">Вам пока не назначен ни один погрузчик. Обратитесь к администратору.</div>`}</div>
-      <small class="forklift-driver-hint">Карточки оборудования, журналы других сотрудников, печать QR и настройки здесь не показываются.</small>
-    </section>`;
-    ui.equipmentList.querySelector("[data-forklift-driver-scan]")?.addEventListener("click", () => ui.qrWalkButton?.click());
     return;
   }
   ui.subtitle.textContent = "Оборудование";
