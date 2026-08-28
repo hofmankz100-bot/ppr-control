@@ -1802,7 +1802,7 @@ async function readAdminBackupPayload(id) {
 }
 
 async function restoreOrdinaryNodesAfterCraneRemoval() {
-  const version = "restore-ordinary-nodes-after-crane-removal-v1";
+  const version = "restore-ordinary-nodes-after-crane-removal-v2";
   const sourceBackupId = "backup-1787820434203-f5091095";
   const initial = readDb();
   initial.targetedCleanupVersions ||= {};
@@ -1822,14 +1822,19 @@ async function restoreOrdinaryNodesAfterCraneRemoval() {
   let restoredChecks = 0;
 
   for (const [equipmentId, sourceCard] of Object.entries(sourceCatalog)) {
-    if (!sourceCard || sourceCard.deleted || /^\s*гпм\s*$/iu.test(String(sourceCard.name || ""))) continue;
+    if (!sourceCard || sourceCard.deleted) continue;
+    if (/^\s*гпм\s*$/iu.test(String(sourceCard.name || ""))) {
+      db.catalog.equipment[equipmentId] = { ...(db.catalog.equipment[equipmentId] || {}), id: Number(equipmentId), nodes: [], deleted: true, updatedAt: new Date().toISOString() };
+      continue;
+    }
     const sourceNodes = Array.isArray(sourceCard.nodes) ? sourceCard.nodes : [];
     if (!sourceNodes.length) continue;
     const currentCard = db.catalog.equipment[equipmentId] || {};
     const currentNodes = Array.isArray(currentCard.nodes) ? currentCard.nodes : [];
+    const placeholderCard = new RegExp(`^оборудование\\s+${equipmentId}$`, "iu").test(String(currentCard.name || "").trim());
     const missingNodes = sourceNodes.filter(name => !currentNodes.includes(name));
-    if (!missingNodes.length) continue;
-    const mergedNodes = [...sourceNodes, ...currentNodes.filter(name => !sourceNodes.includes(name))];
+    if (!missingNodes.length && !placeholderCard) continue;
+    const mergedNodes = placeholderCard ? [...sourceNodes] : [...sourceNodes, ...currentNodes.filter(name => !sourceNodes.includes(name))];
     const currentTokens = currentCard.qrTokens || {};
     const sourceTokens = sourceCard.qrTokens || {};
     const tokensByName = new Map();
@@ -1858,6 +1863,8 @@ async function restoreOrdinaryNodesAfterCraneRemoval() {
       ...sourceCard,
       ...currentCard,
       id: Number(currentCard.id || sourceCard.id || equipmentId),
+      name: placeholderCard ? sourceCard.name : (currentCard.name || sourceCard.name),
+      area: placeholderCard ? sourceCard.area : (currentCard.area || sourceCard.area),
       nodes: mergedNodes,
       qrTokens: Object.fromEntries(mergedNodes.map((name, index) => [index, tokensByName.get(name) || crypto.randomBytes(12).toString("hex")])),
       removedNodes: (Array.isArray(currentCard.removedNodes) ? currentCard.removedNodes : []).filter(item => !missingNodes.includes(item?.name)),
