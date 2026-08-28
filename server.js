@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v699-stable-qr-token-1";
+const SERVER_VERSION = "v700-mobile-startup-rollback-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -82,6 +82,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   // phones replace their service-worker cache in the background.
   "v697-stable-catalog-1",
   "v698-startup-performance-1",
+  "v699-stable-qr-token-1",
   "v273-required-client-update",
   "v274-attendance-two-columns",
   "v275-reliable-forced-update",
