@@ -1001,6 +1001,7 @@ function persistStateLocally(snapshot = state) {
     catalog: snapshot?.catalog || { equipment: {} },
     downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : [],
     monthlyClosures: snapshot?.monthlyClosures || {},
+    journalDueSince: snapshot?.journalDueSince || {},
     operationalResetAt: snapshot?.operationalResetAt || "",
     walkShiftCleanupVersion: snapshot?.walkShiftCleanupVersion || ""
   };
@@ -10495,8 +10496,6 @@ function journalDueStart(key, rows) {
   if (!state.journalDueSince[key]) {
     state.journalDueSince[key] = journalEarliestDate(rows);
     persistStateLocally(state);
-    localStorage.setItem(`${STORE_KEY}-pending`, "1");
-    queueRemoteStateSave();
   }
   return state.journalDueSince[key];
 }

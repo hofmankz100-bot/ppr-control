@@ -789,6 +789,8 @@ test("idle synchronization avoids repeated user loads and oversized local storag
   const remoteMerge = client.slice(client.indexOf("function mergeRemoteState"), client.indexOf("function mergeRealtimePatch"));
   assert.doesNotMatch(localLoad, /remoteMigrationChanged[\s\S]*?STORE_KEY.*pending/);
   assert.doesNotMatch(remoteMerge, /journalCleanup\.changed[\s\S]*?STORE_KEY.*pending/);
+  const dueStart = client.slice(client.indexOf("function journalDueStart"), client.indexOf("function incompleteJournalDays"));
+  assert.doesNotMatch(dueStart, /pending|queueRemoteStateSave/);
   assert.match(client, /Object\.entries\(snapshot\?\.checks \|\| \{\}\)\.slice\(-500\)/);
   assert.doesNotMatch(client.slice(client.indexOf("function persistStateLocally"), client.indexOf("let devicePersistTimer")), /\.\.\.snapshot/);
 });
