@@ -75,7 +75,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v695-admin-only-crane-preview-1";
+const SERVER_VERSION = "v696-crane-qr-performance-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -571,8 +571,6 @@ function normalizeDb(db) {
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
-  archiveAndRemoveCraneBeamData(db);
-  ensureCraneBeams(db, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -916,6 +914,8 @@ async function initializeStorage() {
   const configured = configuredDatabases(process.env);
   if (!configured.length) {
     const db = readDbFile();
+    archiveAndRemoveCraneBeamData(db);
+    ensureCraneBeams(db, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
     removeDuplicateProductionRequests(db);
     migrateLegacyDirectorApprovals(db);
     resetMonthClosePermissionsOnce(db);
@@ -1028,6 +1028,8 @@ async function initializeStorage() {
     const result = freshest ? { rows: [{ payload: freshest.payload }] } : { rows: [] };
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
+      archiveAndRemoveCraneBeamData(postgresState);
+      ensureCraneBeams(postgresState, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
       removeDuplicateProductionRequests(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
@@ -1046,6 +1048,8 @@ async function initializeStorage() {
       writeDbFile(postgresState);
     } else {
       postgresState = readDbFile();
+      archiveAndRemoveCraneBeamData(postgresState);
+      ensureCraneBeams(postgresState, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
       removeDuplicateProductionRequests(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
       resetMonthClosePermissionsOnce(postgresState);
@@ -2215,7 +2219,6 @@ function publicState(db = readDb()) {
     orders: db.orders,
     inventory: db.inventory,
     catalog: db.catalog,
-    craneBeams: db.craneBeams || { assets: {}, inspections: {}, defects: {}, installationJournal: {} },
     adminConfig: {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
       departments: normalizedAdminConfig(db.adminConfig).departments,
@@ -4226,7 +4229,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "craneBeams", "pprSheets", "annualPpr", "journalDueSince"]) {
+  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }

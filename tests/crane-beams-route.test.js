@@ -104,7 +104,9 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.match(app, /function craneMonthlyCalendarItems/);
   assert.match(app, /Карточка обычного ППР не заполняется/);
   assert.match(app, /выполнить верхним QR/);
-  assert.match(app, /remote\.craneBeams/);
+  assert.doesNotMatch(app, /remote\.craneBeams/);
+  assert.doesNotMatch(app, /loadCraneBeams\(\)\.then\(\(\) => current\.view/);
+  assert.match(app, /\["node", "checklist"\]\.includes\(view\)/);
   assert.match(app, /const craneTargets = \(craneBeamState\.defects \|\| \[\]\)/);
   assert.match(app, /data-open-crane-defect/);
   assert.doesNotMatch(app, /КРАН-БАЛКИ · УЗЛЫ ЦЕХА/);
@@ -114,6 +116,39 @@ test("crane beams are rendered as workshop nodes without a separate home section
   assert.doesNotMatch(app, /function craneWorkshopEquipmentRow/);
   assert.doesNotMatch(app, /function craneMainScheduleRow/);
   assert.doesNotMatch(app, /async function openCraneBeams/);
+});
+
+test("every ordinary role receives the lightweight restricted crane response", async () => {
+  const roles = ["shop", "operator", "mechanic", "electrician", "welder", "turner", "forkliftDriver", "engineer", "energyEngineer", "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "director"];
+  for (const role of roles) {
+    const db = { craneBeams: { assets: { one: { id: "one", name: "Кран" } }, inspections: { old: { id: "old", craneId: "one", date: "2026-08-01" } }, defects: {}, installationJournal: {}, migrationVersion: "retired-archive-v1", normalizationVersion: "nested-equipment-v4" } };
+    const before = JSON.stringify(db);
+    const h = harness(db, {}, { adminPreviewOnly: true });
+    await h.handler({ method: "GET", authUser: { id: `user-${role}`, role } }, {}, "/api/crane-beams", new URL("http://test/api/crane-beams?month=2026-08"));
+    assert.equal(h.responses[0].status, 200, role);
+    assert.equal(h.responses[0].payload.previewRestricted, true, role);
+    assert.deepEqual(h.responses[0].payload.assets, [], role);
+    assert.deepEqual(h.responses[0].payload.inspections, [], role);
+    assert.equal(JSON.stringify(db), before, role);
+  }
+});
+
+test("crane GET is read-only and paginates one selected month", async () => {
+  const inspections = Object.fromEntries(Array.from({ length: 75 }, (_, index) => {
+    const month = index < 70 ? "2026-08" : "2026-07";
+    return [`i-${index}`, { id: `i-${index}`, craneId: "one", date: `${month}-${String(index % 28 + 1).padStart(2, "0")}`, at: `${month}-${String(index % 28 + 1).padStart(2, "0")}T08:00:00.000Z` }];
+  }));
+  const db = {
+    catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } },
+    craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", parentEquipmentId: "1" } }, inspections, defects: {}, installationJournal: {}, corrections: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1", normalizationVersion: "nested-equipment-v4" }
+  };
+  const before = JSON.stringify(db);
+  const h = harness(db, {}, { adminPreviewOnly: true });
+  await h.handler({ method: "GET", authUser: { id: "admin", role: "editor" } }, {}, "/api/crane-beams", new URL("http://test/api/crane-beams?month=2026-08&craneId=one&page=2&limit=50"));
+  assert.equal(JSON.stringify(db), before);
+  assert.equal(h.responses[0].payload.inspections.length, 20);
+  assert.deepEqual(h.responses[0].payload.pagination.inspections, { page: 2, limit: 50, total: 70, hasMore: false });
+  assert.equal(h.responses[0].payload.filters.month, "2026-08");
 });
 
 test("legacy GPM placement is resolved but crane beams are not inserted into ordinary nodes", () => {

@@ -124,7 +124,7 @@ test("production API requires a server session and rate-limits failed logins", a
     requests: {},
     inventory: {},
     catalog: { equipment: {
-      "1": { name: "Test press", area: "Test shop", nodes: ["Main"], editingEnabled: false },
+      "1": { name: "Test press", area: "Test shop", nodes: ["Main"], qrTokens: { "0": "security-main-token" }, editingEnabled: false },
       "2": { name: "Вилочные погрузчики", area: "Transport", equipmentKind: "forklift", nodes: ["Forklift 1"], editingEnabled: false }
     } },
     downtimes: [],
@@ -225,6 +225,7 @@ test("production API requires a server session and rate-limits failed logins", a
       clientId: "security-test",
       equipmentId: 1,
       nodeIndex: 0,
+      qrToken: "security-main-token",
       date: "2026-08-23",
       shift: "day",
       group: "operational",

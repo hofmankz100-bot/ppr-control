@@ -10,6 +10,7 @@ const DEFAULT_CHECKLIST = [
   "Крюковая подвеска",
   "Крановый путь"
 ];
+const CRANE_NORMALIZATION_VERSION = "nested-equipment-v4";
 
 function text(value, limit = 300) { return String(value || "").trim().slice(0, limit); }
 function roleOf(user = {}) {
@@ -199,7 +200,10 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
     delete asset.parentNodeIndex;
     delete db.craneBeams.unresolvedArchive[id];
   });
-  if (db.craneBeams.migrationVersion === "retired-archive-v1") return false;
+  if (db.craneBeams.migrationVersion === "retired-archive-v1") {
+    db.craneBeams.normalizationVersion = CRANE_NORMALIZATION_VERSION;
+    return false;
+  }
   const archived = Array.isArray(db.retiredCraneBeamArchive?.assets) ? db.retiredCraneBeamArchive.assets : [];
   const now = new Date().toISOString();
   archived.forEach((saved, index) => {
@@ -227,7 +231,33 @@ function ensureCraneBeams(db, builtInEquipment = {}) {
     db.craneBeams.installationJournal[eventId] = { id: eventId, craneId: id, action: "restored", status: "installed", workshop, place: asset.installationPlace, date: asset.installationDate, at: now, byName: "Система", comment: "Восстановлено из защищённого архива" };
   });
   db.craneBeams.migrationVersion = "retired-archive-v1";
+  db.craneBeams.normalizationVersion = CRANE_NORMALIZATION_VERSION;
   return archived.length > 0;
+}
+
+function craneStore(db = {}) {
+  const source = db.craneBeams && typeof db.craneBeams === "object" ? db.craneBeams : {};
+  return {
+    assets: source.assets && typeof source.assets === "object" ? source.assets : {},
+    inspections: source.inspections && typeof source.inspections === "object" ? source.inspections : {},
+    defects: source.defects && typeof source.defects === "object" ? source.defects : {},
+    installationJournal: source.installationJournal && typeof source.installationJournal === "object" ? source.installationJournal : {},
+    corrections: source.corrections && typeof source.corrections === "object" ? source.corrections : {},
+    unresolvedArchive: source.unresolvedArchive && typeof source.unresolvedArchive === "object" ? source.unresolvedArchive : {}
+  };
+}
+
+function validMonth(value = "") {
+  const month = text(value, 7);
+  return /^\d{4}-(?:0[1-9]|1[0-2])$/u.test(month) ? month : "";
+}
+
+function pagedRows(rows = [], options = {}) {
+  const page = Math.max(1, Math.floor(Number(options.page) || 1));
+  const limit = Math.max(10, Math.min(100, Math.floor(Number(options.limit) || 50)));
+  const total = rows.length;
+  const start = (page - 1) * limit;
+  return { rows: rows.slice(start, start + limit), page, limit, total, hasMore: start + limit < total };
 }
 
 function canInspect(user, asset, type) {
@@ -244,17 +274,45 @@ function closesCounter(user, asset, type) {
   return ["operator", "shop"].includes(role) && userAreas(user).some(area => same(area, asset.workshop));
 }
 
-function publicCraneState(db, user, builtInEquipment = {}, adminPreviewOnly = false) {
-  ensureCraneBeams(db, builtInEquipment);
+function publicCraneState(db, user, builtInEquipment = {}, adminPreviewOnly = false, options = {}) {
   if (adminPreviewOnly && roleOf(user) !== "editor") return { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], unresolvedArchive: [], canManage: false, previewRestricted: true };
-  const assets = Object.values(db.craneBeams.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
+  const store = craneStore(db);
+  const assets = Object.values(store.assets).filter(item => item && item.archived !== true).map(item => ({ ...item }));
   const canManage = roleOf(user) === "editor";
-  const archivedAssets = canManage ? Object.values(db.craneBeams.assets).filter(item => item?.archived === true).map(item => ({ ...item })) : [];
-  return { assets, archivedAssets, inspections: Object.values(db.craneBeams.inspections), defects: Object.values(db.craneBeams.defects), installationJournal: Object.values(db.craneBeams.installationJournal), corrections: canManage ? Object.values(db.craneBeams.corrections) : [], unresolvedArchive: canManage ? Object.values(db.craneBeams.unresolvedArchive) : [], canManage };
+  const archivedAssets = canManage ? Object.values(store.assets).filter(item => item?.archived === true).map(item => ({ ...item })) : [];
+  const month = validMonth(options.month);
+  const craneId = text(options.craneId, 120);
+  const inspectionRows = Object.values(store.inspections)
+    .filter(item => !craneId || String(item?.craneId) === craneId)
+    .filter(item => !month || String(item?.date || item?.at || "").startsWith(month))
+    .sort((a, b) => String(b?.at || b?.date || "").localeCompare(String(a?.at || a?.date || "")));
+  const inspectionsPage = pagedRows(inspectionRows, options);
+  const visibleInspectionIds = new Set(inspectionsPage.rows.map(item => String(item?.id || "")));
+  const defects = Object.values(store.defects).filter(item => {
+    if (craneId && String(item?.craneId) !== craneId) return false;
+    return visibleInspectionIds.has(String(item?.inspectionId || "")) || !["closed", "resolved"].includes(String(item?.status || ""));
+  });
+  const installationRows = Object.values(store.installationJournal)
+    .filter(item => !craneId || String(item?.craneId) === craneId)
+    .filter(item => !month || String(item?.date || item?.at || "").startsWith(month))
+    .sort((a, b) => String(b?.at || b?.date || "").localeCompare(String(a?.at || a?.date || "")));
+  const installationPage = pagedRows(installationRows, options);
+  return {
+    assets,
+    archivedAssets,
+    inspections: inspectionsPage.rows,
+    defects,
+    installationJournal: installationPage.rows,
+    corrections: canManage ? Object.values(store.corrections).filter(item => !month || String(item?.at || "").startsWith(month)) : [],
+    unresolvedArchive: canManage ? Object.values(store.unresolvedArchive) : [],
+    pagination: { inspections: { page: inspectionsPage.page, limit: inspectionsPage.limit, total: inspectionsPage.total, hasMore: inspectionsPage.hasMore }, installationJournal: { page: installationPage.page, limit: installationPage.limit, total: installationPage.total, hasMore: installationPage.hasMore } },
+    filters: { month, craneId },
+    canManage
+  };
 }
 
 function createCraneBeamsRoute({ adminPreviewOnly = false, builtInEquipment = {}, enqueueStateWrite, notifyCraneEvent = async () => {}, nowProvider = () => new Date(), readBody, readDb, sendJson, writeDb }) {
-  const stateFor = (db, user) => publicCraneState(db, user, builtInEquipment, adminPreviewOnly);
+  const stateFor = (db, user, options = {}) => publicCraneState(db, user, builtInEquipment, adminPreviewOnly, options);
   return async function handleCraneBeamsRoute(req, res, pathname, url) {
     if ((pathname === "/api/crane-beam-qr" || pathname === "/api/gpm-qr") && req.method === "GET") {
       if (adminPreviewOnly && roleOf(req.authUser) !== "editor") { res.writeHead(302, { Location: "/?craneQr=INVALID", "Cache-Control": "no-store" }); res.end(); return true; }
@@ -270,7 +328,11 @@ function createCraneBeamsRoute({ adminPreviewOnly = false, builtInEquipment = {}
     }
     if (!pathname.startsWith("/api/crane-beams")) return false;
     if (!req.authUser) { sendJson(res, 401, { ok: false, error: "auth_required" }); return true; }
-    if (pathname === "/api/crane-beams" && req.method === "GET") { sendJson(res, 200, { ok: true, ...stateFor(readDb(), req.authUser) }); return true; }
+    if (pathname === "/api/crane-beams" && req.method === "GET") {
+      const options = { month: url.searchParams.get("month"), craneId: url.searchParams.get("craneId"), page: url.searchParams.get("page"), limit: url.searchParams.get("limit") };
+      sendJson(res, 200, { ok: true, ...stateFor(readDb(), req.authUser, options) });
+      return true;
+    }
     if (adminPreviewOnly && roleOf(req.authUser) !== "editor") { sendJson(res, 403, { ok: false, error: "crane_preview_admin_only" }); return true; }
     const body = await readBody(req).catch(() => ({}));
     if (pathname === "/api/crane-beams/inspect" && req.method === "POST") {

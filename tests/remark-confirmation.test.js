@@ -774,6 +774,17 @@ test("registered employees can be searched by name phone or employee number", ()
   assert.match(client, /Сотрудник не найден/);
   assert.match(css, /\.director-user-search input/);
   assert.match(css, /html\[data-theme="dark"\] \.director-user-search input/);
+  assert.match(client, /const pageSize = 20/);
+  assert.match(client, /data-director-user-page/);
+});
+
+test("idle synchronization avoids repeated user loads and oversized local storage", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const realtimeHandler = client.slice(client.indexOf("function handleRealtimeMessage"), client.indexOf("async function syncRemoteChanges"));
+  assert.doesNotMatch(realtimeHandler, /loadRemoteUsers\(\)/);
+  assert.match(client, /now - lastRemoteUsersPollAt < 30000/);
+  assert.match(client, /Object\.entries\(snapshot\?\.checks \|\| \{\}\)\.slice\(-500\)/);
+  assert.doesNotMatch(client.slice(client.indexOf("function persistStateLocally"), client.indexOf("let devicePersistTimer")), /\.\.\.snapshot/);
 });
 
 test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
@@ -988,8 +999,12 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(client, /apiJson\("\/api\/qr-walk\/mark"/);
-  assert.match(client, /now - lastScanAt >= 220/);
-  assert.match(client, /const maxSide = 960/);
+  assert.match(client, /now - lastScanAt >= 420/);
+  assert.match(client, /const maxSide = 720/);
+  assert.match(client, /width: \{ ideal: 1280 \}/);
+  assert.match(client, /frameRate: \{ ideal: 24, max: 30 \}/);
+  assert.match(client, /let nativeQrDetector = null/);
+  assert.match(client, /const qrWorkCanvas = document\.createElement\("canvas"\)/);
   assert.match(client, /data-qr-torch/);
   assert.match(client, /navigator\.vibrate\?\.\(\[80, 40, 80\]\)/);
   assert.match(client, /}, 30000\)/);

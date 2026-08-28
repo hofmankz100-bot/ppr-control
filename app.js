@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v695-admin-only-crane-preview-1";
+const APP_VERSION = "v696-crane-qr-performance-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -998,9 +998,13 @@ function loadState() {
 function persistStateLocally(snapshot = state) {
   scheduleDeviceStatePersist(snapshot);
   const lightweight = {
-    ...snapshot,
-    inventory: {},
-    auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-100) : []
+    checks: Object.fromEntries(Object.entries(snapshot?.checks || {}).slice(-500)),
+    requests: {},
+    catalog: snapshot?.catalog || { equipment: {} },
+    downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : [],
+    monthlyClosures: snapshot?.monthlyClosures || {},
+    operationalResetAt: snapshot?.operationalResetAt || "",
+    walkShiftCleanupVersion: snapshot?.walkShiftCleanupVersion || ""
   };
   try {
     // Large warehouse catalogs belong in IndexedDB. Keeping them out of synchronous
@@ -2390,8 +2394,6 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.inventory = {};
   state.catalog ||= { equipment: {} };
   state.catalog.equipment = { ...(remote.catalog?.equipment || {}) };
-  state.craneBeams = remote.craneBeams || state.craneBeams || { assets: {}, inspections: {}, defects: {}, installationJournal: {} };
-  if (remote.craneBeams) craneBeamState = profile?.role === "editor" ? { assets: Object.values(remote.craneBeams.assets || {}), archivedAssets: Object.values(remote.craneBeams.archivedAssets || {}), inspections: Object.values(remote.craneBeams.inspections || {}), defects: Object.values(remote.craneBeams.defects || {}), installationJournal: Object.values(remote.craneBeams.installationJournal || {}), corrections: Object.values(remote.craneBeams.corrections || {}), canManage: true } : { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], canManage: false, previewRestricted: true };
   state.adminConfig = { ...(state.adminConfig || {}), ...(remote.adminConfig || {}) };
   applyRoleLabelOverrides(state.adminConfig);
   state.serviceCosts = [];
@@ -2453,10 +2455,6 @@ function mergeRealtimePatch(remote = {}) {
     state.catalog ||= { equipment: {} };
     state.catalog.equipment = { ...(state.catalog.equipment || {}), ...remote.catalog.equipment };
   }
-  if (remote.craneBeams) {
-    state.craneBeams = remote.craneBeams;
-    craneBeamState = profile?.role === "editor" ? { assets: Object.values(remote.craneBeams.assets || {}), archivedAssets: Object.values(remote.craneBeams.archivedAssets || {}), inspections: Object.values(remote.craneBeams.inspections || {}), defects: Object.values(remote.craneBeams.defects || {}), installationJournal: Object.values(remote.craneBeams.installationJournal || {}), corrections: Object.values(remote.craneBeams.corrections || {}), canManage: true } : { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], canManage: false, previewRestricted: true };
-  }
   if (remote.adminConfig) state.adminConfig = { ...(state.adminConfig || {}), ...remote.adminConfig };
   if (remote.adminConfig) applyRoleLabelOverrides(state.adminConfig);
   if (remote.compressorJournal) state.compressorJournal = mergeObjectByFreshnessLocal(state.compressorJournal, remote.compressorJournal);
@@ -2514,7 +2512,6 @@ function handleRealtimeMessage(data) {
       processAppNotificationChanges(notificationKeysBeforeUpdate);
     }
     if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
-    loadRemoteUsers();
     scheduleRender();
   } catch {}
 }
@@ -2649,7 +2646,7 @@ function startRealtimePoll() {
       return;
     }
     connectRealtime();
-  }, 1000);
+  }, 5000);
 }
 
 async function loadRemoteState() {
@@ -2754,6 +2751,8 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
 }
 
 async function loadRemoteUsers() {
+  if (loadRemoteUsers.promise) return loadRemoteUsers.promise;
+  loadRemoteUsers.promise = (async () => {
   try {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     const users = await apiJson("/api/users");
@@ -2780,13 +2779,17 @@ async function loadRemoteUsers() {
     }
   } catch {
     // Static/offline mode keeps using local registered users.
+  } finally {
+    loadRemoteUsers.promise = null;
   }
+  })();
+  return loadRemoteUsers.promise;
 }
 
 function pollRemoteUsers(force = false) {
   if (!isEditorSession() && !isProfileWaitingApproval()) return;
   const now = Date.now();
-  if (!force && now - lastRemoteUsersPollAt < 4000) return;
+  if (!force && now - lastRemoteUsersPollAt < 30000) return;
   lastRemoteUsersPollAt = now;
   loadRemoteUsers();
 }
@@ -5142,8 +5145,9 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 24, max: 30 }
           },
           audio: false
         });
@@ -5196,11 +5200,11 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         const tick = async () => {
           if (shouldStop()) return finish(false);
           const now = performance.now();
-          if (!scanning && now - lastScanAt >= 220 && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+          if (!scanning && now - lastScanAt >= 420 && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
             scanning = true;
             lastScanAt = now;
             try {
-              const maxSide = 960;
+              const maxSide = 720;
               const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
               canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
               canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -5235,11 +5239,14 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     }
   };
 
+  let nativeQrDetector = null;
+  if ("BarcodeDetector" in window) {
+    try { nativeQrDetector = new BarcodeDetector({ formats: ["qr_code"] }); } catch {}
+  }
   const detectQrWithNativeDetector = async source => {
-    if (!("BarcodeDetector" in window)) return "";
+    if (!nativeQrDetector) return "";
     try {
-      const detector = new BarcodeDetector({ formats: ["qr_code"] });
-      const results = await detector.detect(source);
+      const results = await nativeQrDetector.detect(source);
       return String(results?.[0]?.rawValue || "");
     } catch {
       return "";
@@ -5263,35 +5270,26 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
     return String(result?.data || "");
   };
 
+  const qrWorkCanvas = document.createElement("canvas");
+  const qrWorkContext = qrWorkCanvas.getContext("2d", { willReadFrequently: true });
   const detectQrOnCanvas = async (canvas, scanPass = 0) => {
     const nativeValue = await detectQrWithNativeDetector(canvas);
     if (nativeValue) return nativeValue;
     const hasQrReader = await ensureJsQr();
     if (!hasQrReader) return "";
-    const attempts = [{ x: 0, y: 0, w: canvas.width, h: canvas.height }];
-    const ratios = [0.86, 0.72, 0.58];
-    const ratio = ratios[Math.abs(scanPass) % ratios.length];
+    const useFullFrame = scanPass % 3 === 0;
+    const ratio = [0.86, 0.72][Math.abs(scanPass) % 2];
     const size = Math.round(Math.min(canvas.width, canvas.height) * ratio);
-    attempts.push({
-      x: Math.max(0, Math.round((canvas.width - size) / 2)),
-      y: Math.max(0, Math.round((canvas.height - size) / 2)),
-      w: size,
-      h: size
-    });
-    for (const area of attempts) {
-      const work = document.createElement("canvas");
-      work.width = area.w;
-      work.height = area.h;
-      const workCtx = work.getContext("2d", { willReadFrequently: true });
-      if (!workCtx) continue;
-      workCtx.drawImage(canvas, area.x, area.y, area.w, area.h, 0, 0, area.w, area.h);
-      const nativeCropValue = await detectQrWithNativeDetector(work);
-      if (nativeCropValue) return nativeCropValue;
-      const imageData = workCtx.getImageData(0, 0, area.w, area.h);
-      const result = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-      if (result?.data) return String(result.data);
-    }
-    return "";
+    const area = useFullFrame
+      ? { x: 0, y: 0, w: canvas.width, h: canvas.height }
+      : { x: Math.max(0, Math.round((canvas.width - size) / 2)), y: Math.max(0, Math.round((canvas.height - size) / 2)), w: size, h: size };
+    if (!qrWorkContext) return "";
+    if (qrWorkCanvas.width !== area.w) qrWorkCanvas.width = area.w;
+    if (qrWorkCanvas.height !== area.h) qrWorkCanvas.height = area.h;
+    qrWorkContext.drawImage(canvas, area.x, area.y, area.w, area.h, 0, 0, area.w, area.h);
+    const imageData = qrWorkContext.getImageData(0, 0, area.w, area.h);
+    const result = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: scanPass % 4 === 0 ? "attemptBoth" : "dontInvert" });
+    return String(result?.data || "");
   };
 
   const loadImageFromFile = file => new Promise((resolve, reject) => {
@@ -10020,6 +10018,12 @@ function show(view, push = true) {
   renderProfile();
   updateMobileNavigation();
   render();
+  if (profile?.role === "editor" && ["node", "checklist"].includes(view) && !craneBeamState.loaded) {
+    loadCraneBeams({ month: todayISO().slice(0, 7) }).then(() => {
+      if (current.view === "node") renderNodes();
+      if (current.view === "checklist") renderChecklist();
+    }).catch(() => {});
+  }
 }
 
 function updateMobileNavigation() {
@@ -16914,6 +16918,11 @@ function renderDirector() {
     await loadRemoteUsers();
     renderDirector();
   }, "Обновляем..."));
+  ui.directorPanel.querySelectorAll("[data-director-user-page]").forEach(button => button.addEventListener("click", () => {
+    current.directorUserPage = Number(button.dataset.directorUserPage) || 1;
+    current.directorUserSearch = "";
+    renderDirector();
+  }));
   ui.directorPanel.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
   ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area], [data-user-extra-area]").forEach(select => {
     select.addEventListener("change", event => {
@@ -18062,9 +18071,14 @@ function renderSystemBroadcastNotice() {
 }
 
 function renderDirectorUsers() {
-  const users = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
+  const allUsers = loadUsers().slice().sort((a, b) => Number(Boolean(b.approved === false || b.pendingApproval)) - Number(Boolean(a.approved === false || a.pendingApproval)));
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(allUsers.length / pageSize));
+  const page = Math.max(1, Math.min(totalPages, Number(current.directorUserPage) || 1));
+  current.directorUserPage = page;
+  const users = allUsers.slice((page - 1) * pageSize, page * pageSize);
   const canResetPasswords = ["director", "editor"].includes(profile?.role);
-  const pendingCount = users.filter(user => user.approved === false || user.pendingApproval).length;
+  const pendingCount = allUsers.filter(user => user.approved === false || user.pendingApproval).length;
   const cleanPhone = phone => String(phone || "").replace(/\D/g, "");
   const whatsappHref = phone => {
     const digits = cleanPhone(phone);
@@ -18126,6 +18140,7 @@ function renderDirectorUsers() {
         </div>
       `;
       }).join("") : `<div class="empty-state">Список сотрудников пока пуст</div>`}
+      ${totalPages > 1 ? `<nav class="director-user-pages" aria-label="Страницы сотрудников"><button type="button" data-director-user-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>← Назад</button><span>Страница ${page} из ${totalPages} · сотрудников ${allUsers.length}</span><button type="button" data-director-user-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Далее →</button></nav>` : ""}
       <div class="empty-state" data-director-user-search-empty hidden>Сотрудник не найден. Проверьте имя или номер телефона.</div>
     </div>
   `;
@@ -19095,7 +19110,8 @@ function handleAppResume() {
   }
 }
 
-let craneBeamState = { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], canManage: false };
+let craneBeamState = { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], pagination: {}, canManage: false, loaded: false };
+let craneBeamLoadPromise = null;
 
 function parseCraneQrPayload(value) {
   let raw = String(value || "").trim();
@@ -19139,11 +19155,23 @@ function craneRoleLabel(role) {
   return ({ operator: "Оператор", shop: "Начальник цеха", mechanic: "Электромеханик", electrician: "Электрик", engineer: "Инженер", editor: "Администратор" })[role] || role || "Сотрудник";
 }
 
-async function loadCraneBeams() {
-  const result = await apiJson("/api/crane-beams", { timeout: 15000 });
-  craneBeamState = { ...craneBeamState, ...result };
-  refreshCraneBeamBadge();
-  return craneBeamState;
+async function loadCraneBeams(options = {}) {
+  const query = new URLSearchParams();
+  if (options.month) query.set("month", options.month);
+  if (options.craneId) query.set("craneId", options.craneId);
+  query.set("page", String(Math.max(1, Number(options.page) || 1)));
+  query.set("limit", String(Math.max(10, Math.min(100, Number(options.limit) || 50))));
+  const requestKey = query.toString();
+  if (craneBeamLoadPromise?.key === requestKey) return craneBeamLoadPromise.promise;
+  const promise = apiJson(`/api/crane-beams?${requestKey}`, { timeout: 15000 }).then(result => {
+    craneBeamState = { ...craneBeamState, ...result, loaded: true };
+    refreshCraneBeamBadge();
+    return craneBeamState;
+  }).finally(() => {
+    if (craneBeamLoadPromise?.key === requestKey) craneBeamLoadPromise = null;
+  });
+  craneBeamLoadPromise = { key: requestKey, promise };
+  return promise;
 }
 
 function craneTodayStatus(asset) {
@@ -19295,12 +19323,16 @@ function printCraneJournal(asset, rows, month) {
   win.document.close();
 }
 
-function openCraneJournal(asset, selectedMonth = todayISO().slice(0, 7)) {
+async function openCraneJournal(asset, selectedMonth = todayISO().slice(0, 7), page = 1) {
+  await loadCraneBeams({ month: selectedMonth, craneId: asset.id, page, limit: 50 });
   const rows = craneBeamState.inspections.filter(row => row.craneId === asset.id && String(row.date || "").startsWith(selectedMonth)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const pageInfo = craneBeamState.pagination?.inspections || { page: 1, total: rows.length, hasMore: false };
   const columns = [...new Map(rows.flatMap(row => row.answers || []).map(item => [item.id, item.label])).entries()];
   const overlay = craneOverlay(`Вахтенный журнал · ${asset.name}`, `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата и смена</th><th>Вид осмотра</th><th>Сотрудник</th>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}<th>Результат</th><th>Замечание</th><th>Устранение</th><th>Подтверждение</th></tr></thead><tbody>${rows.length ? rows.map(row => { const answers = new Map((row.answers || []).map(item => [item.id, item])); const defect = craneBeamState.defects.find(item => item.inspectionId === row.id); const canResolve = defect && ["open", "returned"].includes(defect.status) && (["mechanic", "electrician", "engineer"].includes(profile?.role) || profile?.role === "editor"); const canConfirm = defect?.status === "awaiting_confirmation" && ["engineer", "editor"].includes(profile?.role); return `<tr><td>${escapeHtml(row.date)}<br>${row.type === "monthly" ? "—" : row.shift === "night" ? "Ночь" : "День"}${row.correctedAt ? "<br><strong>Исправлено с аудитом</strong>" : ""}</td><td>${row.type === "monthly" ? "Ежемесячное ТО" : row.unscheduled ? "Внеплановый осмотр" : "Ежесменный осмотр"}</td><td><strong>${escapeHtml(row.actor?.name)}</strong><br>${escapeHtml(craneRoleLabel(row.actor?.role))}</td>${columns.map(([id]) => { const answer = answers.get(id); return `<td class="${answer?.ok ? "is-good" : "is-bad"}">${answer ? (answer.ok ? "✓" : `✕<br>${escapeHtml(answer.comment)}${answer.photo ? `<br><a href="${escapeHtml(answer.photo)}" target="_blank" rel="noopener"><img class="crane-journal-photo" src="${escapeHtml(answer.photo)}" alt="Фото замечания"></a>` : ""}`) : "—"}</td>`; }).join("")}<td>${row.result === "good" ? "Исправно" : row.result === "prohibited" ? "Запрещено" : "С замечанием"}</td><td>${escapeHtml(defect?.items?.map(item => `${item.label}: ${item.comment}`).join("; ") || "—")}</td><td>${escapeHtml(defect?.resolution?.comment || "—")}${canResolve ? `<br><button data-defect-resolve="${escapeHtml(defect.id)}">Записать устранение</button>` : ""}</td><td>${escapeHtml(defect?.confirmation?.comment || "—")}${canConfirm ? `<br><button data-defect-confirm="${escapeHtml(defect.id)}">Подтвердить</button><button data-defect-return="${escapeHtml(defect.id)}">Вернуть</button>` : ""}</td></tr>`; }).join("") : `<tr><td colspan="${columns.length + 8}">Записей пока нет</td></tr>`}</tbody></table></div>`);
-  overlay.querySelector(".crane-panel-body")?.insertAdjacentHTML("afterbegin", `<div class="crane-journal-toolbar"><label>Месяц <input type="month" data-crane-journal-month value="${escapeHtml(selectedMonth)}"></label><button type="button" data-print-crane-journal>Печать A4</button></div>`);
-  overlay.querySelector("[data-crane-journal-month]")?.addEventListener("change", event => { overlay.remove(); openCraneJournal(asset, event.currentTarget.value || todayISO().slice(0, 7)); });
+  overlay.querySelector(".crane-panel-body")?.insertAdjacentHTML("afterbegin", `<div class="crane-journal-toolbar"><label>Месяц <input type="month" data-crane-journal-month value="${escapeHtml(selectedMonth)}"></label><span>Записи ${rows.length} из ${pageInfo.total}</span>${pageInfo.page > 1 ? '<button type="button" data-crane-journal-prev>← Назад</button>' : ""}${pageInfo.hasMore ? '<button type="button" data-crane-journal-next>Далее →</button>' : ""}<button type="button" data-print-crane-journal>Печать A4</button></div>`);
+  overlay.querySelector("[data-crane-journal-month]")?.addEventListener("change", event => { overlay.remove(); openCraneJournal(asset, event.currentTarget.value || todayISO().slice(0, 7), 1); });
+  overlay.querySelector("[data-crane-journal-prev]")?.addEventListener("click", () => { overlay.remove(); openCraneJournal(asset, selectedMonth, Math.max(1, pageInfo.page - 1)); });
+  overlay.querySelector("[data-crane-journal-next]")?.addEventListener("click", () => { overlay.remove(); openCraneJournal(asset, selectedMonth, pageInfo.page + 1); });
   overlay.querySelector("[data-print-crane-journal]")?.addEventListener("click", () => printCraneJournal(asset, rows, selectedMonth));
   if (craneBeamState.canManage) {
     overlay.querySelectorAll(".crane-journal tbody tr").forEach((tr, index) => {
@@ -19326,9 +19358,14 @@ function openCraneJournal(asset, selectedMonth = todayISO().slice(0, 7)) {
   overlay.querySelectorAll("[data-defect-return]").forEach(button => button.addEventListener("click", () => act(button.dataset.defectReturn, "return")));
 }
 
-function openCraneInstallationJournal() {
+async function openCraneInstallationJournal(selectedMonth = todayISO().slice(0, 7), page = 1) {
+  await loadCraneBeams({ month: selectedMonth, page, limit: 50 });
   const rows = [...craneBeamState.installationJournal].sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  craneOverlay("Журнал установленных кран-балок", `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата</th><th>Кран-балка</th><th>Статус / действие</th><th>Цех</th><th>Место</th><th>Кто изменил</th><th>Комментарий</th></tr></thead><tbody>${rows.map(row => { const asset = [...craneBeamState.assets, ...(craneBeamState.archivedAssets || [])].find(item => item.id === row.craneId); return `<tr><td>${escapeHtml(row.date || row.at?.slice(0, 10))}</td><td>${escapeHtml(asset?.name || row.craneId)}</td><td>${escapeHtml(row.status || row.action)}</td><td>${escapeHtml(row.workshop)}</td><td>${escapeHtml(row.place)}</td><td>${escapeHtml(row.byName || "Система")}</td><td>${escapeHtml(row.comment || "—")}</td></tr>`; }).join("") || '<tr><td colspan="7">Записей нет</td></tr>'}</tbody></table></div>`);
+  const pageInfo = craneBeamState.pagination?.installationJournal || { page: 1, total: rows.length, hasMore: false };
+  const overlay = craneOverlay("Журнал установленных кран-балок", `<div class="crane-journal-toolbar"><label>Месяц <input type="month" data-crane-installation-month value="${escapeHtml(selectedMonth)}"></label><span>Записи ${rows.length} из ${pageInfo.total}</span>${pageInfo.page > 1 ? '<button type="button" data-crane-installation-prev>← Назад</button>' : ""}${pageInfo.hasMore ? '<button type="button" data-crane-installation-next>Далее →</button>' : ""}</div><div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата</th><th>Кран-балка</th><th>Статус / действие</th><th>Цех</th><th>Место</th><th>Кто изменил</th><th>Комментарий</th></tr></thead><tbody>${rows.map(row => { const asset = [...craneBeamState.assets, ...(craneBeamState.archivedAssets || [])].find(item => item.id === row.craneId); return `<tr><td>${escapeHtml(row.date || row.at?.slice(0, 10))}</td><td>${escapeHtml(asset?.name || row.craneId)}</td><td>${escapeHtml(row.status || row.action)}</td><td>${escapeHtml(row.workshop)}</td><td>${escapeHtml(row.place)}</td><td>${escapeHtml(row.byName || "Система")}</td><td>${escapeHtml(row.comment || "—")}</td></tr>`; }).join("") || '<tr><td colspan="7">Записей нет</td></tr>'}</tbody></table></div>`);
+  overlay.querySelector("[data-crane-installation-month]")?.addEventListener("change", event => { overlay.remove(); openCraneInstallationJournal(event.currentTarget.value || todayISO().slice(0, 7), 1); });
+  overlay.querySelector("[data-crane-installation-prev]")?.addEventListener("click", () => { overlay.remove(); openCraneInstallationJournal(selectedMonth, Math.max(1, pageInfo.page - 1)); });
+  overlay.querySelector("[data-crane-installation-next]")?.addEventListener("click", () => { overlay.remove(); openCraneInstallationJournal(selectedMonth, pageInfo.page + 1); });
 }
 
 function openCraneQrCards(asset) {
@@ -19457,7 +19494,6 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
-  loadCraneBeams().then(() => current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment()).catch(() => {});
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
