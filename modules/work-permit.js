@@ -4963,7 +4963,11 @@
     const editor = input.closest("[data-instruction-editor]");
     const textarea = editor?.querySelector("[data-instruction-content]");
     const fileName = editor?.querySelector("[data-instruction-file-name]");
-    if (!textarea || !window.mammoth?.extractRawText) {
+    if (!textarea) return;
+    try {
+      await window.ensurePprOptionalLibrary?.("mammoth");
+    } catch {}
+    if (!window.mammoth?.extractRawText) {
       window.alert("Не удалось открыть Word-файл. Обновите страницу и попробуйте снова.");
       return;
     }
@@ -6188,6 +6192,9 @@
   async function sharePermitPdf() {
     const button = screen.querySelector("#workPermitSharePdfButton");
     const paper = screen.querySelector(".work-permit-paper");
+    try {
+      await window.ensurePprOptionalLibrary?.("html2pdf");
+    } catch {}
     if (!paper || typeof window.html2pdf !== "function") {
       window.alert("Создание PDF пока недоступно. Обновите страницу и попробуйте снова.");
       return;
