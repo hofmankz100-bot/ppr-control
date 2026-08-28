@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v702-database-recovery-1";
+const APP_VERSION = "v703-remove-legacy-tmc-shell-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -464,7 +464,6 @@ let lastResumeHandledAt = 0;
 const RESUME_SYNC_AFTER_MS = 60000;
 const RESUME_PROFILE_REFRESH_MS = 300000;
 const userApprovalDrafts = new Map();
-let tmcRequestSubmitting = false;
 const engineerRequestSaveTimers = new Map();
 const pendingRequestIds = new Set();
 const CLIENT_ID_KEY = "ppr-client-id-v1";
@@ -551,19 +550,7 @@ const ui = {
   requestInlineStatus: document.querySelector("#requestInlineStatus"),
   createRequestButton: document.querySelector("#createRequestButton"),
   openRequestsButton: document.querySelector("#openRequestsButton"),
-  createTmcRequestButton: document.querySelector("#createTmcRequestButton"),
   workPermitButton: document.querySelector("#workPermitButton"),
-  tmcRequestForm: document.querySelector("#tmcRequestForm"),
-  tmcRequestArea: document.querySelector("#tmcRequestArea"),
-  tmcRequestEquipment: document.querySelector("#tmcRequestEquipment"),
-  tmcRequestNode: document.querySelector("#tmcRequestNode"),
-  tmcRequestDue: document.querySelector("#tmcRequestDue"),
-  tmcRequestRows: document.querySelector("#tmcRequestRows"),
-  engineerIncomingTmcPanel: document.querySelector("#engineerIncomingTmcPanel"),
-  tmcRequestArchivePanel: document.querySelector("#tmcRequestArchivePanel"),
-  addTmcRequestRow: document.querySelector("#addTmcRequestRow"),
-  submitTmcRequest: document.querySelector("#submitTmcRequest"),
-  tmcRequestStatus: document.querySelector("#tmcRequestStatus"),
   directorOpenButton: document.querySelector("#directorOpenButton"),
   directorOpenLabel: document.querySelector("#directorOpenLabel"),
   directorBadge: document.querySelector("#directorBadge"),

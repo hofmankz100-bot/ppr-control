@@ -19,7 +19,7 @@
   <link rel="icon" href="icon.svg?v=176" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png?v=176">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=v702-database-recovery-1">
+  <link rel="stylesheet" href="styles.css?v=v703-remove-legacy-tmc-shell-1">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -102,7 +102,6 @@
           <button type="button" id="qrWalkButton" class="qr-walk-button"><span>Обход QR</span><strong>▣</strong></button>
           <button type="button" id="attendanceHomeButton" class="attendance-home-button" data-mobile-view="attendance" hidden><span>Кто на работе</span><strong>👥</strong></button>
           <button type="button" id="weldingHomeButton" class="welding-home-button"><span>Сварщик и токарь</span><strong id="weldingHomeBadge">0</strong></button>
-          <button type="button" id="createTmcRequestButton" class="primary-nav-button" hidden><span>Создать заявку</span><strong>+</strong></button>
           <button type="button" id="workPermitButton" class="work-permit-home-button"><span>Наряд-допуск</span><strong aria-hidden="true">🦺</strong></button>
           <button type="button" id="alertCounter"><span>Предупреждения</span><strong>0</strong></button>
           <button type="button" id="ordersButton"><span>Распоряжения</span><strong id="ordersBadge">0</strong></button>
@@ -115,60 +114,6 @@
 
       <section id="weldingScreen" class="view welding-screen" data-no-translate>
         <div id="weldingPanel"></div>
-      </section>
-
-      <section id="requestCreateScreen" class="view">
-        <div class="panel-head compact">
-          <div>
-            <h1>Новая заявка</h1>
-            <p id="requestCreateMeta">Создание заявки на приобретение ТМЦ и услуг</p>
-          </div>
-        </div>
-        <div id="engineerIncomingTmcPanel" class="engineer-incoming-panel" hidden></div>
-        <form id="tmcRequestForm" class="tmc-request-form">
-          <div class="tmc-request-header">
-            <label>
-              <span>Цех</span>
-              <select id="tmcRequestArea"></select>
-            </label>
-            <label>
-              <span>Оборудование</span>
-              <select id="tmcRequestEquipment"></select>
-            </label>
-            <label>
-              <span>Узел</span>
-              <select id="tmcRequestNode"></select>
-            </label>
-            <label>
-              <span>Срок доставки</span>
-              <input id="tmcRequestDue" type="date">
-            </label>
-          </div>
-          <div class="tmc-request-table-wrap">
-            <table class="tmc-request-table">
-              <thead>
-                <tr>
-                  <th>№</th>
-                  <th>Наименование закупаемой ТМЦ и услуг</th>
-                  <th>Ед.</th>
-                  <th>Заявочное</th>
-                  <th>Необходимое</th>
-                  <th>Фото</th>
-                  <th>Примечание</th>
-                </tr>
-              </thead>
-              <tbody id="tmcRequestRows"></tbody>
-            </table>
-          </div>
-          <div class="tmc-request-footer">
-            <div class="tmc-request-actions">
-              <button type="button" id="addTmcRequestRow">Добавить строку</button>
-              <button type="submit" id="submitTmcRequest">Создать заявку</button>
-            </div>
-          </div>
-          <div id="tmcRequestStatus" class="request-inline-status"></div>
-        </form>
-        <div id="tmcRequestArchivePanel" class="request-create-archive" hidden></div>
       </section>
 
       <section id="nodeScreen" class="view">
@@ -275,12 +220,12 @@
   <script src="modules/requests.js?v=288-print-request-pages"></script>
   <script src="modules/comments.js?v=288-print-request-pages"></script>
   <script src="modules/director.js?v=288-print-request-pages"></script>
-  <script src="node_modules/html2canvas/dist/html2canvas.min.js?v=v702-database-recovery-1"></script>
-  <script src="node_modules/jspdf/dist/jspdf.umd.min.js?v=v702-database-recovery-1"></script>
-  <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v702-database-recovery-1"></script>
-  <script src="node_modules/mammoth/mammoth.browser.min.js?v=v702-database-recovery-1"></script>
+  <script src="node_modules/html2canvas/dist/html2canvas.min.js?v=v703-remove-legacy-tmc-shell-1"></script>
+  <script src="node_modules/jspdf/dist/jspdf.umd.min.js?v=v703-remove-legacy-tmc-shell-1"></script>
+  <script src="node_modules/html2pdf.js/dist/html2pdf.bundle.min.js?v=v703-remove-legacy-tmc-shell-1"></script>
+  <script src="node_modules/mammoth/mammoth.browser.min.js?v=v703-remove-legacy-tmc-shell-1"></script>
   <script src="modules/work-permit.js?v=658-cleanup"></script>
-  <script src="app.js?v=v702-database-recovery-1"></script>
+  <script src="app.js?v=v703-remove-legacy-tmc-shell-1"></script>
 </body>
 </html>
 

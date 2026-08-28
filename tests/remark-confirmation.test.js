@@ -1922,6 +1922,9 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
 test("create request feature is removed and production erases request records", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.doesNotMatch(html, /requestCreateScreen|tmcRequestForm|createTmcRequestButton/);
+  assert.doesNotMatch(html, /Новая заявка|приобретение ТМЦ|закупаемой ТМЦ/);
   assert.match(client, /const TMC_REQUESTS_DISABLED = true/);
   assert.match(client, /function disableTmcRequestFeature\(\)/);
   assert.match(client, /ui\.createTmcRequestButton\?\.remove\(\)/);
