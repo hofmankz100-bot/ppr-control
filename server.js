@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v706-remove-legacy-procurement-1";
+const SERVER_VERSION = "v707-legacy-data-final-clean-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -491,14 +491,9 @@ function normalizeDb(db) {
   db.orders ||= {};
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
-  delete db.requests;
-  delete db.inventory;
-  delete db.directorMessages;
   delete db.codexTasks;
   delete db.codexAgent;
-  delete db.serviceCosts;
   db.downtimes ||= [];
-  delete db.monthlyClosures;
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
   db.weldingJournal ||= {};
@@ -607,18 +602,6 @@ function removeDuplicateProductionRequests(db) {
   cleanJournal(db.turningJournal, "turning");
   db.targetedCleanupVersions.productionRequestDedup20260820 = { at: now, removed };
   return removed;
-}
-
-function resetMonthClosePermissionsOnce(db) {
-  if (!db || db.monthClosePermissionResetVersion === "all-users-v1") return false;
-  let changed = false;
-  for (const user of db.users || []) {
-    if (!user?.permissionOverrides?.monthCloseManage) continue;
-    delete user.permissionOverrides.monthCloseManage;
-    changed = true;
-  }
-  db.monthClosePermissionResetVersion = "all-users-v1";
-  return changed;
 }
 
 function ensureDb() {
@@ -855,7 +838,6 @@ async function initializeStorage() {
     const db = readDbFile();
     archiveAndRemoveCraneBeamData(db);
     removeDuplicateProductionRequests(db);
-    resetMonthClosePermissionsOnce(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
     reconcileMissingShgrpQrChecksServer(db);
@@ -970,7 +952,6 @@ async function initializeStorage() {
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
-      resetMonthClosePermissionsOnce(postgresState);
       reconcilePendingRemarkDowntimes(postgresState);
       reconcileMissingShgrpQrChecksServer(postgresState);
       await pool.query(
@@ -985,7 +966,6 @@ async function initializeStorage() {
       postgresState = readDbFile();
       archiveAndRemoveCraneBeamData(postgresState);
       removeDuplicateProductionRequests(postgresState);
-      resetMonthClosePermissionsOnce(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);

@@ -1944,7 +1944,7 @@ test("director private messaging is removed while admin employee approval remain
   assert.doesNotMatch(htmlSource, /Директорская|Личные обращения директору/);
   assert.match(clientSource, /function renderDirector\(\)[\s\S]*?if \(!isEditorSession\(\)\)/);
   assert.match(clientSource, /ui\.directorPanel\.innerHTML = renderDirectorUsers\(\)/);
-  assert.match(serverSource, /delete db\.directorMessages/);
+  assert.doesNotMatch(serverSource, /directorMessages/);
   assert.doesNotMatch(serverSource, /directorMessages:\s*db\.directorMessages|mergeArrayById\(db\.directorMessages/);
 });
 

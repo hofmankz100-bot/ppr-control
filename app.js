@@ -72,14 +72,14 @@ const EQUIPMENT = [
   { id: 20, name: "оборудование 20", area: "Резерв", nodes: DEFAULT_NODES }
 ];
 
-const STORE_KEY = "ppr-pwa-state-v2";
+const STORE_KEY = "ppr-pwa-state-v3";
 const PENDING_ACTION_ID_KEY = `${STORE_KEY}-pending-action-id`;
 const QR_PENDING_MARKS_KEY = `${STORE_KEY}-qr-pending-marks-v1`;
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v706-remove-legacy-procurement-1";
+const APP_VERSION = "v707-legacy-data-final-clean-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -131,7 +131,7 @@ const PERSONAL_REMARK_READ_KEY = "ppr-personal-remark-read-v1";
 // Version the device cache separately from the server schema. Older installations
 // stored the entire multi-megabyte history here and briefly rendered obsolete
 // nodes before the live server snapshot arrived.
-const DEVICE_DB_NAME = "ppr-control-device-v2";
+const DEVICE_DB_NAME = "ppr-control-device-v3";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
@@ -322,7 +322,6 @@ function canViewQrWalkJournal(user = authenticatedProfile || profile || {}) {
 function activeUserPermission(user = authenticatedProfile || profile || {}, key = "") { const entry = user?.permissionOverrides?.[key]; return Boolean(entry?.enabled === true && (!entry.expiresAt || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > Date.now()))); }
 function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkMultiClose"); }
 function canDeferRemarks(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkDefer"); }
-function canManageMonthClose(user = authenticatedProfile || profile || {}) { return isPrimaryAdminEngineer(user); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canManageOrderJournal(user = authenticatedProfile || profile || {}) {
   const role = permissionBaseRole(user?.role || "");
@@ -846,10 +845,6 @@ function loadState() {
     parsed.auditHistory ||= [];
     parsed.operationalResetAt ||= "";
     const walkCleanup = clearLegacyWalkCompletions(parsed);
-    delete parsed.requests;
-    delete parsed.inventory;
-    delete parsed.serviceCosts;
-    delete parsed.monthlyClosures;
     const remoteMigrationChanged = walkCleanup.changed;
     if (remoteMigrationChanged) {
       parsed.journalRequestCleanupVersion = APP_VERSION;

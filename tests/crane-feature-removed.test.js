@@ -27,7 +27,7 @@ test("online startup never renders the stale device snapshot", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /const remoteLoaded = await loadRemoteState\(\)/);
   assert.match(client, /if \(!remoteLoaded && deviceState/);
-  assert.match(client, /const DEVICE_DB_NAME = "ppr-control-device-v2"/);
+  assert.match(client, /const DEVICE_DB_NAME = "ppr-control-device-v3"/);
   assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
 });
 
