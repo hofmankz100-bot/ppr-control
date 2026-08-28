@@ -78,6 +78,10 @@ const SERVER_VERSION = "v699-stable-qr-token-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
+  // Keep the two immediately preceding PWA versions valid while installed
+  // phones replace their service-worker cache in the background.
+  "v697-stable-catalog-1",
+  "v698-startup-performance-1",
   "v273-required-client-update",
   "v274-attendance-two-columns",
   "v275-reliable-forced-update",
