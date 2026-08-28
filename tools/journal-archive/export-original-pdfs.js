@@ -85,7 +85,7 @@ const html = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;
   const qrDays = [...new Set(qrRows.map(x => String(x.date || x.at || '').slice(0,10)))].sort();
   for (const date of qrDays) {
     const dayRows = qrRows.filter(x => String(x.date || x.at || '').slice(0,10) === date);
-    const filename = `Журнал QR обходов - ${date}.pdf`;
+    const filename = `Журнал QR-обходов - ${date}.pdf`;
     if (fs.existsSync(path.join(output, filename))) continue;
     const qrPage = await context.newPage();
     const rows = dayRows.map((x,i) => `<tr><td>${i+1}</td><td>${html(x.shift)}</td><td>${html(x.group)}</td><td>${html(x.area)}</td><td>${html(x.equipment)}</td><td>${html(x.node)}</td><td>${html(x.byName)}</td><td>${html(x.byRole)}</td></tr>`).join('');

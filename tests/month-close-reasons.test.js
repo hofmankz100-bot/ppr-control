@@ -14,6 +14,8 @@ const auxiliarySources = [
   "tools/journal-archive/monthly_word_archive.py",
   "WORKFLOWS.md"
 ].map(file => fs.readFileSync(path.join(root, file), "utf8"));
+const postgresAdapter = auxiliarySources[0];
+const postgresMigration = auxiliarySources[1];
 
 test("legacy procurement warehouse and month-close subsystems are absent", () => {
   for (const source of [client, server, styles, ...auxiliarySources]) {
@@ -22,6 +24,12 @@ test("legacy procurement warehouse and month-close subsystems are absent", () =>
   assert.doesNotMatch(server, /\/api\/engineer-request\/action|\/api\/month-close|\/api\/price-lookup/);
   assert.doesNotMatch(client, /state\.(?:requests|inventory|serviceCosts)|monthlyClosures/);
   assert.doesNotMatch(styles, /\.tmc-request-|\.engineer-incoming-|\.stock-row-actions|\.month-close-/);
+});
+
+test("QR walk journal is preserved by the standalone PostgreSQL migration", () => {
+  assert.match(postgresAdapter, /"qrWalkJournal"/);
+  assert.match(postgresAdapter, /qrWalkJournal:\s*\[\]/);
+  assert.match(postgresMigration, /qrWalkJournal:\s*db\.qrWalkJournal\s*\|\|\s*\[\]/);
 });
 
 test("an individually authorized employee can record a non-resolution reason", () => {

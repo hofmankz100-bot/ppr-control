@@ -12,6 +12,7 @@ async function main() {
     orders: db.orders || {},
     catalog: db.catalog || { equipment: {} },
     downtimes: db.downtimes || [],
+    qrWalkJournal: db.qrWalkJournal || [],
     compressorJournal: db.compressorJournal || {},
     gasJournal: db.gasJournal || {},
     weldingJournal: db.weldingJournal || {},
