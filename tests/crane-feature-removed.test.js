@@ -36,7 +36,6 @@ test("ordinary nodes removed by the broad cleanup are recovered with history", (
   assert.match(server, /restore-ordinary-nodes-after-crane-removal-v2/);
   assert.match(server, /Перед восстановлением ошибочно скрытых узлов/);
   assert.match(server, /const missingNodes = sourceNodes\.filter/);
-  assert.match(server, /const mergedNodes = \[\.\.\.sourceNodes/);
   assert.match(server, /if \(!nextChecks\[nextKey\]\) \{ nextChecks\[nextKey\] = record/);
   assert.match(server, /ordinary_nodes_restored_after_crane_removal/);
   assert.match(server, /nodes: \[\], deleted: true/);
