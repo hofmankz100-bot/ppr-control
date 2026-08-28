@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v704-remove-legacy-tmc-code-1";
+const SERVER_VERSION = "v705-tmc-removal-hotfix-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -87,6 +87,7 @@ const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v701-reliable-qr-queue-1",
   "v702-database-recovery-1",
   "v703-remove-legacy-tmc-shell-1",
+  "v704-remove-legacy-tmc-code-1",
   "v273-required-client-update",
   "v274-attendance-two-columns",
   "v275-reliable-forced-update",
