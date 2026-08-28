@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v712-complete-mobile-sync-1";
+const APP_VERSION = "v713-session-hydration-retry-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -447,6 +447,7 @@ let realtimeVersionPollInFlight = false;
 let lastRealtimeVersionPollAt = 0;
 let realtimeChangesLoadPromise = null;
 let remoteStateLoadPromise = null;
+let remoteStateHydrated = false;
 let appNotificationKeys = new Set();
 let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
@@ -2334,7 +2335,9 @@ function handleRealtimeMessage(data) {
     if (msg.type === "ready") {
       pollRemoteUsers(true);
       const serverVersion = String(msg.stateVersion || "");
-      if (serverVersion && serverVersion !== realtimeStateVersion) {
+      if (!remoteStateHydrated) {
+        loadRemoteState();
+      } else if (serverVersion && serverVersion !== realtimeStateVersion) {
         syncRemoteChanges(serverVersion);
       } else if (serverVersion) {
         setRealtimeStateVersion(serverVersion);
@@ -2344,7 +2347,10 @@ function handleRealtimeMessage(data) {
     if (msg.type !== "state") return;
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     if (msg.partial) mergeRealtimePatch(msg.state || {});
-    else mergeRemoteState(msg.state || {}, { preferRemote: true });
+    else {
+      mergeRemoteState(msg.state || {}, { preferRemote: true });
+      remoteStateHydrated = true;
+    }
     if (msg.origin === CLIENT_ID) {
       appNotificationKeys = currentAppNotificationKeys();
     } else {
@@ -2385,7 +2391,9 @@ async function pollRealtimeStateVersion(force = false) {
   try {
     const health = await apiJson("/api/health", { timeout: 5000 });
     const serverVersion = String(health?.stateVersion || "");
-    if (serverVersion && serverVersion !== realtimeStateVersion) {
+    if (!remoteStateHydrated) {
+      await loadRemoteState();
+    } else if (serverVersion && serverVersion !== realtimeStateVersion) {
       const loaded = await syncRemoteChanges(serverVersion);
       if (loaded) setRealtimeStateVersion(serverVersion);
     }
@@ -2515,6 +2523,7 @@ async function loadRemoteState() {
       }
       processAppNotificationChanges(notificationKeysBeforeUpdate);
       scheduleRender();
+      remoteStateHydrated = true;
       return true;
     } catch {
       // Static/offline mode keeps using localStorage.
@@ -3221,6 +3230,7 @@ async function loginEmployee(identifier, password) {
     body: JSON.stringify({ identifier, password })
   });
   if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
+  remoteStateHydrated = false;
   localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
   return result.user;
 }

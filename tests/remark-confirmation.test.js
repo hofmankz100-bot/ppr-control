@@ -980,6 +980,15 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
 });
 
+test("a remembered state version cannot skip the first full sync of a phone session", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /let remoteStateHydrated = false/);
+  assert.match(client, /if \(!remoteStateHydrated\) \{\s*loadRemoteState\(\)/);
+  assert.match(client, /if \(!remoteStateHydrated\) \{\s*await loadRemoteState\(\)/);
+  assert.match(client, /remoteStateHydrated = true;\s*return true/);
+  assert.match(client, /async function loginEmployee[\s\S]*?remoteStateHydrated = false/);
+});
+
 test("equipment creation dialog always registers its close controls", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const dialog = client.slice(client.indexOf("function openCreateEquipmentDialog"), client.indexOf("const CUSTOM_JOURNAL_COLUMN_TYPES"));
