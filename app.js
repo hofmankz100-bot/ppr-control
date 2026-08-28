@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v705-tmc-removal-hotfix-1";
+const APP_VERSION = "v706-remove-legacy-procurement-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -119,7 +119,6 @@ function mobileShareMode() {
   return window.matchMedia?.("(max-width: 760px), (pointer: coarse)")?.matches || false;
 }
 
-const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
 const PRIMARY_ADMIN_ENGINEER_EMPLOYEE_ID = "87064091893";
 const ATTENDANCE_WORKER_ROLES = new Set(["mechanic", "electrician", "welder", "turner", "forkliftDriver"]);
@@ -135,8 +134,6 @@ const PERSONAL_REMARK_READ_KEY = "ppr-personal-remark-read-v1";
 const DEVICE_DB_NAME = "ppr-control-device-v2";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
-const MANUAL_REQUEST_WORKFLOW = true;
-const REMOVED_REQUEST_ROLES = new Set(["finance", "cash", "accounting", "supply", "warehouse"]);
 const WALK_SHIFT_CLEANUP_VERSION = "walk-shift-clean-v1";
 const PPR_RECOMMENDED_START_DATE = "2026-06-22";
 const ASSET_CACHE_VERSION_KEY = "ppr-asset-cache-version";
@@ -421,10 +418,6 @@ function visibleRoleEntries() {
 const state = loadState();
 applyRoleLabelOverrides(state.adminConfig);
 let stateDataVersion = 0;
-let allRequestsCacheVersion = -1;
-let allRequestsCache = [];
-let inventoryItemsCacheVersion = -1;
-let inventoryItemsCache = [];
 let authenticatedProfile = loadProfile();
 let profile = activeProfileFromSession(authenticatedProfile);
 let attendanceStatus = null;
@@ -436,7 +429,7 @@ let remoteSaveInFlight = false;
 let remoteSavePending = false;
 let remoteSavePromise = null;
 const REMOTE_STATE_FIELDS = [
-  "checks", "requests", "orders", "inventory", "catalog", "serviceCosts",
+  "checks", "orders", "catalog",
   "downtimes", "compressorJournal", "gasJournal", "weldingJournal", "turningJournal", "pprSheets", "annualPpr", "journalDueSince",
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
@@ -592,7 +585,6 @@ let current = {
   requestPriority: "",
   requestRoute: "",
   requestDue: "",
-  selectedStockArea: "",
   scrollToCommentNode: null,
   scrollToRemarkId: "",
   returnToRemarkListAfterResolve: false,
@@ -603,9 +595,6 @@ let current = {
   engineerReportMonth: todayISO().slice(0, 7),
   ratingYear: new Date().getFullYear(),
   ratingMonth: todayISO().slice(0, 7),
-  serviceCostArea: "",
-  serviceCostEquipmentId: "",
-  serviceCostNodeIndex: "",
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
   journalMonth: todayISO().slice(0, 7),
@@ -815,133 +804,6 @@ function ensureAdminMaintenanceUi() {
 
 ensureAdminMaintenanceUi();
 
-function isOpenLegacyJournalRequest(req) {
-  if (!req || typeof req !== "object") return false;
-  if (req.kind === "journal-batch" || req.kind === "tmc") return false;
-  if (req.deleted || req.stock || req.done || req.shopApproved) return false;
-  if (req.supplyPrepared || req.financeApproved || req.cashApproved || req.transferredToWarehouse || req.warehouseReceived || req.issued) return false;
-  const status = String(req.status || req.requestStatus || "shop");
-  if (!["shop", "created"].includes(status)) return false;
-  if (req.kind && req.kind !== "to") return false;
-  if (!req.equipmentId || req.nodeIndex === undefined || !req.date) return false;
-  return Boolean(String(req.text || req.request || "").trim());
-}
-
-function mergeLegacyOpenJournalRequests(targetState) {
-  targetState.requests ||= {};
-  targetState.checks ||= {};
-  return { changed: false, merged: 0 };
-}
-
-function isJournalRequestRecord(id, req = {}) {
-  const kind = String(req?.kind || "");
-  return kind === "journal-batch" || kind === "to" || String(id || "").includes(":to");
-}
-
-function normalizeArticle(value) {
-  return String(value || "").trim().toUpperCase();
-}
-
-function inventoryKey(area, name, article = "") {
-  const cleanArea = area || "Общий склад";
-  const cleanArticle = normalizeArticle(article);
-  if (cleanArticle) return `${cleanArea}::article::${cleanArticle.toLowerCase()}`;
-  return `${cleanArea}::name::${String(name || "").trim().toLowerCase()}`;
-}
-
-function nextInventoryArticle(targetState = state, reserved = new Set()) {
-  const used = new Set(reserved);
-  Object.values(targetState?.inventory || {}).forEach(item => {
-    const article = normalizeArticle(item?.article);
-    if (article) used.add(article);
-  });
-  Object.values(targetState?.requests || {}).forEach(req => {
-    requestItems(req).forEach(item => {
-      const article = normalizeArticle(item?.article);
-      if (article) used.add(article);
-    });
-  });
-  let max = 0;
-  used.forEach(article => {
-    const match = /^ART-(\d+)$/.exec(article);
-    if (match) max = Math.max(max, Number(match[1] || 0));
-  });
-  let next = max + 1;
-  let article = "";
-  do {
-    article = `ART-${String(next).padStart(6, "0")}`;
-    next += 1;
-  } while (used.has(article));
-  reserved.add(article);
-  return article;
-}
-
-function findInventoryArticleByName(area, name, targetState = state) {
-  const cleanArea = area || "Общий склад";
-  const cleanName = String(name || "").trim().toLowerCase();
-  if (!cleanName) return "";
-  const existing = Object.values(targetState?.inventory || {}).find(item =>
-    (item?.area || "Общий склад") === cleanArea
-    && String(item?.name || "").trim().toLowerCase() === cleanName
-    && normalizeArticle(item?.article)
-  );
-  return normalizeArticle(existing?.article);
-}
-
-function ensureInventoryArticle(area, name, article = "", targetState = state, reserved = new Set()) {
-  return normalizeArticle(article)
-    || findInventoryArticleByName(area, name, targetState)
-    || nextInventoryArticle(targetState, reserved);
-}
-
-function migrateInventoryArticles(targetState = state) {
-  targetState.inventory ||= {};
-  const next = {};
-  const reserved = new Set();
-  let changed = false;
-  Object.values(targetState.inventory).forEach(item => {
-    if (!item || typeof item !== "object") return;
-    const article = ensureInventoryArticle(item.area, item.name, item.article, targetState, reserved);
-    const id = inventoryKey(item.area, item.name, article);
-    const old = next[id];
-    if (old) {
-      old.qty = Number(old.qty || 0) + Number(item.qty || 0);
-      old.receivedQty = Number(old.receivedQty || 0) + Number(item.receivedQty || item.qty || 0);
-      old.issuedQty = Number(old.issuedQty || 0) + Number(item.issuedQty || 0);
-      old.updatedAt = [old.updatedAt, item.updatedAt].filter(Boolean).sort().at(-1) || new Date().toISOString();
-      changed = true;
-    } else {
-      next[id] = { ...item, id, article };
-      if (item.id !== id || normalizeArticle(item.article) !== article) changed = true;
-    }
-  });
-  if (changed) targetState.inventory = next;
-  return { changed };
-}
-
-function removeJournalRequestsLocal(targetState) {
-  targetState.requests ||= {};
-  targetState.checks ||= {};
-  let changed = false;
-  const now = new Date().toISOString();
-  Object.entries(targetState.requests).forEach(([id, req]) => {
-    if (!isJournalRequestRecord(id, req)) return;
-    delete targetState.requests[id];
-    changed = true;
-  });
-  Object.values(targetState.checks).forEach(rec => {
-    const item = rec?.to;
-    if (!item || typeof item !== "object") return;
-    const fields = ["request", "requestPhoto", "requestStatus", "requestedTargetRole", "lastRequestId", "invoicePhoto", "noInvoiceApproved"];
-    const hadRequestFields = fields.some(field => Boolean(item[field]));
-    if (!hadRequestFields) return;
-    fields.forEach(field => { item[field] = ""; });
-    item.updatedAt = now;
-    changed = true;
-  });
-  return { changed };
-}
-
 function clearLegacyWalkCompletions(parsed) {
   if (parsed.walkShiftCleanupVersion === WALK_SHIFT_CLEANUP_VERSION) return { changed: false };
   let changed = false;
@@ -962,39 +824,17 @@ function clearLegacyWalkCompletions(parsed) {
   return { changed };
 }
 
-function removeWarehouseStateLocal(targetState) {
-  let changed = Object.keys(targetState.inventory || {}).length > 0 || (targetState.serviceCosts || []).length > 0;
-  targetState.inventory = {};
-  targetState.serviceCosts = [];
-  Object.entries(targetState.requests || {}).forEach(([id, req]) => {
-    if (!req || typeof req !== "object") return;
-    if (String(id).startsWith("warehouse-ask:")
-      || String(id).startsWith("manual-warehouse:")
-      || String(id).startsWith("stock-issue:")
-      || req.route === "stock"
-      || req.warehouseAsk) {
-      delete targetState.requests[id];
-      changed = true;
-    }
-  });
-  return { changed };
-}
-
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    const parsed = raw ? JSON.parse(raw) : { checks: {}, requests: {} };
+    const parsed = raw ? JSON.parse(raw) : { checks: {} };
     parsed.checks ||= {};
     parsed.checks = compactCheckRecords(parsed.checks);
-    parsed.requests ||= {};
     parsed.orders ||= {};
-    parsed.inventory ||= {};
     parsed.catalog ||= { equipment: {} };
     parsed.catalog.equipment ||= {};
     parsed.adminConfig ||= { companyName: "ТОО «Aluminium of Kazakhstan»", departments: [], positions: [] };
-    parsed.serviceCosts ||= [];
     parsed.downtimes ||= [];
-    parsed.monthlyClosures ||= {};
     parsed.compressorJournal ||= {};
     parsed.gasJournal ||= {};
     parsed.weldingJournal ||= {};
@@ -1006,17 +846,18 @@ function loadState() {
     parsed.auditHistory ||= [];
     parsed.operationalResetAt ||= "";
     const walkCleanup = clearLegacyWalkCompletions(parsed);
-    const migration = mergeLegacyOpenJournalRequests(parsed);
-    const journalCleanup = removeJournalRequestsLocal(parsed);
-    const warehouseCleanup = removeWarehouseStateLocal(parsed);
-    const remoteMigrationChanged = migration.changed || walkCleanup.changed || journalCleanup.changed || warehouseCleanup.changed;
+    delete parsed.requests;
+    delete parsed.inventory;
+    delete parsed.serviceCosts;
+    delete parsed.monthlyClosures;
+    const remoteMigrationChanged = walkCleanup.changed;
     if (remoteMigrationChanged) {
       parsed.journalRequestCleanupVersion = APP_VERSION;
       persistStateLocally(parsed);
     }
     return parsed;
   } catch {
-    return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -1024,17 +865,13 @@ function persistStateLocally(snapshot = state) {
   scheduleDeviceStatePersist(snapshot);
   const lightweight = {
     checks: Object.fromEntries(Object.entries(snapshot?.checks || {}).slice(-500)),
-    requests: {},
     catalog: snapshot?.catalog || { equipment: {} },
     downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : [],
-    monthlyClosures: snapshot?.monthlyClosures || {},
     journalDueSince: snapshot?.journalDueSince || {},
     operationalResetAt: snapshot?.operationalResetAt || "",
     walkShiftCleanupVersion: snapshot?.walkShiftCleanupVersion || ""
   };
   try {
-    // Large warehouse catalogs belong in IndexedDB. Keeping them out of synchronous
-    // localStorage prevents visible freezes on every comment or button press.
     localStorage.setItem(STORE_KEY, JSON.stringify(lightweight));
     return true;
   } catch (error) {
@@ -1042,7 +879,6 @@ function persistStateLocally(snapshot = state) {
       localStorage.removeItem(STORE_KEY);
       localStorage.setItem(STORE_KEY, JSON.stringify({
         checks: lightweight.checks || {},
-        requests: lightweight.requests || {},
         catalog: lightweight.catalog || { equipment: {} },
         operationalResetAt: lightweight.operationalResetAt || "",
         walkShiftCleanupVersion: lightweight.walkShiftCleanupVersion || ""
@@ -1633,12 +1469,10 @@ async function clearRecordedDataEverywhere() {
     updatedAt: clearedAt
   });
   state.checks = {};
-  state.requests = {};
   state.downtimes = downtimeTombstones;
   state.compressorJournal = {};
   state.gasJournal = {};
   state.pprSheets = {};
-  state.serviceCosts = [];
   persistStateLocally(state);
   localStorage.setItem(`${STORE_KEY}-pending`, "1");
   localStorage.setItem(`${STORE_KEY}-clear-recorded`, "1");
@@ -1650,10 +1484,8 @@ function applyWorkCleanFromUrl() {
   const cleanMode = new URLSearchParams(window.location.search).get("clean");
   if (cleanMode === "logs") {
     state.checks = {};
-    state.requests = {};
     state.orders = {};
     state.downtimes = [];
-    state.serviceCosts = [];
     state.compressorJournal = {};
     state.gasJournal = {};
     state.pprSheets = {};
@@ -1662,14 +1494,10 @@ function applyWorkCleanFromUrl() {
   }
   if (cleanMode !== "work") return;
   state.checks = {};
-  state.requests = {};
-  state.inventory = {};
   state.downtimes = [];
   state.compressorJournal = {};
   state.gasJournal = {};
   state.pprSheets = {};
-  state.serviceCosts = [];
-  state.serviceCosts = [];
   persistStateLocally(state);
 }
 
@@ -2394,13 +2222,11 @@ function mergeRemoteState(remote = {}, options = {}) {
   const remoteResetAt = String(remote.operationalResetAt || "");
   if (remoteResetAt && remoteResetAt !== String(state.operationalResetAt || "")) {
     state.checks = {};
-    state.requests = {};
     state.downtimes = [];
     state.compressorJournal = {};
     state.gasJournal = {};
     state.pprSheets = {};
     state.journalDueSince = {};
-    state.serviceCosts = [];
     state.auditHistory = [];
     state.operationalResetAt = remoteResetAt;
     localStorage.removeItem(`${STORE_KEY}-pending`);
@@ -2410,22 +2236,14 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.checks = preferRemote
     ? compactCheckRecords({ ...(remote.checks || {}) })
     : compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
-  state.requests = TMC_REQUESTS_DISABLED
-    ? {}
-    : preferRemote
-      ? { ...(remote.requests || {}) }
-      : mergeObjectByFreshnessLocal(state.requests, remote.requests);
   state.orders = preferRemote
     ? { ...(remote.orders || {}) }
     : mergeObjectByFreshnessLocal(state.orders, remote.orders);
-  state.inventory = {};
   state.catalog ||= { equipment: {} };
   state.catalog.equipment = { ...(remote.catalog?.equipment || {}) };
   state.adminConfig = { ...(state.adminConfig || {}), ...(remote.adminConfig || {}) };
   applyRoleLabelOverrides(state.adminConfig);
-  state.serviceCosts = [];
   state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
-  state.monthlyClosures = { ...(state.monthlyClosures || {}), ...(remote.monthlyClosures || {}) };
   state.compressorJournal = preferRemote
     ? { ...(remote.compressorJournal || {}) }
     : mergeObjectByFreshnessLocal(state.compressorJournal || {}, remote.compressorJournal || {});
@@ -2449,15 +2267,6 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
-  const migration = mergeLegacyOpenJournalRequests(state);
-  const journalCleanup = removeJournalRequestsLocal(state);
-  removeWarehouseStateLocal(state);
-  if (migration.changed) {
-    state.journalRequestCleanupVersion = APP_VERSION;
-  }
-  if (journalCleanup.changed) {
-    state.journalRequestCleanupVersion = APP_VERSION;
-  }
   persistStateLocally(state);
 }
 
@@ -2481,9 +2290,6 @@ function mergeRealtimePatch(remote = {}) {
       }
     });
   }
-  if (TMC_REQUESTS_DISABLED) state.requests = {};
-  else if (remote.requests) state.requests = mergeObjectByFreshnessLocal(state.requests, remote.requests);
-  state.inventory = {};
   if (remote.catalog?.equipment) {
     state.catalog ||= { equipment: {} };
     state.catalog.equipment = { ...(state.catalog.equipment || {}), ...remote.catalog.equipment };
@@ -2499,8 +2305,6 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
-  if (remote.monthlyClosures) state.monthlyClosures = { ...(state.monthlyClosures || {}), ...remote.monthlyClosures };
-  if (remote.serviceCosts) state.serviceCosts = mergeArrayByIdLocal(state.serviceCosts, remote.serviceCosts);
   if (remote.auditHistory) state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
   if (Object.prototype.hasOwnProperty.call(remote, "operationalResetAt")) state.operationalResetAt = remote.operationalResetAt;
   if (Object.prototype.hasOwnProperty.call(remote, "walkShiftCleanupVersion")) state.walkShiftCleanupVersion = remote.walkShiftCleanupVersion;
@@ -2985,8 +2789,8 @@ function editorPreviewArea(role = editorPreviewRole()) {
 }
 
 function activeProfileFromSession(user) {
-  if (user && REMOVED_REQUEST_ROLES.has(user.role)) {
-    return { ...user, role: "mechanic", originalRemovedRole: user.role };
+  if (user && !ROLE_ACCESS[user.role]) {
+    return { ...user, role: "mechanic" };
   }
   if (user && user.role !== "editor" && permissionBaseRole(user.role) !== user.role) {
     return { ...user, role: permissionBaseRole(user.role), jobRole: user.role };
@@ -3080,7 +2884,7 @@ function applyLanguage() {
   ui.back?.setAttribute("aria-label", t("back"));
   ui.back?.setAttribute("title", t("back"));
   setText('[data-mobile-view="home"] small', t("home"));
-  setText('[data-mobile-view="requests"] small', MANUAL_REQUEST_WORKFLOW ? t("remarks") : t("requests"));
+  setText('[data-mobile-view="requests"] small', t("remarks"));
   setText('[data-mobile-view="downtime"] small', t("downtime"));
   setText('[data-mobile-view="profile"] small', t("profile"));
   const workPermitButton = document.querySelector("#workPermitButton span");
@@ -3171,9 +2975,7 @@ const MANUAL_CONTENT_TRANSLATION_SELECTOR = [
   ".audit-history-panel",
   ".director-users",
   ".request-text",
-  ".stock-action-line",
   ".manual-text",
-  "[data-tmc-row]",
   "[data-no-translate]"
 ].join(", ");
 
@@ -3499,11 +3301,7 @@ async function finishAuthOnCurrentPage() {
 }
 
 function defaultRequestRole(role = profile?.role) {
-  if (MANUAL_REQUEST_WORKFLOW) return "all";
-  const access = ROLE_ACCESS[role] || ROLE_ACCESS.mechanic;
-  if (access.requestRoles.includes(role)) return role;
-  if (access.requestRoles.includes("all")) return "all";
-  return access.requestRoles[0] || "all";
+  return "all";
 }
 
 function homeViewForProfile(role = profile?.role) {
@@ -3538,13 +3336,13 @@ function canOpenView(view) {
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "adminMaintenance") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role));
-  if (view === "requestCreate") return !TMC_REQUESTS_DISABLED && canEditChecklist();
+  if (view === "requestCreate") return false;
   return true;
 }
 
 function canShowMobileView(view) {
   if (view === "profile" || view === "home") return true;
-  if (view === "requests" && MANUAL_REQUEST_WORKFLOW) return isProfileReady();
+  if (view === "requests") return isProfileReady();
   return canOpenView(view);
 }
 
@@ -3566,24 +3364,15 @@ function isFieldWorkerRole(role = profile?.role) {
 }
 
 function canOpenRequestRole(role) {
-  if (MANUAL_REQUEST_WORKFLOW) {
-    if (profile?.role === "editor") return role === "all" || Boolean(ROLE_ACCESS[role]);
-    if (role === "all") return true;
-    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
-  }
-  if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
-  return role === profile?.role && roleAccess().requestRoles.includes(role);
+  if (profile?.role === "editor") return role === "all" || Boolean(ROLE_ACCESS[role]);
+  if (role === "all") return true;
+  return role === profile?.role && Boolean(ROLE_ACCESS[role]);
 }
 
 function canSeeRequestRoleIndicator(role) {
-  if (MANUAL_REQUEST_WORKFLOW) {
-    if (isEditorSession()) return role === "engineer";
-    if (role === "all") return false;
-    return role === profile?.role && Boolean(ROLE_ACCESS[role]);
-  }
-  if (profile?.role === "editor") return roleAccess().requestRoles.includes(role);
+  if (isEditorSession()) return role === "engineer";
   if (role === "all") return false;
-  return Boolean(ROLE_ACCESS[role]);
+  return role === profile?.role && Boolean(ROLE_ACCESS[role]);
 }
 
 function canActAsRole(role) {
@@ -3817,7 +3606,6 @@ function syncOpenEquipmentLabels(equipmentId, name, area, nodeIndex = null, node
     if (area && Object.prototype.hasOwnProperty.call(item, "area")) item.area = area;
     if (Number.isInteger(nodeIndex) && Number(item.nodeIndex) === nodeIndex && nodeName) item.node = nodeName;
   };
-  Object.values(state.requests || {}).forEach(update);
   (state.downtimes || []).forEach(update);
   Object.values(state.pprSheets || {}).forEach(sheet => {
     update(sheet);
@@ -3902,11 +3690,7 @@ function nodeDeleteTouchesSavedHistory(equipmentId, nodeIndex) {
     const [eqId, index] = recordKey.split(":").map(Number);
     return eqId === targetEquipmentId && index === targetNodeIndex;
   });
-  const linkedRows = [
-    ...Object.values(state.requests || {}),
-    ...(state.downtimes || []),
-    ...(state.serviceCosts || [])
-  ];
+  const linkedRows = state.downtimes || [];
   return checkHistory || linkedRows.some(item =>
     Number(item?.equipmentId) === targetEquipmentId && Number(item?.nodeIndex) === targetNodeIndex
   );
@@ -5955,11 +5739,8 @@ function hasMeaningfulCheckKind(item) {
     group && Object.values(group).some(shift => shift?.done)
   )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
-  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
-  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
-  if (String(item.lastRequestId || item.requestStatus || item.status || "").trim()) return true;
   if (String(item.nodeDraftText || "").trim()) return true;
-  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  if (String(item.comment || item.commentPhoto || "").trim()) return true;
   return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
 }
 
@@ -6707,294 +6488,9 @@ function commentOwnerText(item) {
   return item.commentOwnerName ? `Записал: ${item.commentOwnerName} (${role})` : `Записал: ${role}`;
 }
 
-function requestId(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date, kind = current.kind) {
-  return `${equipmentId}:${nodeIndex}:${date}:${kind}`;
-}
-
 function remarkLinkKey(equipmentId, nodeIndex, date) {
-  return `${equipmentId}:${nodeIndex}:${date}`;
+  return `${Number(equipmentId)}:${Number(nodeIndex)}:${date}`;
 }
-
-function newRequestId(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex, date = current.date, kind = current.kind) {
-  return `${requestId(equipmentId, nodeIndex, date, kind)}:req:${Date.now()}:${Math.random().toString(16).slice(2)}`;
-}
-
-function requestNumberFromId(req) {
-  const year = String(req.createdAt || req.date || todayISO()).slice(0, 4) || String(new Date().getFullYear());
-  let hash = 0;
-  for (const char of String(req.id || "")) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-  return `З-${year}-${String(Math.abs(hash) % 100000).padStart(5, "0")}`;
-}
-
-function requestAddHistory(req, action, details = "") {
-  req.history ||= [];
-  req.approvals ||= {};
-  const last = req.history.at(-1);
-  if (last?.action === action && last?.details === details && Date.now() - Date.parse(last.at || 0) < 1500) return;
-  req.history.push({
-    at: new Date().toISOString(),
-    action,
-    details,
-    status: req.status || req.requestStatus || "",
-    role: profile?.role || "",
-    name: profile?.name || ""
-  });
-}
-
-function normalizeRequest(req) {
-  if (!req || typeof req !== "object") return req;
-  const eq = equipmentById(Number(req.equipmentId || 0));
-  if (eq) {
-    req.equipment = eq.name || req.equipment || "";
-    req.area = eq.area || req.area || "";
-    req.stockArea = eq.area || req.stockArea || "";
-    const nodeIndex = Number(req.nodeIndex);
-    if (Number.isFinite(nodeIndex) && eq.nodes?.[nodeIndex]) req.node = eq.nodes[nodeIndex];
-  }
-  req.requestNumber ||= requestNumberFromId(req);
-  req.items = normalizeRequestItems(req.items, req);
-  req.requestedQty = requestItemsTotal(req.items) || Number(req.requestedQty || req.quantity || req.qtyRequested || 1);
-  req.route ||= req.stock || String(req.id || "").startsWith("stock-issue:") ? "stock" : "purchase";
-  req.priority ||= "normal";
-  req.dueDate ||= "";
-  req.qtyPurchased = Number(req.qtyPurchased || req.qtyReceived || 0);
-  req.qtyAccepted = Number(req.qtyAccepted || (req.warehouseReceived ? req.qtyReceived : 0) || 0);
-  req.qtyInstalled = Number(req.qtyInstalled || req.aggregateInstalledQty || (req.mechanicInstalled ? req.qtyIssued : 0) || 0);
-  req.productionDirectorRequestApproved = Boolean(req.productionDirectorRequestApproved);
-  req.financePreApproved = Boolean(
-    req.financePreApproved
-    || req.economistPreApproved
-    || req.financeInitialApproved
-    || req.supplyPrepared
-    || req.financeApproved
-    || req.cashApproved
-    || req.transferredToWarehouse
-    || req.warehouseReceived
-    || req.issued
-    || req.done
-    || req.stock
-  );
-  req.stockOut = Boolean(req.stockOut);
-  req.stockOutAcknowledged = Boolean(req.stockOutAcknowledged);
-  req.stockOutAt ||= "";
-  req.stockOutReason ||= "";
-  req.stockOutNotifyRole ||= "";
-  req.stockOutRecipientMissing = Boolean(req.stockOutRecipientMissing);
-  req.stockOutRequestedQty = Number(req.stockOutRequestedQty || 0);
-  req.stockOutAvailableQty = Number(req.stockOutAvailableQty || 0);
-  req.createdAt ||= req.updatedAt || new Date().toISOString();
-  req.sourceRole ||= req.createdByRole || "";
-  req.sourceName ||= req.createdByName || "";
-  req.sourceKey ||= req.createdByKey || "";
-  req.sourcePhone ||= req.createdByPhone || "";
-  req.sourceEmployeeId ||= req.createdByEmployeeId || "";
-  req.additionalPhotos = Array.isArray(req.additionalPhotos) ? req.additionalPhotos : [];
-  req.history ||= [];
-  if (!req.history.length) {
-    req.history.push({
-      at: req.createdAt || req.updatedAt || new Date().toISOString(),
-      action: "Заявка создана",
-      details: req.text || "",
-      status: req.status || "shop",
-      role: "",
-      name: ""
-    });
-  }
-  return req;
-}
-
-function requestAuthorHtml(req) {
-  if (req.engineerCombinedBatch) {
-    const authors = [...new Set(requestItems(req).map(item => [item.sourceName, item.sourceRole ? requestRoleLabel(item.sourceRole) : "", item.sourceArea].filter(Boolean).join(" · ")).filter(Boolean))];
-    return `
-      <div class="request-author">
-        <strong>Сводная заявка:</strong>
-        <span>${escapeHtml(authors.length ? authors.join("; ") : "несколько отправителей")}</span>
-      </div>
-    `;
-  }
-  const name = req.sourceName || req.createdByName || req.authorName || "";
-  const role = req.sourceRole || req.createdByRole || req.authorRole || "";
-  const phone = req.sourcePhone || req.createdByPhone || "";
-  const employeeId = req.sourceEmployeeId || req.createdByEmployeeId || "";
-  const meta = [
-    role ? requestRoleLabel(role) : "",
-    employeeId ? `таб. ${employeeId}` : "",
-    phone
-  ].filter(Boolean).join(" · ");
-  if (!name && !meta) return `<div class="request-author missing">Автор заявки: не указан</div>`;
-  return `
-    <div class="request-author">
-      <strong>Автор заявки:</strong>
-      <span>${escapeHtml(name || "Не указан")}${meta ? ` · ${escapeHtml(meta)}` : ""}</span>
-    </div>
-  `;
-}
-
-function normalizeRequestItems(items, req = {}) {
-  const source = Array.isArray(items) ? items : [];
-  const normalized = source
-    .map((item, index) => ({
-      number: Number(item?.number || index + 1),
-      name: String(item?.name || item?.text || "").trim(),
-      article: String(item?.article || "").trim(),
-      stockRemainder: String(item?.stockRemainder ?? item?.stock ?? "").trim(),
-      unit: String(item?.unit || "шт").trim(),
-      requestedQty: Number(item?.requestedQty || item?.qty || 0),
-      requiredQty: Number(item?.requiredQty || item?.neededQty || item?.requestedQty || item?.qty || 0),
-      note: String(item?.note || "").trim(),
-      photo: String(item?.photo || item?.requestPhoto || "").trim(),
-      price: String(item?.price || "").trim(),
-      supplier: String(item?.supplier || "").trim(),
-      supplyNote: String(item?.supplyNote || item?.purchaseNote || "").trim(),
-      sourceRole: String(item?.sourceRole || "").trim(),
-      sourceName: String(item?.sourceName || "").trim(),
-      sourceKey: String(item?.sourceKey || "").trim(),
-      sourcePhone: String(item?.sourcePhone || "").trim(),
-      sourceEmployeeId: String(item?.sourceEmployeeId || "").trim(),
-      sourceArea: String(item?.sourceArea || "").trim()
-    }))
-    .filter(item => item.name || item.article || item.note || item.requestedQty || item.requiredQty);
-  if (normalized.length) return normalized.map((item, index) => ({ ...item, number: index + 1 }));
-  const name = String(req.text || req.request || "").trim();
-  if (!name) return [];
-  return [{
-    number: 1,
-    name,
-    article: normalizeArticle(req.article || ""),
-    stockRemainder: "",
-    unit: "шт",
-    requestedQty: Number(req.requestedQty || req.quantity || 1),
-    requiredQty: Number(req.requestedQty || req.quantity || 1),
-    note: String(req.comment || "").trim(),
-    photo: String(req.requestPhoto || "").trim(),
-    price: String(req.price || "").trim(),
-    supplier: String(req.supplier || "").trim(),
-    supplyNote: String(req.supplier || "").trim()
-  }];
-}
-
-function requestItems(req) {
-  return normalizeRequestItems(req?.items, req);
-}
-
-function requestItemsTotal(items) {
-  return normalizeRequestItems(items).reduce((sum, item) => sum + Number(item.requiredQty || item.requestedQty || 0), 0);
-}
-
-function requestItemsText(items) {
-  return normalizeRequestItems(items).map(item => item.name).filter(Boolean).join("; ");
-}
-
-function applyRequestItems(req, items) {
-  const normalized = normalizeRequestItems(items, req);
-  req.items = normalized;
-  req.text = requestItemsText(normalized) || req.text || "";
-  req.requestedQty = requestItemsTotal(normalized) || Number(req.requestedQty || 1);
-  req.qtyReceived = req.qtyReceived ? Math.min(Number(req.qtyReceived || 0), req.requestedQty) : req.requestedQty;
-  req.qtyPurchased = req.qtyPurchased ? Math.min(Number(req.qtyPurchased || 0), req.requestedQty) : req.qtyReceived;
-  return req;
-}
-
-function upsertNodeWalkRequest(equipmentId, nodeIndex, date, item) {
-  state.requests ||= {};
-  const text = String(item.request || "").trim();
-  const id = requestId(equipmentId, nodeIndex, date, "to");
-  if (!text) {
-    delete state.requests[id];
-    saveState();
-    return null;
-  }
-  const eq = equipmentById(equipmentId);
-  const old = state.requests[id] || {};
-  item.requestStatus ||= old.status || "shop";
-  setRequestStatus(item);
-  state.requests[id] = {
-    ...old,
-    id,
-    equipmentId,
-    nodeIndex,
-    date,
-    kind: "to",
-    equipment: eq?.name || "",
-    area: eq?.area || "",
-    node: eq?.nodes[nodeIndex] || "",
-    comment: commentsSummary(item) || item.comment || "",
-    commentPhoto: item.commentPhoto || old.commentPhoto || "",
-    text,
-    items: normalizeRequestItems(item.items || old.items, { text, requestedQty: item.requestedQty || old.requestedQty, comment: item.comment || old.comment }),
-    requestPhoto: item.requestPhoto || old.requestPhoto || "",
-    invoicePhoto: old.invoicePhoto || item.invoicePhoto || "",
-    noInvoiceApproved: Boolean(old.noInvoiceApproved || item.noInvoiceApproved),
-    price: old.price || item.price || "",
-    supplier: old.supplier || item.supplier || "",
-    status: old.status || item.requestStatus || "shop",
-    shopApproved: Boolean(old.shopApproved || item.shopApproved),
-    engineerApproved: Boolean(old.engineerApproved || item.engineerApproved),
-    productionDirectorRequestApproved: Boolean(old.productionDirectorRequestApproved || item.productionDirectorRequestApproved),
-    financePreApproved: Boolean(old.financePreApproved || item.financePreApproved || old.supplyPrepared || item.supplyPrepared || old.financeApproved || item.financeApproved),
-    supplyPrepared: Boolean(old.supplyPrepared || item.supplyPrepared),
-    financeApproved: Boolean(old.financeApproved || item.financeApproved),
-    cashApproved: Boolean(old.cashApproved || item.cashApproved),
-    transferredToWarehouse: Boolean(old.transferredToWarehouse || item.transferredToWarehouse),
-    warehouseReceived: Boolean(old.warehouseReceived || item.warehouseReceived),
-    issued: Boolean(old.issued || item.issued),
-    issueTargetRole: old.issueTargetRole || item.issueTargetRole || "",
-    issueTargetName: old.issueTargetName || item.issueTargetName || "",
-    issueTargetPhone: old.issueTargetPhone || item.issueTargetPhone || "",
-    installComment: old.installComment || item.installComment || "",
-    aggregateRemarkKey: old.aggregateRemarkKey || item.aggregateRemarkKey || "",
-    mechanicInstalled: Boolean(old.mechanicInstalled || item.mechanicInstalled),
-    shopInstallApproved: Boolean(old.shopInstallApproved || item.shopInstallApproved),
-    productionDirectorApproved: Boolean(old.productionDirectorApproved || item.productionDirectorApproved),
-    accountingWrittenOff: Boolean(old.accountingWrittenOff || item.accountingWrittenOff),
-    done: Boolean(old.done || item.done),
-    stock: Boolean(old.stock || item.stock),
-    qtyReceived: Number(old.qtyReceived || item.qtyReceived || 0),
-    qtyIssued: Number(old.qtyIssued || item.qtyIssued || 0),
-    aggregateInstalledQty: Number(old.aggregateInstalledQty || item.aggregateInstalledQty || 0),
-    stockArea: old.stockArea || item.stockArea || "",
-    inventoryAddedQty: Number(old.inventoryAddedQty || item.inventoryAddedQty || 0),
-    sourceRole: old.sourceRole || item.sourceRole || profile?.role || "",
-    sourceName: old.sourceName || item.sourceName || profile?.name || "",
-    sourceKey: old.sourceKey || item.sourceKey || profileKey(),
-    createdAt: old.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  saveState();
-  return state.requests[id];
-}
-
-function allRequests() {
-  if (allRequestsCacheVersion === stateDataVersion) return allRequestsCache;
-  state.requests ||= {};
-  const map = { ...(state.requests || {}) };
-  Object.values(map).forEach(normalizeRequest);
-  state.requests = map;
-  allRequestsCache = Object.values(map)
-    .filter(req => req && !req.deleted && req.text && req.id && !["journal-batch", "to"].includes(req.kind))
-    .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
-  allRequestsCacheVersion = stateDataVersion;
-  return allRequestsCache;
-}
-
-function relatedIssuedRequestForNode(equipmentId, nodeIndex, date, item) {
-  const candidates = Object.values(state.requests || {}).filter(req =>
-    Number(req.equipmentId) === Number(equipmentId)
-    && Number(req.nodeIndex) === Number(nodeIndex)
-    && req.date === date
-    && req.issued
-    && !req.stock
-    && !req.done
-    && !req.accountingWrittenOff
-  );
-  if (item?.lastRequestId) {
-    const exact = candidates.find(req => req.id === item.lastRequestId);
-    if (exact) return exact;
-  }
-  return candidates.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0] || null;
-}
-
 function askCommentSubmit() {
   return new Promise(resolve => {
     const overlay = document.createElement("div");
@@ -7915,255 +7411,29 @@ function updateDowntimeBadge() {
   ui.downtimeOpenButton.classList.toggle("request-alert", count > 0);
 }
 
-function partNameFromRequest(req) {
-  return String(req.text || "").trim() || "Запчасть без названия";
-}
-
-function partArticleFromRequest(req) {
-  return normalizeArticle(req.article || requestItems(req)[0]?.article || "");
-}
-
-function requestMatchesFilters(req) {
-  const query = String(current.requestSearch || "").trim().toLowerCase();
-  if (query) {
-    const itemText = requestItems(req).map(item => [item.name, item.article, item.note, item.stockRemainder].join(" ")).join(" ");
-    const searchable = [
-      req.requestNumber, req.text, itemText, req.comment, req.area, req.equipment,
-      req.node, req.supplier, req.issueTargetName, statusText(req.status)
-    ].join(" ").toLowerCase();
-    if (!searchable.includes(query)) return false;
-  }
-  if (current.requestPriority && req.priority !== current.requestPriority) return false;
-  if (current.requestRoute && req.route !== current.requestRoute) return false;
-  if (current.requestDue && (!req.dueDate || req.dueDate > current.requestDue)) return false;
-  return true;
-}
-
-function requestRoleCounts() {
-  const all = allRequests();
-  if (MANUAL_REQUEST_WORKFLOW) {
-    return { all: 0, engineer: 0 };
-  }
-  const roles = ["shop", "engineer", "mechanic", "electrician", "operator", "productionDirector"];
-  const counts = { all: all.filter(req => requestVisibleForRole(req, "all")).length };
-  roles.forEach(role => {
-    counts[role] = all.filter(req => requestVisibleForRoleIndicator(req, role) && requestNeedsRole(req, role)).length;
-  });
-  return counts;
-}
-
 function updateRoleBadges() {
-  const counts = requestRoleCounts();
   const personalCount = personalRemarkMessages().length;
   document.querySelectorAll("[data-open-role], .request-tabs .tab[data-role]").forEach(button => {
     const role = button.dataset.openRole || button.dataset.role;
     const quickButton = Boolean(button.dataset.openRole);
     const canEnter = canOpenRequestRole(role);
     button.hidden = quickButton ? !canSeeRequestRoleIndicator(role) : !canEnter;
-    const personalWaiting = role === profile?.role || (isEditorSession() && role === "engineer") ? personalCount : 0;
-    const waiting = (counts[role] || 0) + personalWaiting;
-    const label = requestRoleLabel(role);
-    button.innerHTML = `<span>${label}${personalWaiting ? `<small class="role-personal-count">Личные: ${personalWaiting}</small>` : ""}</span><strong>${waiting}</strong>`;
+    const waiting = role === profile?.role || (isEditorSession() && role === "engineer") ? personalCount : 0;
+    button.innerHTML = `<span>${requestRoleLabel(role)}${waiting ? `<small class="role-personal-count">Личные: ${waiting}</small>` : ""}</span><strong>${waiting}</strong>`;
     button.classList.toggle("indicator-only", quickButton && !canEnter);
-    button.classList.toggle("request-alert", waiting > 0 && role !== "all");
+    button.classList.toggle("request-alert", waiting > 0);
     button.classList.toggle("has-count", waiting > 0);
     button.setAttribute("aria-disabled", quickButton && !canEnter ? "true" : "false");
   });
-  const ownRole = defaultRequestRole();
-  const ownWaiting = (counts[ownRole] || 0) + personalCount;
   const mobileRemarkButton = document.querySelector('[data-mobile-view="requests"]');
-  mobileRemarkButton?.classList.toggle("request-alert", ownWaiting > 0);
+  mobileRemarkButton?.classList.toggle("request-alert", personalCount > 0);
   const mobileRemarkCount = mobileRemarkButton?.querySelector("[data-mobile-remark-count]");
   if (mobileRemarkCount) {
-    mobileRemarkCount.textContent = ownWaiting;
-    mobileRemarkCount.hidden = ownWaiting === 0;
+    mobileRemarkCount.textContent = personalCount;
+    mobileRemarkCount.hidden = personalCount === 0;
   }
   if (ui.workerRatingButton) ui.workerRatingButton.hidden = !canOpenView("workerRating");
   if (ui.engineerReportButton) ui.engineerReportButton.hidden = true;
-}
-
-function getRequestKindById(id) {
-  const [equipmentId, nodeIndex, date, kind] = id.split(":");
-  return record(Number(equipmentId), Number(nodeIndex), date)[kind];
-}
-
-function syncRequestToRecord(req) {
-  state.requests ||= {};
-  normalizeRequest(req);
-  const previousStatus = req.history?.at(-1)?.status || "";
-  setRequestStatus(req);
-  req.status = req.requestStatus || req.status || "shop";
-  if (req.status !== previousStatus) requestAddHistory(req, statusText(req.status));
-  req.updatedAt = new Date().toISOString();
-  state.requests[req.id] = req;
-  if (
-    String(req.id || "").startsWith("stock-issue:")
-    || String(req.id || "").startsWith("warehouse-ask:")
-    || String(req.id || "").startsWith("manual-warehouse:")
-    || String(req.id || "").startsWith("engineer-batch:")
-    || String(req.id || "").startsWith("tmc-request:")
-    || String(req.id || "").startsWith("whatsapp-draft:")
-    || String(req.id || "").includes(":req:")
-  ) return;
-  const kind = getRequestKindById(req.id);
-  kind.request = req.text;
-  kind.items = requestItems(req);
-  kind.comment = req.comment;
-  kind.commentPhoto = req.commentPhoto || "";
-  kind.requestPhoto = req.requestPhoto || "";
-  kind.invoicePhoto = req.invoicePhoto || "";
-  kind.noInvoiceApproved = Boolean(req.noInvoiceApproved);
-  kind.price = req.price;
-  kind.supplier = req.supplier;
-  kind.requestStatus = req.status;
-  kind.shopApproved = req.shopApproved;
-  kind.engineerApproved = req.engineerApproved;
-  kind.productionDirectorRequestApproved = req.productionDirectorRequestApproved;
-  kind.financePreApproved = req.financePreApproved;
-  kind.supplyPrepared = req.supplyPrepared;
-  kind.financeApproved = req.financeApproved;
-  kind.cashApproved = req.cashApproved;
-  kind.transferredToWarehouse = req.transferredToWarehouse;
-  kind.warehouseReceived = req.warehouseReceived;
-  kind.issued = req.issued;
-  kind.stockOut = Boolean(req.stockOut);
-  kind.stockOutAcknowledged = Boolean(req.stockOutAcknowledged);
-  kind.stockOutAt = req.stockOutAt || "";
-  kind.stockOutReason = req.stockOutReason || "";
-  kind.stockOutNotifyRole = req.stockOutNotifyRole || "";
-  kind.stockOutRecipientMissing = Boolean(req.stockOutRecipientMissing);
-  kind.stockOutRequestedQty = Number(req.stockOutRequestedQty || 0);
-  kind.stockOutAvailableQty = Number(req.stockOutAvailableQty || 0);
-  kind.requestedTargetRole = req.requestedTargetRole || "";
-  kind.issueTargetRole = req.issueTargetRole || (req.issued ? "mechanic" : "");
-  kind.issueTargetName = req.issueTargetName || "";
-  kind.issueTargetPhone = req.issueTargetPhone || "";
-  kind.installComment = req.installComment || "";
-  kind.aggregateRemarkKey = req.aggregateRemarkKey || "";
-  kind.mechanicInstalled = req.mechanicInstalled;
-  kind.shopInstallApproved = req.shopInstallApproved;
-  kind.productionDirectorApproved = req.productionDirectorApproved;
-  kind.approvalResponsibilityDeclines = req.approvalResponsibilityDeclines || {};
-  kind.installResponsibilityDeclines = req.installResponsibilityDeclines || {};
-  kind.accountingWrittenOff = req.accountingWrittenOff;
-  kind.done = req.done;
-  kind.stock = req.stock;
-  kind.qtyReceived = Number(req.qtyReceived || 0);
-  kind.qtyIssued = Number(req.qtyIssued || 0);
-  kind.aggregateInstalledQty = Number(req.aggregateInstalledQty || 0);
-  kind.stockArea = req.stockArea || "";
-  kind.inventoryAddedQty = Number(req.inventoryAddedQty || 0);
-  kind.inventoryAddedItems = req.inventoryAddedItems || {};
-  kind.requestNumber = req.requestNumber || "";
-  kind.route = req.route || "purchase";
-  kind.priority = req.priority || "normal";
-  kind.dueDate = req.dueDate || "";
-  kind.requestedQty = Number(req.requestedQty || 1);
-  kind.qtyPurchased = Number(req.qtyPurchased || 0);
-  kind.qtyAccepted = Number(req.qtyAccepted || 0);
-  kind.qtyInstalled = Number(req.qtyInstalled || 0);
-  kind.returnedTo = req.returnedTo || "";
-  kind.returnReason = req.returnReason || "";
-  kind.rejected = Boolean(req.rejected);
-  kind.rejectionReason = req.rejectionReason || "";
-  kind.sourceRole = req.sourceRole || "";
-  kind.sourceName = req.sourceName || "";
-  kind.sourceKey = req.sourceKey || "";
-  kind.additionalPhotos = Array.isArray(req.additionalPhotos) ? req.additionalPhotos : [];
-  kind.approvals = req.approvals && typeof req.approvals === "object" ? req.approvals : {};
-  kind.history = Array.isArray(req.history) ? req.history : [];
-  if (req.done || req.stock) kind.resolved = true;
-}
-
-function setRequestStatus(reqKind) {
-  if (reqKind.rejected && reqKind.returnedTo) reqKind.requestStatus = reqKind.returnedTo;
-  else if (reqKind.rejected) reqKind.requestStatus = "rejected";
-  else if (reqKind.returnedTo) reqKind.requestStatus = reqKind.returnedTo;
-  else if (reqKind.stock) reqKind.requestStatus = "stock";
-  else if (reqKind.done) reqKind.requestStatus = "done";
-  else if (MANUAL_REQUEST_WORKFLOW) reqKind.requestStatus = "manual";
-  else reqKind.requestStatus = "shop";
-}
-
-function requestWaitingForShopInitial(req) {
-  return !req.issued && !req.shopApproved && !req.done && !req.stock;
-}
-
-function requestWaitingForInstallApproval(req) {
-  return req.mechanicInstalled
-    && !req.shopInstallApproved
-    && !req.productionDirectorApproved
-    && !req.done
-    && !req.stock;
-}
-
-function requestWaitingForEngineerInitial(req) {
-  return req.route !== "stock"
-    && requestRequiresEngineerApproval(req)
-    && req.shopApproved
-    && !req.engineerApproved
-    && !req.productionDirectorRequestApproved
-    && !req.done
-    && !req.stock;
-}
-
-function statusText(status) {
-  if (status === "stock") return "В запасе";
-  return {
-    created: "Создана",
-    manual: "Ручной обход",
-    shop: "Ожидает начальника цеха",
-    engineer: "Ожидает инженера",
-    financePre: "Ручное согласование",
-    supply: "Ручное согласование",
-    finance: "Ручное согласование",
-    financeApproved: "Ручное согласование",
-    cash: "Ручное согласование",
-    cashApproved: "Ручное согласование",
-    waitingWarehouse: "Передано складовщику",
-    warehouse: "У складовщика",
-    issued: "Выдано сотруднику",
-    waitingShopDone: "Ждёт подтверждения установки",
-    productionDirector: "Ждёт директора производства",
-    accounting: "Ждёт ответственного",
-    stockOut: "Запас закончился",
-    rejected: "Отклонено",
-    done: "Выполнено"
-  }[status] || status;
-}
-
-function requestRouteLabel(route) {
-  if (MANUAL_REQUEST_WORKFLOW) return "Ручная заявка";
-  return route === "stock" ? "Со склада" : "Закупка";
-}
-
-function requestPriorityLabel(priority) {
-  return {
-    normal: "Обычная",
-    urgent: "Срочная",
-    emergency: "Аварийная"
-  }[priority] || "Обычная";
-}
-
-function requestIsOverdue(req) {
-  return window.PPRModules.requests.overdue(req, todayISO());
-}
-
-function requestHistoryHtml(req) {
-  const history = Array.isArray(req.history) ? req.history.slice().reverse() : [];
-  return `
-    <details class="request-history">
-      <summary>История действий (${history.length})</summary>
-      <ol>${history.map(entry => `
-        <li>
-          <strong>${escapeHtml(entry.action || "Изменение")}</strong>
-          ${entry.name || entry.role ? ` — ${escapeHtml(entry.name || requestRoleLabel(entry.role))}` : ""}
-          <time>${dateTimeHuman(entry.at)}</time>
-          ${entry.details ? `<div>${escapeHtml(entry.details)}</div>` : ""}
-        </li>
-      `).join("")}</ol>
-    </details>
-  `;
 }
 
 function equipmentById(id) {
@@ -8200,35 +7470,6 @@ function canOpenEquipmentDate(date) {
 
 function hasOpenCommentRecord(rec) {
   return ["to"].some(kind => countedOpenRemarkEntries(rec?.[kind] || {}).length > 0);
-}
-
-function isActiveRequestSignal(req) {
-  const activeStatuses = new Set(["manual", "shop", "engineer", "productionDirector"]);
-  const status = String(req?.status || req?.requestStatus || "");
-  return Boolean(
-    String(req?.text || req?.request || "").trim()
-    && activeStatuses.has(status)
-    && !req.done
-    && !req.stock
-    && !req.accountingWrittenOff
-  );
-}
-
-function hasActiveRequestRecord(rec) {
-  return ["to"].some(kind => {
-    const item = rec?.[kind];
-    return isActiveRequestSignal(item);
-  });
-}
-
-function hasActiveRequestForNodeDate(equipmentId, nodeIndex, date) {
-  state.requests ||= {};
-  return Object.values(state.requests).some(req =>
-    Number(req.equipmentId) === Number(equipmentId)
-    && Number(req.nodeIndex) === Number(nodeIndex)
-    && req.date === date
-    && isActiveRequestSignal(req)
-  );
 }
 
 function hasOpenCommentEquipment(equipmentId) {
@@ -9139,34 +8380,6 @@ function aggregateRemarkOptions(area = "") {
     })
     .filter(Boolean)
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
-}
-
-function requestAggregateLinkKey(req) {
-  if (req.aggregateRemarkKey) return req.aggregateRemarkKey;
-  if (req.equipmentId !== "" && req.nodeIndex !== "" && req.date) return remarkLinkKey(req.equipmentId, req.nodeIndex, req.date);
-  return "";
-}
-
-function requestInstalledQty(req) {
-  return Number(req.aggregateInstalledQty || req.qtyIssued || req.qtyReceived || 0);
-}
-
-function lockRequestInstalledQty(req) {
-  if (!req || Number(req.aggregateInstalledQty || 0) > 0) return;
-  req.aggregateInstalledQty = Number(req.qtyIssued || req.qtyReceived || 0);
-}
-
-function installedPartsForRemark(linkKey) {
-  if (!linkKey) return [];
-  return allRequests()
-    .filter(req => requestAggregateLinkKey(req) === linkKey)
-    .filter(req => req.mechanicInstalled || req.shopInstallApproved || req.productionDirectorApproved || req.accountingWrittenOff || req.done)
-    .map(req => ({
-      name: partNameFromRequest(req),
-      qty: requestInstalledQty(req),
-      comment: req.installComment || ""
-    }))
-    .filter(item => item.name && item.qty > 0);
 }
 
 function aggregateJournalCount(area, equipmentId = 0) {
@@ -10712,12 +9925,10 @@ function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
     ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey, group)).length, 0)
     : rows.filter(rec => isNodeCheckedForGroup(rec, group)).length;
   const open = rows.some(rec => hasOpenCommentRecord(rec));
-  const requestOpen = rows.some((rec, index) => hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(eq.id, index, date));
   return {
     done,
     total,
     open,
-    requestOpen,
     overdue: total > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < total,
     blinkToday: total > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < total
   };
@@ -10936,7 +10147,6 @@ function renderSchedule() {
       const plan = plannedStatus(day);
       const status = factStatus || plan;
       const open = hasOpenCommentRecord(rec);
-      const requestOpen = hasActiveRequestRecord(rec) || hasActiveRequestForNodeDate(current.equipmentId, nodeIndex, date);
       const activeNodeDowntime = activeDowntime(current.equipmentId, nodeIndex);
       const operationalPause = activeOperationalPause(eq, nodeIndex, date);
       const downtimeOpen = Boolean(activeNodeDowntime);
@@ -11599,8 +10809,6 @@ function renderNodeWalkthrough(eq) {
 }
 
 function nodeWalkStatusText(item) {
-  if (item.productionDirectorApproved && !item.accountingWrittenOff && !item.done) return "Подтверждено директором производства. Ждёт ответственного";
-  if (item.shopInstallApproved && !item.productionDirectorApproved && !item.done) return "Установка подтверждена. Ждёт директора производства";
   if (item.mechanicFixed && !item.resolved) return "Устранено. Ждёт подтверждения начальника цеха/инженера";
   const openRemarks = countedOpenRemarkEntries(item).length;
   if (openRemarks) return `Открытых замечаний: ${openRemarks}`;
@@ -11702,26 +10910,9 @@ function renderRequests() {
   const list = document.querySelector("#requestList");
   updateRoleBadges();
   document.querySelectorAll(".request-tabs .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.role === current.requestRole));
-  const all = allRequests();
-  const visible = all.filter(req => requestAllowedByUser(req));
-  if (MANUAL_REQUEST_WORKFLOW) {
-    ui.requestsMeta.textContent = "Подтверждение устранённых замечаний";
-    if (ui.requestSearchInput) ui.requestSearchInput.value = "";
-    list.innerHTML = "";
-    applyLanguage();
-    queueTranslateVisiblePage();
-    return;
-  }
-  const waitingHere = visible.filter(req => requestNeedsRole(req, current.requestRole)).length;
-  ui.requestsMeta.textContent = MANUAL_REQUEST_WORKFLOW
-    ? `Всего заявок: ${visible.length}`
-    : `Всего доступно: ${visible.length} · Требуют вашего действия: ${waitingHere}`;
-  if (ui.requestSearchInput) ui.requestSearchInput.value = current.requestSearch;
-  let rows = all.filter(req => requestVisibleForRole(req, current.requestRole));
-  rows = rows.filter(requestMatchesFilters);
+  ui.requestsMeta.textContent = "Подтверждение устранённых замечаний";
+  if (ui.requestSearchInput) ui.requestSearchInput.value = "";
   list.innerHTML = "";
-  if (!rows.length) list.insertAdjacentHTML("beforeend", `<div class="empty-state">Нет заявок для этого раздела</div>`);
-  rows.forEach(req => list.append(requestCard(req)));
   applyLanguage();
   queueTranslateVisiblePage();
 }
@@ -12698,10 +11889,7 @@ function pprJournalCompletion(eq, date, node = "") {
   const item = rec?.to || {};
   const complete = nodeWalkCompletion(rec, date).complete || Boolean(
     item.resolved ||
-    item.mechanicFixed ||
-    item.shopInstallApproved ||
-    item.productionDirectorApproved ||
-    item.accountingWrittenOff
+    item.mechanicFixed
   );
   const partial = !complete && (nodeWalkCompletion(rec, date).partial || hasMeaningfulCheckKind(item));
   const author = item.updatedByName || item.checkedBy || item.commentOwnerName || item.resolvedByName || "";
@@ -13325,8 +12513,6 @@ function renderRolePersonalInbox() {
 }
 
 function globalReminderItems(equipment = globalControlEquipment()) {
-  const equipmentIds = new Set(equipment.map(eq => Number(eq.id)));
-  const areas = new Set(equipment.map(eq => eq.area));
   const items = [];
   if (["engineer", "editor"].includes(profile?.role)) {
     Object.keys(state.pprSheets || {})
@@ -13340,18 +12526,6 @@ function globalReminderItems(equipment = globalControlEquipment()) {
         pprApprovalDate: date
       }));
   }
-  allRequests()
-    .filter(req =>
-      !req.done && !req.stock && !req.rejected && !req.deleted &&
-      requestIsOverdue(req) && requestAllowedByUser(req) &&
-      (!equipment.length || !req.equipmentId || equipmentIds.has(Number(req.equipmentId)) || areas.has(req.area))
-    )
-    .forEach(req => items.push({
-      level: "red",
-      icon: "📋",
-      title: `Просрочена заявка ${req.requestNumber || ""}`.trim(),
-      text: req.equipment || req.area || req.text || "Требуется обработка"
-    }));
   equipment.forEach(eq => {
     const plan = directorRecommendedMaintenance(eq);
     const planNodeIndex = eq.nodes.findIndex(node => node === plan.node);
@@ -13487,83 +12661,6 @@ function directorWithinLastDay(item, fallbackDate = "") {
 function directorOlderThanDay(item, fallbackDate = "") {
   const ms = directorItemTimeMs(item, fallbackDate);
   return ms > 0 && Date.now() - ms >= 24 * 60 * 60 * 1000;
-}
-
-function directorRecentRequests() {
-  return [];
-}
-
-function directorArchivedRequests() {
-  return [];
-}
-
-function directorRecentRemarks() {
-  return directorOpenRemarks().filter(remark => directorWithinLastDay(remark, remark.date));
-}
-
-function directorArchivedRemarks() {
-  return directorOpenRemarks().filter(remark => directorOlderThanDay(remark, remark.date));
-}
-
-function directorJournalState(eq) {
-  if (eq.area === COMPRESSOR_JOURNAL_AREA) {
-    const overdue = compressorJournalIncompleteDays(eq.area);
-    return {
-      color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
-      text: overdue ? overdueDaysText(overdue) : "Выполнено"
-    };
-  }
-  if (eq.area === GAS_JOURNAL_AREA) {
-    const overdue = gasJournalIncompleteDays();
-    return {
-      color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green",
-      text: overdue ? overdueDaysText(overdue) : "Выполнено"
-    };
-  }
-  const walk = directorTodayWalk(eq);
-  return {
-    color: directorTraffic(walk.done, walk.total),
-    text: walk.done === walk.total ? "Выполнено" : walk.done ? `${walk.done}/${walk.total} узлов` : "Не заполнено"
-  };
-}
-
-function directorRequestStats() {
-  const requests = directorRecentRequests();
-  const archive = directorArchivedRequests();
-  return {
-    open: requests.length,
-    archive: archive.length,
-    approval: requests.filter(req => ["shop", "engineer", "financePre", "finance", "cash", "productionDirector", "accounting"].includes(waitingRole(req))).length,
-    purchase: requests.filter(req => req.route !== "stock").length,
-    warehouse: requests.filter(req => ["warehouse", "waitingWarehouse"].includes(req.status) || waitingRole(req) === "warehouse").length,
-    overdue: requests.filter(requestIsOverdue).length
-  };
-}
-
-function directorActiveRequests() {
-  return directorRecentRequests();
-}
-
-function directorRequestDetailRows(requests = directorActiveRequests(), archiveMode = false) {
-  if (!requests.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>${archiveMode ? "В архиве заявок нет" : "Заявок за последние 24 часа нет"}</strong></div>`;
-  return requests.map(req => {
-    const role = waitingRole(req);
-    const holder = requestRoleLabel(role);
-    const overdue = requestIsOverdue(req);
-    return `
-      <div class="director-info-row ${overdue ? "red" : ""}">
-        <span class="traffic-dot"></span>
-        <div>
-          <strong>${escapeHtml(req.requestNumber || "Заявка")}${req.equipment ? ` · ${escapeHtml(req.equipment)}` : ""}</strong>
-          <p>${userTextWithRussianHtml(req.text || "Описание отсутствует")}</p>
-          <small>${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}${req.dueDate ? ` · Срок ${dateHuman(req.dueDate)}` : ""}</small>
-        </div>
-        <div class="director-info-owner">
-          <b>${overdue ? "Просрочено" : statusText(req.status || req.requestStatus || "")}</b>
-          <span>Сейчас у: ${escapeHtml(holder)}</span>
-        </div>
-      </div>`;
-  }).join("");
 }
 
 function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
@@ -13953,8 +13050,6 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
 }
 
 function directorFactoryReliabilityDetails(month) {
-  const frozenScore = Number(state.monthlyClosures?.[month.monthKey]?.snapshot?.factoryReliabilityScore);
-  if (Number.isFinite(frozenScore)) return { score: Math.max(0, Math.min(100, Math.round(frozenScore))), frozen: true, penalties: {} };
   const downtimeHours = Number(month.reliabilityDowntimeMs ?? month.downtimeMs) / 3600000;
   const openWorks = Number.isFinite(month.openWorks) ? Number(month.openWorks) : Math.max(month.repairsCreated - month.repairsClosed, 0);
   const qrPercent = month.qrPlan ? month.qrDone / month.qrPlan * 100 : 100;
@@ -14684,166 +13779,6 @@ function monthDisplayName(monthKey = current.engineerReportMonth) {
   return new Date(year, month, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
 
-function parseMoneyAmount(value) {
-  const text = String(value || "").replace(/\u00a0/g, " ");
-  const numbers = [...text.matchAll(/\d[\d\s.,]*/g)]
-    .map(match => Number(match[0].replace(/\s/g, "").replace(",", ".")))
-    .filter(Number.isFinite);
-  if (!numbers.length) return 0;
-  const hasRange = /[-–—]/.test(text) && numbers.length >= 2;
-  return hasRange ? (numbers[0] + numbers[1]) / 2 : numbers[0];
-}
-
-function formatMoney(amount) {
-  const value = Math.round(Number(amount || 0));
-  if (!value) return "0";
-  return value.toLocaleString("ru-RU");
-}
-
-function priceTextFromAmount(amount) {
-  const value = Number(amount || 0);
-  return value > 0 ? formatMoney(value) : "";
-}
-
-const priceLookupMemory = new Map();
-
-function clearPriceLookupClientQuery(name = "") {
-  const cleanName = String(name || "").trim();
-  const words = cleanName.split(/\s+/).filter(word => word.length >= 3);
-  const generic = /^(болт|гайка|шайба|профиль|кабель|масло|труба|лента|насос|датчик|подшипник)$/i.test(cleanName);
-  return words.length >= 2 && cleanName.length >= 8 && !generic;
-}
-
-async function lookupInternetPriceClient(name = "") {
-  if (!clearPriceLookupClientQuery(name)) return null;
-  const keyValue = String(name || "").trim().toLowerCase();
-  if (priceLookupMemory.has(keyValue)) return priceLookupMemory.get(keyValue);
-  const result = await apiJson("/api/price-lookup", {
-    method: "POST",
-    body: JSON.stringify({ name }),
-    timeout: 12000
-  }).catch(() => null);
-  const price = result?.ok && Number(result.price || 0) > 0 ? Number(result.price) : 0;
-  const value = price ? { price, source: result.source || "internet", confidence: result.confidence || "" } : null;
-  priceLookupMemory.set(keyValue, value);
-  return value;
-}
-
-async function autoFillInternetPriceInput(input, name = "", article = "", onApply = null) {
-  if (!input || parseMoneyAmount(input.value) > 0) return false;
-  if (input.dataset.priceLookupDone === "1") return false;
-  input.dataset.priceLookupDone = "1";
-  const result = await lookupInternetPriceClient(name);
-  if (!result?.price || parseMoneyAmount(input.value) > 0) return false;
-  input.value = priceTextFromAmount(result.price);
-  input.title = `Автоматически найдено из интернета (${result.confidence || "оценка"})`;
-  input.classList.add("internet-price-filled");
-  if (typeof onApply === "function") onApply(result.price);
-  return true;
-}
-
-function serviceCosts() {
-  state.serviceCosts ||= [];
-  return state.serviceCosts.filter(item => item && !item.deleted);
-}
-
-function serviceCostAreas() {
-  return [...new Set([...availableEquipmentAreas(), ...serviceCosts().map(item => item.area)].filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "ru"));
-}
-
-function serviceCostEquipmentForArea(area = current.serviceCostArea) {
-  return allEquipment()
-    .filter(eq => !area || eq.area === area)
-    .sort((a, b) => `${a.area} ${a.name}`.localeCompare(`${b.area} ${b.name}`, "ru"));
-}
-
-function ensureServiceCostSelection() {
-  const areas = serviceCostAreas();
-  if (!current.serviceCostArea || !areas.includes(current.serviceCostArea)) {
-    current.serviceCostArea = areas[0] || "";
-  }
-  const equipment = serviceCostEquipmentForArea(current.serviceCostArea);
-  if (!current.serviceCostEquipmentId || !equipment.some(eq => String(eq.id) === String(current.serviceCostEquipmentId))) {
-    current.serviceCostEquipmentId = equipment[0]?.id ? String(equipment[0].id) : "";
-  }
-  const eq = equipmentById(Number(current.serviceCostEquipmentId));
-  if (!eq || current.serviceCostNodeIndex === "" || !eq.nodes[Number(current.serviceCostNodeIndex)]) {
-    current.serviceCostNodeIndex = eq?.nodes?.length ? "0" : "";
-  }
-}
-
-function createServiceCost(data = {}) {
-  ensureServiceCostSelection();
-  const amount = parseMoneyAmount(data.amount);
-  const comment = String(data.comment || "").trim();
-  if (amount <= 0 || !comment) return null;
-  const eq = equipmentById(Number(data.equipmentId || current.serviceCostEquipmentId));
-  const nodeIndex = Number(data.nodeIndex ?? current.serviceCostNodeIndex);
-  const item = {
-    id: `service:${Date.now()}:${Math.random().toString(16).slice(2)}`,
-    date: String(data.date || todayISO()),
-    area: data.area || eq?.area || current.serviceCostArea || "",
-    equipmentId: eq?.id || "",
-    equipment: eq?.name || "",
-    nodeIndex: Number.isFinite(nodeIndex) ? nodeIndex : "",
-    node: eq?.nodes?.[nodeIndex] || "",
-    amount,
-    comment,
-    authorName: profile?.name || "",
-    authorRole: profile?.role || "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  state.serviceCosts ||= [];
-  state.serviceCosts.unshift(item);
-  return item;
-}
-
-function annualServiceCostEntries(year) {
-  return serviceCosts()
-    .filter(item => dateYearMonth(item.date || item.createdAt)?.year === year)
-    .map(item => ({
-      date: item.date || item.createdAt || "",
-      area: item.area || "",
-      equipment: item.equipment || "",
-      node: item.node || "",
-      name: "Услуга / работа",
-      qty: 1,
-      unit: "усл.",
-      unitPrice: Number(item.amount || 0),
-      total: Number(item.amount || 0),
-      supplier: item.comment || ""
-    }))
-    .filter(item => item.total > 0);
-}
-
-function annualRequestCostEntries(year) {
-  const entries = [];
-  Object.values(state.inventory || {}).forEach(item => {
-    if (!item || !item.name) return;
-    const costDate = item.lastReceivedAt || item.firstReceivedAt || item.updatedAt || "";
-    const ym = dateYearMonth(costDate);
-    if (ym?.year !== year) return;
-    const unitPrice = parseMoneyAmount(item.unitPrice || item.price || item.lastPrice || "");
-    if (!unitPrice) return;
-    const qty = Number(item.receivedQty || item.qty || 0);
-    if (qty <= 0) return;
-    entries.push({
-      date: costDate,
-      area: item.area || "",
-      equipment: item.source || item.area || "Склад",
-      node: item.location || "",
-      name: item.name || "",
-      qty,
-      unit: item.unit || "шт",
-      unitPrice,
-      total: unitPrice * qty,
-      supplier: "Склад"
-    });
-  });
-  return entries;
-}
 
 function engineerAnnualAnalysis(year) {
   const events = annualRepairEvents(year);
@@ -14946,21 +13881,6 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     .map(item => ({ ...item, monthMs: downtimeOverlapMs(item, year, month) }))
     .filter(item => item.monthMs > 0)
     .sort((a, b) => b.monthMs - a.monthMs || String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
-  const doneRequests = allRequests()
-    .filter(req => req.mechanicInstalled || req.done)
-    .filter(req => operationalItemEnabled(req, req.updatedAt || req.createdAt || req.date))
-    .filter(req => String(req.updatedAt || req.createdAt || req.date || "").slice(0, 7) === key)
-    .map(req => ({
-      number: req.requestNumber || req.id || "",
-      equipment: req.equipment || "",
-      area: req.area || "",
-      node: req.node || "",
-      name: partNameFromRequest(req),
-      doneAt: req.updatedAt || req.createdAt || req.date || "",
-      worker: req.issueTargetName || "",
-      workerRole: req.issueTargetRole || ""
-    }))
-    .sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
   const pprSchedule = pprCalendarMonthData(allEquipment(), year, month).itemsByDate;
   const pprSheets = Object.entries(state.pprSheets || {})
     .filter(([date]) => String(date).slice(0, 7) === key)
@@ -15022,7 +13942,6 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     createdRemarks,
     closedRemarks,
     openRemarks,
-    doneRequests,
     pprSheets,
     topProblems,
     annualAnalysis
@@ -15120,7 +14039,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
     `
   );
   const closedRows = engineerReportRows(
-    [...stats.closedRemarks, ...stats.doneRequests].slice(0, printable ? 60 : 14),
+    stats.closedRemarks.slice(0, printable ? 60 : 14),
     "Закрытых работ за выбранный месяц нет",
     item => {
       if (item.number) {
@@ -15221,7 +14140,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <div><strong>${durationText(stats.downtimeMs)}</strong><span>простой за месяц</span></div>
         <div><strong>${stats.downtimeItems.length}</strong><span>остановок всего</span></div>
         <div><strong>${stats.createdRemarks.length}</strong><span>новых замечаний</span></div>
-        <div><strong>${stats.closedRemarks.length + stats.doneRequests.length}</strong><span>закрыто работ</span></div>
+        <div><strong>${stats.closedRemarks.length}</strong><span>закрыто работ</span></div>
         <div><strong>${stats.openRemarks.length}</strong><span>открыто сейчас</span></div>
         <div><strong>${stats.qrPercent}%</strong><span>QR-обходы ${stats.monthStats.qrDone}/${stats.monthStats.qrPlan}</span></div>
         <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
@@ -15271,84 +14190,6 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   `;
 }
 
-function monthClosePanelHtml(month = current.engineerReportMonth || todayISO().slice(0, 7)) {
-  return `<section class="month-close-panel" data-month-close-panel><div class="month-close-head"><div><strong>Умное закрытие месяца</strong><span>Подготовка, переносы и фиксированный снимок показателей</span></div><input type="month" data-month-close-month value="${escapeHtml(month)}" max="${todayISO().slice(0, 7)}"></div><div class="empty-state" data-month-close-content>Проверяем готовность месяца…</div></section>`;
-}
-
-function monthCloseStatusLabel(status = "open") {
-  return status === "closed" ? "Закрыт полностью" : status === "conditional" ? "Закрыт условно" : "Открыт";
-}
-
-async function loadMonthClosePanel() {
-  const panel = ui.engineerReportPanel?.querySelector("[data-month-close-panel]");
-  if (!panel) return;
-  const monthInput = panel.querySelector("[data-month-close-month]");
-  const month = String(monthInput?.value || current.engineerReportMonth || todayISO().slice(0, 7));
-  const host = panel.querySelector("[data-month-close-content]");
-  try {
-    const result = await apiJson(`/api/month-close?month=${encodeURIComponent(month)}`, { timeout: 15000 });
-    if (!panel.isConnected || String(monthInput?.value || "") !== month) return;
-    const readiness = result.readiness || {};
-    const closure = result.closure || { status: "open", history: [], areaConfirmations: [] };
-    const status = closure.status || "open";
-    const groups = readiness.groups || {};
-    const item = (tone, title, count, text) => `<article class="month-close-check ${tone}"><b>${Number(count || 0)}</b><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div></article>`;
-    const transferEntries = (groups.incompletePpr || []).map(entry => ({
-      key: `ppr:${entry.id}`,
-      kind: "ppr",
-      id: entry.id,
-      label: entry.label || `ППР на ${dateHuman(entry.date || entry.id)}`
-    }));
-    const reasonOptions = ["Ожидание запчасти", "Ожидание подрядчика", "Ожидание бюджета", "Ожидание согласования", "Решение руководителя"];
-    const detailList = (title, tone, entries, label, actions = null) => `<details class="month-close-work-list ${tone}" ${entries.length ? "" : "hidden"}><summary>${escapeHtml(title)} · ${entries.length}</summary>${entries.map(entry => `<article><strong>${escapeHtml(label(entry))}</strong>${actions ? actions(entry) : ""}</article>`).join("")}</details>`;
-    host.className = "month-close-content";
-    host.innerHTML = `
-      <div class="month-close-summary ${status}"><div class="month-close-percent"><strong>${Number(readiness.readinessPercent || 0)}%</strong><span>готовность</span></div><div><b>${escapeHtml(monthCloseStatusLabel(status))}</b><span>${closure.closedAt ? `Зафиксирован ${escapeHtml(dateTimeHuman(closure.closedAt))} · ${escapeHtml(closure.closedByName || "Сотрудник")}` : "Показатели ещё изменяются"}</span><small>Производственные остановки исключены из оценки: ${Number(readiness.productionStopsExcluded || 0)}</small></div></div>
-      <div class="month-close-purpose"><strong>Что закрываем?</strong><p>Только месячный показатель «Состояние завода». Заявки на закупку здесь не учитываются.</p><ol><li>Проверьте красные критические пункты.</li><li>Устраните замечания и аварийные остановки.</li><li>Закройте месяц полностью или перенесите только незавершённые листы ППР.</li></ol></div>
-      <div class="month-close-checks">
-        ${item(Number(readiness.criticalCount) ? "red" : "green", "Критические пункты", readiness.criticalCount, `${(groups.openRemarks || []).length} замечаний · ${(groups.activeBreakdowns || []).length} аварийных остановок${(groups.deferredRemarks || []).length ? ` · ${(groups.deferredRemarks || []).length} обоснованно отложено и не считается` : ""}`)}
-        ${item(Number(readiness.warningCount) ? "yellow" : "green", "Незавершённые ППР", readiness.warningCount, `${(groups.incompletePpr || []).length} листов ППР можно перенести`)}
-        ${item("green", "Подтверждения участков", (closure.areaConfirmations || []).length, (closure.areaConfirmations || []).map(entry => entry.area).join(", ") || "Пока нет подтверждений")}
-      </div>
-      <div class="month-close-work-lists">
-        ${detailList("Активные аварийные остановки", "red", groups.activeBreakdowns || [], entry => `${entry.equipment}: ${entry.reason}`)}
-        ${transferEntries.length ? `<details class="month-close-work-list yellow" open><summary>Листы ППР для переноса · ${transferEntries.length}</summary><p>Заявки не входят в закрытие месяца. Отметьте только листы ППР и укажите причину.</p>${transferEntries.map(entry => `<article class="month-transfer-row" data-month-transfer-row data-transfer-key="${escapeHtml(entry.key)}" data-transfer-kind="${escapeHtml(entry.kind)}" data-transfer-id="${escapeHtml(entry.id)}"><label><input type="checkbox" data-transfer-selected><strong>${escapeHtml(entry.label)}</strong></label><select data-transfer-reason><option value="">Выберите причину…</option>${reasonOptions.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}</select></article>`).join("")}</details>` : `<div class="empty-state ok">Незавершённых листов ППР для переноса нет.</div>`}
-      </div>
-      ${closure.snapshot ? `<div class="month-close-snapshot"><strong>Зафиксированный снимок</strong><span>Готовность ${Number(closure.snapshot.readinessPercent || 0)}% · критических ${Number(closure.snapshot.criticalCount || 0)} · перенесено ${(closure.carryovers || []).length}</span>${(closure.carryovers || []).length ? `<div class="month-close-carryovers">${closure.carryovers.map(entry => `<small><b>${escapeHtml(entry.label || entry.key)}</b> — ${escapeHtml(entry.reason || "")}</small>`).join("")}</div>` : `<small>${escapeHtml(closure.reason || "")}</small>`}</div>` : ""}
-      ${result.canManage ? `<div class="month-close-actions no-print">${status === "open" ? `<button type="button" data-month-confirm-area>Подтвердить свой участок</button><button type="button" class="secondary" data-month-close-conditional>Закрыть условно</button><button type="button" data-month-close-full ${Number(readiness.criticalCount || 0) || Number(readiness.warningCount || 0) ? "disabled" : ""}>Закрыть полностью</button>` : `<button type="button" class="danger" data-month-reopen>Повторно открыть месяц</button>`}<button type="button" class="secondary" data-month-refresh>Обновить проверку</button></div>` : `<div class="empty-state">Закрытие доступно только сотрудникам с индивидуальным правом.</div>`}
-      <details class="month-close-history"><summary>История действий · ${(closure.history || []).length}</summary>${(closure.history || []).length ? (closure.history || []).map(entry => `<p><strong>${escapeHtml(entry.actor?.name || "Сотрудник")}</strong><span>${escapeHtml(entry.action === "close-full" ? "закрыл полностью" : entry.action === "close-conditional" ? "закрыл условно" : entry.action === "reopen" ? "повторно открыл" : "подтвердил участок")} · ${escapeHtml(dateTimeHuman(entry.at))}</span><small>${escapeHtml(entry.reason || "")}</small></p>`).join("") : `<div class="empty-state">Действий пока нет.</div>`}</details>`;
-    const act = async (button, action, extra = {}) => {
-      const reason = window.prompt(action === "reopen" ? "Укажите причину повторного открытия месяца:" : action === "confirm-area" ? "Комментарий к подтверждению участка:" : "Укажите основание закрытия месяца:")?.trim();
-      if (!reason) return;
-      await runButtonOperation(button, async () => {
-        const [scoreYear, scoreMonth] = month.split("-").map(Number);
-        const scoreStats = directorAnnualStats(scoreYear).months[scoreMonth - 1];
-        const factoryReliabilityScore = scoreStats ? directorFactoryReliabilityScore(scoreStats) : null;
-        const response = await apiJson("/api/month-close", { method: "POST", body: JSON.stringify({ month, action, reason, factoryReliabilityScore, ...extra }) });
-        if (response.state) mergeRealtimePatch(response.state);
-        await loadMonthClosePanel();
-      }, "Сохраняем…");
-    };
-    host.querySelector("[data-month-confirm-area]")?.addEventListener("click", event => act(event.currentTarget, "confirm-area", { area: profile?.area || "Общий участок" }));
-    host.querySelector("[data-month-close-conditional]")?.addEventListener("click", event => {
-      const rows = [...host.querySelectorAll("[data-month-transfer-row]")];
-      const incomplete = rows.filter(row => !row.querySelector("[data-transfer-selected]")?.checked || !row.querySelector("[data-transfer-reason]")?.value);
-      if (incomplete.length) {
-        incomplete[0].scrollIntoView({ behavior: "smooth", block: "center" });
-        window.alert(`Нужно отметить каждую переносимую работу и выбрать причину. Не заполнено: ${incomplete.length}.`);
-        return;
-      }
-      const transfers = rows.map(row => ({ key: row.dataset.transferKey || "", kind: row.dataset.transferKind || "", id: row.dataset.transferId || "", label: row.querySelector("strong")?.textContent || "Работа", reason: row.querySelector("[data-transfer-reason]")?.value || "" }));
-      act(event.currentTarget, "close-conditional", { transfers });
-    });
-    host.querySelector("[data-month-close-full]")?.addEventListener("click", event => act(event.currentTarget, "close-full"));
-    host.querySelector("[data-month-reopen]")?.addEventListener("click", event => act(event.currentTarget, "reopen"));
-    host.querySelector("[data-month-refresh]")?.addEventListener("click", loadMonthClosePanel);
-  } catch {
-    if (host) { host.className = "empty-state"; host.textContent = "Не удалось проверить готовность месяца. Обновите страницу."; }
-  }
-}
-
 function renderEngineerReport() {
   if (!ui.engineerReportPanel) return;
   const detailed = ["engineer", "editor"].includes(profile?.role);
@@ -15367,38 +14208,6 @@ function renderEngineerReport() {
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
-  ui.engineerReportPanel.querySelector("#serviceCostArea")?.addEventListener("change", event => {
-    current.serviceCostArea = event.currentTarget.value;
-    current.serviceCostEquipmentId = "";
-    current.serviceCostNodeIndex = "";
-    renderEngineerReport();
-  });
-  ui.engineerReportPanel.querySelector("#serviceCostEquipment")?.addEventListener("change", event => {
-    current.serviceCostEquipmentId = event.currentTarget.value;
-    current.serviceCostNodeIndex = "";
-    renderEngineerReport();
-  });
-  ui.engineerReportPanel.querySelector("#serviceCostNode")?.addEventListener("change", event => {
-    current.serviceCostNodeIndex = event.currentTarget.value;
-  });
-  ui.engineerReportPanel.querySelector("#addServiceCostButton")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
-    const amount = ui.engineerReportPanel.querySelector("#serviceCostAmount")?.value || "";
-    const comment = ui.engineerReportPanel.querySelector("#serviceCostComment")?.value || "";
-    const item = createServiceCost({
-      date: todayISO(),
-      area: current.serviceCostArea,
-      equipmentId: current.serviceCostEquipmentId,
-      nodeIndex: current.serviceCostNodeIndex,
-      amount,
-      comment
-    });
-    if (!item) {
-      window.alert("Заполните цену услуги и комментарий.");
-      return;
-    }
-    saveState();
-    renderEngineerReport();
-  }));
 }
 
 function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
@@ -15470,7 +14279,6 @@ function directorControlTotals() {
     archivedRemarks,
     overdueRemarks: remarks.filter(directorRemarkOverdue).length,
     resolvedToday,
-    requests: directorRequestStats(),
     users: directorUserStats(),
     downtime: directorTodayDowntimeStats(),
     calendar: directorCalendarItems(equipment),
@@ -15551,13 +14359,7 @@ function renderDirectorControl() {
   const pendingTodayMaintenance = todayMaintenance.filter(item =>
     !pprJournalCompletion(item.eq, todayISO(), item.plan.node).complete
   ).length;
-  const kpiDetails = current.directorKpiOpen === "requests"
-    ? `<section class="director-kpi-details">
-        <div class="director-section-head"><div><span>📋</span><h2>${current.directorArchiveOpen === "requests" ? "Архив заявок" : "Заявки за последние 24 часа"}</h2></div><small>${current.directorArchiveOpen === "requests" ? "Старше суток" : "Этап и ответственный"}</small></div>
-        <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="requests">${current.directorArchiveOpen === "requests" ? "Показать последние 24 часа" : `Архив (${totals.requests.archive || 0})`}</button></div>
-        <div class="director-info-list">${current.directorArchiveOpen === "requests" ? directorRequestDetailRows(directorArchivedRequests(), true) : directorRequestDetailRows(directorRecentRequests(), false)}</div>
-      </section>`
-    : current.directorKpiOpen === "remarks"
+  const kpiDetails = current.directorKpiOpen === "remarks"
       ? `<section class="director-kpi-details">
           <div class="director-section-head"><div><span>⚠</span><h2>${current.directorArchiveOpen === "remarks" ? "Архив замечаний" : "Замечания за последние 24 часа"}</h2></div><small>${current.directorArchiveOpen === "remarks" ? "Старше суток" : "Оборудование и описание"}</small></div>
           <div class="director-archive-actions"><button type="button" class="director-archive-button" data-toggle-director-archive="remarks">${current.directorArchiveOpen === "remarks" ? "Показать последние 24 часа" : `Архив (${totals.archivedRemarks.length})`}</button></div>
@@ -15612,7 +14414,6 @@ function renderDirectorControl() {
       <div class="director-status-list director-progress-status-list">${controlRows}</div>
     </section>
     <div class="director-kpi-grid">
-      <button type="button" class="director-kpi-button ${totals.requests.open ? "has-alerts" : ""} ${current.directorKpiOpen === "requests" ? "selected" : ""}" data-toggle-director-kpi="requests" aria-expanded="${current.directorKpiOpen === "requests"}"><span>📋 Заявки</span><strong>${totals.requests.open}</strong><small>Последние 24 часа · Архив ${totals.requests.archive || 0} · Просрочено ${totals.requests.overdue} · ${current.directorKpiOpen === "requests" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
       <button type="button" class="director-kpi-button ${totals.remarks.length ? "has-alerts" : ""} ${totals.overdueRemarks ? "danger" : ""} ${current.directorKpiOpen === "remarks" ? "selected" : ""}" data-toggle-director-kpi="remarks" aria-expanded="${current.directorKpiOpen === "remarks"}"><span>⚠ Замечания</span><strong>${totals.remarks.length}</strong><small>Последние 24 часа · Архив ${totals.archivedRemarks.length} · Устранено сегодня ${totals.resolvedToday} · ${current.directorKpiOpen === "remarks" ? "Скрыть ▲" : "Подробнее ▼"}</small></button>
       <button type="button" class="director-kpi-button director-downtime-kpi ${totals.downtime.active.length ? "has-alerts danger" : totals.downtime.items.length ? "warning" : "ok"} ${current.directorKpiOpen === "downtime" ? "selected" : ""}" data-toggle-director-kpi="downtime" aria-expanded="${current.directorKpiOpen === "downtime"}">
         <span>⏱ Простои</span><strong>${totals.downtime.active.length}</strong>
@@ -16557,7 +15358,7 @@ function renderAggregateJournal() {
         <div class="aggregate-journal-table-wrap">
           <table class="aggregate-journal-table">
         <colgroup>
-          ${[3, 12, 8, 14, 9, 8, 13, 8, 5, 7, 13].map(width => `<col style="width:${width}%">`).join("")}
+          ${[4, 14, 9, 17, 10, 9, 16, 9, 12].map(width => `<col style="width:${width}%">`).join("")}
         </colgroup>
         <thead>
           <tr>
@@ -16568,11 +15369,9 @@ function renderAggregateJournal() {
             <th rowspan="2">Подпись лица, производившего осмотр</th>
             <th rowspan="2">Дата ремонта</th>
             <th rowspan="2">Перечень работ, выполненных для устранения дефектов</th>
-            <th colspan="4">Узлы и детали, замененные при ремонте</th>
+            <th colspan="2">Результат устранения</th>
           </tr>
           <tr>
-            <th>Наименование</th>
-            <th>Количество, шт.</th>
             <th>Время устранения замечания</th>
             <th>Кто устранил / кто подтвердил</th>
           </tr>
@@ -16590,10 +15389,6 @@ function renderAggregateJournal() {
             const noScoreCloser = item.closedWithoutScoreByName
               ? `${item.closedWithoutScoreByName}${noScoreCloserRole ? ` (${noScoreCloserRole})` : ""}`
               : noScoreCloserRole;
-            const parts = item.kind === "Замечание" ? installedPartsForRemark(remarkLinkKey(item.equipmentId, item.nodeIndex, item.date)) : [];
-            const partNames = parts.map(part => part.name).join("\n");
-            const partQty = parts.map(part => `${part.qty}`).join("\n");
-            const partComments = parts.map(part => part.comment).filter(Boolean).join("\n");
             return `
               <tr class="${item.resolved ? "" : "open"}">
                 <td data-mobile-label="№">${rowNumber}</td>
@@ -16604,9 +15399,7 @@ function renderAggregateJournal() {
                 <td data-mobile-label="Дата ремонта">${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
                 <td data-mobile-label="Выполненные работы">${escapeHtml(item.closedWithoutScore
                   ? `Закрыто без баллов. Причина: ${item.resolvedComment || "не указана"}`
-                  : partComments || item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
-                <td data-mobile-label="Заменённые детали">${escapeHtml(partNames || "")}</td>
-                <td data-mobile-label="Количество">${escapeHtml(partQty || "")}</td>
+                  : item.resolvedComment || (item.resolved ? "Устранено" : ""))}${item.correctedResolvedComment ? `<span class="aggregate-corrected-comment"><b>Исправленная запись:</b> ${escapeHtml(item.correctedResolvedComment)}</span>` : ""}</td>
                 <td data-mobile-label="Время устранения">${item.durationMs ? durationText(item.durationMs) : ""}</td>
                 <td data-mobile-label="Исполнитель и подтверждение">
                   ${escapeHtml(item.closedWithoutScore
@@ -16815,13 +15608,11 @@ function systemLoadMetrics() {
   const storedPhotoUrls = serialized.match(/\/api\/photos\/[a-f0-9]{40}\.(?:jpg|jpeg|png|webp)/gi) || [];
   const photoCount = embeddedPhotoCount + new Set(storedPhotoUrls.map(url => url.toLowerCase())).size;
   const checks = Object.keys(state.checks || {}).length;
-  const requests = allRequests().length;
-  const inventory = Object.keys(state.inventory || {}).length;
   const users = loadUsers().length;
   const score = Math.min(100, Math.round((bytes / (25 * 1024 * 1024)) * 55 + (photoCount / 500) * 25 + (checks / 15000) * 20));
   const level = score >= 80 ? "red" : score >= 55 ? "yellow" : "green";
   const label = level === "red" ? "Высокая" : level === "yellow" ? "Средняя" : "Нормальная";
-  return { bytes, photoCount, checks, requests, inventory, users, score, level, label };
+  return { bytes, photoCount, checks, users, score, level, label };
 }
 
 function formatStorageSize(bytes) {
@@ -16856,9 +15647,8 @@ function printSystemArchiveReport() {
   if (!win) return;
   win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Архивный отчёт ППР</title><style>body{font-family:Arial,sans-serif;color:#111;margin:12mm}h1{font-size:20px}h2{font-size:15px;margin-top:18px}p{margin:4px 0}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #888;padding:4px;vertical-align:top}th{background:#eee}@media print{button{display:none}}</style></head><body>
     <h1>Архивный отчёт ППР Контроль</h1><p>Сформирован: ${escapeHtml(new Date().toLocaleString("ru-RU"))}</p>
-    <h2>Состав данных</h2><p>Объём: ${formatStorageSize(metrics.bytes)} · Записей: ${metrics.checks} · Фото: ${metrics.photoCount} · Заявок: ${metrics.requests} · Складских позиций: ${metrics.inventory} · Сотрудников: ${metrics.users}</p>
+    <h2>Состав данных</h2><p>Объём: ${formatStorageSize(metrics.bytes)} · Записей: ${metrics.checks} · Фото: ${metrics.photoCount} · Сотрудников: ${metrics.users}</p>
     <h2>Открытые замечания (${openRemarks.length})</h2><table><thead><tr><th>Цех</th><th>Оборудование</th><th>Замечание</th></tr></thead><tbody>${rows(openRemarks, [x => x.area, x => x.equipment, x => x.text]) || '<tr><td colspan="3">Нет</td></tr>'}</tbody></table>
-    <h2>Заявки (${allRequests().length})</h2><table><thead><tr><th>Номер</th><th>Цех</th><th>Состояние</th><th>Содержание</th></tr></thead><tbody>${rows(allRequests(), [x => x.requestNumber || x.id || "", x => x.area || "", x => x.done ? "Выполнена" : "Активна", x => x.text || requestItemsText(requestItems(x))]) || '<tr><td colspan="4">Нет</td></tr>'}</tbody></table>
     <h2>Сотрудники (${loadUsers().length})</h2><table><thead><tr><th>ФИО</th><th>Должность</th><th>Цех</th></tr></thead><tbody>${rows(loadUsers(), [x => x.name || "", x => ROLE_ACCESS[x.role]?.label || x.role || "", x => x.area || ""])}</tbody></table>
     <p style="margin-top:18px">Подпись ответственного: ____________________</p></body></html>`);
   finalizeJournalPopup(win);
@@ -16954,281 +15744,6 @@ function renderDirectorUsers() {
       <div class="empty-state" data-director-user-search-empty hidden>Сотрудник не найден. Проверьте имя или номер телефона.</div>
     </div>
   `;
-}
-
-function requestItemsHtml(req) {
-  const items = requestItems(req);
-  if (!items.length) return "";
-  return `
-    <div class="request-items-summary">
-      <strong>Позиции заявки</strong>
-      <table>
-        <thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Заявочное</th><th>Необходимое</th><th>Примечание</th></tr></thead>
-        <tbody>
-          ${items.map((item, index) => `
-            <tr>
-              <td>${index + 1}</td>
-              <td><span class="manual-text">${escapeHtml(item.name || "")}</span></td>
-              <td><span class="manual-text">${escapeHtml(item.article || "")}</span></td>
-              <td><span class="manual-text">${escapeHtml(item.unit || "шт")}</span></td>
-              <td>${Number(item.requestedQty || 0)}</td>
-              <td>${Number(item.requiredQty || item.requestedQty || 0)}</td>
-              <td><span class="manual-text">${escapeHtml(item.note || "")}</span>${item.photo ? `<img class="request-item-photo" src="${item.photo}" alt="Фото позиции ${index + 1}">` : ""}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function requestApprovalCell(req, role, fallback = "") {
-  const approval = req.approvals?.[role] || {};
-  const name = approval.name || fallback || "";
-  const status = approval.at ? "Подтверждено" : req.rejectedByRole === role ? "Отказ" : "";
-  return `
-    <strong>${escapeHtml(name || "________________________")}</strong>
-    <span>${escapeHtml(status)}${approval.at ? ` · ${escapeHtml(dateTimeHuman(approval.at))}` : ""}</span>
-  `;
-}
-
-function requestPrintColumns(items) {
-  return [
-    { key: "number", label: "№", className: "num", show: true, value: (item, index) => index + 1 },
-    { key: "name", label: "Наименование закупаемой ТМЦ и услуг", className: "name", show: true, value: item => item.name || "" },
-    { key: "article", label: "Артикул", className: "article", show: true, value: item => item.article || "" },
-    { key: "unit", label: "Ед. измерения", className: "unit", show: true, value: item => item.unit || "" },
-    { key: "requested", label: "Заявочное количество", className: "qty", show: true, value: item => Number(item.requestedQty || 0) || "" },
-    { key: "required", label: "Необходимое", className: "qty", show: true, value: item => Number(item.requiredQty || item.requestedQty || 0) || "" },
-    { key: "note", label: "Примечание", className: "note", show: true, value: item => [item.note, item.supplyNote].filter(Boolean).join(" · ") }
-  ];
-}
-
-function requestPrintRows(columns, rows, startIndex = 0, minRows = 0) {
-  const visibleRows = Array.from({ length: Math.max(minRows, rows.length || 1) }, (_, index) => rows[index] || {});
-  return visibleRows.map((item, index) => `
-    <tr>
-      ${columns.map(column => `<td class="${column.className || ""}">${escapeHtml(column.value(item, startIndex + index))}</td>`).join("")}
-    </tr>
-  `).join("");
-}
-
-function requestPrintTable(columns, rows, startIndex = 0, minRows = 0) {
-  return `
-    <table class="items">
-      <thead><tr>${columns.map(column => `<th class="${column.className || ""}">${escapeHtml(column.label)}</th>`).join("")}</tr></thead>
-      <tbody>${requestPrintRows(columns, rows, startIndex, minRows)}</tbody>
-    </table>
-  `;
-}
-
-function requestPrintSignatures(req, sourceRole) {
-  return `
-    <section class="excel-signatures">
-      <div>Заявитель <strong>${escapeHtml(req.sourceName || "________________________")}</strong></div>
-      <div>Проверил инженер <strong>${escapeHtml(req.formedByName || "________________________")}</strong></div>
-      <div class="delivery-line">Требуемый срок <strong>${req.dueDate ? escapeHtml(dateHuman(req.dueDate)) : "не указан"}</strong></div>
-    </section>
-  `;
-}
-
-function printRequestSheet(req, options = {}) {
-  normalizeRequest(req);
-  const items = requestItems(req);
-  const columns = requestPrintColumns(items);
-  const printItems = items.length ? items : [{}];
-  const firstPageLimit = 18;
-  const nextPageLimit = 22;
-  const firstPageItems = printItems.slice(0, firstPageLimit);
-  const continuationChunks = [];
-  for (let index = firstPageLimit; index < printItems.length; index += nextPageLimit) {
-    continuationChunks.push(printItems.slice(index, index + nextPageLimit));
-  }
-  let printableHtml = "";
-  const win = options.asFile
-    ? { document: { write(value) { printableHtml += String(value || ""); }, close() {} } }
-    : window.open("", "_blank", "width=1280,height=820");
-  if (!win) {
-    window.alert("Разрешите всплывающие окна для печати заявки.");
-    return false;
-  }
-  const printToken = options.waitForPrint ? `request-print:${Date.now()}:${Math.random().toString(16).slice(2)}` : "";
-  const printConfirmation = options.waitForPrint ? new Promise(resolve => {
-    let finished = false;
-    const finish = value => {
-      if (finished) return;
-      finished = true;
-      window.removeEventListener("message", onMessage);
-      window.clearInterval(closedTimer);
-      window.clearTimeout(expiryTimer);
-      resolve(value);
-    };
-    const onMessage = event => {
-      if (event.origin !== location.origin) return;
-      if (event.data?.type === "ppr-request-print-start" && event.data?.token === printToken) finish(true);
-    };
-    const closedTimer = window.setInterval(() => {
-      if (win.closed) finish(false);
-    }, 500);
-    const expiryTimer = window.setTimeout(() => finish(false), 10 * 60 * 1000);
-    window.addEventListener("message", onMessage);
-  }) : null;
-  const sourceRole = ROLE_ACCESS[req.sourceRole]?.label || req.sourceRole || "";
-  const logoUrl = new URL("hoffmann-logo.png", location.href).href;
-  const createdDate = dateTimeHuman(req.createdAt || req.date || new Date().toISOString());
-  const totalQty = requestItemsTotal(items) || Number(req.requestedQty || 0);
-  const status = statusText(req.status || waitingRole(req));
-  const signaturesHtml = requestPrintSignatures(req, sourceRole);
-  const continuationHtml = continuationChunks.map((chunk, index) => {
-    const pageNo = index + 2;
-    const startIndex = firstPageLimit + (index * nextPageLimit);
-    const isLastPage = index === continuationChunks.length - 1;
-    return `
-      <main class="sheet continuation-sheet">
-        <div class="page-label">Лист ${pageNo}</div>
-        ${requestPrintTable(columns, chunk, startIndex, 0)}
-        ${isLastPage ? signaturesHtml : ""}
-      </main>
-    `;
-  }).join("");
-  win.document.write(`<!doctype html>
-    <html lang="ru">
-      <head>
-        <meta charset="utf-8">
-        <title>${escapeHtml(req.requestNumber || "Заявка")}</title>
-        <style>
-          * { box-sizing: border-box; }
-          @page { size: A4 landscape; margin: 10mm; }
-          body { margin: 0; background: #edf2f5; color: #102331; font-family: Arial, sans-serif; }
-          .sheet { width: 277mm; min-height: 190mm; margin: 14px auto; background: #fff; padding: 9mm; border-radius: 10px; box-shadow: 0 18px 45px rgba(15, 35, 50, .16); }
-          .sheet + .sheet { page-break-before: always; }
-          .continuation-sheet { padding-top: 9mm; }
-          .page-label { margin: 0 0 5mm auto; width: max-content; border: 1px solid #d7e2e8; border-radius: 999px; padding: 1.8mm 4mm; color: #14324a; font-size: 9pt; font-weight: 800; }
-          .header { display: grid; grid-template-columns: 1fr 92mm; gap: 8mm; align-items: stretch; padding-bottom: 5mm; border-bottom: 2px solid #14324a; }
-          .brand { display: grid; grid-template-columns: 18mm 1fr; gap: 4mm; align-items: center; }
-          .logo { width: 18mm; height: 18mm; border-radius: 5mm; object-fit: contain; background: #f4f8fa; border: 1px solid #d7e2e8; padding: 2mm; }
-          h1 { margin: 0; color: #14324a; font-size: 20pt; line-height: 1.05; letter-spacing: 0; }
-          .subtitle { margin-top: 2mm; color: #5b7180; font-size: 9pt; }
-          .meta { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #d7e2e8; border-radius: 6px; overflow: hidden; }
-          .meta div { padding: 2.4mm 3mm; border-right: 1px solid #d7e2e8; border-bottom: 1px solid #d7e2e8; min-height: 12mm; }
-          .meta div:nth-child(2n) { border-right: 0; }
-          .meta div:nth-last-child(-n + 2) { border-bottom: 0; }
-          .meta span { display: block; color: #6b7d88; font-size: 7.5pt; text-transform: uppercase; font-weight: 700; }
-          .meta strong { display: block; margin-top: 1mm; font-size: 10pt; color: #102331; }
-          .context { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 3mm; margin: 5mm 0; }
-          .context div { border: 1px solid #d7e2e8; border-radius: 6px; padding: 2.4mm 3mm; min-height: 13mm; }
-          .context span { display: block; color: #6b7d88; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
-          .context strong { display: block; margin-top: 1mm; font-size: 10pt; }
-          table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; border: 1px solid #b9c9d1; border-radius: 7px; overflow: hidden; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; page-break-inside: avoid; }
-          th, td { border-right: 1px solid #d5e0e5; border-bottom: 1px solid #d5e0e5; padding: 2mm 2.2mm; vertical-align: top; font-size: 8.3pt; line-height: 1.22; word-break: break-word; }
-          th:last-child, td:last-child { border-right: 0; }
-          tbody tr:last-child td { border-bottom: 0; }
-          th { background: #14324a; color: #fff; text-align: left; font-size: 7.4pt; text-transform: uppercase; letter-spacing: .2px; }
-          tbody tr:nth-child(even) td { background: #f7fafb; }
-          .num { width: 9mm; text-align: center; font-weight: 800; }
-          .name { width: 58mm; font-weight: 700; color: #102331; }
-          .article { width: 24mm; }
-          .stock, .unit, .qty { width: 18mm; text-align: center; }
-          .money { width: 23mm; text-align: right; }
-          .supplier { width: 34mm; }
-          .note { width: 48mm; color: #334955; }
-          .signatures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-top: 6mm; }
-          .sign { border: 1px solid #d7e2e8; border-radius: 6px; padding: 3mm; min-height: 20mm; }
-          .sign b { display: block; color: #14324a; font-size: 8pt; text-transform: uppercase; }
-          .sign strong { display: block; margin-top: 3mm; font-size: 9pt; min-height: 5mm; }
-          .sign span { display: block; margin-top: 1mm; color: #60737f; font-size: 7.5pt; }
-          .footer-note { margin-top: 4mm; display: flex; justify-content: space-between; gap: 5mm; color: #60737f; font-size: 7.5pt; }
-          .excel-header { display: grid; grid-template-columns: 1fr 62mm; align-items: start; gap: 8mm; margin-bottom: 3mm; }
-          .excel-title-block { text-align: center; padding-top: 4mm; }
-          .excel-title-block h1 { text-align: center; font-size: 16pt; color: #111; }
-          .excel-title-block p { margin: 3mm 0 0; font-size: 9pt; }
-          .excel-logo-block { display: grid; justify-items: end; gap: 2mm; }
-          .excel-logo { width: 57mm; max-height: 20mm; object-fit: contain; object-position: right center; }
-          .excel-approval { width: 57mm; text-align: center; font-size: 8.5pt; line-height: 1.5; }
-          .excel-request-line { margin: 4mm 0 2mm; font-size: 11pt; font-weight: 700; }
-          .excel-date-line { margin-bottom: 4mm; font-size: 10pt; }
-          .excel-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm 8mm; width: 100%; margin: 4mm 0 0; font-size: 7.5pt; }
-          .excel-signatures div { min-height: 4mm; border: 0; white-space: nowrap; }
-          .excel-signatures strong { margin-left: 1.5mm; }
-          .excel-signatures .delivery-line { grid-column: 1 / -1; border-top: 1px solid #777; padding-top: 2mm; }
-          .actions { display: flex; justify-content: center; margin: 16px auto; }
-          button { border: 0; border-radius: 8px; background: #14324a; color: #fff; padding: 11px 24px; font-weight: 800; cursor: pointer; }
-          @media print {
-            body { background: #fff; }
-            .sheet { margin: 0; width: auto; min-height: 190mm; padding: 0; border-radius: 0; box-shadow: none; page-break-after: always; }
-            .sheet:last-of-type { page-break-after: auto; }
-            .continuation-sheet { padding-top: 0; }
-            .actions { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <main class="sheet">
-          <header class="excel-header">
-            <div class="excel-title-block"><h1>Заявка на приобретение ТМЦ и услуг</h1><p>«___» __________ 20___ года</p></div>
-            <div class="excel-logo-block"><img class="excel-logo" src="${escapeHtml(logoUrl)}" alt="Hoffmann Aluminium"><div class="excel-approval">Зам. директора __________________</div></div>
-          </header>
-          <div class="excel-request-line">Заявка № ${escapeHtml(req.requestNumber || "_______")} · Цех: ${escapeHtml(req.area || "________________")}</div>
-          <div class="excel-date-line">Дата формирования: ${escapeHtml(createdDate)}</div>
-          ${requestPrintTable(columns, firstPageItems, 0, 0)}
-          ${continuationChunks.length ? "" : signaturesHtml}
-        </main>
-        ${continuationHtml}
-        <div class="actions"><button onclick="${printToken ? `window.opener?.postMessage({type:'ppr-request-print-start',token:${JSON.stringify(printToken)}},location.origin);` : ""}window.print()">Печатать / сохранить PDF</button></div>
-      </body>
-    </html>`);
-  finalizeJournalPopup(win);
-  if (options.asFile) {
-    const safeNumber = String(req.requestNumber || "zayavka").replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, "-");
-    return new File([printableHtml], `${safeNumber}-print.html`, { type: "text/html" });
-  }
-  return printConfirmation || true;
-}
-
-function requestCard(req) {
-  normalizeRequest(req);
-  const card = document.createElement("div");
-  card.className = "request-card";
-  if (requestIsOverdue(req)) card.classList.add("overdue");
-  card.innerHTML = `
-    <div class="request-main">
-      <div class="request-card-head">
-        <div>
-          <strong class="request-number">${escapeHtml(req.requestNumber)}</strong>
-          <b class="manual-text">${escapeHtml(req.equipment || "Без оборудования")}</b>
-          <span><span class="manual-text">${escapeHtml(req.area || "")}${req.node ? ` · ${escapeHtml(req.node)}` : ""}</span> · ${dateHuman(req.date)}</span>
-          ${req.kind === "journal-batch" ? `<span>Сборная заявка из журнала</span>` : ""}
-        </div>
-        <div class="request-badges">
-          <span class="request-priority ${req.priority}">${requestPriorityLabel(req.priority)}</span>
-          ${req.dueDate ? `<span class="${requestIsOverdue(req) ? "request-overdue" : "request-due"}">${requestIsOverdue(req) ? "Просрочено: " : "Срок: "}${dateHuman(req.dueDate)}</span>` : ""}
-        </div>
-      </div>
-      ${requestAuthorHtml(req)}
-      ${req.comment ? `<p class="manual-text">${userTextWithRussianHtml(req.comment)}</p>` : ""}
-      ${req.commentPhoto ? `<img class="request-photo" src="${req.commentPhoto}" alt="Фото замечания">` : ""}
-      <p class="request-text manual-text">${userTextWithRussianHtml(req.text)}</p>
-      ${requestItemsHtml(req)}
-      ${req.requestPhoto ? `<img class="request-photo" src="${req.requestPhoto}" alt="Фото заявки">` : ""}
-      ${(Array.isArray(req.additionalPhotos) ? req.additionalPhotos : []).map((photo, index) => `<img class="request-photo" src="${photo}" alt="Дополнительное фото заявки ${index + 1}">`).join("")}
-      ${requestHistoryHtml(req)}
-    </div>
-    <div class="request-actions"></div>
-  `;
-  const actions = card.querySelector(".request-actions");
-  actions.append(actionButton("Печатать заявку", () => printRequestSheet(req)));
-  actions.insertAdjacentHTML("beforeend", `<div class="readonly-note">Электронный маршрут отключён. Распечатайте заявку и обходите вручную.</div>`);
-  return card;
-}
-function actionButton(label, handler) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "action-button";
-  button.textContent = label;
-  button.addEventListener("click", () => runButtonOperation(button, () => handler(button)));
-  return button;
 }
 
 function dateHuman(iso) {
@@ -17516,13 +16031,6 @@ function reportClientError(message, source = "", line = 0, column = 0) {
   }).catch(() => {});
 }
 
-function disableTmcRequestFeature() {
-  if (!TMC_REQUESTS_DISABLED) return;
-  state.requests = {};
-  persistStateLocally(state);
-  ui.engineerIncomingBanner?.remove();
-}
-
 function placeSingleAttendanceButton() {
   const button = ui.attendanceHomeButton;
   const mobileNav = document.querySelector(".mobile-nav");
@@ -17661,7 +16169,6 @@ if ("serviceWorker" in navigator) {
 }
 
 setupTheme();
-disableTmcRequestFeature();
 placeSingleAttendanceButton();
 setupPullToRefresh();
 window.addEventListener("resize", placeSingleAttendanceButton);

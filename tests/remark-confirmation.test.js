@@ -564,51 +564,6 @@ test("the common warning hall excludes pending confirmations", () => {
   assert.match(source, /if \(item\?\.resolutionPendingConfirmation\) return canCurrentUserConfirmRemark\(item, eq\)/);
 });
 
-test("workers accumulate one server-side engineer draft that is editable and locks after formation", async () => {
-  const mechanic = user("mechanic-1", "Механик Один", "mechanic");
-  const electrician = user("electrician-1", "Электрик Один", "electrician");
-  const engineer = user("engineer-1", "Инженер Один", "engineer");
-  const first = await postEngineerRequest("submit", mechanic, {
-    area: "Цех А",
-    items: [{ name: "Подшипник", article: "A-1", unit: "шт", requestedQty: 1, requiredQty: 2 }]
-  });
-  const second = await postEngineerRequest("submit", electrician, {
-    area: "Цех Б",
-    items: [{ name: "Подшипник", article: "A-1", unit: "шт", requestedQty: 2, requiredQty: 3 }]
-  });
-  assert.equal(second.request.id, first.request.id);
-  assert.equal(second.request.items.length, 2);
-  assert.deepEqual(second.request.items.map(item => item.sourceRole).sort(), ["electrician", "mechanic"]);
-
-  await postEngineerRequest("edit-item", mechanic, {
-    requestId: second.request.id,
-    itemId: second.request.items[0].id,
-    item: { ...second.request.items[0], name: "Запрещённое изменение" }
-  }, 403);
-  const edited = await postEngineerRequest("edit-item", engineer, {
-    requestId: second.request.id,
-    itemId: second.request.items[0].id,
-    item: { ...second.request.items[0], note: "Проверено инженером" }
-  });
-  assert.equal(edited.request.items[0].note, "Проверено инженером");
-
-  const merged = await postEngineerRequest("merge-items", engineer, { requestId: second.request.id });
-  assert.equal(merged.request.items.length, 1);
-  assert.equal(merged.request.items[0].requestedQty, 3);
-  assert.equal(merged.request.items[0].requiredQty, 5);
-  assert.equal(merged.request.items[0].sources.length, 2);
-
-  const formed = await postEngineerRequest("form", engineer, { requestId: second.request.id });
-  assert.ok(formed.request.formedAt);
-  assert.equal(formed.request.engineerApproved, true);
-  assert.equal(formed.request.status, "manualFormed");
-  await postEngineerRequest("edit-item", engineer, {
-    requestId: second.request.id,
-    itemId: merged.request.items[0].id,
-    item: merged.request.items[0]
-  }, 409);
-});
-
 test("confirmation is handled in the personal role inbox instead of the PPR node", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
@@ -625,7 +580,7 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.match(source, /const personalCount = personalRemarkMessages\(\)\.length/);
   assert.match(source, /isEditorSession\(\) && role === "engineer"/);
   assert.match(source, /role-personal-count">Личные:/);
-  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(MANUAL_REQUEST_WORKFLOW\)[\s\S]*?if \(isEditorSession\(\)\) return role === "engineer"[\s\S]*?return role === profile\?\.role/);
+  assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(isEditorSession\(\)\) return role === "engineer"[\s\S]*?return role === profile\?\.role/);
   assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
   assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
 });
@@ -1392,12 +1347,6 @@ test("only the primary admin also receives the engineer workflow", () => {
   assert.match(permissions, /isPrimaryAdminEngineer\(profile\) \? "engineer"/);
 });
 
-test("the create request button uses a calm halo instead of blinking", () => {
-  const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(style, /#createTmcRequestButton\.request-alert,[\s\S]*?animation: requestButtonHalo 2\.2s ease-in-out infinite !important/);
-  assert.match(style, /@keyframes requestButtonHalo/);
-  assert.match(style, /box-shadow: 0 0 0 7px rgba\(22, 130, 170, \.25\)/);
-});
 
 test("the decorative Hofmann forklift animation is completely removed", () => {
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
@@ -1576,34 +1525,6 @@ test("an admin can delete a legacy employee that has no internal id", async () =
   assert.equal(response.status, 200, JSON.stringify(body));
   const users = await (await fetch(`${baseUrl}/api/users`)).json();
   assert.equal(users.some(item => item.employeeId === "legacy-77"), false);
-});
-
-test("warehouse data is removed from the simplified request workflow", async () => {
-  const before = await (await fetch(`${baseUrl}/api/state`)).json();
-  assert.deepEqual(before.inventory, {});
-  assert.equal(Object.keys(before.requests || {}).some(id => id.startsWith("stock-issue:")), false);
-  assert.equal(before.requests["legacy-warehouse-request"].status, "engineer");
-  assert.equal(before.requests["legacy-warehouse-request"].engineerCombinedBatch, true);
-  assert.equal(before.requests["legacy-warehouse-request"].transferredToWarehouse, false);
-  const response = await fetch(`${baseUrl}/api/state`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      actionId: "warehouse-removed-clear-test",
-      clientId: "admin-test",
-      clearRecordedData: true,
-      clearConfirm: "ОЧИСТИТЬ",
-      baseOperationalResetAt: "",
-      user: { role: "editor", authenticatedRole: "editor", name: "Администратор" }
-    })
-  });
-  const body = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(body));
-  const state = await (await fetch(`${baseUrl}/api/state`)).json();
-  assert.deepEqual(state.inventory, {});
-  assert.equal(Object.keys(state.requests || {}).some(id => id.startsWith("stock-issue:")), false);
-  assert.equal(state.requests["ordinary-request"], undefined);
-  assert.deepEqual(state.checks, {});
 });
 
 test("collaborative resolution UI batches checked participants and shows every resolver", () => {
@@ -1787,41 +1708,6 @@ test("PPR synchronization merges concurrent edits to separate fields of the same
   assert.equal(merged.markedByName, "Исполнитель");
 });
 
-test("month closing API remains compatible but its panel is removed from the report", () => {
-  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(client, /function canManageMonthClose[^\n]+return isPrimaryAdminEngineer\(user\)/);
-  const renderer = client.slice(client.indexOf("function renderEngineerReport"), client.indexOf("function openEngineerReport"));
-  assert.doesNotMatch(renderer, /Умное закрытие месяца|monthClosePanelHtml|loadMonthClosePanel/);
-  assert.match(client, /data-month-close-conditional/);
-  assert.match(client, /data-month-close-full/);
-  assert.match(client, /data-month-reopen/);
-  assert.doesNotMatch(server, /ADMIN_PERMISSION_KEYS[^\n]+monthCloseManage/);
-  assert.match(server, /function monthCloseReadiness/);
-  assert.match(server, /item\.type === "production"/);
-  assert.match(server, /pathname === "\/api\/month-close"/);
-  assert.match(server, /"confirm-area", "close-conditional", "close-full", "reopen"/);
-  assert.match(server, /snapshot: \{ \.\.\.readiness/);
-  assert.match(client, /monthlyClosures\?\.\[month\.monthKey\]\?\.snapshot\?\.factoryReliabilityScore/);
-  assert.match(server, /factoryReliabilityScore:/);
-  assert.match(server, /carryoverTo/);
-  assert.match(server, /action === "close-conditional" && readiness\.criticalCount/);
-  assert.match(client, /data-month-transfer-row/);
-  assert.match(client, /Нужно отметить каждую переносимую работу/);
-  assert.match(server, /month_transfers_incomplete/);
-  assert.match(server, /carryovers: transfers/);
-  const readinessSource = server.slice(server.indexOf("function monthCloseReadiness"), server.indexOf("function publicState"));
-  assert.doesNotMatch(readinessSource, /db\.requests|openRequests/);
-  assert.match(client, /Заявки на закупку здесь не учитываются/);
-  assert.match(server, /pathname === "\/api\/month-close" && req\.method === "GET"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
-  assert.match(server, /pathname === "\/api\/month-close" && req\.method === "POST"[\s\S]*?!isPrimaryAdminEngineerServer\(req\.authUser\)/);
-  assert.doesNotMatch(renderer, /canManageMonthClose|monthClosePanelHtml/);
-  assert.match(server, /function resetMonthClosePermissionsOnce[\s\S]*?delete user\.permissionOverrides\.monthCloseManage/);
-  assert.match(server, /monthClosePermissionResetVersion === "all-users-v1"/);
-  assert.match(styles, /\.month-close-panel/);
-});
-
 test("gas and compressor printing gathers filled days without date selectors", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(appSource, /function printGasJournalSheet\(section\)/);
@@ -1851,9 +1737,9 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
   assert.doesNotMatch(roles, /warehouse:/);
   const report = appSource.slice(appSource.indexOf("function engineerMonthlyReportHtml"), appSource.indexOf("function renderEngineerReport"));
   assert.doesNotMatch(report, /Затраты по складу|Цена услуги|formatMoney/);
-  assert.match(serverSource, /function removeWarehouseWorkflow\(db\)/);
-  assert.match(serverSource, /db\.inventory = \{\}/);
-  assert.match(serverSource, /filter\(user => user\?\.role !== "warehouse"\)/);
+  assert.doesNotMatch(serverSource, /function removeWarehouseWorkflow\(db\)/);
+  assert.doesNotMatch(serverSource, /db\.inventory = \{\}/);
+  assert.doesNotMatch(serverSource, /role !== "warehouse"/);
   assert.doesNotMatch(serverSource, /pathname === "\/api\/warehouse\/issue"/);
   const removedEndpoint = await fetch(`${baseUrl}/api/warehouse/issue`, {
     method: "POST",
@@ -1861,23 +1747,6 @@ test("warehouse role, screen, endpoint, and money report blocks are removed", as
     body: "{}"
   });
   assert.notEqual(removedEndpoint.status, 200);
-});
-
-test("create request feature is removed and production erases request records", () => {
-  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  assert.doesNotMatch(html, /requestCreateScreen|tmcRequestForm|createTmcRequestButton/);
-  assert.doesNotMatch(html, /Новая заявка|приобретение ТМЦ|закупаемой ТМЦ/);
-  assert.match(client, /const TMC_REQUESTS_DISABLED = true/);
-  assert.match(client, /function disableTmcRequestFeature\(\)/);
-  assert.doesNotMatch(client, /function renderRequestCreate\(|function buildMobileTmcRequestDraft\(/);
-  assert.doesNotMatch(client, /function publishEngineerRequestAction\(|tmcRequestForm\?\.addEventListener/);
-  assert.doesNotMatch(client, /engineerIncomingTmcRequests\(|createTmcRequestButton\?\.addEventListener/);
-  assert.match(client, /state\.requests = TMC_REQUESTS_DISABLED\s*\? \{\}/);
-  assert.match(server, /const TMC_REQUESTS_DISABLED = process\.env\.NODE_ENV !== "test"/);
-  assert.match(server, /if \(TMC_REQUESTS_DISABLED\) db\.requests = \{\}/);
-  assert.match(server, /error: "request_feature_removed"/);
 });
 
 test("mobile navigation reuses one attendance button instead of the removed request slot", () => {
@@ -2062,8 +1931,8 @@ test("mobile users use the single main warnings button", () => {
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(htmlSource, /id="alertCounter"[\s\S]*?Предупреждения/);
   assert.doesNotMatch(htmlSource, /data-mobile-view="requests"/);
-  assert.match(clientSource, /view === "requests" && MANUAL_REQUEST_WORKFLOW\) return isProfileReady\(\)/);
-  assert.match(clientSource, /mobileRemarkCount\.textContent = ownWaiting/);
+  assert.match(clientSource, /if \(view === "requests"\) return isProfileReady\(\)/);
+  assert.match(clientSource, /mobileRemarkCount\.textContent = personalCount/);
   assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="attendance"\][\s\S]*?grid-column:\s*1/);
 });
 

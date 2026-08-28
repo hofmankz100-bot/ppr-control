@@ -73,8 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v705-tmc-removal-hotfix-1";
+const SERVER_VERSION = "v706-remove-legacy-procurement-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -266,77 +265,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
-}
-
-function removeWarehouseWorkflow(db) {
-  db.inventory = {};
-  db.serviceCosts = [];
-  const removedUserIds = new Set(
-    (db.users || [])
-      .filter(user => user?.role === "warehouse")
-      .flatMap(user => [user.id, user.employeeId, user.phone].filter(Boolean).map(String))
-  );
-  db.users = (db.users || []).filter(user => user?.role !== "warehouse");
-  db.authSessions = (db.authSessions || []).filter(session =>
-    !removedUserIds.has(String(session?.userId || session?.employeeId || session?.phone || ""))
-  );
-  const now = new Date().toISOString();
-  for (const [id, req] of Object.entries(db.requests || {})) {
-    if (!req || typeof req !== "object") continue;
-    const warehouseOnly = String(id).startsWith("warehouse-ask:")
-      || String(id).startsWith("manual-warehouse:")
-      || String(id).startsWith("stock-issue:")
-      || req.route === "stock"
-      || req.warehouseAsk;
-    if (warehouseOnly) {
-      delete db.requests[id];
-      continue;
-    }
-    const isTmc = req.kind === "tmc" || String(id).startsWith("tmc-request:") || String(id).startsWith("engineer-batch:");
-    if (!isTmc || req.deleted || req.done || req.stock) continue;
-    const oldStatus = String(req.status || req.requestStatus || "");
-    const hadOldWorkflow = Boolean(
-      req.financePreApproved
-      || req.supplyPrepared
-      || req.financeApproved
-      || req.cashApproved
-      || req.transferredToWarehouse
-      || req.warehouseReceived
-      || req.issued
-      || req.accountingWrittenOff
-      || ["financePre", "supply", "finance", "cash", "warehouse", "accounting", "confirmInstall"].includes(oldStatus)
-    );
-    if (!hadOldWorkflow) continue;
-    req.engineerCombinedBatch = true;
-    req.formedAt = "";
-    req.status = "engineer";
-    req.requestStatus = "engineer";
-    req.engineerApproved = false;
-    req.productionDirectorRequestApproved = false;
-    req.financePreApproved = false;
-    req.supplyPrepared = false;
-    req.financeApproved = false;
-    req.cashApproved = false;
-    req.transferredToWarehouse = false;
-    req.warehouseReceived = false;
-    req.issued = false;
-    req.accountingWrittenOff = false;
-    req.returnedTo = "";
-    req.route = "request";
-    req.updatedAt = now;
-    req.history = Array.isArray(req.history) ? req.history : [];
-    if (!req.history.some(entry => entry?.action === "Переведено инженеру без склада")) {
-      req.history.push({
-        at: now,
-        action: "Переведено инженеру без склада",
-        details: "Старый маршрут согласований и склада удалён.",
-        status: "engineer",
-        role: "system",
-        name: "Система"
-      });
-    }
-  }
+  return { checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function normalizedCatalogNodeName(value = "") {
@@ -559,18 +488,17 @@ function archiveAndRemoveCraneBeamData(db) {
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
-  db.requests ||= {};
-  if (TMC_REQUESTS_DISABLED) db.requests = {};
   db.orders ||= {};
-  db.inventory ||= {};
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
+  delete db.requests;
+  delete db.inventory;
   delete db.directorMessages;
   delete db.codexTasks;
   delete db.codexAgent;
-  db.serviceCosts ||= [];
+  delete db.serviceCosts;
   db.downtimes ||= [];
-  db.monthlyClosures = db.monthlyClosures && typeof db.monthlyClosures === "object" ? db.monthlyClosures : {};
+  delete db.monthlyClosures;
   db.compressorJournal ||= {};
   db.gasJournal ||= {};
   db.weldingJournal ||= {};
@@ -626,7 +554,6 @@ function normalizeDb(db) {
   db.pushNotifications.subscriptions = Array.isArray(db.pushNotifications.subscriptions) ? db.pushNotifications.subscriptions : [];
   db.attendanceSessions = Array.isArray(db.attendanceSessions) ? db.attendanceSessions : [];
   db.attendanceConfig = db.attendanceConfig && typeof db.attendanceConfig === "object" ? db.attendanceConfig : {};
-  removeWarehouseWorkflow(db);
   return db;
 }
 
@@ -928,7 +855,6 @@ async function initializeStorage() {
     const db = readDbFile();
     archiveAndRemoveCraneBeamData(db);
     removeDuplicateProductionRequests(db);
-    migrateLegacyDirectorApprovals(db);
     resetMonthClosePermissionsOnce(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
@@ -1044,7 +970,6 @@ async function initializeStorage() {
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
       purgeRemovedEquipmentData(postgresState);
-      migrateLegacyDirectorApprovals(postgresState);
       resetMonthClosePermissionsOnce(postgresState);
       reconcilePendingRemarkDowntimes(postgresState);
       reconcileMissingShgrpQrChecksServer(postgresState);
@@ -1060,7 +985,6 @@ async function initializeStorage() {
       postgresState = readDbFile();
       archiveAndRemoveCraneBeamData(postgresState);
       removeDuplicateProductionRequests(postgresState);
-      migrateLegacyDirectorApprovals(postgresState);
       resetMonthClosePermissionsOnce(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
@@ -1456,27 +1380,20 @@ function checkRecordsForMonth(records = {}, month) {
 function monthlyExport(db, month) {
   db = normalizeDb(db);
   const checks = checkRecordsForMonth(db.checks, month);
-  const requests = objectRecordsForMonth(db.requests, month);
   const pprSheets = objectRecordsForMonth(db.pprSheets, month);
-  const serviceCosts = (db.serviceCosts || []).filter(item => itemBelongsToMonth(item, month));
   const downtimes = (db.downtimes || []).filter(item => itemBelongsToMonth(item, month));
   return {
     exportedAt: new Date().toISOString(),
     month,
     summary: {
       checks: Object.keys(checks).length,
-      requests: Object.keys(requests).length,
       pprSheets: Object.keys(pprSheets).length,
-      serviceCosts: serviceCosts.length,
       downtimes: downtimes.length,
       users: (db.users || []).length
     },
     checks,
-    requests,
     pprSheets,
-    inventory: db.inventory || {},
     catalog: db.catalog || { equipment: {} },
-    serviceCosts,
     downtimes,
     users: (db.users || []).map(userPublic)
   };
@@ -1631,23 +1548,6 @@ function monthlyCsvRows(db, month) {
       exportPerson(item.confirmedByName, item.confirmedByRole),
       item.confirmedAt || "",
       item.comment || item.request || JSON.stringify(item || {})
-    ]);
-  }
-  for (const [key, value] of Object.entries(exported.requests || {})) {
-    rows.push([
-      "Заявка",
-      value?.createdAt || value?.date || key,
-      value?.area || value?.stockArea || "",
-      value?.equipment || value?.title || key,
-      value?.node || "",
-      value?.status || value?.routeStatus || "",
-      value?.qtyReceived || value?.qtyIssued || value?.qty || "",
-      value?.authorName || value?.requestAuthorName || "",
-      "",
-      "",
-      "",
-      "",
-      value?.text || value?.comment || value?.description || JSON.stringify(value || {})
     ]);
   }
   for (const [date, sheet] of Object.entries(exported.pprSheets || {})) {
@@ -2086,51 +1986,6 @@ function writeDb(db, action = {}) {
   appendActionLog(action);
 }
 
-function migrateLegacyDirectorApprovals(db) {
-  let changed = false;
-  const now = new Date().toISOString();
-  for (const req of Object.values(db.requests || {})) {
-    if (!req || typeof req !== "object") continue;
-    if (req.deleted || req.route === "stock" || req.sourceRole === "engineer") continue;
-    const isTmcRequest = req.kind === "tmc" || String(req.id || "").startsWith("tmc-request:");
-    if (!isTmcRequest || req.productionDirectorRequestApproved) continue;
-    const alreadyPastDirector = Boolean(
-      req.financePreApproved ||
-      req.supplyPrepared ||
-      req.financeApproved ||
-      req.cashApproved ||
-      req.transferredToWarehouse ||
-      req.warehouseReceived ||
-      req.issued ||
-      req.done ||
-      req.stock
-    );
-    if (!alreadyPastDirector) continue;
-    req.productionDirectorRequestApproved = true;
-    req.approvals ||= {};
-    req.approvals.productionDirectorRequest ||= {
-      role: "productionDirector",
-      name: "Перенесено из старой логики",
-      at: req.updatedAt || req.createdAt || now,
-      note: "Техническая миграция: заявка уже прошла дальше по старому маршруту."
-    };
-    req.history ||= [];
-    if (!req.history.some(entry => String(entry?.action || "").includes("старая логика"))) {
-      req.history.push({
-        at: now,
-        action: "Техническая отметка: директор производства",
-        details: "Перенесено из старой логики, заявка уже была на следующем этапе.",
-        status: req.status || "",
-        role: "system",
-        name: "PPR Control"
-      });
-    }
-    req.updatedAt = req.updatedAt || now;
-    changed = true;
-  }
-  return changed;
-}
-
 function removeObsoletePressNoMaterialNodes(db) {
   let changed = false;
   for (const equipmentId of ["1", "2"]) {
@@ -2205,10 +2060,7 @@ function purgeRemovedEquipmentData(db) {
   ));
   if (Object.keys(nextChecks).length !== Object.keys(db.checks || {}).length) changed = true;
   db.checks = nextChecks;
-  const nextRequests = Object.fromEntries(Object.entries(db.requests || {}).filter(([, item]) => !isRemovedItem(item)));
-  if (Object.keys(nextRequests).length !== Object.keys(db.requests || {}).length) changed = true;
-  db.requests = nextRequests;
-  for (const field of ["serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
+  for (const field of ["downtimes", "auditHistory", "systemBroadcasts"]) {
     const current = Array.isArray(db[field]) ? db[field] : [];
     const filtered = current.filter(item => !isRemovedItem(item));
     if (filtered.length !== current.length) changed = true;
@@ -2230,83 +2082,10 @@ function purgeRemovedEquipmentData(db) {
   return changed;
 }
 
-function validMonthKey(value = "") {
-  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || "")) ? String(value) : "";
-}
-
-function nextMonthKey(month = "") {
-  if (!validMonthKey(month)) return "";
-  const [year, monthNumber] = month.split("-").map(Number);
-  const next = new Date(Date.UTC(year, monthNumber, 1));
-  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthCloseReadiness(db, month) {
-  month = validMonthKey(month);
-  if (!month) return null;
-  const startMs = Date.parse(`${month}-01T00:00:00.000Z`);
-  const [year, monthNumber] = month.split("-").map(Number);
-  const endMs = Date.UTC(year, monthNumber, 1);
-  const openRemarks = [];
-  const deferredRemarks = [];
-  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
-    if (!recordKey.includes(`:${month}-`)) return;
-    ensureRemarkEntriesServer(record?.to || {}).filter(item => !item.resolved).forEach(item => {
-      const summary = {
-        id: item.id || "",
-        recordKey,
-        text: String(item.text || "").slice(0, 300),
-        deferReason: String(item.deferReason || "").slice(0, 1000),
-        deferredAt: item.deferredAt || "",
-        deferredByName: item.deferredByName || ""
-      };
-      (summary.deferReason ? deferredRemarks : openRemarks).push(summary);
-    });
-  });
-  const activeBreakdowns = (db.downtimes || []).filter(item => {
-    if (!item || item.deleted || item.type === "production") return false;
-    const started = Date.parse(item.startedAt || "");
-    const ended = item.endedAt ? Date.parse(item.endedAt) : Date.now();
-    return Number.isFinite(started) && started < endMs && ended >= startMs && !item.endedAt;
-  }).map(item => ({ id: item.id || "", equipment: item.equipment || "Оборудование", reason: item.reason || item.comment || "Аварийная остановка" }));
-  const incompletePpr = Object.entries(db.pprSheets || {})
-    .filter(([key, sheet]) => key.includes(month) && sheet && !sheet.engineerApprovedAt && (sheet.rows || []).some(row => String(row?.work || "").trim()))
-    .map(([key, sheet]) => {
-      const works = (sheet.rows || []).filter(row => String(row?.work || "").trim());
-      const equipment = [...new Set(works.map(row => String(row?.equipment || "").trim()).filter(Boolean))];
-      const nodes = [...new Set(works.map(row => String(row?.node || "").trim()).filter(Boolean))];
-      const workNames = [...new Set(works.map(row => String(row?.work || "").trim()).filter(Boolean))];
-      const subject = [equipment.join(", "), nodes.join(", ")].filter(Boolean).join(" · ") || "Оборудование по графику";
-      return {
-        id: key,
-        date: sheet.date || key,
-        equipment,
-        nodes,
-        works: workNames.slice(0, 5),
-        label: `${subject} · ${sheet.date || key}${workNames.length ? ` · ${workNames.slice(0, 2).join("; ")}${workNames.length > 2 ? ` (+${workNames.length - 2})` : ""}` : ""}`
-      };
-    });
-  const criticalCount = openRemarks.length + activeBreakdowns.length;
-  const warningCount = incompletePpr.length;
-  const readinessPercent = Math.max(0, 100 - Math.min(criticalCount * 15, 60) - Math.min(warningCount * 5, 40));
-  return {
-    month,
-    readinessPercent,
-    criticalCount,
-    warningCount,
-    greenCount: Math.max(0, 3 - Number(Boolean(openRemarks.length)) - Number(Boolean(activeBreakdowns.length)) - Number(Boolean(incompletePpr.length))),
-    groups: { openRemarks, deferredRemarks, activeBreakdowns, incompletePpr },
-    productionStopsExcluded: (db.downtimes || []).filter(item => item?.type === "production" && String(item.startedAt || "").slice(0, 7) === month).length,
-    calculatedAt: new Date().toISOString()
-  };
-}
-
 function publicState(db = readDb()) {
   return {
     checks: db.checks,
-    requests: db.requests,
     orders: db.orders,
-    inventory: db.inventory,
     catalog: db.catalog,
     adminConfig: {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
@@ -2315,9 +2094,7 @@ function publicState(db = readDb()) {
       formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies,
       excludedRatingWorkers: normalizedAdminConfig(db.adminConfig).excludedRatingWorkers
     },
-    serviceCosts: db.serviceCosts,
     downtimes: db.downtimes,
-    monthlyClosures: db.monthlyClosures || {},
     compressorJournal: db.compressorJournal,
     gasJournal: db.gasJournal,
     weldingJournal: db.weldingJournal || {},
@@ -2433,49 +2210,6 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
     writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
   } else if (configChanged) {
     writeDb(db, { action: "push_config_created" });
-  }
-}
-
-function engineerIncomingRequestItemCountServer(db) {
-  return Object.values(db.requests || {}).reduce((sum, request) => {
-    if (!request || request.deleted || request.done || request.stock || request.kind !== "tmc" || !request.engineerCombinedBatch
-      || request.formedAt || request.engineerApproved || request.productionDirectorRequestApproved || request.transferredToWarehouse) return sum;
-    return sum + Math.max(1, Array.isArray(request.items) ? request.items.length : 0);
-  }, 0);
-}
-
-async function sendEngineerRequestPushNotifications(db, submittedCount, origin = "", request = {}) {
-  const added = Math.max(1, Number(submittedCount) || 1);
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry => (!origin || entry.clientId !== origin) && engineerPermissionRoleServer(entry.profile) === "engineer");
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      const payload = {
-        type: "engineer-request",
-        title: "ALKZ — новая заявка инженеру",
-        body: added === 1 ? "Поступила 1 новая позиция" : `Поступило новых позиций: ${added}`,
-        badgeCount: personalNotificationCountServer(db, entry),
-        url: "/?view=requestCreate",
-        entityId: request.id || "engineer-incoming",
-        tag: `engineer-request:${request.id || "incoming"}`
-      };
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Engineer request push failed: ${error?.message || error}`);
-    }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
   }
 }
 
@@ -2928,13 +2662,10 @@ function activeDowntimeCountForSubscription(db, subscriptionEntry) {
 }
 
 function personalNotificationBreakdownServer(db, subscriptionEntry) {
-  const requests = engineerPermissionRoleServer(subscriptionEntry?.profile) === "engineer"
-    ? engineerIncomingRequestItemCountServer(db)
-    : 0;
   const remarks = openRemarkCountForSubscription(db, subscriptionEntry);
   const ppr = pendingPprCountForSubscription(db, subscriptionEntry);
   const downtimes = activeDowntimeCountForSubscription(db, subscriptionEntry);
-  return { remarks, ppr, requests, downtimes, total: remarks + ppr + requests + downtimes };
+  return { remarks, ppr, downtimes, total: remarks + ppr + downtimes };
 }
 
 function personalNotificationCountServer(db, subscriptionEntry) {
@@ -3109,11 +2840,8 @@ function hasMeaningfulCheckKindServer(item) {
     group && Object.values(group).some(shift => shift?.done)
   )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
-  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
-  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
-  if (String(item.lastRequestId || item.requestStatus || item.status || "").trim()) return true;
   if (String(item.nodeDraftText || "").trim()) return true;
-  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  if (String(item.comment || item.commentPhoto || "").trim()) return true;
   return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
 }
 
@@ -3123,35 +2851,6 @@ function compactCheckRecordsServer(checks = {}) {
     if (hasMeaningfulCheckKindServer(rec?.to)) next[id] = rec;
   }
   return next;
-}
-
-function isJournalRequestRecordServer(id, req = {}) {
-  const kind = String(req?.kind || "");
-  return kind === "journal-batch" || kind === "to" || String(id || "").includes(":to");
-}
-
-function removeJournalRequestsServer(db) {
-  let changed = false;
-  const now = new Date().toISOString();
-  db.requests ||= {};
-  db.checks ||= {};
-  for (const [id, req] of Object.entries(db.requests)) {
-    if (!isJournalRequestRecordServer(id, req)) continue;
-    delete db.requests[id];
-    changed = true;
-  }
-  for (const rec of Object.values(db.checks)) {
-    const item = rec?.to;
-    if (!item || typeof item !== "object") continue;
-    const fields = ["request", "requestPhoto", "requestStatus", "requestedTargetRole", "lastRequestId", "invoicePhoto", "noInvoiceApproved"];
-    const hasRequestFields = fields.some(field => Boolean(item[field]));
-    if (!hasRequestFields) continue;
-    fields.forEach(field => { item[field] = ""; });
-    item.updatedAt = now;
-    changed = true;
-  }
-  if (changed) db.checks = compactCheckRecordsServer(db.checks);
-  return changed;
 }
 
 function clearLegacyWalkCompletionsServer(db) {
@@ -3491,7 +3190,7 @@ function adminUserOperationalSummary(db, user = {}, referenceCache = new Map()) 
   const references = source => searchableRows(source).filter(serialized => keys.some(key => serialized.includes(key.toLocaleLowerCase("ru-RU")))).length;
   const sessions = (db.authSessions || []).filter(item => String(item.userId || "") === String(user.id || "") && Date.parse(item.expiresAt || "") > Date.now()).map(item => ({ createdAt: item.createdAt || "", expiresAt: item.expiresAt || "", ip: item.ip || "", userAgent: item.userAgent || "" }));
   const history = (db.adminAuditLog || []).filter(item => keys.some(key => [item.actorId, item.actorName, item.targetId, item.targetLabel].some(value => String(value || "").toLocaleLowerCase("ru-RU").includes(key.toLocaleLowerCase("ru-RU"))))).slice(0, 30).map(item => ({ at: item.at || "", action: item.action || "", actorName: item.actorName || "", reason: item.reason || "" }));
-  return { activeSessions: sessions.length, sessions, history, linked: { qrWalks: references(db.qrWalkJournal), remarks: references(db.checks), requests: references(db.requests), downtimes: references(db.downtimes), pprSheets: references(db.pprSheets), workPermits: references(db.workPermitNumberClaims) }, lastActivityAt: history[0]?.at || user.lastLoginAt || "" };
+  return { activeSessions: sessions.length, sessions, history, linked: { qrWalks: references(db.qrWalkJournal), remarks: references(db.checks), downtimes: references(db.downtimes), pprSheets: references(db.pprSheets), workPermits: references(db.workPermitNumberClaims) }, lastActivityAt: history[0]?.at || user.lastLoginAt || "" };
 }
 
 function parseCookies(req) {
@@ -3674,109 +3373,6 @@ function readBody(req) {
   });
 }
 
-function decodeHtmlEntities(text = "") {
-  return String(text || "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
-function httpGetText(targetUrl, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(targetUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 PPR-Control price lookup",
-        "Accept-Language": "ru,en;q=0.8"
-      }
-    }, response => {
-      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-        response.resume();
-        resolve(httpGetText(new URL(response.headers.location, targetUrl).toString(), timeoutMs));
-        return;
-      }
-      let data = "";
-      response.setEncoding("utf8");
-      response.on("data", chunk => {
-        data += chunk;
-        if (data.length > 700000) request.destroy();
-      });
-      response.on("end", () => resolve(data));
-    });
-    request.setTimeout(timeoutMs, () => request.destroy(new Error("timeout")));
-    request.on("error", reject);
-  });
-}
-
-function clearPriceLookupQuery(name = "") {
-  const cleanName = String(name || "").trim();
-  const words = cleanName.split(/\s+/).filter(word => word.length >= 3);
-  const generic = /^(bolt|nut|washer|profile|cable|oil|pipe|belt|pump|sensor|bearing|болт|гайка|шайба|профиль|кабель|масло|труба|лента|насос|датчик|подшипник)$/i.test(cleanName);
-  if (words.length >= 2 && cleanName.length >= 8 && !generic) return cleanName;
-  return "";
-}
-
-function extractPriceCandidates(text = "") {
-  const clean = decodeHtmlEntities(text)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ");
-  const patterns = [
-    /(\d[\d\s.,]{1,15})\s*(?:₸|тг\.?|тенге|kzt|KZT)\b/gi,
-    /(?:₸|тг\.?|тенге|kzt|KZT)\s*(\d[\d\s.,]{1,15})/gi,
-    /"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?\s*,\s*"priceCurrency"\s*:\s*"?KZT"?/gi,
-    /"priceCurrency"\s*:\s*"?KZT"?\s*,\s*"price"\s*:\s*"?(\d[\d\s.,]{1,15})"?/gi
-  ];
-  const values = [];
-  patterns.forEach(pattern => {
-    let match;
-    while ((match = pattern.exec(clean))) {
-      const value = Number(String(match[1] || "").replace(/\s/g, "").replace(",", "."));
-      if (Number.isFinite(value) && value >= 10 && value <= 100000000) values.push(value);
-    }
-  });
-  return values;
-}
-
-async function lookupInternetPrice(name = "") {
-  const queryBase = clearPriceLookupQuery(name);
-  if (!queryBase) return { ok: false, reason: "unclear_query" };
-  const query = `${queryBase} цена купить Казахстан тенге`;
-  const searchUrls = [
-    `https://yandex.kz/search/?text=${encodeURIComponent(query)}`,
-    `https://satu.kz/search?search_term=${encodeURIComponent(queryBase)}`,
-    `https://kaspi.kz/shop/search/?text=${encodeURIComponent(queryBase)}`,
-    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-  ];
-  const candidates = [];
-  const errors = [];
-  let answered = false;
-  for (const url of searchUrls) {
-    try {
-      const html = await httpGetText(url);
-      answered = true;
-      candidates.push(...extractPriceCandidates(html));
-      if (candidates.length >= 3) break;
-    } catch (error) {
-      errors.push(error.message || "lookup_failed");
-    }
-  }
-  if (!candidates.length && errors.length && !answered) return { ok: false, reason: "lookup_error" };
-  if (!candidates.length) return { ok: false, reason: "price_not_found" };
-  candidates.sort((a, b) => a - b);
-  const median = candidates[Math.floor(candidates.length / 2)];
-  const closeCount = candidates.filter(value => Math.abs(value - median) / Math.max(median, 1) <= 0.45).length;
-  if (closeCount < 1) return { ok: false, reason: "low_confidence" };
-  return {
-    ok: true,
-    price: Math.round(median),
-    currency: "KZT",
-    source: "internet",
-    query,
-    confidence: closeCount >= 2 ? "medium" : "low"
-  };
-}
 function mergeObjectRecords(current = {}, incoming = {}) {
   const next = { ...(current || {}) };
   for (const [id, value] of Object.entries(incoming || {})) {
@@ -3829,75 +3425,11 @@ function isIncomingNewerRecord(current, incoming) {
   return true;
 }
 
-function protectPaidRequestProgress(current = {}, incoming = {}) {
-  if (!current?.cashApproved) return incoming;
-  const next = { ...incoming };
-  const recoveringPaidRejection = Boolean(
-    (current.rejected && incoming.rejected === false)
-    || (
-      current.done
-      && incoming.done === false
-      && current.status === "waitingWarehouse"
-      && incoming.status === "waitingWarehouse"
-    )
-  );
-  if (!current.rejected && next.rejected) {
-    next.rejected = false;
-    next.rejectionReason = "";
-    next.done = Boolean(current.done);
-  }
-  const irreversibleFlags = [
-    "cashApproved",
-    "transferredToWarehouse",
-    "warehouseReceived",
-    "issued",
-    "mechanicInstalled",
-    "shopInstallApproved",
-    "productionDirectorApproved",
-    "accountingWrittenOff",
-    "done",
-    "stock"
-  ];
-  irreversibleFlags.forEach(field => {
-    if (recoveringPaidRejection && field === "done") return;
-    if (current[field] === true) next[field] = true;
-  });
-  const stageRank = {
-    shop: 1,
-    engineer: 2,
-    supply: 3,
-    finance: 4,
-    cash: 5,
-    cashApproved: 6,
-    waitingWarehouse: 7,
-    warehouse: 8,
-    issued: 9,
-    waitingShopDone: 10,
-    productionDirector: 11,
-    generalDirector: 11,
-    accounting: 12,
-    done: 13,
-    stock: 13,
-    rejected: 0
-  };
-  const currentStatus = String(current.status || current.requestStatus || "cashApproved");
-  const incomingStatus = String(next.status || next.requestStatus || "");
-  if ((stageRank[incomingStatus] || 0) < (stageRank[currentStatus] || 6)) {
-    next.status = currentStatus;
-    next.requestStatus = current.requestStatus || currentStatus;
-  }
-  if (["shop", "engineer", "supply", "finance", "cash"].includes(String(next.returnedTo || ""))) {
-    next.returnedTo = "";
-    next.returnReason = "";
-  }
-  return next;
-}
-
 function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   const next = { ...(current || {}) };
   for (const [id, value] of Object.entries(incoming || {})) {
     if (id.includes("\uFFFD")) continue;
-    const cleanValue = protectPaidRequestProgress(next[id], sanitizeIncomingValue(next[id], value));
+    const cleanValue = sanitizeIncomingValue(next[id], value);
     if (isIncomingNewerRecord(next[id], cleanValue)) next[id] = cleanValue;
   }
   return next;
@@ -4032,45 +3564,6 @@ function mergeCheckRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
-function inventoryCanonicalKey(item = {}) {
-  const area = String(item.area || "Общий склад");
-  const article = String(item.article || "").trim().toLowerCase();
-  if (article) return `${area}::article::${article}`;
-  return `${area}::name::${String(item.name || "").trim().toLowerCase()}`;
-}
-
-function canonicalizeInventoryRecords(records = {}) {
-  const next = {};
-  const sourceWasCanonical = new Map();
-  for (const [sourceId, rawItem] of Object.entries(records || {})) {
-    if (!rawItem || typeof rawItem !== "object" || sourceId.includes("\uFFFD")) continue;
-    const id = inventoryCanonicalKey(rawItem);
-    const isCanonical = sourceId === id;
-    if (next[id] && (sourceWasCanonical.get(id) || !isCanonical)) continue;
-    next[id] = { ...rawItem, id };
-    sourceWasCanonical.set(id, isCanonical);
-  }
-  return next;
-}
-
-function mergeInventoryRecordsByFreshness(current = {}, incoming = {}) {
-  const next = canonicalizeInventoryRecords(current);
-  const cleanIncoming = canonicalizeInventoryRecords(incoming);
-  for (const [id, value] of Object.entries(cleanIncoming)) {
-    const existing = next[id];
-    if (!existing) {
-      next[id] = sanitizeIncomingValue({}, value);
-      continue;
-    }
-    const currentTime = Date.parse(existing.updatedAt || existing.createdAt || "");
-    const incomingTime = Date.parse(value.updatedAt || value.createdAt || "");
-    if (Number.isFinite(incomingTime) && (!Number.isFinite(currentTime) || incomingTime > currentTime)) {
-      next[id] = sanitizeIncomingValue(existing, value);
-    }
-  }
-  return next;
-}
-
 function hasMeaningfulCheckKind(item) {
   if (!item || typeof item !== "object") return false;
   if (Array.isArray(item.tasks) && item.tasks.some(Boolean)) return true;
@@ -4079,10 +3572,7 @@ function hasMeaningfulCheckKind(item) {
     group && Object.values(group).some(shift => shift?.done)
   )) return true;
   if (item.walkDone || item.resolved || item.mechanicFixed || item.done) return true;
-  if (item.shopApproved || item.engineerApproved || item.supplyPrepared || item.financeApproved || item.cashApproved) return true;
-  if (item.transferredToWarehouse || item.warehouseReceived || item.issued || item.mechanicInstalled || item.shopInstallApproved || item.productionDirectorApproved || item.accountingWrittenOff) return true;
-  if (String(item.lastRequestId || item.requestStatus || item.status || "").trim()) return true;
-  if (String(item.comment || item.request || item.commentPhoto || item.requestPhoto || item.invoicePhoto || "").trim()) return true;
+  if (String(item.nodeDraftText || item.comment || item.commentPhoto || "").trim()) return true;
   return Array.isArray(item.commentLog) && item.commentLog.some(entry => String(entry?.text || entry?.photo || "").trim());
 }
 
@@ -4255,13 +3745,13 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "requests", "orders", "inventory", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
+  for (const key of ["checks", "orders", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
   const equipment = changedRecordPatch(before?.catalog?.equipment, after?.catalog?.equipment);
   if (Object.keys(equipment).length) patch.catalog = { equipment };
-  for (const key of ["serviceCosts", "downtimes", "auditHistory", "systemBroadcasts"]) {
+  for (const key of ["downtimes", "auditHistory", "systemBroadcasts"]) {
     if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) patch[key] = after?.[key] || [];
   }
   for (const key of ["operationalResetAt", "walkShiftCleanupVersion"]) {
@@ -5952,82 +5442,6 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/month-close" && req.method === "GET") {
-    if (!isPrimaryAdminEngineerServer(req.authUser)) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
-    const month = validMonthKey(url.searchParams.get("month") || "");
-    if (!month) { sendJson(res, 400, { ok: false, error: "month_invalid" }); return true; }
-    const db = readDb();
-    sendJson(res, 200, { ok: true, readiness: monthCloseReadiness(db, month), closure: db.monthlyClosures?.[month] || null, canManage: true });
-    return true;
-  }
-
-  if (pathname === "/api/month-close" && req.method === "POST") {
-    if (!isPrimaryAdminEngineerServer(req.authUser)) { sendJson(res, 403, { ok: false, error: "month_close_forbidden" }); return true; }
-    const body = await readBody(req).catch(() => ({}));
-    const month = validMonthKey(body.month);
-    const action = String(body.action || "");
-    const reason = String(body.reason || "").trim().slice(0, 2000);
-    const allowedActions = new Set(["confirm-area", "close-conditional", "close-full", "reopen"]);
-    if (!month || !allowedActions.has(action) || !reason) { sendJson(res, 400, { ok: false, error: !month ? "month_invalid" : !reason ? "reason_required" : "month_close_action_invalid" }); return true; }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      db.monthlyClosures ||= {};
-      const readiness = monthCloseReadiness(db, month);
-      const previous = db.monthlyClosures[month] || { month, status: "open", history: [], areaConfirmations: [] };
-      const history = Array.isArray(previous.history) ? previous.history.slice() : [];
-      const now = new Date().toISOString();
-      const actor = { id: String(req.authUser?.id || ""), name: String(req.authUser?.name || "Сотрудник"), role: String(req.authUser?.role || ""), area: String(req.authUser?.area || "") };
-      let closure = { ...previous, month, history, areaConfirmations: Array.isArray(previous.areaConfirmations) ? previous.areaConfirmations.slice() : [] };
-      if (action === "confirm-area") {
-        const area = String(actor.role === "editor" ? (body.area || actor.area || "Общий участок") : (actor.area || "Общий участок")).trim().slice(0, 200);
-        closure.areaConfirmations = closure.areaConfirmations.filter(item => item.area !== area);
-        closure.areaConfirmations.push({ area, confirmedAt: now, confirmedById: actor.id, confirmedByName: actor.name, reason });
-      } else if (action === "reopen") {
-        if (!previous.status || previous.status === "open") return { error: "month_already_open" };
-        closure = { ...closure, status: "open", reopenedAt: now, reopenedById: actor.id, reopenedByName: actor.name, reopenReason: reason };
-      } else {
-        if (previous.status && previous.status !== "open") return { error: "month_already_closed" };
-        if ((action === "close-full" && (readiness.criticalCount || readiness.warningCount)) || (action === "close-conditional" && readiness.criticalCount)) return { error: "month_not_ready", readiness };
-        const expectedTransferKeys = (readiness.groups.incompletePpr || []).map(item => `ppr:${item.id}`);
-        const transfers = action === "close-conditional" ? (Array.isArray(body.transfers) ? body.transfers : []).map(item => ({ key: String(item?.key || "").trim(), kind: String(item?.kind || "").trim(), id: String(item?.id || "").trim(), label: String(item?.label || "Работа").trim().slice(0, 500), reason: String(item?.reason || "").trim().slice(0, 500) })).filter(item => item.key && item.reason) : [];
-        if (action === "close-conditional" && (transfers.length !== expectedTransferKeys.length || expectedTransferKeys.some(key => !transfers.some(item => item.key === key)))) return { error: "month_transfers_incomplete", readiness };
-        const carryoverReason = action === "close-conditional" ? "Причины указаны отдельно для каждой работы" : "";
-        const carryoverTo = action === "close-conditional" ? nextMonthKey(month) : "";
-        if (action === "close-conditional") {
-          (readiness.groups.incompletePpr || []).forEach(openSheet => {
-            const sheet = db.pprSheets?.[openSheet.id];
-            const transfer = transfers.find(item => item.key === `ppr:${openSheet.id}`);
-            if (sheet && transfer) Object.assign(sheet, { carryoverFrom: month, carryoverTo, carryoverReason: transfer.reason, carriedOverAt: now, carriedOverByName: actor.name });
-          });
-        }
-        closure = {
-          ...closure,
-          status: action === "close-full" ? "closed" : "conditional",
-          closedAt: now,
-          closedById: actor.id,
-          closedByName: actor.name,
-          closedByRole: actor.role,
-          reason,
-          carryoverReason,
-          carryoverTo,
-          carryovers: transfers,
-          snapshot: { ...readiness, factoryReliabilityScore: Number.isFinite(Number(body.factoryReliabilityScore)) ? Math.max(0, Math.min(100, Math.round(Number(body.factoryReliabilityScore)))) : null }
-        };
-      }
-      history.unshift({ id: `month-event-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, action, at: now, actor, reason, status: closure.status, readinessPercent: readiness.readinessPercent });
-      closure.history = history.slice(0, 200);
-      db.monthlyClosures[month] = closure;
-      writeDb(db, { action: `month_${action.replaceAll("-", "_")}`, user: req.authUser, targetId: month, targetLabel: month, reason });
-      return { closure, readiness, state: { monthlyClosures: db.monthlyClosures } };
-    });
-    if (result.error) { sendJson(res, result.error === "month_not_ready" || result.error === "month_already_closed" || result.error === "month_already_open" ? 409 : 400, { ok: false, ...result }); return true; }
-    const stateVersion = broadcastState("month-close", "", result.state, true);
-    sendJson(res, 200, { ok: true, closure: result.closure, readiness: result.readiness, state: result.state, stateVersion });
-    return true;
-  }
-
-
-
   if (pathname === "/api/auth/session" && req.method === "GET") {
     const user = authenticatedUser(req, readDb(), true);
     if (!user) {
@@ -6425,17 +5839,6 @@ async function handleApi(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/price-lookup" && req.method === "POST") {
-    const body = await readBody(req).catch(() => ({}));
-    try {
-      const result = await lookupInternetPrice(body.name || "");
-      sendJson(res, 200, result);
-    } catch (error) {
-      sendJson(res, 200, { ok: false, reason: "lookup_error" });
-    }
-    return true;
-  }
-
   if (pathname === "/api/state" && req.method === "PUT") {
     const body = await readBody(req);
     if (Object.prototype.hasOwnProperty.call(body, "annualPpr")) {
@@ -6562,26 +5965,6 @@ async function handleApi(req, res, pathname, url) {
           return { actionId: String(body.actionId || ""), origin: body.clientId || "api", error: "clear_requires_confirmation" };
         }
         db.checks = {};
-        db.requests = Object.fromEntries(Object.entries(db.requests || {}).filter(([, req]) =>
-          req && (
-            String(req.id || "").startsWith("stock-issue:")
-            || String(req.id || "").startsWith("warehouse-ask:")
-            || String(req.id || "").startsWith("manual-warehouse:")
-            || req.kind === "stock"
-            || req.route === "stock"
-            || req.warehouseAsk
-            || req.transferredToWarehouse
-            || req.warehouseReceived
-            || req.issued
-            || req.stock
-            || req.stockOut
-            || req.inventoryId
-            || Number(req.inventoryAddedQty || 0) > 0
-          )
-        ));
-        // Inventory and warehouse-linked requests are financial/stock records,
-        // so an operational reset must never erase them.
-        db.serviceCosts = [];
         db.downtimes = [];
         db.compressorJournal = {};
         db.gasJournal = {};
@@ -6594,7 +5977,7 @@ async function handleApi(req, res, pathname, url) {
         db.operationalResetAt = new Date().toISOString();
       }
       const operationalFields = [
-        "checks", "requests", "serviceCosts", "downtimes",
+        "checks", "downtimes",
         "compressorJournal", "gasJournal", "weldingJournal", "turningJournal", "pprSheets", "annualPpr", "journalDueSince", "auditHistory", "systemBroadcasts",
         "walkShiftCleanupVersion"
       ];
@@ -6616,13 +5999,9 @@ async function handleApi(req, res, pathname, url) {
         db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
         purgeClosedWithoutScoreRemarksServer(db);
         if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
-        db.requests = TMC_REQUESTS_DISABLED ? {} : mergeObjectRecordsByFreshness(db.requests, body.requests);
-        removeJournalRequestsServer(db);
       }
-      db.inventory = mergeInventoryRecordsByFreshness(db.inventory, body.inventory);
       db.catalog.equipment = mergedCatalog;
       if (acceptOperational) {
-        db.serviceCosts = mergeArrayById(db.serviceCosts, body.serviceCosts);
         db.downtimes = mergeArrayById(db.downtimes, body.downtimes);
         db.compressorJournal = mergeObjectRecordsByFreshness(db.compressorJournal, body.compressorJournal);
         db.gasJournal = mergeObjectRecordsByFreshness(db.gasJournal, body.gasJournal);
@@ -6636,7 +6015,6 @@ async function handleApi(req, res, pathname, url) {
       }
       db.operationalResetAt = db.operationalResetAt || String(body.operationalResetAt || "");
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
-      migrateLegacyDirectorApprovals(db);
       purgeRemovedEquipmentData(db);
       const actionId = String(body.actionId || "");
       const afterState = publicState(db);
@@ -6675,200 +6053,6 @@ async function handleApi(req, res, pathname, url) {
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
     return true;
   }
-
-  if (pathname === "/api/engineer-request/action" && req.method === "POST") {
-    if (TMC_REQUESTS_DISABLED) {
-      sendJson(res, 410, { ok: false, error: "request_feature_removed" });
-      return true;
-    }
-    const body = await readBody(req);
-    const action = String(body.action || "").trim();
-    const requestedActor = sanitizeResolutionParticipant(body.actor || {});
-    const workerRoles = new Set(["mechanic", "electrician", "operator"]);
-    const engineerRoles = new Set(["engineer", "editor"]);
-    if (!new Set(["submit", "edit-item", "delete-item", "merge-items", "form"]).has(action) || !requestedActor.key) {
-      sendJson(res, 400, { ok: false, error: "engineer_request_invalid" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      db.requests ||= {};
-      const registeredActor = (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
-      const sessionActorKey = resolutionUserKeyServer(req.authUser || {});
-      const delegatedByEditor = req.authUser?.role === "editor";
-      if ((!delegatedByEditor && requestedActor.key !== sessionActorKey) || !registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || !samePermissionRoleServer(registeredActor.role, requestedActor.role)) {
-        return { error: "engineer_request_actor_invalid" };
-      }
-      const actor = sanitizeResolutionParticipant(registeredActor);
-      const actorPermissionRole = permissionBaseRoleServer(actor.role);
-      if (action === "submit" && !workerRoles.has(actorPermissionRole)) return { error: "engineer_request_worker_required" };
-      if (action !== "submit" && !engineerRoles.has(actorPermissionRole)) return { error: "engineer_request_engineer_required" };
-      const now = new Date().toISOString();
-      const date = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit"
-      }).format(new Date());
-      const cleanItem = (item = {}) => ({
-        id: String(item.id || `engineer-item:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`).slice(0, 200),
-        name: String(item.name || "").trim().slice(0, 500),
-        article: String(item.article || "").trim().slice(0, 200),
-        stockRemainder: String(item.stockRemainder || "").trim().slice(0, 100),
-        unit: String(item.unit || "шт").trim().slice(0, 50) || "шт",
-        requestedQty: Math.max(0, Number(item.requestedQty || 0)),
-        requiredQty: Math.max(0, Number(item.requiredQty || item.requestedQty || 0)),
-        note: String(item.note || "").trim().slice(0, 2000),
-        photo: String(item.photo || "").length <= 12000000 ? String(item.photo || "") : "",
-        sourceKey: actor.key,
-        sourceRole: actor.role,
-        sourceName: actor.name,
-        sourcePhone: actor.phone,
-        sourceEmployeeId: actor.employeeId,
-        sourceArea: String(item.sourceArea || body.area || actor.area || "").slice(0, 300),
-        submittedAt: now
-      });
-      const updateSummary = request => {
-        request.items = (Array.isArray(request.items) ? request.items : []).filter(item => item && String(item.name || "").trim());
-        request.text = request.items.map(item => item.name).filter(Boolean).join("; ");
-        request.requestedQty = request.items.reduce((sum, item) => sum + Number(item.requiredQty || item.requestedQty || 0), 0) || 1;
-        request.updatedAt = now;
-      };
-      let request;
-      let submittedCount = 0;
-      if (action === "submit") {
-        const incoming = (Array.isArray(body.items) ? body.items : []).map(cleanItem).filter(item => item.name);
-        if (!incoming.length) return { error: "engineer_request_items_required" };
-        request = Object.values(db.requests).find(item => item && item.kind === "tmc" && item.engineerCombinedBatch
-          && item.date === date && !item.deleted && !item.formedAt && !item.engineerApproved && !item.done && !item.stock);
-        if (!request) {
-          const id = `engineer-batch:${date}:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`;
-          request = {
-            id,
-            date,
-            kind: "tmc",
-            equipmentId: 0,
-            nodeIndex: 0,
-            equipment: "Общая накопительная заявка",
-            area: "Заявки инженеру",
-            node: "",
-            status: "engineer",
-            route: "purchase",
-            priority: "normal",
-            dueDate: String(body.dueDate || "").slice(0, 10),
-            sourceRole: "engineerBatch",
-            sourceName: "Несколько сотрудников",
-            sourceKey: "engineer-batch",
-            engineerCombinedBatch: true,
-            shopApproved: true,
-            engineerApproved: false,
-            done: false,
-            stock: false,
-            items: [],
-            history: [],
-            approvals: {},
-            createdAt: now,
-            updatedAt: now
-          };
-          db.requests[id] = request;
-        }
-        request.items = [...(Array.isArray(request.items) ? request.items : []), ...incoming];
-        submittedCount = incoming.length;
-        if (body.dueDate && (!request.dueDate || String(body.dueDate) < request.dueDate)) request.dueDate = String(body.dueDate).slice(0, 10);
-        request.history = [...(Array.isArray(request.history) ? request.history : []), {
-          at: now, action: "Добавлены позиции инженеру", details: incoming.map(item => item.name).join("; "), status: "engineer", role: actor.role, name: actor.name
-        }];
-        updateSummary(request);
-      } else {
-        const requestId = String(body.requestId || "").trim();
-        request = db.requests[requestId];
-        if (!request || request.deleted || request.kind !== "tmc" || !request.engineerCombinedBatch) return { error: "engineer_request_not_found" };
-        if (request.formedAt || request.engineerApproved) return { error: "engineer_request_locked" };
-        request.items = Array.isArray(request.items) ? request.items : [];
-        request.items.forEach(item => { item.id ||= `engineer-item:${Date.now()}:${crypto.randomBytes(5).toString("hex")}`; });
-        if (action === "edit-item") {
-          const itemId = String(body.itemId || "").trim();
-          const itemIndex = Number(body.itemIndex);
-          const item = request.items.find(entry => String(entry?.id || "") === itemId)
-            || (Number.isInteger(itemIndex) ? request.items[itemIndex] : null);
-          if (!item) return { error: "engineer_request_item_not_found" };
-          const editable = body.item || {};
-          item.name = String(editable.name || "").trim().slice(0, 500);
-          item.article = String(editable.article || "").trim().slice(0, 200);
-          item.stockRemainder = String(editable.stockRemainder || "").trim().slice(0, 100);
-          item.unit = String(editable.unit || "шт").trim().slice(0, 50) || "шт";
-          item.requestedQty = Math.max(0, Number(editable.requestedQty || 0));
-          item.requiredQty = Math.max(0, Number(editable.requiredQty || editable.requestedQty || 0));
-          item.note = String(editable.note || "").trim().slice(0, 2000);
-          item.engineerEditedAt = now;
-          item.engineerEditedBy = actor.name;
-        }
-        if (action === "delete-item") {
-          const itemId = String(body.itemId || "").trim();
-          const reason = String(body.reason || "").trim().slice(0, 1000);
-          const requestedIndex = Number(body.itemIndex);
-          const indexById = request.items.findIndex(entry => String(entry?.id || "") === itemId);
-          const index = indexById >= 0 ? indexById : Number.isInteger(requestedIndex) ? requestedIndex : -1;
-          if (index < 0) return { error: "engineer_request_item_not_found" };
-          if (!reason) return { error: "engineer_request_delete_reason_required" };
-          const [removed] = request.items.splice(index, 1);
-          request.history = [...(Array.isArray(request.history) ? request.history : []), {
-            at: now, action: "Инженер удалил позицию", details: `${removed.name}: ${reason}`, status: "engineer", role: actor.role, name: actor.name
-          }];
-        }
-        if (action === "merge-items") {
-          const grouped = new Map();
-          request.items.forEach(item => {
-            const key = [item.name, item.article, item.unit].map(value => String(value || "").trim().toLocaleLowerCase("ru-RU")).join("::");
-            if (!grouped.has(key)) {
-              grouped.set(key, { ...item, sources: [{ key: item.sourceKey, name: item.sourceName, role: item.sourceRole, at: item.submittedAt }] });
-              return;
-            }
-            const target = grouped.get(key);
-            target.sources.push({ key: item.sourceKey, name: item.sourceName, role: item.sourceRole, at: item.submittedAt });
-            target.requestedQty = Number(target.requestedQty || 0) + Number(item.requestedQty || 0);
-            target.requiredQty = Number(target.requiredQty || 0) + Number(item.requiredQty || item.requestedQty || 0);
-            target.note = [...new Set([target.note, item.note].filter(Boolean))].join(" · ");
-          });
-          request.items = [...grouped.values()];
-          request.history = [...(Array.isArray(request.history) ? request.history : []), { at: now, action: "Объединены одинаковые позиции", details: actor.name, status: "engineer", role: actor.role, name: actor.name }];
-        }
-        if (action === "form") {
-          if (!request.items.length || request.items.some(item => !String(item.name || "").trim() || Number(item.requiredQty || item.requestedQty || 0) <= 0)) {
-            return { error: "engineer_request_not_ready" };
-          }
-          request.formedAt = now;
-          request.formedByName = actor.name;
-          request.formedByRole = actor.role;
-          request.engineerApproved = true;
-          request.status = "manualFormed";
-          request.requestNumber ||= `З-${date.replaceAll("-", "")}-${String(Date.now()).slice(-6)}`;
-          request.history = [...(Array.isArray(request.history) ? request.history : []), { at: now, action: "Итоговая заявка сформирована", details: `${request.items.length} позиций`, status: "manualFormed", role: actor.role, name: actor.name }];
-        }
-        updateSummary(request);
-        if (!request.items.length) {
-          request.deleted = true;
-          request.deletedAt = now;
-        }
-      }
-      const actionId = String(body.actionId || "");
-      writeDb(db, { action: `engineer_request_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, requestId: request.id, submittedCount });
-      return { actionId, origin: body.clientId || "api", patch: { requests: { [request.id]: request } }, request, submittedCount };
-    });
-    if (result.error) {
-      const status = ["engineer_request_actor_invalid", "engineer_request_worker_required", "engineer_request_engineer_required"].includes(result.error) ? 403
-        : ["engineer_request_not_found", "engineer_request_item_not_found"].includes(result.error) ? 404
-          : result.error === "engineer_request_locked" ? 409 : 400;
-      sendJson(res, status, { ok: false, error: result.error });
-      return true;
-    }
-    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
-    if (action === "submit" && result.submittedCount > 0) {
-      sendEngineerRequestPushNotifications(readDb(), result.submittedCount, result.origin, result.request).catch(error => {
-        console.error(`Engineer request push delivery failed: ${error?.message || error}`);
-      });
-    }
-    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, request: result.request, submittedCount: result.submittedCount });
-    return true;
-  }
-
 
   if (pathname === "/api/ppr-sheet/action" && req.method === "POST") {
     const body = await readBody(req);
@@ -7888,7 +7072,7 @@ async function handleApi(req, res, pathname, url) {
     const role = String(body.role || "").trim();
     const area = String(body.area || "").trim();
     const areas = normalizedUserAreasServer({ area, areas: Array.isArray(body.areas) ? body.areas : [] });
-    if (!role || role === "warehouse") {
+    if (!role) {
       sendJson(res, 400, { ok: false, error: "Выберите действующую должность." });
       return true;
     }

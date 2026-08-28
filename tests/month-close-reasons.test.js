@@ -8,11 +8,15 @@ const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 
-test("unfinished PPR entries expose equipment nodes works and date", () => {
-  assert.match(server, /const equipment = \[\.\.\.new Set\(works\.map/);
-  assert.match(server, /const nodes = \[\.\.\.new Set\(works\.map/);
-  assert.match(server, /label: `\$\{subject\} · \$\{sheet\.date \|\| key\}/);
-  assert.match(client, /entry\.label \|\| `ППР на/);
+test("legacy procurement warehouse and month-close subsystems are absent", () => {
+  const clientWithoutCacheCleanup = client.replace(/^\s*delete parsed\.(?:inventory|serviceCosts|monthlyClosures);\s*$/gm, "");
+  const serverWithoutDatabaseCleanup = server.replace(/^\s*delete db\.(?:requests|inventory|directorMessages|serviceCosts|monthlyClosures);\s*$/gm, "");
+  for (const source of [clientWithoutCacheCleanup, serverWithoutDatabaseCleanup, styles]) {
+    assert.doesNotMatch(source, /price-lookup|month-close|normalizeRequest|requestItems|upsertNodeWalkRequest|serviceCosts|stockOut|transferredToWarehouse|accountingWrittenOff/);
+  }
+  assert.doesNotMatch(server, /\/api\/engineer-request\/action|\/api\/month-close|\/api\/price-lookup/);
+  assert.doesNotMatch(clientWithoutCacheCleanup, /state\.(?:requests|inventory|serviceCosts)|monthlyClosures/);
+  assert.doesNotMatch(styles, /\.tmc-request-|\.engineer-incoming-|\.stock-row-actions|\.month-close-/);
 });
 
 test("an individually authorized employee can record a non-resolution reason", () => {

@@ -135,7 +135,6 @@ test("dark theme uses a WhatsApp-inspired palette", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.storage-diagnostics-grid article/);
   assert.match(styles, /html\[data-theme="dark"\] \.worker-rating-ledger-summary/);
   assert.match(styles, /html\[data-theme="dark"\] \.worker-graph-bar-wrap/);
-  assert.match(styles, /html\[data-theme="dark"\] \.month-close-panel/);
   assert.match(styles, /html\[data-theme="dark"\] \.attendance-person-actions \.button-link/);
   assert.match(styles, /html\[data-theme="dark"\] \.downtime-active-summary-card/);
   assert.match(styles, /html\[data-theme="dark"\] \.open-remark-item/);

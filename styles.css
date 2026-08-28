@@ -6850,17 +6850,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   padding: 9px 10px;
 }
 
-.month-close-panel{display:grid;gap:14px;margin:0 0 18px;border:1px solid #cbdde2;border-radius:12px;background:#fff;padding:16px;box-shadow:0 8px 24px rgba(25,58,68,.08)}
-.month-close-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.month-close-head>div{display:grid;gap:3px}.month-close-head strong{font-size:1.15rem}.month-close-head span{color:#60777f}.month-close-head input{min-height:42px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
-.month-close-content{display:grid;gap:14px}.month-close-summary{display:flex;align-items:center;gap:16px;border-radius:10px;background:#eef5f6;padding:14px}.month-close-summary>div:last-child{display:grid;gap:3px}.month-close-summary.closed{background:#e7f7ed}.month-close-summary.conditional{background:#fff7dd}.month-close-percent{display:grid;place-items:center;flex:0 0 86px;min-height:76px;border-radius:10px;background:#173f4c;color:#fff}.month-close-percent strong{font-size:1.65rem}.month-close-percent span{font-size:.78rem}
-.month-close-purpose{display:grid;gap:6px;border:1px solid #b9d8e0;border-radius:10px;background:#f2fafc;padding:14px}.month-close-purpose p{margin:0;color:#385d68}.month-close-purpose ol{display:grid;gap:5px;margin:4px 0 0;padding-left:22px}
-.month-close-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.month-close-check{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px;border:1px solid #dce6e9;border-left-width:5px;border-radius:9px;padding:12px}.month-close-check>b{font-size:1.4rem}.month-close-check>div{display:grid;gap:3px}.month-close-check span{color:#60777f;font-size:.88rem}.month-close-check.green{border-left-color:#1f9d55;background:#f1fbf5}.month-close-check.yellow{border-left-color:#d69e00;background:#fffaf0}.month-close-check.red{border-left-color:#d64545;background:#fff3f3}
-.month-close-snapshot{display:grid;gap:4px;border-radius:9px;background:#f4f7f8;padding:12px}.month-close-actions{display:flex;flex-wrap:wrap;gap:8px}.month-close-actions button{min-height:42px}.month-close-history>summary{cursor:pointer;font-weight:800}.month-close-history p{display:grid;gap:2px;margin:8px 0;border-top:1px solid #e4ecee;padding-top:8px}.month-close-history span,.month-close-history small{color:#60777f}
-.month-close-work-lists{display:grid;gap:10px}.month-close-work-list{border:1px solid #dce6e9;border-radius:9px;padding:10px}.month-close-work-list.red{border-color:#efb5b5;background:#fff8f8}.month-close-work-list.yellow{border-color:#ecd58a;background:#fffdf5}.month-close-work-list summary{cursor:pointer;font-weight:900}.month-close-work-list>p{color:#60777f}.month-close-work-list>article{margin-top:8px;border-top:1px solid rgba(80,105,113,.15);padding-top:8px}.month-transfer-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,.45fr);align-items:center;gap:10px}.month-transfer-row label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:9px}.month-transfer-row input{margin-top:3px}.month-transfer-row select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:7px;font:inherit}.month-close-carryovers{display:grid;gap:5px;margin-top:6px}.month-close-carryovers small{display:block}
-.month-close-work-list.red>article{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}.month-close-work-list.red>article button{min-height:40px;white-space:nowrap}
-.month-close-work-list .month-critical-row{grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);align-items:start}.month-critical-row textarea{width:100%;min-height:72px;resize:vertical;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:9px;font:inherit}.month-critical-row>div{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.month-close-work-list.yellow>article>span,.month-close-work-list.yellow>article>small{display:block;margin-top:5px}.month-close-work-list.yellow>article>div{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-@media(max-width:680px){.month-close-head{align-items:stretch;flex-direction:column}.month-close-checks{grid-template-columns:1fr}.month-close-summary{align-items:stretch;flex-direction:column}.month-close-percent{flex-basis:auto}.month-close-actions{display:grid;grid-template-columns:1fr}.month-close-actions button{width:100%}.month-transfer-row,.month-close-work-list.red>article,.month-close-work-list .month-critical-row{grid-template-columns:1fr}.month-transfer-row select{min-height:46px}.month-close-work-list.red>article button,.month-critical-row>div button{width:100%;min-height:46px}.month-critical-row textarea{min-height:96px}}
-
 .send-kind-dialog select,
 .send-kind-dialog textarea {
   width: 100%;
@@ -7242,73 +7231,13 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   font-weight: 700;
 }
 
-.tmc-request-form {
-  display: grid;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  padding: 14px;
-  box-shadow: 0 10px 28px rgba(20, 50, 74, .08);
-}
 
-.engineer-incoming-panel {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 12px;
-  border: 2px solid var(--danger);
-  border-radius: 8px;
-  background: #fff8f8;
-  padding: 12px;
-  box-shadow: 0 10px 28px rgba(185, 28, 28, .12);
-}
 
-.engineer-incoming-panel[hidden] {
-  display: none;
-}
 
-.engineer-incoming-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 12px 0;
-  border: 2px solid var(--danger);
-  border-radius: 8px;
-  background: #fff0f0;
-  color: #7f1d1d;
-  padding: 12px 14px;
-  box-shadow: 0 10px 24px rgba(185, 28, 28, .16);
-  animation: alertBlink 1s steps(2, start) infinite;
-}
 
-.engineer-incoming-banner[hidden] {
-  display: none;
-}
 
-.engineer-incoming-banner strong {
-  display: block;
-  font-size: 16px;
-  font-weight: 900;
-}
 
-.engineer-incoming-banner span {
-  display: block;
-  margin-top: 3px;
-  color: #991b1b;
-  font-size: 13px;
-  font-weight: 800;
-}
 
-.engineer-incoming-banner button {
-  border: 0;
-  border-radius: 8px;
-  background: #14324a;
-  color: #fff;
-  padding: 11px 14px;
-  font-weight: 900;
-  white-space: nowrap;
-}
 
 .mobile-nav button {
   position: relative;
@@ -7346,279 +7275,46 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   text-align: center;
 }
 
-.engineer-incoming-head,
-.engineer-incoming-request header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
 
-.engineer-incoming-head div,
-.engineer-incoming-request header {
-  min-width: 0;
-}
 
-.engineer-incoming-head strong,
-.engineer-incoming-request b {
-  display: block;
-  color: #7f1d1d;
-  font-weight: 900;
-}
 
-.engineer-incoming-head span,
-.engineer-incoming-request span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.engineer-incoming-panel button {
-  border: 0;
-  border-radius: 8px;
-  background: #14324a;
-  color: #fff;
-  padding: 9px 11px;
-  font-weight: 900;
-}
 
-.engineer-incoming-request {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #f1c3c3;
-  border-radius: 8px;
-  background: #fff;
-  padding: 10px;
-}
 
-.engineer-incoming-table-wrap {
-  overflow-x: auto;
-}
 
-.engineer-incoming-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
 
-.engineer-incoming-table th,
-.engineer-incoming-table td {
-  border-bottom: 1px solid #edf2f5;
-  border-right: 1px solid #edf2f5;
-  padding: 7px;
-  vertical-align: top;
-  font-size: 12px;
-}
 
-.engineer-incoming-table th {
-  background: #fff0f0;
-  color: #7f1d1d;
-  text-align: left;
-  font-weight: 900;
-}
 
-.engineer-incoming-table input,
-.engineer-incoming-table textarea {
-  width: 100%;
-  border: 1px solid #d7e2e8;
-  border-radius: 7px;
-  background: #fff;
-  color: var(--ink);
-  padding: 7px 8px;
-}
 
-.engineer-incoming-table th:first-child,
-.engineer-incoming-table td:first-child {
-  width: 38px;
-  text-align: center;
-  font-weight: 900;
-}
 
-.engineer-incoming-table th:nth-child(2) { width: 240px; }
-.engineer-incoming-table th:nth-child(3) { width: 120px; }
-.engineer-incoming-table th:nth-child(4) { width: 110px; }
-.engineer-incoming-table th:nth-child(5) { width: 80px; }
-.engineer-incoming-table th:nth-child(6),
-.engineer-incoming-table th:nth-child(7) { width: 90px; }
-.engineer-incoming-table th:nth-child(9) { width: 82px; }
 
-.engineer-incoming-table [data-delete-engineer-item] {
-  background: #fff0f0;
-  color: var(--danger);
-}
 
-.engineer-incoming-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-top: 4px;
-}
 
-.engineer-incoming-actions .secondary {
-  background: #e8eef2;
-  color: #14324a;
-}
 
-.tmc-request-header {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
 
-.tmc-request-header label,
-.tmc-photo-field {
-  display: grid;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
 
-.tmc-request-header input,
-.tmc-request-header select,
-.tmc-request-table input,
-.tmc-request-table textarea {
-  width: 100%;
-  border: 1px solid #d7e2e8;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--ink);
-  padding: 9px 10px;
-}
 
-.tmc-request-table-wrap {
-  overflow-x: auto;
-  border: 1px solid #dbe6ec;
-  border-radius: 8px;
-}
 
-.tmc-request-table {
-  width: 100%;
-  min-width: 1080px;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
 
-.tmc-request-table th,
-.tmc-request-table td {
-  border-bottom: 1px solid #e3ebef;
-  border-right: 1px solid #edf2f5;
-  padding: 8px;
-  vertical-align: top;
-  font-size: 13px;
-}
 
-.tmc-request-table th {
-  background: #eef5f8;
-  color: #14324a;
-  text-align: left;
-  font-weight: 900;
-}
 
-.tmc-request-table th:first-child,
-.tmc-request-table td:first-child {
-  width: 42px;
-  text-align: center;
-  font-weight: 900;
-}
 
-.tmc-request-table th:nth-child(2) { width: 280px; }
-.tmc-request-table th:nth-child(3) { width: 115px; }
-.tmc-request-table th:nth-child(4) { width: 90px; }
-.tmc-request-table th:nth-child(5),
-.tmc-request-table th:nth-child(6) { width: 110px; }
-.tmc-request-table th:nth-child(7) { width: 150px; }
-.tmc-request-table th:nth-child(8) { width: 250px; }
 
-.tmc-request-table textarea {
-  min-height: 54px;
-  resize: vertical;
-}
 
-.tmc-row-remove {
-  margin-top: 6px;
-  border: 0;
-  border-radius: 8px;
-  background: #fff0f0;
-  color: var(--danger);
-  padding: 7px 10px;
-  font-weight: 800;
-}
 
-.tmc-request-footer {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  align-items: end;
-}
 
-.tmc-row-photo-field {
-  display: grid;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.tmc-row-photo-field input {
-  padding: 7px;
-}
 
-.tmc-row-photo-preview {
-  display: grid;
-  gap: 5px;
-  margin-top: 6px;
-}
 
-.tmc-row-photo-preview img,
-.request-item-photo {
-  width: 74px;
-  height: 58px;
-  object-fit: cover;
-  border: 1px solid #d7e2e8;
-  border-radius: 6px;
-  background: #fff;
-}
 
-.tmc-row-photo-preview button {
-  border: 0;
-  border-radius: 7px;
-  background: #fff0f0;
-  color: var(--danger);
-  padding: 6px 8px;
-  font-size: 12px;
-  font-weight: 800;
-}
 
 .request-item-photo {
   display: block;
   margin-top: 6px;
 }
 
-.tmc-request-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  align-items: center;
-}
 
-.tmc-request-actions button {
-  border: 0;
-  border-radius: 8px;
-  background: #eaf2f6;
-  color: #14324a;
-  padding: 11px 14px;
-  font-weight: 900;
-}
 
-.tmc-request-actions button[type="submit"],
-#submitTmcRequest {
-  background: #14324a;
-  color: #fff;
-}
 
 .request-inline-status {
   border-radius: 8px;
@@ -7639,74 +7335,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
 }
 
 @media (max-width: 680px) {
-}
-
-.stock-row-actions {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 6px;
-  justify-self: stretch;
-  width: 100%;
-  align-items: stretch;
-  border: 1px solid #d8e3ec;
-  border-radius: 8px;
-  background: #f8fbfd;
-  padding: 6px;
-}
-
-.stock-action-line {
-  display: grid;
-  grid-template-columns: minmax(110px, .78fr) minmax(120px, 1fr);
-  gap: 6px;
-  grid-column: 2;
-}
-
-.stock-row-actions input,
-.stock-row-actions select {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  height: 38px;
-  padding: 7px 9px;
-  background: #fff;
-  font-weight: 800;
-}
-
-.stock-row-actions > input[data-stock-qty] {
-  grid-column: 1;
-  grid-row: 1 / span 3;
-  text-align: center;
-  height: auto;
-  min-height: 126px;
-}
-
-.stock-row-actions > input[data-stock-price] {
-  grid-column: 2;
-  grid-row: 1;
-  width: 100%;
-}
-
-.stock-row-actions button {
-  width: 100%;
-  min-width: 0;
-  height: 38px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--nav);
-  color: #fff;
-  padding: 7px 10px;
-  font-weight: 800;
-  box-shadow: 0 4px 10px rgba(20, 50, 74, .14);
-  white-space: nowrap;
-}
-
-.stock-row-actions button:hover {
-  filter: brightness(1.06);
-}
-
-.stock-row-actions button:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(20, 50, 74, .16);
 }
 
 .director-panel,
@@ -8082,15 +7710,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   width: 112px;
   min-width: 112px;
   text-align: center;
-}
-
-.inventory-side button{
-  border: 0;
-  border-radius: 8px;
-  background: var(--nav);
-  color: #fff;
-  padding: 10px 12px;
-  font-weight: 700;
 }
 
 .request-card {
@@ -9572,122 +9191,23 @@ textarea:disabled {
     grid-template-columns: 1fr;
   }
 
-  .tmc-request-header,
-  .tmc-request-footer {
-    grid-template-columns: 1fr;
-  }
 
-  .tmc-request-actions {
-    justify-content: stretch;
-  }
 
-  .tmc-request-actions button {
-    flex: 1;
-  }
 
-  #requestCreateScreen {
-    padding-bottom: calc(150px + env(safe-area-inset-bottom));
-  }
 
-  .tmc-request-footer {
-    position: sticky;
-    bottom: calc(70px + env(safe-area-inset-bottom));
-    z-index: 30;
-    margin: 0 -6px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, .96);
-    padding: 8px;
-    box-shadow: 0 -8px 22px rgba(15, 23, 42, .12);
-  }
 
-  .tmc-request-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
 
-  .tmc-request-actions button {
-    min-height: 58px;
-    white-space: normal;
-    line-height: 1.15;
-  }
 
-  .tmc-request-table-wrap {
-    overflow: visible;
-    border: 0;
-    background: transparent;
-  }
 
-  .tmc-request-table {
-    display: block;
-    width: 100%;
-    min-width: 0;
-  }
 
-  .tmc-request-table thead {
-    display: none;
-  }
 
-  .tmc-request-table tbody {
-    display: grid;
-    gap: 14px;
-  }
 
-  .tmc-request-table tr[data-tmc-row] {
-    display: grid;
-    gap: 10px;
-    width: 100%;
-    border: 1px solid #d7e2e8;
-    border-radius: 12px;
-    background: #f8fbfc;
-    padding: 12px;
-    box-shadow: 0 5px 16px rgba(20, 50, 74, .08);
-  }
 
-  .tmc-request-table td,
-  .tmc-request-table td:first-child {
-    display: grid;
-    gap: 6px;
-    width: 100%;
-    border: 0;
-    padding: 0;
-    text-align: left;
-  }
 
-  .tmc-request-table td:first-child {
-    display: block;
-    border-bottom: 1px solid #dbe6ec;
-    padding-bottom: 8px;
-    color: #14324a;
-    font-size: 16px;
-  }
 
-  .tmc-request-table td:first-child::before { content: "Позиция № "; }
-  .tmc-request-table td:nth-child(2)::before { content: "Наименование ТМЦ или услуги"; }
-  .tmc-request-table td:nth-child(3)::before { content: "Остаток"; }
-  .tmc-request-table td:nth-child(4)::before { content: "Единица измерения"; }
-  .tmc-request-table td:nth-child(5)::before { content: "Заявочное количество"; }
-  .tmc-request-table td:nth-child(6)::before { content: "Необходимое количество"; }
-  .tmc-request-table td:nth-child(7)::before { content: "Фото"; }
-  .tmc-request-table td:nth-child(8)::before { content: "Примечание"; }
 
-  .tmc-request-table td:not(:first-child)::before {
-    color: #526a77;
-    font-size: 12px;
-    font-weight: 900;
-  }
 
-  .tmc-request-table input,
-  .tmc-request-table textarea,
-  .tmc-row-photo-field {
-    width: 100%;
-    min-width: 0;
-  }
 
-  .tmc-request-table textarea {
-    min-height: 76px;
-  }
 
   .request-create-archive {
     margin-top: 14px;
@@ -9834,24 +9354,6 @@ textarea:disabled {
 
   .request-card {
     grid-template-columns: 1fr;
-  }
-
-  .stock-row-actions {
-    width: 100%;
-    grid-template-columns: 66px minmax(0, 1fr);
-    justify-self: stretch;
-  }
-
-  .stock-row-actions > input[data-stock-qty] {
-    min-height: 126px;
-  }
-
-  .stock-action-line {
-    grid-template-columns: minmax(0, .8fr) minmax(96px, 1fr);
-  }
-
-  .stock-row-actions button {
-    width: 100%;
   }
 
   .downtime-pie-wrap {
@@ -10059,9 +9561,6 @@ textarea:disabled {
     margin-top: -1px;
   }
 
-  .quick-nav #createTmcRequestButton {
-    display: none !important;
-  }
 
   .quick-nav {
     gap: 10px;
@@ -11536,32 +11035,9 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   @page { size:A4 landscape;margin:9mm; }
 }
 
-/* New engineer requests: calm circular halo without button blinking. */
-#createTmcRequestButton.request-alert,
-body.editor-profile #createTmcRequestButton.request-alert,
-.mobile-nav button[data-mobile-view="requestCreate"].request-alert {
-  animation: requestButtonHalo 2.2s ease-in-out infinite !important;
-}
 
-#createTmcRequestButton.request-alert {
-  border-color: #14324a !important;
-  background: #14324a !important;
-  color: #fff !important;
-}
 
-.mobile-nav button[data-mobile-view="requestCreate"].request-alert {
-  background: #fff !important;
-  color: var(--nav) !important;
-}
 
-@keyframes requestButtonHalo {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(22, 130, 170, .10), 0 8px 18px rgba(20, 50, 74, .18);
-  }
-  50% {
-    box-shadow: 0 0 0 7px rgba(22, 130, 170, .25), 0 10px 24px rgba(20, 50, 74, .22);
-  }
-}
 
 /* Phone gas journal: one readable date card instead of a 1180px print table. */
 .gas-mobile-swipe-note { display: none; }
@@ -14093,45 +13569,6 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .worker-graph-item.yellow .worker-graph-bar,
   html[data-theme="dark"] .worker-graph-item.red .worker-graph-bar {
     background: #3b4a54;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .month-close-panel,
-  html[data-theme="dark"] .month-close-summary,
-  html[data-theme="dark"] .month-close-summary.closed,
-  html[data-theme="dark"] .month-close-summary.conditional,
-  html[data-theme="dark"] .month-close-purpose,
-  html[data-theme="dark"] .month-close-check,
-  html[data-theme="dark"] .month-close-check.green,
-  html[data-theme="dark"] .month-close-check.yellow,
-  html[data-theme="dark"] .month-close-check.red,
-  html[data-theme="dark"] .month-close-snapshot,
-  html[data-theme="dark"] .month-close-work-list,
-  html[data-theme="dark"] .month-close-work-list.red,
-  html[data-theme="dark"] .month-close-work-list.yellow {
-    border-color: #2a3942;
-    border-left-color: #3b4a54;
-    background: #111b21;
-    color: #e9edef;
-    box-shadow: none;
-  }
-
-  html[data-theme="dark"] .month-close-head span,
-  html[data-theme="dark"] .month-close-purpose p,
-  html[data-theme="dark"] .month-close-check span,
-  html[data-theme="dark"] .month-close-history span,
-  html[data-theme="dark"] .month-close-history small,
-  html[data-theme="dark"] .month-close-work-list > p {
-    color: #aebac1;
-  }
-
-  html[data-theme="dark"] .month-close-head input,
-  html[data-theme="dark"] .month-transfer-row select,
-  html[data-theme="dark"] .month-critical-row textarea,
-  html[data-theme="dark"] .month-close-actions button,
-  html[data-theme="dark"] .month-close-work-list button {
-    border-color: #3b4a54;
-    background: #202c33;
     color: #e9edef;
   }
 
