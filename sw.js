@@ -1,8 +1,8 @@
-const CACHE_NAME = "ppr-v698-startup-performance-1";
+const CACHE_NAME = "ppr-v699-stable-qr-token-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.min.css?v=v698-startup-performance-1",
+  "./styles.min.css?v=v699-stable-qr-token-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
@@ -10,8 +10,8 @@ const ASSETS = [
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
   "./modules/work-permit.js?v=658-cleanup",
-  "./app.min.js?v=v698-startup-performance-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v698-startup-performance-1",
+  "./app.min.js?v=v699-stable-qr-token-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v699-stable-qr-token-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

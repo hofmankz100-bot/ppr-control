@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v698-startup-performance-1";
+const APP_VERSION = "v699-stable-qr-token-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4557,10 +4557,29 @@ function parseNodeQrPayload(value) {
   return { equipmentId, nodeIndex, qrToken: String(parts[4] || ""), qrKind: parts[5] === "upper" ? "upper" : "lower" };
 }
 
+function resolveNodeQrTarget(parsed = {}) {
+  if (!parsed) return null;
+  const equipmentId = Number(parsed.equipmentId);
+  const eq = equipmentById(equipmentId);
+  const token = String(parsed.qrToken || "").trim();
+  if (!eq || !token) return parsed;
+  const preferred = parsed.qrKind === "upper" ? eq.upperQrTokens : eq.qrTokens;
+  const alternate = parsed.qrKind === "upper" ? eq.qrTokens : eq.upperQrTokens;
+  const findIndex = source => Object.entries(source || {}).find(([, value]) => String(value || "").trim() === token)?.[0];
+  const preferredIndex = findIndex(preferred);
+  if (preferredIndex !== undefined) return { ...parsed, nodeIndex: Number(preferredIndex) };
+  const alternateIndex = findIndex(alternate);
+  if (alternateIndex !== undefined) {
+    return { ...parsed, nodeIndex: Number(alternateIndex), qrKind: parsed.qrKind === "upper" ? "lower" : "upper" };
+  }
+  return parsed;
+}
+
 function currentNodeQrMatches(parsed = {}) {
-  const eq = equipmentById(Number(parsed.equipmentId));
-  const expected = String((parsed.qrKind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(parsed.nodeIndex)] || "").trim();
-  return !expected || expected === String(parsed.qrToken || "").trim();
+  const resolved = resolveNodeQrTarget(parsed);
+  const eq = equipmentById(Number(resolved.equipmentId));
+  const expected = String((resolved.qrKind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(resolved.nodeIndex)] || "").trim();
+  return !expected || expected === String(resolved.qrToken || "").trim();
 }
 
 function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().date, shiftInfo = currentWalkShift(), options = {}) {
@@ -4792,7 +4811,7 @@ function clearIncomingNodeQrFromUrl() {
 async function handleIncomingNodeQrFromUrl() {
   const value = incomingNodeQrFromUrl();
   if (!value) return false;
-  const parsed = parseNodeQrPayload(value);
+  const parsed = resolveNodeQrTarget(parseNodeQrPayload(value));
   if (!parsed) {
     clearIncomingNodeQrFromUrl();
     return false;
@@ -5150,7 +5169,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const expected = { equipmentId: Number(expectedEquipmentId), nodeIndex: Number(expectedNodeIndex) };
   let overlay = null;
   const applyScannedValue = value => {
-    const parsed = parseNodeQrPayload(value);
+    const parsed = resolveNodeQrTarget(parseNodeQrPayload(value));
     if (!parsed) {
       if (statusEl) statusEl.textContent = "QR код не распознан";
       return false;

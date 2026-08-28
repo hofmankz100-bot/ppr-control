@@ -1021,6 +1021,9 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(client, /}, 30000\)/);
   assert.match(client, /let submitting = false/);
   assert.match(server, /pathname === "\/api\/qr-walk\/mark"/);
+  assert.match(client, /function resolveNodeQrTarget\(parsed = \{\}\)/);
+  assert.match(server, /const findTokenIndex = source => Object\.entries\(source \|\| \{\}\)/);
+  assert.match(server, /nodeIndex = Number\(preferredIndex\)/);
   assert.match(server, /if \(existing\?\.done\)/);
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
 });

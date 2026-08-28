@@ -74,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v698-startup-performance-1";
+const SERVER_VERSION = "v699-stable-qr-token-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5759,7 +5759,7 @@ async function handleApi(req, res, pathname, url) {
   if (pathname === "/api/qr-walk/mark" && req.method === "POST") {
     const body = await readBody(req).catch(() => ({}));
     const equipmentId = Number(body.equipmentId);
-    const nodeIndex = Number(body.nodeIndex);
+    let nodeIndex = Number(body.nodeIndex);
     const date = String(body.date || "");
     const shift = String(body.shift || "");
     const role = String(req.authUser?.role || "");
@@ -5789,6 +5789,18 @@ async function handleApi(req, res, pathname, url) {
       return true;
     }
     const qrCatalogItem = readDb().catalog?.equipment?.[String(equipmentId)];
+    const requestedQrToken = String(body.qrToken || "").trim();
+    let qrKind = body.qrKind === "upper" ? "upper" : "lower";
+    if (qrCatalogItem && requestedQrToken) {
+      const findTokenIndex = source => Object.entries(source || {}).find(([, value]) => String(value || "").trim() === requestedQrToken)?.[0];
+      const preferredIndex = findTokenIndex(qrKind === "upper" ? qrCatalogItem.upperQrTokens : qrCatalogItem.qrTokens);
+      const alternateIndex = findTokenIndex(qrKind === "upper" ? qrCatalogItem.qrTokens : qrCatalogItem.upperQrTokens);
+      if (preferredIndex !== undefined) nodeIndex = Number(preferredIndex);
+      else if (alternateIndex !== undefined) {
+        nodeIndex = Number(alternateIndex);
+        qrKind = qrKind === "upper" ? "lower" : "upper";
+      }
+    }
     if (!qrCatalogItem || !Array.isArray(qrCatalogItem.nodes) || !qrCatalogItem.nodes[nodeIndex] || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
       sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
       return true;
@@ -5811,7 +5823,6 @@ async function handleApi(req, res, pathname, url) {
         : now;
       const currentRecord = db.checks[recordKey] || {};
       const currentItem = currentRecord.to && typeof currentRecord.to === "object" ? currentRecord.to : {};
-      const qrKind = body.qrKind === "upper" ? "upper" : "lower";
       const markKey = qrKind === "upper" ? `${shift}:upper` : shift;
       const existing = currentItem.walkGroups?.[group]?.[markKey]
         || (group === "technical" ? currentItem.walkShifts?.[shift] : null);
