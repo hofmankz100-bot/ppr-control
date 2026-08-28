@@ -9,15 +9,18 @@ async function main() {
   const store = createPostgresStore();
   const patch = {
     checks: db.checks || {},
-    requests: db.requests || {},
-    inventory: db.inventory || {},
+    orders: db.orders || {},
     catalog: db.catalog || { equipment: {} },
-    directorMessages: db.directorMessages || [],
     downtimes: db.downtimes || [],
     compressorJournal: db.compressorJournal || {},
     gasJournal: db.gasJournal || {},
+    weldingJournal: db.weldingJournal || {},
+    turningJournal: db.turningJournal || {},
+    pprSheets: db.pprSheets || {},
+    annualPpr: db.annualPpr || {},
     journalDueSince: db.journalDueSince || {},
-    auditHistory: db.auditHistory || []
+    auditHistory: db.auditHistory || [],
+    systemBroadcasts: db.systemBroadcasts || []
   };
   await store.applyPatch(patch, {
     actionId: `migration:${Date.now()}`,

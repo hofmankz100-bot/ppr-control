@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v707-legacy-data-final-clean-1";
+const SERVER_VERSION = "v708-exhaustive-legacy-clean-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5322,8 +5322,6 @@ async function handleApi(req, res, pathname, url) {
         commentOwnerName: "",
         commentLog: [],
         nodeDraftText: "",
-        request: "",
-        requestPhoto: "",
         resolved: false,
         createdAt: currentItem.createdAt || now,
         ...currentItem,

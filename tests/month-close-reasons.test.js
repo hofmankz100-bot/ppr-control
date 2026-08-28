@@ -7,10 +7,17 @@ const root = path.join(__dirname, "..");
 const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+const auxiliarySources = [
+  "postgresql-kit/db-postgres.js",
+  "postgresql-kit/migrate-json-to-postgres.js",
+  "server/admin-equipment-maintenance-route.js",
+  "tools/journal-archive/monthly_word_archive.py",
+  "WORKFLOWS.md"
+].map(file => fs.readFileSync(path.join(root, file), "utf8"));
 
 test("legacy procurement warehouse and month-close subsystems are absent", () => {
-  for (const source of [client, server, styles]) {
-    assert.doesNotMatch(source, /price-lookup|month-close|normalizeRequest|requestItems|upsertNodeWalkRequest|serviceCosts|stockOut|transferredToWarehouse|accountingWrittenOff/);
+  for (const source of [client, server, styles, ...auxiliarySources]) {
+    assert.doesNotMatch(source, /price-lookup|month-close|normalizeRequest|requestItems|upsertNodeWalkRequest|serviceCosts|stockOut|transferredToWarehouse|accountingWrittenOff|directorMessages|monthlyClosures|requestCreate|tmc-request|engineer-incoming|request-tabs|request-card|request-cell/);
   }
   assert.doesNotMatch(server, /\/api\/engineer-request\/action|\/api\/month-close|\/api\/price-lookup/);
   assert.doesNotMatch(client, /state\.(?:requests|inventory|serviceCosts)|monthlyClosures/);

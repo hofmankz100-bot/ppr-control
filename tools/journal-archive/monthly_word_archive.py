@@ -23,14 +23,12 @@ LABELS = {
 CATEGORIES = [
     ("QR-обходы", "qrWalkJournal"),
     ("Предупреждения и устранения", "checks"),
-    ("Заявки и ремонты", "requests"),
     ("ППР", "pprSheets"),
     ("Простои", "downtimes"),
     ("Компрессорный журнал", "compressorJournal"),
     ("Журнал ШГРП и ГРП", "gasJournal"),
     ("Журнал сварочных работ", "weldingJournal"),
     ("Журнал токарных работ", "turningJournal"),
-    ("Затраты и обслуживание", "serviceCosts"),
 ]
 
 DATE_KEYS = ("date","at","createdAt","updatedAt","startedAt","endedAt","resolvedAt","confirmedAt","completedAt","inspectionAt")

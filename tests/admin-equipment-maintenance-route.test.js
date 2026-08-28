@@ -87,12 +87,10 @@ test("node addition rejects duplicates and then assigns a QR identity", async ()
   assert.deepEqual(broadcasts[0].slice(0, 2), ["equipment-node-added", ""]);
 });
 
-test("node deletion archives its checks and shifts every linked index", async () => {
+test("node deletion archives its checks and shifts every current linked index", async () => {
   const database = {
     checks: { "9:0:2026-08-01": { ok: true }, "9:1:2026-08-01": { ok: false }, "9:2:2026-08-01": { ok: true } },
-    requests: { r1: { equipmentId: 9, nodeIndex: 1, node: "B" }, r2: { equipmentId: 9, nodeIndex: 2 } },
     downtimes: [{ equipmentId: 9, nodeIndex: 2 }],
-    serviceCosts: [],
     qrWalkJournal: [{ equipmentId: 9, nodeIndex: 1 }],
     catalog: { equipment: { 9: { nodes: ["A", "B", "C"], qrTokens: { 0: "a", 1: "b", 2: "c" }, reminders: { 2: true } } } }
   };
@@ -102,8 +100,6 @@ test("node deletion archives its checks and shifts every linked index", async ()
   assert.equal(database.catalog.equipment[9].qrTokens[1], "c");
   assert.equal(database.checks["9:1:2026-08-01"].ok, true);
   assert.equal(database.archivedNodeChecks.length, 1);
-  assert.equal(database.requests.r1.archivedNode, true);
-  assert.equal(database.requests.r2.nodeIndex, 1);
   assert.equal(database.downtimes[0].nodeIndex, 1);
   assert.equal(database.qrWalkJournal[0].archivedNode, true);
   assert.equal(audits[0].action, "equipment_node_deleted");

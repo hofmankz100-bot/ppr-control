@@ -150,9 +150,7 @@ function createAdminEquipmentMaintenanceRoute({
           item.nodeIndex = index - 1;
         }
       };
-      Object.values(db.requests || {}).forEach(shiftLinked);
       (db.downtimes || []).forEach(shiftLinked);
-      (db.serviceCosts || []).forEach(shiftLinked);
       (db.qrWalkJournal || []).forEach(entry => {
         if (Number(entry?.equipmentId) !== equipmentId) return;
         const index = Number(entry?.nodeIndex);

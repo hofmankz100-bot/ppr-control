@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v707-legacy-data-final-clean-1";
+const APP_VERSION = "v708-exhaustive-legacy-clean-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -338,24 +338,24 @@ function canEditAnnualPpr() {
   return profile?.role === "engineer" && activeUserPermission(authenticatedProfile || profile || {}, "annualPprEdit");
 }
 const ROLE_ACCESS = {
-  mechanic: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
-  electrician: { label: "Электромеханик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
-  welder: { label: "Сварщик", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
-  turner: { label: "Токарь", requestRoles: ["mechanic", "electrician"], equipment: "all", checklist: true },
-  forkliftDriver: { label: "Карщик", requestRoles: ["mechanic", "electrician"], equipment: "forklifts", checklist: true },
-  operator: { label: "Оператор", requestRoles: ["operator"], equipment: "area", checklist: true },
-  shop: { label: "Начальник цеха", requestRoles: ["all", "shop"], equipment: "area", checklist: true },
-  engineer: { label: "Инженер", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  safetyEngineer: { label: "Инженер по технике безопасности", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  energyEngineer: { label: "Инженер-энергетик", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  designEngineer: { label: "Инженер-конструктор", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  mechanicalEngineer: { label: "Инженер-механик", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  instrumentationEngineer: { label: "Инженер КИПиА", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true },
-  productionDirector: { label: "Директор производства", requestRoles: [], equipment: "all", checklist: true },
-  generalDirector: { label: "Генеральный директор", requestRoles: [], equipment: "all", checklist: true },
-  director: { label: "Директор", requestRoles: [], equipment: "none", checklist: false },
-  technicalDirector: { label: "Технический директор", requestRoles: [], equipment: "none", checklist: false },
-  editor: { label: "Админ", requestRoles: ["all", "engineer", "mechanic", "electrician", "operator"], equipment: "all", checklist: true }
+mechanic: { label: "Электромеханик", equipment: "all", checklist: true },
+  electrician: { label: "Электромеханик", equipment: "all", checklist: true },
+  welder: { label: "Сварщик", equipment: "all", checklist: true },
+  turner: { label: "Токарь", equipment: "all", checklist: true },
+  forkliftDriver: { label: "Карщик", equipment: "forklifts", checklist: true },
+  operator: { label: "Оператор", equipment: "area", checklist: true },
+  shop: { label: "Начальник цеха", equipment: "area", checklist: true },
+  engineer: { label: "Инженер", equipment: "all", checklist: true },
+  safetyEngineer: { label: "Инженер по технике безопасности", equipment: "all", checklist: true },
+  energyEngineer: { label: "Инженер-энергетик", equipment: "all", checklist: true },
+  designEngineer: { label: "Инженер-конструктор", equipment: "all", checklist: true },
+  mechanicalEngineer: { label: "Инженер-механик", equipment: "all", checklist: true },
+  instrumentationEngineer: { label: "Инженер КИПиА", equipment: "all", checklist: true },
+  productionDirector: { label: "Директор производства", equipment: "all", checklist: true },
+  generalDirector: { label: "Генеральный директор", equipment: "all", checklist: true },
+  director: { label: "Директор", equipment: "none", checklist: false },
+  technicalDirector: { label: "Технический директор", equipment: "none", checklist: false },
+  editor: { label: "Админ", equipment: "all", checklist: true }
 };
 const DEFAULT_ROLE_LABELS = Object.freeze(Object.fromEntries(Object.entries(ROLE_ACCESS).map(([role, access]) => [role, access.label])));
 function applyRoleLabelOverrides(config = state?.adminConfig || {}) {
@@ -452,7 +452,6 @@ let appNotificationTrackingReady = false;
 let notificationAudioContext = null;
 let pushPublicKeyPromise = null;
 let pushProfileSyncKey = "";
-let requestSearchTimer = null;
 let renderTimer = null;
 let backgroundRenderPending = false;
 let appHiddenAt = 0;
@@ -542,8 +541,6 @@ const ui = {
   commentPhotoInput: document.querySelector("#commentPhotoInput"),
   commentPhotoPreview: document.querySelector("#commentPhotoPreview"),
   requestInput: document.querySelector("#requestInput"),
-  requestPhotoInput: document.querySelector("#requestPhotoInput"),
-  requestPhotoPreview: document.querySelector("#requestPhotoPreview"),
   requestInlineStatus: document.querySelector("#requestInlineStatus"),
   createRequestButton: document.querySelector("#createRequestButton"),
   openRequestsButton: document.querySelector("#openRequestsButton"),
@@ -568,7 +565,6 @@ const ui = {
   directorControlPanel: document.querySelector("#directorControlPanel"),
   requestsMeta: document.querySelector("#requestsMeta"),
   rolePersonalInbox: document.querySelector("#rolePersonalInbox"),
-  requestSearchInput: document.querySelector("#requestSearchInput"),
   resolvedInput: document.querySelector("#resolvedInput")
 };
 
@@ -580,10 +576,6 @@ let current = {
   kind: "to",
   nodeDetailIndex: null,
   requestRole: defaultRequestRole(profile?.role),
-  requestSearch: "",
-  requestPriority: "",
-  requestRoute: "",
-  requestDue: "",
   scrollToCommentNode: null,
   scrollToRemarkId: "",
   returnToRemarkListAfterResolve: false,
@@ -3331,7 +3323,6 @@ function canOpenView(view) {
   if (view === "qrWalkJournal") return canViewQrWalkJournal();
   if (view === "adminMaintenance") return profile?.role === "editor";
   if (view === "workerRating") return ["mechanic", "electrician", "engineer", "editor", "productionDirector"].includes(permissionBaseRole(profile?.role));
-  if (view === "requestCreate") return false;
   return true;
 }
 
@@ -5723,7 +5714,7 @@ function record(equipmentId = current.equipmentId, nodeIndex = current.nodeIndex
 }
 
 function blankKind(now = new Date().toISOString()) {
-  return { tasks: Array(15).fill(false), walkDone: false, walkShifts: {}, walkGroups: { technical: {}, operational: {} }, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], nodeDraftText: "", request: "", requestPhoto: "", resolved: false, createdAt: now, updatedAt: now };
+  return { tasks: Array(15).fill(false), walkDone: false, walkShifts: {}, walkGroups: { technical: {}, operational: {} }, comment: "", commentPhoto: "", commentOwnerRole: "", commentOwnerName: "", commentLog: [], nodeDraftText: "", resolved: false, createdAt: now, updatedAt: now };
 }
 
 function hasMeaningfulCheckKind(item) {
@@ -7408,7 +7399,7 @@ function updateDowntimeBadge() {
 
 function updateRoleBadges() {
   const personalCount = personalRemarkMessages().length;
-  document.querySelectorAll("[data-open-role], .request-tabs .tab[data-role]").forEach(button => {
+  document.querySelectorAll("[data-open-role]").forEach(button => {
     const role = button.dataset.openRole || button.dataset.role;
     const quickButton = Boolean(button.dataset.openRole);
     const canEnter = canOpenRequestRole(role);
@@ -10765,9 +10756,7 @@ function renderNodeWalkthrough(eq) {
         const liveItem = record(eq.id, index, current.date).to;
         if (type === "comment" && !canEditComment(liveItem)) return;
         if (type === "comment") liveItem.commentPhoto = "";
-        if (type === "request") liveItem.requestPhoto = "";
         saveState();
-        // Удаление фото заявки тоже не должно создавать/обновлять заявку.
         renderNodeWalkthrough(eq);
       });
     });
@@ -10904,9 +10893,7 @@ function renderRequests() {
   renderRolePersonalInbox();
   const list = document.querySelector("#requestList");
   updateRoleBadges();
-  document.querySelectorAll(".request-tabs .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.role === current.requestRole));
   ui.requestsMeta.textContent = "Подтверждение устранённых замечаний";
-  if (ui.requestSearchInput) ui.requestSearchInput.value = "";
   list.innerHTML = "";
   applyLanguage();
   queueTranslateVisiblePage();
@@ -15965,11 +15952,6 @@ ui.openRequestsButton?.addEventListener("click", () => {
   show("requests");
 });
 
-ui.requestSearchInput?.addEventListener("input", () => {
-  current.requestSearch = ui.requestSearchInput.value;
-  clearTimeout(requestSearchTimer);
-  requestSearchTimer = window.setTimeout(renderRequests, 180);
-});
 
 ui.resolvedInput.addEventListener("change", () => {
   if (!canEditChecklist()) return;
@@ -15984,14 +15966,6 @@ ui.resolvedInput.addEventListener("change", () => {
   }
   saveState();
   render();
-});
-
-document.querySelectorAll(".request-tabs .tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    if (!canOpenRequestRole(tab.dataset.role)) return;
-    current.requestRole = tab.dataset.role;
-    renderRequests();
-  });
 });
 
 document.querySelectorAll("[data-open-role]").forEach(button => {

@@ -1,8 +1,9 @@
 const { Pool } = require("pg");
 
 const COLLECTIONS = [
-  "checks", "requests", "inventory", "directorMessages", "downtimes",
-  "compressorJournal", "gasJournal", "journalDueSince", "auditHistory"
+  "checks", "orders", "downtimes", "compressorJournal", "gasJournal",
+  "weldingJournal", "turningJournal", "pprSheets", "annualPpr",
+  "journalDueSince", "auditHistory", "systemBroadcasts"
 ];
 
 function createPostgresStore(connectionString = process.env.DATABASE_URL) {
@@ -83,14 +84,15 @@ function createPostgresStore(connectionString = process.env.DATABASE_URL) {
       "SELECT collection, record_id, payload FROM ppr_records WHERE deleted = false"
     );
     const state = {
-      checks: {}, requests: {}, inventory: {}, catalog: { equipment: {} },
-      directorMessages: [], downtimes: [], compressorJournal: {}, gasJournal: {},
-      journalDueSince: {}, auditHistory: []
+      checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [],
+      compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {},
+      pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [],
+      systemBroadcasts: []
     };
     for (const row of result.rows) {
       if (row.collection === "catalogEquipment") {
         state.catalog.equipment[row.record_id] = row.payload;
-      } else if (["directorMessages", "downtimes", "auditHistory"].includes(row.collection)) {
+      } else if (["downtimes", "auditHistory", "systemBroadcasts"].includes(row.collection)) {
         state[row.collection].push(row.payload);
       } else if (state[row.collection] && !Array.isArray(state[row.collection])) {
         state[row.collection][row.record_id] = row.payload;
