@@ -1010,6 +1010,12 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(client, /apiJson\("\/api\/qr-walk\/mark"/);
+  assert.match(client, /QR_PENDING_MARKS_KEY/);
+  assert.match(client, /function enqueuePendingQrWalkMark\(payload\)/);
+  assert.match(client, /function flushQrWalkQueue\(\)/);
+  assert.match(client, /idempotencyKey: String\(payload\.actionId \|\| ""\)/);
+  assert.match(client, /await sendQrWalkPayload\(payload\)/);
+  assert.doesNotMatch(client, /Fast QR save failed; using state retry/);
   assert.match(client, /now - lastScanAt >= 420/);
   assert.match(client, /const maxSide = 720/);
   assert.match(client, /width: \{ ideal: 1280 \}/);

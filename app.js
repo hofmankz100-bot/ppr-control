@@ -74,11 +74,12 @@ const EQUIPMENT = [
 
 const STORE_KEY = "ppr-pwa-state-v2";
 const PENDING_ACTION_ID_KEY = `${STORE_KEY}-pending-action-id`;
+const QR_PENDING_MARKS_KEY = `${STORE_KEY}-qr-pending-marks-v1`;
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v700-mobile-startup-rollback-1";
+const APP_VERSION = "v701-reliable-qr-queue-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -2845,6 +2846,7 @@ function pollRemoteUsers(force = false) {
 function flushPendingWork() {
   connectRealtime();
   startRealtimePoll();
+  flushQrWalkQueue();
   if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
 }
 
@@ -4610,50 +4612,112 @@ function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().
   return { date, shift: shiftInfo };
 }
 
+function pendingQrWalkMarks() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(QR_PENDING_MARKS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingQrWalkMarks(items) {
+  const bounded = Array.isArray(items) ? items.slice(-200) : [];
+  if (bounded.length) localStorage.setItem(QR_PENDING_MARKS_KEY, JSON.stringify(bounded));
+  else localStorage.removeItem(QR_PENDING_MARKS_KEY);
+}
+
+function qrWalkMarkIdentity(payload) {
+  return [payload.equipmentId, payload.qrToken, payload.date, payload.shift, payload.group, payload.qrKind].join("|");
+}
+
+function enqueuePendingQrWalkMark(payload) {
+  const identity = qrWalkMarkIdentity(payload);
+  const pending = pendingQrWalkMarks().filter(item => qrWalkMarkIdentity(item) !== identity);
+  pending.push(payload);
+  savePendingQrWalkMarks(pending);
+}
+
+function isPermanentQrWalkError(error) {
+  return [400, 401, 403, 410, 426].includes(Number(error?.status));
+}
+
+async function sendQrWalkPayload(payload) {
+  const result = await apiJson("/api/qr-walk/mark", {
+    method: "POST",
+    timeout: 12000,
+    idempotencyKey: String(payload.actionId || ""),
+    body: JSON.stringify(payload)
+  });
+  if (result?.recordKey && result?.record) {
+    mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+  }
+  return result;
+}
+
+let qrWalkQueueFlushPromise = null;
+function flushQrWalkQueue() {
+  if (qrWalkQueueFlushPromise || !navigator.onLine) return qrWalkQueueFlushPromise;
+  qrWalkQueueFlushPromise = (async () => {
+    const pending = pendingQrWalkMarks();
+    while (pending.length && navigator.onLine) {
+      try {
+        await sendQrWalkPayload(pending[0]);
+        pending.shift();
+        savePendingQrWalkMarks(pending);
+      } catch (error) {
+        if (!isPermanentQrWalkError(error)) break;
+        console.warn("Discarding rejected QR queue item", error);
+        pending.shift();
+        savePendingQrWalkMarks(pending);
+      }
+    }
+  })().finally(() => { qrWalkQueueFlushPromise = null; });
+  return qrWalkQueueFlushPromise;
+}
+
 async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
   const group = qrWalkGroup();
   const markKey = qrKind === "upper" ? `${shiftInfo?.key}:upper` : shiftInfo?.key;
   const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[markKey];
-  const publish = async () => {
-    try {
-      const result = await apiJson("/api/qr-walk/mark", {
-      method: "POST",
-      timeout: 12000,
-      body: JSON.stringify({
-        actionId: nextActionId(),
-        clientId: CLIENT_ID,
-        equipmentId,
-        nodeIndex,
-        qrToken,
-        date,
-        shift: shiftInfo?.key || "",
-        qrKind,
-        group,
-        capturedAt: localMark?.at || new Date().toISOString(),
-        equipment: equipmentById(equipmentId)?.name || "",
-        area: equipmentById(equipmentId)?.area || "",
-        node: equipmentById(equipmentId)?.nodes?.[nodeIndex] || "",
-        label: shiftInfo?.label || "",
-        range: shiftInfo?.range || ""
-        ,customJournal: customJournal || localMark?.customJournal || null
-      })
-    });
-      if (result?.recordKey && result?.record) {
-        mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
-      }
-    } catch (error) {
-      console.warn("Fast QR save failed; using state retry", error);
-      saveState();
-      publishStateNow().catch(scheduleRemoteRetry);
-    }
+  const eq = equipmentById(equipmentId);
+  const payload = {
+    actionId: nextActionId(),
+    clientId: CLIENT_ID,
+    equipmentId,
+    nodeIndex,
+    qrToken,
+    date,
+    shift: shiftInfo?.key || "",
+    qrKind,
+    group,
+    capturedAt: localMark?.at || new Date().toISOString(),
+    equipment: eq?.name || "",
+    area: eq?.area || "",
+    node: eq?.nodes?.[nodeIndex] || "",
+    label: shiftInfo?.label || "",
+    range: shiftInfo?.range || "",
+    customJournal: customJournal || localMark?.customJournal || null
   };
   if (!navigator.onLine) {
-    saveState();
-    scheduleRemoteRetry();
+    enqueuePendingQrWalkMark(payload);
+    showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
     return false;
   }
-  publish();
-  return true;
+  try {
+    await sendQrWalkPayload(payload);
+    return true;
+  } catch (error) {
+    if (isPermanentQrWalkError(error)) {
+      console.warn("QR save rejected by server", error);
+      showQrSavedNotice(error?.message || "Сервер отклонил QR-отметку. Повторите сканирование.");
+      return false;
+    }
+    console.warn("QR save deferred until connection recovers", error);
+    enqueuePendingQrWalkMark(payload);
+    showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
+    return false;
+  }
 }
 
 function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
@@ -5794,7 +5858,7 @@ function promptQrWalkDecision(parsed) {
       const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
-      showQrSavedNotice(sent ? "QR отмечен и сохранён на сервере." : "");
+      if (sent) showQrSavedNotice("QR отмечен и сохранён на сервере.");
       finish("continue");
     });
     const form = overlay.querySelector(".qr-remark-form");
