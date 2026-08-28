@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v709-qr-camera-reliability-1";
+const APP_VERSION = "v710-equipment-dialog-close-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -9586,18 +9586,22 @@ function openCreateEquipmentDialog() {
   </section>`;
   document.body.append(overlay);
   const form = overlay.querySelector("[data-equipment-create-form]");
+  const close = () => {
+    document.removeEventListener("keydown", closeOnEscape);
+    overlay.remove();
+  };
+  const closeOnEscape = event => { if (event.key === "Escape") close(); };
+  overlay.querySelector("[data-equipment-create-close]")?.addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  document.addEventListener("keydown", closeOnEscape);
   const type = form.elements.type;
   const updateType = () => {
     const special = false;
     overlay.querySelector("[data-equipment-first-node]").hidden = special;
     form.elements.firstNode.required = !special;
-    overlay.querySelector("[data-equipment-capacity]").hidden = !special;
   };
   type.addEventListener("change", updateType);
   updateType();
-  const close = () => overlay.remove();
-  overlay.querySelector("[data-equipment-create-close]")?.addEventListener("click", close);
-  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
   form.addEventListener("submit", event => {
     event.preventDefault();
     const button = form.querySelector("button[type=submit]");

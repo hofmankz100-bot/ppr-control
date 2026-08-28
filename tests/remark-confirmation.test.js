@@ -980,6 +980,16 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
 });
 
+test("equipment creation dialog always registers its close controls", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const dialog = client.slice(client.indexOf("function openCreateEquipmentDialog"), client.indexOf("const CUSTOM_JOURNAL_COLUMN_TYPES"));
+  assert.match(dialog, /data-equipment-create-close[^]*addEventListener\("click", close\)/);
+  assert.match(dialog, /if \(event\.target === overlay\) close\(\)/);
+  assert.match(dialog, /event\.key === "Escape"/);
+  assert.doesNotMatch(dialog, /data-equipment-capacity/);
+  assert.ok(dialog.indexOf("addEventListener(\"click\", close)") < dialog.indexOf("updateType();"));
+});
+
 test("QR scanner exposes its high-resolution photo fallback", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /width: \{ ideal: 1920 \}/);
