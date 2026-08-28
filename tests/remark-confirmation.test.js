@@ -963,8 +963,8 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(client, /await sendQrWalkPayload\(payload\)/);
   assert.doesNotMatch(client, /Fast QR save failed; using state retry/);
   assert.match(client, /now - lastScanAt >= 420/);
-  assert.match(client, /const maxSide = 720/);
-  assert.match(client, /width: \{ ideal: 1280 \}/);
+  assert.match(client, /const maxSide = 1080/);
+  assert.match(client, /width: \{ ideal: 1920 \}/);
   assert.match(client, /frameRate: \{ ideal: 24, max: 30 \}/);
   assert.match(client, /let nativeQrDetector = null/);
   assert.match(client, /const qrWorkCanvas = document\.createElement\("canvas"\)/);
@@ -978,6 +978,14 @@ test("QR walk uses a fast idempotent save and a throttled phone scanner", () => 
   assert.match(server, /nodeIndex = Number\(preferredIndex\)/);
   assert.match(server, /if \(existing\?\.done\)/);
   assert.match(server, /broadcastState\(result\.origin, result\.actionId, \{ checks:/);
+});
+
+test("QR scanner exposes its high-resolution photo fallback", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /width: \{ ideal: 1920 \}/);
+  assert.match(client, /const maxSide = 1080/);
+  assert.match(client, /data-qr-photo>Сфотографировать QR/);
+  assert.match(client, /await scanFromPhoto\(messageEl\)/);
 });
 
 test("test and duplicate worker identities are excluded without hiding the valid rating", () => {
