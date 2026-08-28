@@ -646,15 +646,6 @@ test("the rating uses the agreed simple values and accepted-work rules", () => {
   assert.match(source, /if \(item\.type === "production"\) return/);
 });
 
-test("mobile workers use the same engineer inbox instead of a WhatsApp-only draft", () => {
-  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const submitHandler = source.slice(source.indexOf('ui.tmcRequestForm?.addEventListener("submit"'), source.indexOf('ui.requestSearchInput?.addEventListener'));
-  assert.ok(submitHandler.indexOf("if (workerSendsTmcRequestToEngineer())") < submitHandler.indexOf("if (mobileShareMode())"));
-  assert.match(submitHandler, /publishEngineerRequestAction\("submit", submission\)/);
-  assert.match(source, /if \(req\.engineerCombinedBatch && !req\.formedAt\) return false/);
-  assert.match(source, /Редактируется · печать после формирования/);
-});
-
 test("every signed-in role sees only the factory reliability graph while engineer roles see the detailed report", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(source, /if \(view === "engineerReport"\) return isProfileReady\(\)/);
@@ -1253,23 +1244,6 @@ test("uploaded photos are served and production keeps a PostgreSQL fallback", as
   assert.ok((await photo.arrayBuffer()).byteLength > 0);
 });
 
-test("engineers receive visible counters and push notifications for incoming requests", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  assert.match(appSource, /function updateTmcRequestButtonLabels\(\)/);
-  assert.match(appSource, /classList\.toggle\("request-alert", engineerCount > 0\)/);
-  assert.match(appSource, /mobileRequestCount\.textContent = String\(engineerCount\)/);
-  assert.match(appSource, /engineer-request\|\$\{req\.id\}/);
-  assert.match(appSource, /requestedView === "requestCreate"/);
-  assert.match(appSource, /function syncPushSubscriptionProfile\(\)/);
-  assert.match(appSource, /\[actor\.id, actor\.employeeId, actor\.phone, actor\.role, actor\.area, actor\.language \|\| currentLanguage\(\)\]/);
-  assert.doesNotMatch(htmlSource, /data-mobile-request-count/);
-  assert.match(serverSource, /sendEngineerRequestPushNotifications/);
-  assert.match(serverSource, /engineerPermissionRoleServer\(entry\.profile\) === "engineer"/);
-  assert.match(serverSource, /ALKZ — новая заявка инженеру/);
-});
-
 test("the gas journal becomes readable date cards on phones", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styleSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
@@ -1492,12 +1466,6 @@ test("admin repair replaces the old resolver, awards only the performer, and can
     409
   );
 });
-
-test("every field worker role sends requests to engineers", () => {
-  const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(source, /\["mechanic", "electrician", "operator", "welder", "turner", "forkliftDriver"\]\.includes\(role\)/);
-});
-
 
 test("admin changes an employee role without losing the employee password", async () => {
   const password = await fetch(`${baseUrl}/api/users/password`, {
@@ -1872,30 +1840,6 @@ test("gas and compressor printing gathers filled days without date selectors", (
   assert.doesNotMatch(appSource, /data-print-compressor-sheet/);
 });
 
-test("request output archives before mobile share or desktop print starts", () => {
-  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /async function archiveTmcRequestAfterOutput\(req, action\)/);
-  const archiveFlow = appSource.match(/async function archiveTmcRequestAfterOutput\(req, action\) \{[\s\S]*?\n\}/)?.[0] || "";
-  assert.ok(archiveFlow.indexOf("saveState();") < archiveFlow.indexOf("sendRequestByDevice(req)"));
-  assert.match(archiveFlow, /const publishPromise = publishStateNow\(\)/);
-  assert.match(archiveFlow, /const outputStarted = await sendRequestByDevice\(req\)/);
-  assert.match(archiveFlow, /return \{ archived: true, outputStarted \}/);
-  assert.match(appSource, /req\.archivedAt \|\|= now/);
-  assert.match(appSource, /Открыто в WhatsApp и сохранено в архив/);
-  assert.match(appSource, /Отправлено на печать и сохранено в архив/);
-  assert.match(appSource, /function openRequestInWhatsApp\(req\)/);
-  assert.doesNotMatch(archiveFlow, /navigator\.share/);
-  assert.match(appSource, /tr \{ break-inside: avoid; page-break-inside: avoid; \}/);
-  assert.match(appSource, /if \(result\?\.request\) \{[\s\S]*?archiveTmcRequestAfterOutput/);
-  assert.match(appSource, /Зам\. директора __________________/);
-  assert.match(appSource, /function downloadRequestPrintFile\(req\)/);
-  assert.match(appSource, /data-save-download-request-archive/);
-  assert.doesNotMatch(appSource, />Сохранить и WhatsApp</);
-  assert.doesNotMatch(appSource, />Сохранить и печатать</);
-  assert.doesNotMatch(appSource, /data-print-request-archive-all/);
-  assert.match(appSource, /Скачано на компьютер и сохранено в архив/);
-});
-
 test("warehouse role, screen, endpoint, and money report blocks are removed", async () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
@@ -1927,8 +1871,9 @@ test("create request feature is removed and production erases request records", 
   assert.doesNotMatch(html, /Новая заявка|приобретение ТМЦ|закупаемой ТМЦ/);
   assert.match(client, /const TMC_REQUESTS_DISABLED = true/);
   assert.match(client, /function disableTmcRequestFeature\(\)/);
-  assert.match(client, /ui\.createTmcRequestButton\?\.remove\(\)/);
-  assert.match(client, /ui\.requestCreateScreen\?\.remove\(\)/);
+  assert.doesNotMatch(client, /function renderRequestCreate\(|function buildMobileTmcRequestDraft\(/);
+  assert.doesNotMatch(client, /function publishEngineerRequestAction\(|tmcRequestForm\?\.addEventListener/);
+  assert.doesNotMatch(client, /engineerIncomingTmcRequests\(|createTmcRequestButton\?\.addEventListener/);
   assert.match(client, /state\.requests = TMC_REQUESTS_DISABLED\s*\? \{\}/);
   assert.match(server, /const TMC_REQUESTS_DISABLED = process\.env\.NODE_ENV !== "test"/);
   assert.match(server, /if \(TMC_REQUESTS_DISABLED\) db\.requests = \{\}/);
@@ -2109,18 +2054,6 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
   assert.match(clientSource, /data-personal-remark-close-no-score/);
   assert.match(clientSource, /publishRemarkCollaborationAction\(message\.equipmentId, message\.nodeIndex, message\.date, "close-no-score"/);
-});
-
-test("removed requests leave confirmations visible and never reduce factory status", () => {
-  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?Подтверждение устранённых замечаний/);
-  assert.doesNotMatch(clientSource, /Заявки — только документы|Заявки не требуют подтверждения/);
-  assert.match(clientSource, /if \(MANUAL_REQUEST_WORKFLOW\) \{[\s\S]*?const draft = buildMobileTmcRequestDraft\(\)[\s\S]*?archiveTmcRequestAfterOutput/);
-  assert.match(clientSource, /const emergencyRequests = 0/);
-  const reminders = clientSource.slice(clientSource.indexOf("function directorReminderItems"), clientSource.indexOf("function globalControlEquipment"));
-  assert.doesNotMatch(reminders, /allRequests|Просрочена заявка/);
-  const repairs = clientSource.slice(clientSource.indexOf("function annualRepairEvents"), clientSource.indexOf("function directorAnnualStats"));
-  assert.doesNotMatch(repairs, /allRequests/);
 });
 
 test("mobile users use the single main warnings button", () => {
