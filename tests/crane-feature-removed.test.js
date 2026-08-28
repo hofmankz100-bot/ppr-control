@@ -30,3 +30,14 @@ test("online startup never renders the stale device snapshot", () => {
   assert.match(client, /const DEVICE_DB_NAME = "ppr-control-device-v2"/);
   assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
 });
+
+test("ordinary nodes removed by the broad cleanup are recovered with history", () => {
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(server, /restore-ordinary-nodes-after-crane-removal-v1/);
+  assert.match(server, /Перед восстановлением ошибочно скрытых узлов/);
+  assert.match(server, /const missingNodes = sourceNodes\.filter/);
+  assert.match(server, /const mergedNodes = \[\.\.\.sourceNodes/);
+  assert.match(server, /if \(!nextChecks\[nextKey\]\) \{ nextChecks\[nextKey\] = record/);
+  assert.match(server, /ordinary_nodes_restored_after_crane_removal/);
+  assert.match(server, /await restoreOrdinaryNodesAfterCraneRemoval\(\)/);
+});

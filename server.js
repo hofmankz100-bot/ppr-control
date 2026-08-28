@@ -1801,6 +1801,79 @@ async function readAdminBackupPayload(id) {
   return { payload, checksum: backupChecksum(payload), valid: true };
 }
 
+async function restoreOrdinaryNodesAfterCraneRemoval() {
+  const version = "restore-ordinary-nodes-after-crane-removal-v1";
+  const sourceBackupId = "backup-1787820434203-f5091095";
+  const initial = readDb();
+  initial.targetedCleanupVersions ||= {};
+  if (initial.targetedCleanupVersions[version]) return false;
+  const backup = await readAdminBackupPayload(sourceBackupId);
+  if (!backup?.valid || !backup.payload?.catalog?.equipment) return false;
+
+  await createAdminBackup("Перед восстановлением ошибочно скрытых узлов", "Система", initial);
+  const db = readDb();
+  db.catalog ||= { equipment: {} };
+  db.catalog.equipment ||= {};
+  db.checks ||= {};
+  const sourceCatalog = backup.payload.catalog.equipment || {};
+  const sourceChecks = backup.payload.checks || {};
+  const restoredEquipment = [];
+  let restoredNodes = 0;
+  let restoredChecks = 0;
+
+  for (const [equipmentId, sourceCard] of Object.entries(sourceCatalog)) {
+    if (!sourceCard || sourceCard.deleted || /^\s*гпм\s*$/iu.test(String(sourceCard.name || ""))) continue;
+    const sourceNodes = Array.isArray(sourceCard.nodes) ? sourceCard.nodes : [];
+    if (!sourceNodes.length) continue;
+    const currentCard = db.catalog.equipment[equipmentId] || {};
+    const currentNodes = Array.isArray(currentCard.nodes) ? currentCard.nodes : [];
+    const missingNodes = sourceNodes.filter(name => !currentNodes.includes(name));
+    if (!missingNodes.length) continue;
+    const mergedNodes = [...sourceNodes, ...currentNodes.filter(name => !sourceNodes.includes(name))];
+    const currentTokens = currentCard.qrTokens || {};
+    const sourceTokens = sourceCard.qrTokens || {};
+    const tokensByName = new Map();
+    currentNodes.forEach((name, index) => { if (currentTokens[index]) tokensByName.set(name, currentTokens[index]); });
+    sourceNodes.forEach((name, index) => { if (!tokensByName.has(name) && sourceTokens[index]) tokensByName.set(name, sourceTokens[index]); });
+
+    const nextChecks = {};
+    for (const [recordKey, record] of Object.entries(db.checks)) {
+      const parts = String(recordKey).split(":");
+      if (String(parts[0]) !== String(equipmentId)) { nextChecks[recordKey] = record; continue; }
+      const nodeName = currentNodes[Number(parts[1])];
+      const nextIndex = mergedNodes.indexOf(nodeName);
+      if (nextIndex >= 0) nextChecks[`${equipmentId}:${nextIndex}:${parts.slice(2).join(":")}`] = record;
+    }
+    for (const [recordKey, record] of Object.entries(sourceChecks)) {
+      const parts = String(recordKey).split(":");
+      if (String(parts[0]) !== String(equipmentId)) continue;
+      const nodeName = sourceNodes[Number(parts[1])];
+      const nextIndex = mergedNodes.indexOf(nodeName);
+      if (nextIndex < 0) continue;
+      const nextKey = `${equipmentId}:${nextIndex}:${parts.slice(2).join(":")}`;
+      if (!nextChecks[nextKey]) { nextChecks[nextKey] = record; restoredChecks += 1; }
+    }
+    db.checks = nextChecks;
+    db.catalog.equipment[equipmentId] = {
+      ...sourceCard,
+      ...currentCard,
+      id: Number(currentCard.id || sourceCard.id || equipmentId),
+      nodes: mergedNodes,
+      qrTokens: Object.fromEntries(mergedNodes.map((name, index) => [index, tokensByName.get(name) || crypto.randomBytes(12).toString("hex")])),
+      removedNodes: (Array.isArray(currentCard.removedNodes) ? currentCard.removedNodes : []).filter(item => !missingNodes.includes(item?.name)),
+      deleted: false,
+      updatedAt: new Date().toISOString()
+    };
+    restoredNodes += missingNodes.length;
+    restoredEquipment.push(String(equipmentId));
+  }
+
+  db.targetedCleanupVersions ||= {};
+  db.targetedCleanupVersions[version] = { at: new Date().toISOString(), sourceBackupId, restoredNodes, restoredChecks, restoredEquipment };
+  writeDb(db, { action: "ordinary_nodes_restored_after_crane_removal", actorName: "Система", targetId: sourceBackupId, details: `${restoredNodes} nodes; ${restoredChecks} checks` });
+  return { restoredNodes, restoredChecks, restoredEquipment };
+}
+
 let automaticBackupRunning = false;
 
 function adminAutomationSnapshot(db = readDb()) {
@@ -8222,6 +8295,7 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(async storage => {
+    await restoreOrdinaryNodesAfterCraneRemoval().catch(error => console.warn(`Ordinary node recovery failed: ${error.message}`));
     startPostgresRecoveryMonitor();
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
