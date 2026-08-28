@@ -26,9 +26,19 @@ test("startup cleanup permanently removes crane collections and stale node mappi
 test("online startup never renders the stale device snapshot", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /const remoteLoaded = await loadRemoteState\(\)/);
-  assert.match(client, /if \(!remoteLoaded && deviceState/);
+  assert.match(client, /if \(!remoteLoaded\) \{[\s\S]*?const deviceState = await deviceStatePromise/);
   assert.match(client, /const DEVICE_DB_NAME = "ppr-control-device-v3"/);
   assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
+});
+
+test("mobile startup cannot wait indefinitely for IndexedDB", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /IndexedDB open timed out/);
+  assert.match(client, /request\.onblocked/);
+  assert.match(client, /show\(current\.view, false\);[\s\S]*?const deviceStatePromise = loadStateFromDevice\(\)/);
+  const authFinish = client.slice(client.indexOf("async function finishAuthOnCurrentPage"), client.indexOf("function defaultRequestRole"));
+  assert.ok(authFinish.indexOf("show(current.view, false)") < authFinish.indexOf("loadRemoteState()"));
+  assert.match(authFinish, /Promise\.allSettled\(\[[\s\S]*?loadRemoteState\(\)/);
 });
 
 test("ordinary nodes removed by the broad cleanup are recovered with history", () => {

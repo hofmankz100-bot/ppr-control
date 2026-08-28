@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v710-equipment-dialog-close-1";
+const APP_VERSION = "v711-mobile-startup-sync-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -457,8 +457,8 @@ let backgroundRenderPending = false;
 let appHiddenAt = 0;
 let lastResumeProfileRefreshAt = 0;
 let lastResumeHandledAt = 0;
-const RESUME_SYNC_AFTER_MS = 60000;
-const RESUME_PROFILE_REFRESH_MS = 300000;
+const RESUME_SYNC_AFTER_MS = 5000;
+const RESUME_PROFILE_REFRESH_MS = 60000;
 const userApprovalDrafts = new Map();
 const engineerRequestSaveTimers = new Map();
 const pendingRequestIds = new Set();
@@ -905,12 +905,23 @@ function openDeviceDatabase() {
       return;
     }
     const request = indexedDB.open(DEVICE_DB_NAME, 1);
+    const timeout = window.setTimeout(() => reject(new Error("IndexedDB open timed out")), 1500);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(DEVICE_DB_STORE)) db.createObjectStore(DEVICE_DB_STORE);
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+    request.onsuccess = () => {
+      window.clearTimeout(timeout);
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(request.error || new Error("IndexedDB open failed"));
+    };
+    request.onblocked = () => {
+      window.clearTimeout(timeout);
+      reject(new Error("IndexedDB open blocked"));
+    };
   });
 }
 
@@ -1617,9 +1628,9 @@ async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
   }
 }
 
-function startAttendanceRefresh() {
+function startAttendanceRefresh({ immediate = true } = {}) {
   clearInterval(attendanceRefreshTimer);
-  refreshAttendanceStatus();
+  if (immediate) refreshAttendanceStatus();
   attendanceRefreshTimer = window.setInterval(() => {
     if (document.visibilityState !== "hidden") refreshAttendanceStatus();
   }, 30000);
@@ -3272,16 +3283,21 @@ async function finishAuthOnCurrentPage() {
   ui.loginForm.hidden = false;
   ui.loginError.textContent = "";
   resetCurrentForProfile();
-  await refreshAttendanceStatus({ renderProfileBar: false });
-  await handleIncomingAttendanceQrFromUrl();
-  startAttendanceRefresh();
   renderProfile();
   applyLanguage();
+  show(current.view, false);
+  appBootstrapComplete = true;
   flushPendingWork();
   loadRemoteUsers();
-  const loaded = await loadRemoteState();
-  if (!loaded) render();
-  show(current.view, false);
+  Promise.allSettled([
+    loadRemoteState(),
+    refreshAttendanceStatus({ renderProfileBar: true })
+  ]).then(async results => {
+    startAttendanceRefresh({ immediate: false });
+    if (results[0]?.status !== "fulfilled" || results[0].value !== true) render();
+    const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
+    if (!attendanceHandled) await handleIncomingNodeQrFromUrl();
+  }).catch(() => {});
   if (localStorage.getItem(PUSH_SUBSCRIPTION_KEY) === "1" && window.Notification?.permission === "granted") {
     ensurePushSubscription().catch(() => {});
   }
@@ -16172,26 +16188,19 @@ resetAppNotificationsForOpen();
 (async () => {
   if (!loadProfile()) return;
   if (!await restoreServerSession()) return;
-  await refreshAttendanceStatus();
-  startAttendanceRefresh();
-  const deviceState = await loadStateFromDevice();
-  // Establish the server snapshot before the first full render. Some render paths
-  // initialise derived UI data and persist it locally; rendering the device cache
-  // first made that harmless work look like an offline edit and caused a large,
-  // unnecessary PUT /api/state immediately after every sign-in.
-  const remoteLoaded = await loadRemoteState();
-  // The device snapshot is an offline fallback only. Merging it before a healthy
-  // server response made removed nodes flash on screen and temporarily corrupted
-  // equipment counters with stale records.
-  if (!remoteLoaded && deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
   appBootstrapComplete = true;
-  if (isProfileReady()) {
-    const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
-    const handled = attendanceHandled || await handleIncomingNodeQrFromUrl();
-    if (!handled) show(current.view, false);
-  } else {
+  if (isProfileReady()) show(current.view, false);
+  else render();
+  startAttendanceRefresh();
+  const deviceStatePromise = loadStateFromDevice();
+  const remoteLoaded = await loadRemoteState();
+  if (!remoteLoaded) {
+    const deviceState = await deviceStatePromise;
+    if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
     render();
   }
+  const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
+  if (!attendanceHandled) await handleIncomingNodeQrFromUrl();
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();

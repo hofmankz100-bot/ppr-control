@@ -40,7 +40,7 @@ test("background synchronization preserves the open journal scroll position", ()
 });
 
 test("quick app resume checks only the version and restores stale realtime", () => {
-  assert.match(source, /const RESUME_SYNC_AFTER_MS = 60000/);
+  assert.match(source, /const RESUME_SYNC_AFTER_MS = 5000/);
   assert.match(source, /if \(document\.visibilityState === "hidden"\)[\s\S]*?appHiddenAt = Date\.now\(\)/);
   assert.match(source, /function resumeRealtimeQuietly\(awayMs = 0\)/);
   assert.match(source, /socketConnecting = Boolean\(realtimeSocket && realtimeSocket\.readyState === WebSocket\.CONNECTING\)/);

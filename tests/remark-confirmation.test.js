@@ -730,7 +730,7 @@ test("idle synchronization avoids repeated user loads and oversized local storag
   assert.doesNotMatch(realtimeHandler, /loadRemoteUsers\(\)/);
   assert.match(client, /now - lastRemoteUsersPollAt < 30000/);
   assert.match(client, /if \(appBootstrapComplete\) \{[\s\S]*?syncRemoteChanges\(\)/);
-  assert.match(client, /const remoteLoaded = await loadRemoteState\(\);[\s\S]*?if \(!remoteLoaded && deviceState/);
+  assert.match(client, /const remoteLoaded = await loadRemoteState\(\);[\s\S]*?if \(!remoteLoaded\) \{[\s\S]*?const deviceState = await deviceStatePromise/);
   const localLoad = client.slice(client.indexOf("function loadState()"), client.indexOf("function persistStateLocally"));
   const remoteMerge = client.slice(client.indexOf("function mergeRemoteState"), client.indexOf("function mergeRealtimePatch"));
   assert.doesNotMatch(localLoad, /remoteMigrationChanged[\s\S]*?STORE_KEY.*pending/);
