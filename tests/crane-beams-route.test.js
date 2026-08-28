@@ -219,7 +219,7 @@ test("admin-selected parent equipment wins over words in the crane name", async 
 
 test("admin correction requires a reason and preserves before and after snapshots", async () => {
   const inspection = { id: "inspection-1", craneId: "one", type: "shift", date: "2026-08-27", shift: "day", actor: { name: "Старое имя", role: "operator" }, answers: [{ id: "a", label: "Тормоз", ok: true, comment: "" }], result: "good", decision: "allowed" };
-  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", parentEquipmentId: "1", checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: { "inspection-1": inspection }, defects: {}, installationJournal: {}, corrections: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1" } };
+  const db = { catalog: { equipment: { 1: { name: "ЛПЦ", area: "ЛПЦ", nodes: [] } } }, craneBeams: { assets: { one: { id: "one", name: "Кран", workshop: "ЛПЦ", parentEquipmentId: "1", checklistSchemaVersion: 2, checklist: [{ id: "a", label: "Тормоз" }] } }, inspections: { "inspection-1": inspection }, defects: { "defect-1": { id: "defect-1", inspectionId: "inspection-1", craneId: "one", status: "open", items: [] } }, installationJournal: {}, corrections: {}, unresolvedArchive: {}, migrationVersion: "retired-archive-v1" } };
   const missing = harness(db);
   await missing.handler({ method: "POST", authUser: { id: "admin", role: "editor" }, body: { inspectionId: "inspection-1", actorName: "Новое имя" } }, {}, "/api/crane-beams/correct", new URL("http://test"));
   assert.equal(missing.responses[0].status, 400);
@@ -229,6 +229,13 @@ test("admin correction requires a reason and preserves before and after snapshot
   assert.equal(h.responses[0].payload.correction.before.actor.name, "Старое имя");
   assert.equal(h.responses[0].payload.correction.after.actor.name, "Новое имя");
   assert.equal(h.responses[0].payload.inspection.result, "remark");
+  assert.equal(db.craneBeams.defects["defect-1"].status, "open");
+  assert.equal(db.craneBeams.defects["defect-1"].items[0].comment, "Износ");
+  const fixed = harness(db);
+  await fixed.handler({ method: "POST", authUser: { id: "admin", role: "editor", name: "Админ" }, body: { inspectionId: "inspection-1", reason: "Ошибочное предупреждение", answers: { a: { ok: true, comment: "" } } } }, {}, "/api/crane-beams/correct", new URL("http://test"));
+  assert.equal(fixed.responses[0].status, 200);
+  assert.equal(db.craneBeams.defects["defect-1"].status, "cancelled_by_correction");
+  assert.equal(db.craneBeams.defects["defect-1"].correctionReason, "Ошибочное предупреждение");
 });
 test("unresolved crane stays in protected archive instead of an arbitrary workshop", () => {
   const db = { catalog: { equipment: { 1: { name: "Пресс", area: "Прессовый участок", nodes: [] } } }, retiredCraneBeamArchive: { assets: [{ id: "mystery", name: "Кран-балка без цеха" }] } };

@@ -415,6 +415,13 @@ function createCraneBeamsRoute({ adminPreviewOnly = false, builtInEquipment = {}
         inspection.result = inspection.answers.some(answer => !answer.ok) ? (body.decision === "prohibited" ? "prohibited" : "remark") : "good";
         inspection.decision = inspection.result === "good" ? "allowed" : inspection.result === "prohibited" ? "prohibited" : "allowed_with_remark";
         inspection.correctedAt = new Date().toISOString();
+        Object.values(db.craneBeams.defects).filter(defect => defect?.inspectionId === inspection.id).forEach(defect => {
+          defect.items = inspection.answers.filter(answer => !answer.ok).map(answer => ({ id: answer.id, label: answer.label, comment: answer.comment, photo: answer.photo || "" }));
+          defect.correctedAt = inspection.correctedAt;
+          defect.correctedBy = actor(req.authUser);
+          defect.correctionReason = reason;
+          if (inspection.result === "good") defect.status = "cancelled_by_correction";
+        });
         const correctionId = newId("crane-correction");
         db.craneBeams.corrections[correctionId] = { id: correctionId, inspectionId: inspection.id, craneId: inspection.craneId, at: inspection.correctedAt, reason, actor: actor(req.authUser), before, after: structuredClone(inspection) };
         writeDb(db, { action: "crane_beam_inspection_corrected", user: req.authUser, craneId: inspection.craneId, inspectionId: inspection.id, correctionId, reason });
