@@ -987,9 +987,6 @@ function loadState() {
       parsed.journalRequestCleanupVersion = APP_VERSION;
       persistStateLocally(parsed);
     }
-    if (remoteMigrationChanged) {
-      localStorage.setItem(`${STORE_KEY}-pending`, "1");
-    }
     return parsed;
   } catch {
     return { checks: {}, requests: {}, orders: {}, inventory: {}, catalog: { equipment: {} }, serviceCosts: [], downtimes: [], monthlyClosures: {}, compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
@@ -2428,11 +2425,9 @@ function mergeRemoteState(remote = {}, options = {}) {
   removeWarehouseStateLocal(state);
   if (migration.changed) {
     state.journalRequestCleanupVersion = APP_VERSION;
-    localStorage.setItem(`${STORE_KEY}-pending`, "1");
   }
   if (journalCleanup.changed) {
     state.journalRequestCleanupVersion = APP_VERSION;
-    localStorage.setItem(`${STORE_KEY}-pending`, "1");
   }
   persistStateLocally(state);
 }
@@ -18974,8 +18969,8 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
 });
 
 window.addEventListener("online", () => {
-  flushPendingWork();
   if (appBootstrapComplete) {
+    flushPendingWork();
     syncRemoteChanges();
     pollRemoteUsers(true);
   }
