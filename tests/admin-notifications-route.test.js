@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { createAdminNotificationsRoute } = require("../server/admin-notifications-route");
 
 const CURRENT_TIME = Date.parse("2026-08-23T12:00:00.000Z");
@@ -22,6 +24,13 @@ function createHarness(database = { systemBroadcasts: [] }) {
   });
   return { handler, responses, events, database };
 }
+
+test("system broadcasts merge during full and realtime client synchronization", () => {
+  const client = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  assert.match(client, /parsed\.systemBroadcasts \|\|= \[\]/);
+  assert.match(client, /state\.systemBroadcasts = mergeArrayByIdLocal\(state\.systemBroadcasts, remote\.systemBroadcasts\)/);
+  assert.match(client, /if \(remote\.systemBroadcasts\) state\.systemBroadcasts = mergeArrayByIdLocal/);
+});
 
 function adminRequest(body) {
   return { method: "POST", authUser: { id: "admin-1", name: "Admin", role: "editor", passwordHash: "secret" }, body: { password: "secret", reason: "Проверка", ...body } };

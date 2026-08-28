@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v711-mobile-startup-sync-1";
+const APP_VERSION = "v712-complete-mobile-sync-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -835,6 +835,7 @@ function loadState() {
     parsed.annualPpr ||= {};
     parsed.journalDueSince ||= {};
     parsed.auditHistory ||= [];
+    parsed.systemBroadcasts ||= [];
     parsed.operationalResetAt ||= "";
     const walkCleanup = clearLegacyWalkCompletions(parsed);
     const remoteMigrationChanged = walkCleanup.changed;
@@ -844,7 +845,7 @@ function loadState() {
     }
     return parsed;
   } catch {
-    return { checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
+    return { checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: WALK_SHIFT_CLEANUP_VERSION };
   }
 }
 
@@ -2226,6 +2227,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.pprSheets = {};
     state.journalDueSince = {};
     state.auditHistory = [];
+    state.systemBroadcasts = [];
     state.operationalResetAt = remoteResetAt;
     localStorage.removeItem(`${STORE_KEY}-pending`);
   }
@@ -2263,6 +2265,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
   state.journalDueSince = { ...(state.journalDueSince || {}), ...(remote.journalDueSince || {}) };
   state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
+  state.systemBroadcasts = mergeArrayByIdLocal(state.systemBroadcasts, remote.systemBroadcasts);
   state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
   persistStateLocally(state);
@@ -2304,6 +2307,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
   if (remote.auditHistory) state.auditHistory = mergeArrayByIdLocal(state.auditHistory, remote.auditHistory);
+  if (remote.systemBroadcasts) state.systemBroadcasts = mergeArrayByIdLocal(state.systemBroadcasts, remote.systemBroadcasts);
   if (Object.prototype.hasOwnProperty.call(remote, "operationalResetAt")) state.operationalResetAt = remote.operationalResetAt;
   if (Object.prototype.hasOwnProperty.call(remote, "walkShiftCleanupVersion")) state.walkShiftCleanupVersion = remote.walkShiftCleanupVersion;
   persistStateLocally(state);
