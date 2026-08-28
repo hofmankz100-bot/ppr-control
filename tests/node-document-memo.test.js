@@ -23,7 +23,7 @@ test("document list is rendered under concrete nodes in both node views", () => 
 });
 
 test("memo includes equipment-specific records and official Kazakhstan sources", () => {
-  assert.match(app, /Журнал ежесменного осмотра кран-балки/);
+  assert.doesNotMatch(app, /Журнал ежесменного осмотра кран-балки/);
   assert.match(app, /Журнал предсменного осмотра вилочного погрузчика/);
   assert.match(app, /Протоколы измерения сопротивления изоляции/);
   assert.match(app, /adilet\.zan\.kz\/rus\/docs\/V1500010949/);

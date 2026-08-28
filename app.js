@@ -78,7 +78,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v696-crane-qr-performance-1";
+const APP_VERSION = "v697-stable-catalog-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 const TMC_REQUESTS_DISABLED = true;
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -90,7 +90,10 @@ const PUSH_SUBSCRIPTION_KEY = "ppr-push-subscription-v1";
 const PUSH_FAILURE_COUNT_KEY = "ppr-push-failure-count-v1";
 const NOTIFICATION_PROMPT_DISMISSED_KEY = "ppr-notification-prompt-dismissed-v1";
 const PERSONAL_REMARK_READ_KEY = "ppr-personal-remark-read-v1";
-const DEVICE_DB_NAME = "ppr-control-device";
+// Version the device cache separately from the server schema. Older installations
+// stored the entire multi-megabyte history here and briefly rendered obsolete
+// nodes before the live server snapshot arrived.
+const DEVICE_DB_NAME = "ppr-control-device-v2";
 const DEVICE_DB_STORE = "state";
 const DEVICE_DB_KEY = "full-state";
 const MANUAL_REQUEST_WORKFLOW = true;
@@ -963,7 +966,6 @@ function loadState() {
     parsed.inventory ||= {};
     parsed.catalog ||= { equipment: {} };
     parsed.catalog.equipment ||= {};
-    parsed.craneBeams ||= { assets: {}, inspections: {}, defects: {}, installationJournal: {} };
     parsed.adminConfig ||= { companyName: "ТОО «Aluminium of Kazakhstan»", departments: [], positions: [] };
     parsed.serviceCosts ||= [];
     parsed.downtimes ||= [];
@@ -1030,7 +1032,15 @@ let devicePersistTimer = null;
 let pendingDeviceSnapshot = null;
 
 function scheduleDeviceStatePersist(snapshot = state) {
-  pendingDeviceSnapshot = snapshot;
+  const checks = Object.entries(snapshot?.checks || {});
+  pendingDeviceSnapshot = {
+    ...snapshot,
+    // Offline startup needs recent operational work, not the complete historical
+    // journal. Keeping the bounded tail prevents structured-clone pauses on phones.
+    checks: Object.fromEntries(checks.slice(-500)),
+    auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-200) : [],
+    downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : []
+  };
   clearTimeout(devicePersistTimer);
   devicePersistTimer = window.setTimeout(() => {
     devicePersistTimer = null;
@@ -2436,10 +2446,18 @@ function mergeRemoteState(remote = {}, options = {}) {
 function mergeRealtimePatch(remote = {}) {
   stateDataVersion += 1;
   if (remote.checks) {
-    state.checks = compactCheckRecords(mergeCheckRecordsLocal(state.checks, remote.checks));
+    // Realtime messages normally contain one changed node. Re-compacting several
+    // thousand historical records for every coworker's click caused visible UI
+    // stalls on all connected phones.
+    Object.entries(remote.checks).forEach(([recordKey, incomingRecord]) => {
+      const mergedRecord = mergeCheckRecordLocal(state.checks?.[recordKey] || {}, incomingRecord || {});
+      if (hasMeaningfulCheckKind(mergedRecord?.to)) state.checks[recordKey] = mergedRecord;
+      else delete state.checks[recordKey];
+    });
     (Array.isArray(remote.replaceCheckKeys) ? remote.replaceCheckKeys : []).forEach(recordKey => {
       if (Object.prototype.hasOwnProperty.call(remote.checks, recordKey) && remote.checks[recordKey]) {
-        state.checks[recordKey] = compactCheckRecords({ [recordKey]: remote.checks[recordKey] })[recordKey];
+        if (hasMeaningfulCheckKind(remote.checks[recordKey]?.to)) state.checks[recordKey] = remote.checks[recordKey];
+        else delete state.checks[recordKey];
       } else {
         delete state.checks[recordKey];
       }
@@ -2702,7 +2720,7 @@ async function publishRecoveredChecksNow(checks, operationalResetAt) {
         checks
       })
     });
-    remoteSectionFingerprints.set("checks", JSON.stringify(state.checks || {}));
+    remoteSectionFingerprints.set("checks", remoteSectionFingerprint("checks", state.checks || {}));
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     persistStateLocally(state);
     return true;
@@ -2802,6 +2820,26 @@ function queueRemoteStateSave() {
   remoteSaveTimer = setTimeout(saveRemoteState, 300);
 }
 
+function remoteSectionFingerprint(field, value) {
+  if (field !== "checks") return JSON.stringify(value);
+  // Check records can contain photos and long audit histories. Serializing the
+  // complete collection on every unrelated save froze low-end phones. All check
+  // mutations update one of these timestamps, so a bounded structural signature
+  // is sufficient to decide whether the checks section must be published.
+  let hash = 2166136261;
+  let count = 0;
+  Object.entries(value || {}).forEach(([recordKey, record]) => {
+    count += 1;
+    const item = record?.to || {};
+    const stamp = `${recordKey}|${record?.updatedAt || ""}|${item.updatedAt || ""}|${(item.commentLog || []).length}|${Object.keys(item.walkShifts || {}).length}|${Object.keys(item.walkGroups?.technical || {}).length}|${Object.keys(item.walkGroups?.operational || {}).length}`;
+    for (let index = 0; index < stamp.length; index += 1) {
+      hash ^= stamp.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  });
+  return `checks:${count}:${hash >>> 0}`;
+}
+
 function rememberRemoteStateBaseline(snapshot = {}, fingerprints = null) {
   REMOTE_STATE_FIELDS.forEach(field => {
     if (fingerprints?.has(field)) {
@@ -2809,7 +2847,7 @@ function rememberRemoteStateBaseline(snapshot = {}, fingerprints = null) {
       return;
     }
     if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
-      remoteSectionFingerprints.set(field, JSON.stringify(snapshot[field]));
+      remoteSectionFingerprints.set(field, remoteSectionFingerprint(field, snapshot[field]));
     }
   });
 }
@@ -2819,7 +2857,7 @@ function changedRemoteStateSections() {
   const fingerprints = new Map();
   REMOTE_STATE_FIELDS.forEach(field => {
     const value = state[field];
-    const fingerprint = JSON.stringify(value);
+    const fingerprint = remoteSectionFingerprint(field, value);
     if (field === "catalog" && !["editor", "engineer", "shop"].includes(catalogEditorRole())) {
       remoteSectionFingerprints.set(field, fingerprint);
       return;
@@ -5079,12 +5117,6 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   const expected = { equipmentId: Number(expectedEquipmentId), nodeIndex: Number(expectedNodeIndex) };
   let overlay = null;
   const applyScannedValue = value => {
-    const crane = !hasExpectedNode ? parseCraneQrPayload(value) : null;
-    if (crane?.invalidCraneQr) {
-      if (statusEl) statusEl.textContent = "Этот QR-код заменён и больше не действует";
-      return false;
-    }
-    if (crane) return crane;
     const parsed = parseNodeQrPayload(value);
     if (!parsed) {
       if (statusEl) statusEl.textContent = "QR код не распознан";
@@ -9370,38 +9402,7 @@ function allOpenCommentTargets() {
           deferredByName: entry.deferredByName || ""
         }));
     });
-  const craneTargets = (craneBeamState.defects || []).flatMap(defect => {
-    if (!defect || defect.status === "closed") return [];
-    const asset = (craneBeamState.assets || []).find(item => String(item.id) === String(defect.craneId));
-    if (!asset) return [];
-    const role = permissionBaseRole(profile?.role);
-    const visible = ["engineer", "electrician", "mechanic", "editor", "productionDirector"].includes(role)
-      || (["shop", "operator"].includes(profile?.role) && userHasArea(profile, asset.workshop));
-    if (!visible) return [];
-    const inspection = (craneBeamState.inspections || []).find(item => item.id === defect.inspectionId);
-    return [{
-      craneDefect: true,
-      craneId: asset.id,
-      remarkId: defect.id,
-      date: inspection?.date || String(defect.createdAt || "").slice(0, 10),
-      text: (defect.items || []).map(item => `${item.label}: ${item.comment}`).join("; ") || "Замечание по осмотру кран-балки",
-      author: defect.createdBy?.name || "Сотрудник",
-      areaName: asset.workshop || "",
-      equipmentName: asset.name || "Кран-балка",
-      nodeName: "Осмотр кран-балки",
-      at: defect.createdAt || inspection?.at || "",
-      pendingConfirmation: defect.status === "awaiting_confirmation",
-      submittedAt: defect.resolution?.at || "",
-      submittedBy: defect.resolution?.actor?.name || "",
-      submittedComment: defect.resolution?.comment || "",
-      confirmationLabel: "Инженер",
-      canConfirm: role === "engineer" || profile?.role === "editor",
-      returnedToRework: defect.status === "returned",
-      returnReason: defect.confirmation?.comment || "",
-      deferred: false
-    }];
-  });
-  return [...equipmentTargets, ...craneTargets]
+  return equipmentTargets
     .sort((a, b) => String(b.at || b.date).localeCompare(String(a.at || a.date)) || String(a.equipmentName || "").localeCompare(String(b.equipmentName || ""), "ru"));
 }
 
@@ -9440,11 +9441,10 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              ${target.craneDefect ? `<button type="button" data-open-crane-defect data-crane-id="${escapeHtml(target.craneId)}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation && target.canConfirm ? "Проверить и подтвердить" : "Открыть вахтенный журнал"}</button>` : `
-                ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
                 ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
                 ${canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
-                <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>`}
+                <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
             </footer>
           </article>
         `).join("")}
@@ -9507,12 +9507,6 @@ function openAllRemarkCards() {
     current.returnToRemarkListAfterResolve = true;
     close();
     show("checklist");
-  }));
-  overlay.querySelectorAll("[data-open-crane-defect]").forEach(button => button.addEventListener("click", () => {
-    const asset = (craneBeamState.assets || []).find(item => String(item.id) === String(button.dataset.craneId));
-    if (!asset) return;
-    close();
-    openCraneJournal(asset, String(button.dataset.date || todayISO()).slice(0, 7));
   }));
   document.body.append(overlay);
   translateUserTextsForCurrentProfile();
@@ -10015,12 +10009,6 @@ function show(view, push = true) {
   renderProfile();
   updateMobileNavigation();
   render();
-  if (profile?.role === "editor" && ["node", "checklist"].includes(view) && !craneBeamState.loaded) {
-    loadCraneBeams({ month: todayISO().slice(0, 7) }).then(() => {
-      if (current.view === "node") renderNodes();
-      if (current.view === "checklist") renderChecklist();
-    }).catch(() => {});
-  }
 }
 
 function updateMobileNavigation() {
@@ -11493,7 +11481,6 @@ function openCreateEquipmentDialog() {
       <label><span>Название</span><input name="name" maxlength="200" required placeholder="Полное название оборудования"></label>
       <label><span>Участок / место установки</span><input name="area" maxlength="200" required placeholder="Цех или участок"></label>
       <label data-equipment-first-node><span>Первый узел</span><input name="firstNode" maxlength="200" required value="Основное оборудование"></label>
-      <label data-equipment-capacity hidden><span>Грузоподъёмность</span><input name="capacity" maxlength="100" placeholder="Например, 3,2 тонны"></label>
       <div class="equipment-create-note">После создания объект получит постоянный ID и QR. Остальные сведения и ответственных можно заполнить в его карточке.</div>
       <button type="submit">Создать и добавить в систему</button>
     </form>
@@ -11935,7 +11922,6 @@ function nodeDocumentMemoItems(eq, nodeName) {
   if (/(кран|таль|тельфер|лебед|подъем|подъём|строп|крюк)/u.test(searchText)) {
     add(
       "Паспорт грузоподъёмного механизма с записями о ремонтах и технических освидетельствованиях.",
-      "Журнал ежесменного осмотра кран-балки.",
       "Акты частичного и полного технического освидетельствования.",
       "Протоколы статических и динамических испытаний.",
       "Журнал осмотра канатов, крюков, стропов и грузозахватных приспособлений."
@@ -11991,24 +11977,6 @@ function nodeDocumentMemoHtml(eq, nodeName) {
   `;
 }
 
-function nestedCraneEquipmentCard(asset) {
-  const status = craneTodayStatus(asset);
-  const section = document.createElement("section");
-  section.className = `nested-crane-equipment ${asset.operationalPaused ? "inactive" : ""} ${asset.operationStatus === "prohibited" ? "prohibited" : ""}`;
-  section.innerHTML = `
-    <header>
-      <div class="nested-crane-title"><strong>${escapeHtml(asset.name)}</strong><small>${escapeHtml(asset.workshop)}</small></div>
-      <div class="crane-counts">${asset.operationStatus === "prohibited" ? '<b class="prohibited">Эксплуатация запрещена</b>' : ""}<b class="${status.shiftDone ? "done" : ""}">Ежесменный ${status.shiftDone ? "✓" : "1"}</b>${status.monthlyDue ? `<b class="${status.monthlyDone ? "done" : "due"}">Ежемесячный ${status.monthlyDone ? "✓" : "1"}</b>` : ""}${status.openDefects ? `<b class="due">Открытые замечания: ${status.openDefects}</b>` : ""}${status.awaitingConfirmation ? `<b class="due">Ждут подтверждения: ${status.awaitingConfirmation}</b>` : ""}</div>
-    </header>
-    <div class="nested-crane-actions"><button type="button" data-crane-shift>Нижний QR · осмотр</button><button type="button" data-crane-monthly>Верхний QR · ТО</button><button type="button" data-crane-journal>Вахтенный журнал</button><button type="button" data-crane-qr>Два QR-кода</button>${craneBeamState.canManage ? `<button type="button" data-crane-edit>Редактировать оборудование</button>` : ""}</div>`;
-  section.querySelector("[data-crane-shift]").addEventListener("click", () => openCraneInspection(asset, "shift"));
-  section.querySelector("[data-crane-monthly]").addEventListener("click", () => openCraneInspection(asset, "monthly"));
-  section.querySelector("[data-crane-journal]").addEventListener("click", () => openCraneJournal(asset));
-  section.querySelector("[data-crane-qr]").addEventListener("click", () => openCraneQrCards(asset));
-  section.querySelector("[data-crane-edit]")?.addEventListener("click", () => editCraneAsset(asset));
-  return section;
-}
-
 function renderNodes() {
   const eq = equipmentById(current.equipmentId);
   ui.subtitle.textContent = eq.name;
@@ -12044,8 +12012,6 @@ function renderNodes() {
     }
     ui.nodeList.append(card);
   });
-  const nestedCraneAssets = craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id));
-  nestedCraneAssets.forEach(asset => ui.nodeList.append(nestedCraneEquipmentCard(asset)));
 }
 
 function renderSchedule() {
@@ -12720,9 +12686,6 @@ function renderNodeWalkthrough(eq) {
     });
     list.append(row);
   });
-  if (selectedNodeIndex === null) {
-    craneBeamState.assets.filter(asset => String(asset.parentEquipmentId) === String(eq.id)).forEach(asset => list.append(nestedCraneEquipmentCard(asset)));
-  }
   ui.taskList.append(list);
   if (current.scrollToDowntimeNode !== null && current.scrollToDowntimeNode !== undefined) {
     const targetIndex = current.scrollToDowntimeNode;
@@ -13527,24 +13490,10 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   }));
 }
 
-function craneMonthlyCalendarItems(year, month) {
-  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  return (craneBeamState.assets || []).filter(asset => asset.installed && !asset.operationalPaused).map(asset => {
-    const day = Math.max(1, Math.min(new Date(year, month + 1, 0).getDate(), Number(asset.monthlyDay || 1)));
-    const planned = new Date(year, month, day);
-    if (planned.getDay() === 6) planned.setDate(planned.getDate() + 2);
-    if (planned.getDay() === 0) planned.setDate(planned.getDate() + 1);
-    const date = isoDateFromLocal(planned);
-    const completed = (craneBeamState.inspections || []).some(row => row.craneId === asset.id && row.type === "monthly" && (row.planDate || row.date) === date && row.counterApplied);
-    return { craneId: asset.id, equipmentId: asset.parentEquipmentId, equipment: asset.name, area: asset.workshop, date, completed };
-  });
-}
-
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
   const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const itemsByDate = {};
-  const craneItemsByDate = {};
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = activeEquipment.flatMap(eq => {
@@ -13562,10 +13511,7 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
     });
     if (items.length) itemsByDate[date] = items;
   }
-  craneMonthlyCalendarItems(year, month).forEach(item => {
-    (craneItemsByDate[item.date] ||= []).push(item);
-  });
-  return { year, month, daysInMonth, itemsByDate, craneItemsByDate };
+  return { year, month, daysInMonth, itemsByDate };
 }
 
 function pprCalendarShortName(name) {
@@ -13932,18 +13878,16 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
   for (let day = 1; day <= data.daysInMonth; day += 1) {
     const date = `${data.year}-${String(data.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = data.itemsByDate[date] || [];
-    const craneItems = data.craneItemsByDate[date] || [];
     const itemStatuses = items.map(item => pprJournalCompletion(equipmentById(item.equipmentId), date, item.node));
     const sheetStatus = pprSheetCompletion(date);
     const usesSheet = sheetStatus.active > 0;
-    const craneDone = craneItems.every(item => item.completed);
     const ordinaryDone = !items.length || (usesSheet ? sheetStatus.complete : itemStatuses.every(item => item.complete));
-    const dayDone = (items.length || craneItems.length) && ordinaryDone && craneDone;
+    const dayDone = items.length && ordinaryDone;
     const dayPartial = usesSheet ? sheetStatus.partial : itemStatuses.some(item => item.partial && !item.complete);
-    const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored) || craneItems.some(item => !item.completed);
+    const activeIncomplete = itemStatuses.some(item => !item.complete && !item.ignored);
     const dayMissed = date < todayISO() && !sheetStatus.awaitingApproval && (usesSheet ? !sheetStatus.complete : activeIncomplete);
-    const dayWarning = date >= todayISO() && ((items.length && usesSheet) ? !sheetStatus.complete || !craneDone : activeIncomplete);
-    const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : (items.length || craneItems.length) ? "history" : "";
+    const dayWarning = date >= todayISO() && ((items.length && usesSheet) ? !sheetStatus.complete : activeIncomplete);
+    const stateClass = dayDone ? "completed" : sheetStatus.awaitingApproval ? "warning" : dayMissed ? "missed" : dayPartial || dayWarning ? "warning" : items.length ? "history" : "";
     const statusIcon = dayDone ? "✓" : sheetStatus.awaitingApproval ? "!" : dayMissed ? "×" : dayPartial || dayWarning ? "!" : "";
     const statusText = dayDone
       ? "ППР принят инженером"
@@ -13955,17 +13899,16 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
             ? "ППР выполнен частично"
             : dayWarning
               ? "Приближается срок ППР"
-              : (items.length || craneItems.length) ? "Архивный график" : "Работ нет";
+              : items.length ? "Архивный график" : "Работ нет";
     cells.push(`
       <button type="button" class="ppr-calendar-day ${date === todayISO() ? "today" : ""} ${date === selectedDate ? "selected" : ""} ${stateClass}" data-ppr-day-date="${date}" aria-pressed="${date === selectedDate ? "true" : "false"}" title="${escapeHtml(`${dateHuman(date)} · ${statusText}`)}">
         <time datetime="${date}">${day}</time>
         ${statusIcon ? `<span class="ppr-day-status" aria-label="${escapeHtml(statusText)}">${statusIcon}</span>` : ""}
-        ${items.length + craneItems.length > 1 ? `<small class="ppr-day-count">${items.length + craneItems.length}</small>` : ""}
+        ${items.length > 1 ? `<small class="ppr-day-count">${items.length}</small>` : ""}
       </button>
     `);
   }
   const selectedItems = data.itemsByDate[selectedDate] || [];
-  const selectedCraneItems = data.craneItemsByDate[selectedDate] || [];
   return `
     <div class="ppr-calendar-toolbar">
       <strong>${escapeHtml(monthLabel)}</strong>
@@ -13985,8 +13928,7 @@ function renderPprMonthCalendar(equipment = allEquipment()) {
       <div><span>Выбранный день</span><strong>${dateHuman(selectedDate)}</strong></div>
       <div class="ppr-calendar-tasks">
         ${selectedItems.length ? renderPprMaintenanceSheet(selectedDate, selectedItems) : ""}
-        ${selectedCraneItems.length ? `<section class="crane-calendar-reminders"><h3>Ежемесячный осмотр кран-балок</h3>${selectedCraneItems.map(item => `<article class="${item.completed ? "done" : "due"}"><div><strong>${escapeHtml(item.equipment)}</strong><span>${escapeHtml(item.area)} · ${item.completed ? "выполнено верхним QR" : "требуется верхний QR"}</span></div><b>${item.completed ? "✓" : "!"}</b></article>`).join("")}<p>Карточка обычного ППР не заполняется. Осмотр выполняется только после сканирования верхнего QR кран-балки.</p></section>` : ""}
-        ${!selectedItems.length && !selectedCraneItems.length ? `<p>На этот день работ ППР нет</p>` : ""}
+        ${!selectedItems.length ? `<p>На этот день работ ППР нет</p>` : ""}
       </div>
     </section>
   `;
@@ -14512,19 +14454,6 @@ function globalReminderItems(equipment = globalControlEquipment()) {
         pprApprovalDate: date
       }));
   }
-  const reminderToday = new Date(`${todayISO()}T00:00:00`);
-  craneMonthlyCalendarItems(reminderToday.getFullYear(), reminderToday.getMonth()).forEach(item => {
-    if (item.completed) return;
-    const due = new Date(`${item.date}T00:00:00`);
-    const daysUntil = Math.round((due - reminderToday) / 86400000);
-    if (daysUntil > 2) return;
-    items.push({
-      level: daysUntil <= 0 ? "red" : "yellow",
-      icon: "🏗️",
-      title: daysUntil < 0 ? `Просрочено ежемесячное ТО: ${item.equipment}` : daysUntil === 0 ? `Сегодня ежемесячный осмотр: ${item.equipment}` : `Подходит ежемесячный осмотр: ${item.equipment}`,
-      text: `${item.area} · выполнить верхним QR${daysUntil ? ` · план ${dateHuman(item.date)}` : ""}`
-    });
-  });
   allRequests()
     .filter(req =>
       !req.done && !req.stock && !req.rejected && !req.deleted &&
@@ -18459,13 +18388,6 @@ ui.qrWalkButton?.addEventListener("click", async () => {
     while (true) {
       const parsed = await scanNodeQrCode(null, null, null);
       if (!parsed) break;
-      if (parsed.craneId) {
-        await loadCraneBeams();
-        const crane = craneBeamState.assets.find(item => item.id === parsed.craneId);
-        if (crane) openCraneInspection(crane, parsed.craneType);
-        else window.alert("Кран-балка не найдена.");
-        break;
-      }
       const shift = currentWalkShift();
       await refreshQrWalkStatusFromServer(parsed.equipmentId, shift);
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
@@ -19107,332 +19029,6 @@ function handleAppResume() {
   }
 }
 
-let craneBeamState = { assets: [], archivedAssets: [], inspections: [], defects: [], installationJournal: [], corrections: [], pagination: {}, canManage: false, loaded: false };
-let craneBeamLoadPromise = null;
-
-function parseCraneQrPayload(value) {
-  let raw = String(value || "").trim();
-  try {
-    const url = new URL(raw);
-    if (["/api/gpm-qr", "/api/crane-beam-qr"].includes(url.pathname)) {
-      const craneId = url.searchParams.get("id") || "", craneType = url.searchParams.get("mode") === "monthly" ? "monthly" : "shift";
-      const asset = (craneBeamState.assets || []).find(item => item.id === craneId);
-      const rotated = craneType === "monthly" ? asset?.upperQrRotated : asset?.lowerQrRotated;
-      const expected = craneType === "monthly" ? asset?.upperQrToken : asset?.lowerQrToken;
-      if (!asset || (rotated && url.searchParams.get("token") !== expected)) return { invalidCraneQr: true };
-      return { craneId, craneType };
-    }
-    raw = url.searchParams.get("craneQr") || url.searchParams.get("qr") || raw;
-  } catch {}
-  if (raw === "INVALID") return { invalidCraneQr: true };
-  const parts = raw.split("|");
-  if (parts[0] === "PPRGPM" && parts.length === 3) {
-    const craneType = parts[1] === "MONTHLY" ? "monthly" : "shift", asset = (craneBeamState.assets || []).find(item => item.id === parts[2]);
-    if (!asset || (craneType === "monthly" ? asset.upperQrRotated : asset.lowerQrRotated)) return { invalidCraneQr: true };
-    return { craneId: parts[2], craneType };
-  }
-  if (parts[0] === "CRANE" && parts.length >= 3) {
-    const craneType = parts[1] === "MONTHLY" ? "monthly" : "shift", asset = (craneBeamState.assets || []).find(item => item.id === parts[2]);
-    const expected = craneType === "monthly" ? asset?.upperQrToken : asset?.lowerQrToken;
-    if (!asset || (parts[3] && parts[3] !== expected) || (!parts[3] && (craneType === "monthly" ? asset.upperQrRotated : asset.lowerQrRotated))) return { invalidCraneQr: true };
-    return { craneId: parts[2], craneType };
-  }
-  for (const asset of craneBeamState.assets || []) {
-    const alias = (asset.legacyQrAliases || []).find(item => String(item?.payload || "") === raw);
-    if (alias) {
-      const craneType = alias.type === "monthly" ? "monthly" : "shift";
-      if (craneType === "monthly" ? asset.upperQrRotated : asset.lowerQrRotated) return { invalidCraneQr: true };
-      return { craneId: asset.id, craneType };
-    }
-  }
-  return null;
-}
-
-function craneRoleLabel(role) {
-  return ({ operator: "Оператор", shop: "Начальник цеха", mechanic: "Электромеханик", electrician: "Электрик", engineer: "Инженер", editor: "Администратор" })[role] || role || "Сотрудник";
-}
-
-async function loadCraneBeams(options = {}) {
-  const query = new URLSearchParams();
-  if (options.month) query.set("month", options.month);
-  if (options.craneId) query.set("craneId", options.craneId);
-  query.set("page", String(Math.max(1, Number(options.page) || 1)));
-  query.set("limit", String(Math.max(10, Math.min(100, Number(options.limit) || 50))));
-  const requestKey = query.toString();
-  if (craneBeamLoadPromise?.key === requestKey) return craneBeamLoadPromise.promise;
-  const promise = apiJson(`/api/crane-beams?${requestKey}`, { timeout: 15000 }).then(result => {
-    craneBeamState = { ...craneBeamState, ...result, loaded: true };
-    refreshCraneBeamBadge();
-    return craneBeamState;
-  }).finally(() => {
-    if (craneBeamLoadPromise?.key === requestKey) craneBeamLoadPromise = null;
-  });
-  craneBeamLoadPromise = { key: requestKey, promise };
-  return promise;
-}
-
-function craneTodayStatus(asset) {
-  const date = todayISO();
-  const shift = currentWalkShift().key;
-  const rows = craneBeamState.inspections.filter(row => row.craneId === asset.id && row.date === date && row.counterApplied);
-  const shiftDone = rows.some(row => row.type === "shift" && row.shift === shift);
-  const monthlyDue = asset.installed && !asset.operationalPaused && Number(asset.monthlyDay || 1) === Number(date.slice(8, 10));
-  const monthlyDone = rows.some(row => row.type === "monthly");
-  const openDefects = craneBeamState.defects.filter(item => item.craneId === asset.id && ["open", "returned"].includes(item.status)).length;
-  const awaitingConfirmation = craneBeamState.defects.filter(item => item.craneId === asset.id && item.status === "awaiting_confirmation").length;
-  const todayDay = Number(date.slice(8, 10)), monthlyDay = Number(asset.monthlyDay || 1);
-  const monthlyState = monthlyDone ? "done" : todayDay > monthlyDay ? "overdue" : todayDay === monthlyDay ? "today" : "upcoming";
-  return { shiftDone, monthlyDue, monthlyDone, monthlyState, openDefects, awaitingConfirmation, missing: Number(!shiftDone) + Number(monthlyDue && !monthlyDone) };
-}
-
-function refreshCraneBeamBadge() {
-  const badge = document.querySelector("#craneBeamsBadge");
-  if (!badge) return;
-  const missing = craneBeamState.assets.filter(item => item.installed && !item.operationalPaused).reduce((sum, item) => sum + craneTodayStatus(item).missing, 0);
-  badge.textContent = String(missing);
-  badge.hidden = missing === 0;
-}
-
-function craneOverlay(title, content) {
-  const overlay = document.createElement("div");
-  overlay.className = "crane-overlay";
-  overlay.innerHTML = `<section class="crane-panel"><header><div><span>ОБОРУДОВАНИЕ ЦЕХОВ</span><h2>${escapeHtml(title)}</h2></div><button type="button" data-crane-close>×</button></header><div class="crane-panel-body">${content}</div></section>`;
-  document.body.append(overlay);
-  const close = () => overlay.remove();
-  overlay.querySelector("[data-crane-close]").addEventListener("click", close);
-  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
-  return overlay;
-}
-
-function craneInspectionDraftKey(assetId, type, date, shift) {
-  return `${STORE_KEY}-crane-draft:${assetId}:${type}:${date}:${shift}`;
-}
-
-function readCraneInspectionDraft(key) {
-  try { return JSON.parse(localStorage.getItem(key) || "null") || null; } catch { return null; }
-}
-
-function saveCraneInspectionDraft(key, form, checklist) {
-  const sharedComment = String(form.elements.craneComment?.value || "").trim();
-  const draft = {
-    savedAt: new Date().toISOString(),
-    decision: form.elements.decision?.value || "allowed_with_remark",
-    answers: Object.fromEntries(checklist.map(item => [item.id, {
-      ok: Boolean(form.elements[item.id]?.checked),
-      comment: form.elements[item.id]?.checked ? "" : sharedComment
-    }]))
-  };
-  try { localStorage.setItem(key, JSON.stringify(draft)); } catch {}
-}
-
-function openCraneInspection(asset, type = "shift") {
-  const monthly = type === "monthly";
-  const checklist = Array.isArray(asset.checklist) ? asset.checklist : [];
-  const inspectionDate = todayISO();
-  const inspectionShift = currentWalkShift();
-  const draftKey = craneInspectionDraftKey(asset.id, type, inspectionDate, monthly ? "monthly" : inspectionShift.key);
-  const draft = readCraneInspectionDraft(draftKey);
-  const submissionId = globalThis.crypto?.randomUUID?.() || `crane-submit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const overlay = document.createElement("div");
-  overlay.className = "qr-result-overlay";
-  overlay.innerHTML = `<section class="qr-result-panel" role="dialog" aria-modal="true" aria-label="Осмотр кран-балки">
-    <div class="qr-result-progress">${escapeHtml(dateHuman(inspectionDate))} · ${monthly ? "Ежемесячное ТО" : escapeHtml(inspectionShift.label)}</div>
-    <h2>${escapeHtml(asset.name)}</h2>
-    <p class="qr-result-node">${escapeHtml(asset.workshop)}${asset.installationPlace ? ` · ${escapeHtml(asset.installationPlace)}` : ""}</p>
-    <form class="crane-inspection-form">
-      <small data-crane-draft-status>${draft ? "Черновик восстановлен" : "Дата и смена определены автоматически"}</small>
-      <div class="qr-result-actions" data-crane-result-choice ${draft ? "hidden" : ""}>
-        <button type="button" class="qr-good-button" data-crane-good>✓ Всё исправно</button>
-        <button type="button" class="qr-remark-button" data-crane-remark>! С комментарием</button>
-        <button type="button" class="qr-finish-button" data-crane-close>Закрыть</button>
-      </div>
-      <div class="qr-remark-form" data-crane-remark-details ${draft ? "" : "hidden"}>
-        <div class="crane-checklist">${checklist.map(item => `<article class="node-walk-row node-walk-detail"><label><input type="checkbox" name="${escapeHtml(item.id)}" checked><span><strong>${escapeHtml(item.label)}</strong><small>Снимите галочку, если есть замечание</small></span></label></article>`).join("")}</div>
-        <label><span>Общий комментарий к замечанию</span><textarea name="craneComment" rows="4" placeholder="Опишите замечание..."></textarea></label>
-        <label><span>Фото (необязательно)</span><input type="file" name="cranePhoto" accept="image/*" capture="environment"></label>
-        <label class="crane-decision"><span>Решение при замечании</span><select name="decision"><option value="allowed_with_remark">Работа разрешена с замечанием</option><option value="prohibited">Эксплуатация запрещена</option></select></label>
-        <div class="qr-result-actions single"><button type="submit" class="qr-save-remark-button crane-save-inspection">Записать в вахтенный журнал</button><button type="button" class="qr-rescan-button" data-crane-back>Назад</button></div>
-      </div>
-    </form></section>`;
-  document.body.append(overlay);
-  const form = overlay.querySelector("form");
-  if (draft) {
-    form.elements.decision.value = draft.decision || "allowed_with_remark";
-    form.elements.craneComment.value = Object.values(draft.answers || {}).find(answer => answer?.comment)?.comment || "";
-    checklist.forEach(item => {
-      form.elements[item.id].checked = draft.answers?.[item.id]?.ok === true;
-    });
-  }
-  const persistDraft = () => {
-    saveCraneInspectionDraft(draftKey, form, checklist);
-    const status = overlay.querySelector("[data-crane-draft-status]");
-    if (status) status.textContent = "Черновик сохранён на этом устройстве";
-  };
-  form.addEventListener("input", persistDraft);
-  form.addEventListener("change", persistDraft);
-  const choice = overlay.querySelector("[data-crane-result-choice]");
-  const details = overlay.querySelector("[data-crane-remark-details]");
-  overlay.querySelector("[data-crane-close]")?.addEventListener("click", () => overlay.remove());
-  overlay.querySelector("[data-crane-remark]")?.addEventListener("click", () => { choice.hidden = true; details.hidden = false; form.elements.craneComment.focus(); });
-  overlay.querySelector("[data-crane-back]")?.addEventListener("click", () => { details.hidden = true; choice.hidden = false; });
-  overlay.querySelector("[data-crane-good]")?.addEventListener("click", () => { form.querySelectorAll('.crane-checklist input[type="checkbox"]').forEach(input => { input.checked = true; }); form.elements.craneComment.value = ""; form.elements.decision.value = "allowed_with_remark"; form.requestSubmit(); });
-  form.addEventListener("submit", async event => {
-    event.preventDefault();
-    const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
-    const file = form.elements.cranePhoto?.files?.[0];
-    const sharedPhoto = file ? await readPhotoFile(file) : "";
-    const answerRows = checklist.map(item => {
-      const ok = form.elements[item.id].checked;
-      return [item.id, { ok, comment: ok ? "" : form.elements.craneComment.value.trim(), photo: ok ? "" : sharedPhoto }];
-    });
-    const answers = Object.fromEntries(answerRows);
-    try {
-      const result = await apiJson("/api/crane-beams/inspect", { method: "POST", body: JSON.stringify({ craneId: asset.id, type, submissionId, decision: form.elements.decision.value, answers }) });
-      try { localStorage.removeItem(draftKey); } catch {}
-      craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); showAppToast("Осмотр записан в вахтенный журнал", "ok"); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment();
-    } catch (error) { window.alert(error.message === "crane_defect_comment_required" ? "Укажите комментарий для каждого неотмеченного пункта." : error.message); submit.disabled = false; }
-  });
-}
-
-function openCraneInspectionCorrection(asset, row, returnMonth) {
-  if (!craneBeamState.canManage) return;
-  const overlay = craneOverlay(`Исправление записи · ${asset.name}`, `<form class="crane-admin-form crane-correction-form"><label>Дата<input name="date" type="date" required value="${escapeHtml(row.date)}"></label>${row.type === "shift" ? `<label>Смена<select name="shift"><option value="day">Дневная</option><option value="night">Ночная</option></select></label>` : ""}<label>Сотрудник<input name="actorName" required value="${escapeHtml(row.actor?.name || "")}"></label><label>Роль<input name="actorRole" required value="${escapeHtml(row.actor?.role || "")}"></label><div class="crane-correction-points">${(row.answers || []).map(answer => `<article><label><input type="checkbox" name="${escapeHtml(answer.id)}" ${answer.ok ? "checked" : ""}><span>${escapeHtml(answer.label)}</span></label><textarea name="comment-${escapeHtml(answer.id)}" placeholder="Комментарий для замечания">${escapeHtml(answer.comment || "")}</textarea></article>`).join("")}</div><label>Решение<select name="decision"><option value="allowed_with_remark">Разрешено с замечанием</option><option value="prohibited">Эксплуатация запрещена</option></select></label><label>Причина исправления<textarea name="reason" required placeholder="Обязательно укажите, почему исправляется запись"></textarea></label><button type="submit">Сохранить исправление</button></form>`);
-  const form = overlay.querySelector("form");
-  if (form.elements.shift) form.elements.shift.value = row.shift || "day";
-  form.elements.decision.value = row.decision === "prohibited" ? "prohibited" : "allowed_with_remark";
-  form.addEventListener("submit", async event => {
-    event.preventDefault();
-    const answers = Object.fromEntries((row.answers || []).map(answer => [answer.id, { ok: form.elements[answer.id].checked, comment: form.elements[`comment-${answer.id}`].value.trim(), photo: answer.photo || "" }]));
-    try {
-      const result = await apiJson("/api/crane-beams/correct", { method: "POST", body: JSON.stringify({ inspectionId: row.id, date: form.elements.date.value, shift: form.elements.shift?.value || row.shift, actorName: form.elements.actorName.value.trim(), actorRole: form.elements.actorRole.value.trim(), decision: form.elements.decision.value, reason: form.elements.reason.value.trim(), answers }) });
-      craneBeamState = { ...craneBeamState, ...(result.state || {}) };
-      overlay.remove();
-      openCraneJournal(asset, returnMonth);
-    } catch (error) { window.alert(error.message === "crane_correction_reason_required" ? "Причина исправления обязательна." : error.message); }
-  });
-}
-
-function printCraneJournal(asset, rows, month) {
-  const win = window.open("", "_blank", "width=1200,height=850");
-  if (!win) return;
-  const columns = [...new Map(rows.flatMap(row => row.answers || []).map(item => [item.id, item.label])).entries()];
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Вахтенный журнал · ${escapeHtml(asset.name)}</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#111}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 8px;font-size:11px}table{width:100%;border-collapse:collapse;font-size:7px}th,td{border:1px solid #333;padding:3px;vertical-align:top;overflow-wrap:anywhere}th{background:#eee}.good{text-align:center;font-size:13px}.bad{background:#fff0f0}.signatures{display:flex;gap:30px;margin-top:16px;font-size:10px}.signatures span{min-width:220px;border-bottom:1px solid #333;padding-bottom:12px}</style></head><body><p>Организация: ALKZ</p><h1>Вахтенный журнал · ${escapeHtml(asset.name)}</h1><p>Цех: ${escapeHtml(asset.workshop)} · Регистрационный / заводской №: ${escapeHtml(asset.inventoryNumber || "не указан")} · Месяц: ${escapeHtml(month)}</p><table><thead><tr><th>Дата / смена</th><th>Вид</th><th>Сотрудник</th>${columns.map(([,label])=>`<th>${escapeHtml(label)}</th>`).join("")}<th>Результат</th><th>Замечание</th><th>Устранение</th><th>Подтверждение</th></tr></thead><tbody>${rows.map(row=>{const answers=new Map((row.answers||[]).map(answer=>[answer.id,answer])),defect=craneBeamState.defects.find(item=>item.inspectionId===row.id);return `<tr><td>${escapeHtml(row.date)}<br>${row.type === "monthly" ? "—" : row.shift === "night" ? "Ночь" : "День"}</td><td>${row.type === "monthly" ? "Ежемесячное ТО" : row.unscheduled ? "Внеплановый" : "Ежесменный"}</td><td>${escapeHtml(row.actor?.name || "")}<br>${escapeHtml(craneRoleLabel(row.actor?.role))}</td>${columns.map(([id])=>{const answer=answers.get(id);return `<td class="${answer?.ok ? "good" : "bad"}">${answer ? answer.ok ? "✓" : escapeHtml(answer.comment || "✕") : "—"}</td>`}).join("")}<td>${row.result === "good" ? "Исправно" : row.result === "prohibited" ? "Запрещено" : "Замечание"}</td><td>${escapeHtml(defect?.items?.map(item=>`${item.label}: ${item.comment}`).join("; ")||"—")}</td><td>${escapeHtml(defect?.resolution ? `${defect.resolution.actor?.name || ""}: ${defect.resolution.comment || ""}` : "—")}</td><td>${escapeHtml(defect?.confirmation ? `${defect.confirmation.actor?.name || ""}: ${defect.confirmation.comment || ""}` : "—")}</td></tr>`}).join("")}</tbody></table><div class="signatures"><span>Ответственный за оборудование</span><span>Инженер</span><span>Начальник цеха</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);
-  win.document.close();
-}
-
-async function openCraneJournal(asset, selectedMonth = todayISO().slice(0, 7), page = 1) {
-  await loadCraneBeams({ month: selectedMonth, craneId: asset.id, page, limit: 50 });
-  const rows = craneBeamState.inspections.filter(row => row.craneId === asset.id && String(row.date || "").startsWith(selectedMonth)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const pageInfo = craneBeamState.pagination?.inspections || { page: 1, total: rows.length, hasMore: false };
-  const columns = [...new Map(rows.flatMap(row => row.answers || []).map(item => [item.id, item.label])).entries()];
-  const overlay = craneOverlay(`Вахтенный журнал · ${asset.name}`, `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата и смена</th><th>Вид осмотра</th><th>Сотрудник</th>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}<th>Результат</th><th>Замечание</th><th>Устранение</th><th>Подтверждение</th></tr></thead><tbody>${rows.length ? rows.map(row => { const answers = new Map((row.answers || []).map(item => [item.id, item])); const defect = craneBeamState.defects.find(item => item.inspectionId === row.id); const canResolve = defect && ["open", "returned"].includes(defect.status) && (["mechanic", "electrician", "engineer"].includes(profile?.role) || profile?.role === "editor"); const canConfirm = defect?.status === "awaiting_confirmation" && ["engineer", "editor"].includes(profile?.role); return `<tr><td>${escapeHtml(row.date)}<br>${row.type === "monthly" ? "—" : row.shift === "night" ? "Ночь" : "День"}${row.correctedAt ? "<br><strong>Исправлено с аудитом</strong>" : ""}</td><td>${row.type === "monthly" ? "Ежемесячное ТО" : row.unscheduled ? "Внеплановый осмотр" : "Ежесменный осмотр"}</td><td><strong>${escapeHtml(row.actor?.name)}</strong><br>${escapeHtml(craneRoleLabel(row.actor?.role))}</td>${columns.map(([id]) => { const answer = answers.get(id); return `<td class="${answer?.ok ? "is-good" : "is-bad"}">${answer ? (answer.ok ? "✓" : `✕<br>${escapeHtml(answer.comment)}${answer.photo ? `<br><a href="${escapeHtml(answer.photo)}" target="_blank" rel="noopener"><img class="crane-journal-photo" src="${escapeHtml(answer.photo)}" alt="Фото замечания"></a>` : ""}`) : "—"}</td>`; }).join("")}<td>${row.result === "good" ? "Исправно" : row.result === "prohibited" ? "Запрещено" : "С замечанием"}</td><td>${escapeHtml(defect?.items?.map(item => `${item.label}: ${item.comment}`).join("; ") || "—")}</td><td>${escapeHtml(defect?.resolution?.comment || "—")}${canResolve ? `<br><button data-defect-resolve="${escapeHtml(defect.id)}">Записать устранение</button>` : ""}</td><td>${escapeHtml(defect?.confirmation?.comment || "—")}${canConfirm ? `<br><button data-defect-confirm="${escapeHtml(defect.id)}">Подтвердить</button><button data-defect-return="${escapeHtml(defect.id)}">Вернуть</button>` : ""}</td></tr>`; }).join("") : `<tr><td colspan="${columns.length + 8}">Записей пока нет</td></tr>`}</tbody></table></div>`);
-  overlay.querySelector(".crane-panel-body")?.insertAdjacentHTML("afterbegin", `<div class="crane-journal-toolbar"><label>Месяц <input type="month" data-crane-journal-month value="${escapeHtml(selectedMonth)}"></label><span>Записи ${rows.length} из ${pageInfo.total}</span>${pageInfo.page > 1 ? '<button type="button" data-crane-journal-prev>← Назад</button>' : ""}${pageInfo.hasMore ? '<button type="button" data-crane-journal-next>Далее →</button>' : ""}<button type="button" data-print-crane-journal>Печать A4</button></div>`);
-  overlay.querySelector("[data-crane-journal-month]")?.addEventListener("change", event => { overlay.remove(); openCraneJournal(asset, event.currentTarget.value || todayISO().slice(0, 7), 1); });
-  overlay.querySelector("[data-crane-journal-prev]")?.addEventListener("click", () => { overlay.remove(); openCraneJournal(asset, selectedMonth, Math.max(1, pageInfo.page - 1)); });
-  overlay.querySelector("[data-crane-journal-next]")?.addEventListener("click", () => { overlay.remove(); openCraneJournal(asset, selectedMonth, pageInfo.page + 1); });
-  overlay.querySelector("[data-print-crane-journal]")?.addEventListener("click", () => printCraneJournal(asset, rows, selectedMonth));
-  if (craneBeamState.canManage) {
-    overlay.querySelectorAll(".crane-journal tbody tr").forEach((tr, index) => {
-      const row = rows[index];
-      if (!row) return;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "crane-correction-button";
-      button.textContent = "Исправить запись";
-      button.addEventListener("click", () => { overlay.remove(); openCraneInspectionCorrection(asset, row, selectedMonth); });
-      tr.querySelector("td")?.append(document.createElement("br"), button);
-    });
-  }
-  const act = async (defectId, action) => {
-    const comment = window.prompt(action === "resolve" ? "Что выполнено для устранения?" : action === "confirm" ? "Комментарий подтверждения" : "Причина возврата");
-    if (comment === null || !comment.trim()) return;
-    const parts = action === "resolve" ? (window.prompt("Использованные материалы и запчасти (если были)") || "") : "";
-    const result = await apiJson("/api/crane-beams/defect", { method: "POST", body: JSON.stringify({ defectId, action, comment, parts }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); openCraneJournal(asset);
-  };
-  overlay.querySelectorAll("[data-defect-resolve]").forEach(button => button.addEventListener("click", () => act(button.dataset.defectResolve, "resolve")));
-  overlay.querySelectorAll("[data-defect-confirm]").forEach(button => button.addEventListener("click", () => act(button.dataset.defectConfirm, "confirm")));
-  overlay.querySelectorAll("[data-defect-return]").forEach(button => button.addEventListener("click", () => act(button.dataset.defectReturn, "return")));
-}
-
-async function openCraneInstallationJournal(selectedMonth = todayISO().slice(0, 7), page = 1) {
-  await loadCraneBeams({ month: selectedMonth, page, limit: 50 });
-  const rows = [...craneBeamState.installationJournal].sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const pageInfo = craneBeamState.pagination?.installationJournal || { page: 1, total: rows.length, hasMore: false };
-  const overlay = craneOverlay("Журнал установленных кран-балок", `<div class="crane-journal-toolbar"><label>Месяц <input type="month" data-crane-installation-month value="${escapeHtml(selectedMonth)}"></label><span>Записи ${rows.length} из ${pageInfo.total}</span>${pageInfo.page > 1 ? '<button type="button" data-crane-installation-prev>← Назад</button>' : ""}${pageInfo.hasMore ? '<button type="button" data-crane-installation-next>Далее →</button>' : ""}</div><div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Дата</th><th>Кран-балка</th><th>Статус / действие</th><th>Цех</th><th>Место</th><th>Кто изменил</th><th>Комментарий</th></tr></thead><tbody>${rows.map(row => { const asset = [...craneBeamState.assets, ...(craneBeamState.archivedAssets || [])].find(item => item.id === row.craneId); return `<tr><td>${escapeHtml(row.date || row.at?.slice(0, 10))}</td><td>${escapeHtml(asset?.name || row.craneId)}</td><td>${escapeHtml(row.status || row.action)}</td><td>${escapeHtml(row.workshop)}</td><td>${escapeHtml(row.place)}</td><td>${escapeHtml(row.byName || "Система")}</td><td>${escapeHtml(row.comment || "—")}</td></tr>`; }).join("") || '<tr><td colspan="7">Записей нет</td></tr>'}</tbody></table></div>`);
-  overlay.querySelector("[data-crane-installation-month]")?.addEventListener("change", event => { overlay.remove(); openCraneInstallationJournal(event.currentTarget.value || todayISO().slice(0, 7), 1); });
-  overlay.querySelector("[data-crane-installation-prev]")?.addEventListener("click", () => { overlay.remove(); openCraneInstallationJournal(selectedMonth, Math.max(1, pageInfo.page - 1)); });
-  overlay.querySelector("[data-crane-installation-next]")?.addEventListener("click", () => { overlay.remove(); openCraneInstallationJournal(selectedMonth, pageInfo.page + 1); });
-}
-
-function openCraneQrCards(asset) {
-  const lower = `${location.origin}/api/crane-beam-qr?mode=shift&id=${encodeURIComponent(asset.id)}&token=${encodeURIComponent(asset.lowerQrToken || "")}`;
-  const upper = `${location.origin}/api/crane-beam-qr?mode=monthly&id=${encodeURIComponent(asset.id)}&token=${encodeURIComponent(asset.upperQrToken || "")}`;
-  const overlay = craneOverlay(`Два постоянных QR · ${asset.name}`, `<div class="crane-qr-cards"><article><span>НИЖНИЙ QR</span><h3>${escapeHtml(asset.name)}</h3><p>${escapeHtml(asset.workshop)}</p><strong>ЕЖЕСМЕННЫЙ ОСМОТР</strong><img src="/api/qr?size=560&data=${encodeURIComponent(lower)}" alt="Нижний QR"><small>${escapeHtml(asset.lowerQr)}</small>${craneBeamState.canManage ? '<button type="button" data-rotate-qr="shift">Заменить только нижний QR</button>' : ""}</article><article><span>ВЕРХНИЙ QR</span><h3>${escapeHtml(asset.name)}</h3><p>${escapeHtml(asset.workshop)}</p><strong>ЕЖЕМЕСЯЧНОЕ ТО</strong><img src="/api/qr?size=560&data=${encodeURIComponent(upper)}" alt="Верхний QR"><small>${escapeHtml(asset.upperQr)}</small>${craneBeamState.canManage ? '<button type="button" data-rotate-qr="monthly">Заменить только верхний QR</button>' : ""}</article></div><button type="button" onclick="window.print()">Печать двух QR</button>`);
-  overlay.querySelectorAll("[data-rotate-qr]").forEach(button => button.addEventListener("click", async () => {
-    const kind = button.dataset.rotateQr, label = kind === "monthly" ? "верхний" : "нижний";
-    if (!window.confirm(`Заменить ${label} QR? Старый ${label} QR сразу перестанет работать. Второй QR не изменится.`)) return;
-    const result = await apiJson("/api/crane-beams/qr-rotate", { method: "POST", body: JSON.stringify({ craneId: asset.id, kind }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); openCraneQrCards(result.asset);
-  }));
-}
-
-async function changeCraneLifecycle(asset, action) {
-  if (action === "pause") {
-    const reason = window.prompt("Причина остановки кран-балки (обязательно)");
-    if (!reason?.trim()) return;
-    const result = await apiJson("/api/crane-beams/pause", { method: "POST", body: JSON.stringify({ craneId: asset.id, action, reason }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) };
-  } else if (action === "resume") {
-    if (!window.confirm("Возобновить эксплуатацию и снова включить счётчики?")) return;
-    const result = await apiJson("/api/crane-beams/pause", { method: "POST", body: JSON.stringify({ craneId: asset.id, action }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) };
-  } else {
-    const reason = window.prompt("Причина перемещения в корзину (обязательно)");
-    if (!reason?.trim()) return;
-    const result = await apiJson("/api/crane-beams/archive", { method: "POST", body: JSON.stringify({ craneId: asset.id, action: "archive", reason }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) };
-  }
-}
-
-function openCraneTrash(returnAsset = null) {
-  const rows = craneBeamState.archivedAssets || [];
-  const overlay = craneOverlay("Корзина кран-балок", `<div class="crane-journal-wrap"><table class="crane-journal"><thead><tr><th>Кран-балка</th><th>Цех</th><th>Родительское оборудование</th><th>Удалена</th><th></th></tr></thead><tbody>${rows.map(item => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.workshop)}</td><td>${escapeHtml(item.parentEquipmentName || "—")}</td><td>${escapeHtml(item.archivedAt?.slice(0, 10) || "—")}</td><td><button data-restore-crane="${escapeHtml(item.id)}">Восстановить</button></td></tr>`).join("") || '<tr><td colspan="5">Корзина пуста</td></tr>'}</tbody></table></div>`);
-  overlay.querySelectorAll("[data-restore-crane]").forEach(button => button.addEventListener("click", async () => {
-    const result = await apiJson("/api/crane-beams/archive", { method: "POST", body: JSON.stringify({ craneId: button.dataset.restoreCrane, action: "restore" }) });
-    craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); openCraneTrash(returnAsset);
-  }));
-}
-
-function editCraneAsset(asset = {}) {
-  const parentEquipment = allEquipment().filter(eq => eq && eq.deleted !== true && eq.area !== "Резерв");
-  const selectedParentId = String(asset.parentEquipmentId || current.equipmentId || parentEquipment[0]?.id || "");
-  const parentOptions = parentEquipment.map(eq => `<option value="${eq.id}" ${String(eq.id) === selectedParentId ? "selected" : ""}>${escapeHtml(eq.name)} · ${escapeHtml(eq.area)}</option>`).join("");
-  const controls = asset.id ? `<div class="crane-node-detail-actions">${asset.operationalPaused ? '<button type="button" data-crane-resume>Возобновить эксплуатацию</button>' : '<button type="button" data-crane-pause>Остановить с причиной</button>'}<button type="button" data-crane-trash>Переместить в корзину</button><button type="button" data-open-crane-trash>Открыть корзину (${(craneBeamState.archivedAssets || []).length})</button></div>${asset.operationalPaused ? `<div class="crane-prohibition-banner"><strong>Счётчики остановлены</strong><span>${escapeHtml(asset.pauseReason || "Причина не указана")}</span></div>` : ""}` : "";
-  const overlay = craneOverlay(asset.id ? `Настройка · ${asset.name}` : "Добавить кран-балку", `${controls}<form class="crane-admin-form"><label>Название<input name="name" required value="${escapeHtml(asset.name || "")}"></label><label>Внутри оборудования<select name="parentEquipmentId" required>${parentOptions}</select><small>Кран-балка будет показана внутри выбранного оборудования, отдельно от его обычных узлов.</small></label><label>Инвентарный номер<input name="inventoryNumber" value="${escapeHtml(asset.inventoryNumber || "")}"></label><label>Место установки<input name="installationPlace" value="${escapeHtml(asset.installationPlace || "")}"></label><label>Дата установки<input name="installationDate" type="date" value="${escapeHtml(asset.installationDate || "")}"></label><label>Статус<select name="installationStatus"><option value="installed">Установлено</option><option value="temporary">Временно снято</option><option value="dismantled">Демонтировано</option></select></label><label>День ежемесячного ТО<input name="monthlyDay" type="number" min="1" max="28" value="${Number(asset.monthlyDay || 1)}"></label><label>Пункты осмотра, каждый с новой строки<textarea name="checklist" rows="8">${escapeHtml((asset.checklist || []).map(item => item.label).join("\n"))}</textarea></label><label>Комментарий установки / переноса<textarea name="installationComment"></textarea></label><button type="submit">Сохранить</button></form>`);
-  const form = overlay.querySelector("form"); form.elements.installationStatus.value = asset.installationStatus || "installed";
-  form.addEventListener("submit", async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(form)); const parent = equipmentById(Number(data.parentEquipmentId)); data.id = asset.id || ""; data.workshop = parent?.area || ""; data.checklist = form.elements.checklist.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); try { const result = await apiJson("/api/crane-beams/save", { method: "POST", body: JSON.stringify(data) }); craneBeamState = { ...craneBeamState, ...(result.state || {}) }; overlay.remove(); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } });
-  const lifecycle = async action => { try { await changeCraneLifecycle(asset, action); overlay.remove(); current.view === "checklist" ? renderChecklist() : current.view === "node" ? renderNodes() : renderEquipment(); } catch (error) { window.alert(error.message); } };
-  overlay.querySelector("[data-crane-pause]")?.addEventListener("click", () => lifecycle("pause"));
-  overlay.querySelector("[data-crane-resume]")?.addEventListener("click", () => lifecycle("resume"));
-  overlay.querySelector("[data-crane-trash]")?.addEventListener("click", () => lifecycle("archive"));
-  overlay.querySelector("[data-open-crane-trash]")?.addEventListener("click", () => { overlay.remove(); openCraneTrash(asset); });
-}
-
-async function handleIncomingCraneQrFromUrl() {
-  const params = new URLSearchParams(location.search); const value = params.get("craneQr") || params.get("qr") || "";
-  if (!value) return false;
-  await loadCraneBeams();
-  const parsed = parseCraneQrPayload(value);
-  if (!parsed) return false;
-  history.replaceState({}, "", location.pathname);
-  if (parsed.invalidCraneQr) { window.alert("Этот QR-код заменён администратором и больше не действует."); return true; }
-  const asset = craneBeamState.assets.find(item => item.id === parsed.craneId);
-  if (!asset) { window.alert("Кран-балка не найдена."); return true; }
-  openCraneInspection(asset, parsed.craneType); return true;
-}
-
-
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     appHiddenAt = Date.now();
@@ -19481,17 +19077,19 @@ resetAppNotificationsForOpen();
   await refreshAttendanceStatus();
   startAttendanceRefresh();
   const deviceState = await loadStateFromDevice();
-  if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
   // Establish the server snapshot before the first full render. Some render paths
   // initialise derived UI data and persist it locally; rendering the device cache
   // first made that harmless work look like an offline edit and caused a large,
   // unnecessary PUT /api/state immediately after every sign-in.
-  await loadRemoteState();
+  const remoteLoaded = await loadRemoteState();
+  // The device snapshot is an offline fallback only. Merging it before a healthy
+  // server response made removed nodes flash on screen and temporarily corrupted
+  // equipment counters with stale records.
+  if (!remoteLoaded && deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
   appBootstrapComplete = true;
   if (isProfileReady()) {
     const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
-    const craneHandled = attendanceHandled ? false : await handleIncomingCraneQrFromUrl();
-    const handled = attendanceHandled || craneHandled || await handleIncomingNodeQrFromUrl();
+    const handled = attendanceHandled || await handleIncomingNodeQrFromUrl();
     if (!handled) show(current.view, false);
   } else {
     render();

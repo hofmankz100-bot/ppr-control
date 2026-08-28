@@ -784,15 +784,18 @@ test("idle synchronization avoids repeated user loads and oversized local storag
   assert.doesNotMatch(realtimeHandler, /loadRemoteUsers\(\)/);
   assert.match(client, /now - lastRemoteUsersPollAt < 30000/);
   assert.match(client, /if \(appBootstrapComplete\) \{[\s\S]*?syncRemoteChanges\(\)/);
-  assert.match(client, /await loadRemoteState\(\);\s*appBootstrapComplete = true;/);
+  assert.match(client, /const remoteLoaded = await loadRemoteState\(\);[\s\S]*?if \(!remoteLoaded && deviceState/);
   const localLoad = client.slice(client.indexOf("function loadState()"), client.indexOf("function persistStateLocally"));
   const remoteMerge = client.slice(client.indexOf("function mergeRemoteState"), client.indexOf("function mergeRealtimePatch"));
   assert.doesNotMatch(localLoad, /remoteMigrationChanged[\s\S]*?STORE_KEY.*pending/);
   assert.doesNotMatch(remoteMerge, /journalCleanup\.changed[\s\S]*?STORE_KEY.*pending/);
   const dueStart = client.slice(client.indexOf("function journalDueStart"), client.indexOf("function incompleteJournalDays"));
   assert.doesNotMatch(dueStart, /pending|queueRemoteStateSave/);
-  assert.match(client, /Object\.entries\(snapshot\?\.checks \|\| \{\}\)\.slice\(-500\)/);
+  assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
   assert.doesNotMatch(client.slice(client.indexOf("function persistStateLocally"), client.indexOf("let devicePersistTimer")), /\.\.\.snapshot/);
+  assert.match(client, /function remoteSectionFingerprint\(field, value\)/);
+  assert.match(client, /field !== "checks"/);
+  assert.doesNotMatch(client.slice(client.indexOf("function changedRemoteStateSections"), client.indexOf("async function saveRemoteState")), /JSON\.stringify\(value\)/);
 });
 
 test("mobile journal print windows create a shareable PDF while desktop keeps printing", () => {
@@ -2248,7 +2251,7 @@ test("closing without score replaces the check record on every realtime client",
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(serverSource, /deleteWithoutScore \? \{ replaceCheckKeys: \[recordKey\] \} : \{\}/);
   assert.match(clientSource, /Array\.isArray\(remote\.replaceCheckKeys\)/);
-  assert.match(clientSource, /state\.checks\[recordKey\] = compactCheckRecords/);
+  assert.match(clientSource, /if \(hasMeaningfulCheckKind\(remote\.checks\[recordKey\]\?\.to\)\) state\.checks\[recordKey\] = remote\.checks\[recordKey\]/);
   assert.match(clientSource, /delete state\.checks\[recordKey\]/);
 });
 

@@ -28,7 +28,6 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
-const { createCraneBeamsRoute, ensureCraneBeams } = require("./server/crane-beams-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -75,7 +74,7 @@ const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const TMC_REQUESTS_DISABLED = process.env.NODE_ENV !== "test";
-const SERVER_VERSION = "v696-crane-qr-performance-1";
+const SERVER_VERSION = "v697-stable-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -451,7 +450,7 @@ function restorePress2400Catalog(db) {
 }
 
 function archiveAndRemoveCraneBeamData(db) {
-  const version = "remove-crane-beams-completely-v1";
+  const version = "remove-crane-beams-completely-v2";
   db.targetedCleanupVersions ||= {};
   if (db.targetedCleanupVersions[version]) return false;
   const now = new Date().toISOString();
@@ -539,8 +538,11 @@ function archiveAndRemoveCraneBeamData(db) {
     if (/^\s*гпм\s*$/iu.test(String(next.area || ""))) next.area = next.areas[0] || "";
     return next;
   });
-  db.retiredCraneBeamArchive = { archivedAt: now, assets: [...new Map(archived.filter(item => item.name).map(item => [`${item.id}:${item.name}`, item])).values()] };
-  db.targetedCleanupVersions[version] = { at: now, archived: db.retiredCraneBeamArchive.assets.length };
+  // The crane-beam subsystem has been removed, not merely hidden. Its former
+  // server collection and recovery archive must not recreate equipment later.
+  delete db.craneBeams;
+  delete db.retiredCraneBeamArchive;
+  db.targetedCleanupVersions[version] = { at: now, removed: archived.length };
   return true;
 }
 
@@ -915,7 +917,6 @@ async function initializeStorage() {
   if (!configured.length) {
     const db = readDbFile();
     archiveAndRemoveCraneBeamData(db);
-    ensureCraneBeams(db, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
     removeDuplicateProductionRequests(db);
     migrateLegacyDirectorApprovals(db);
     resetMonthClosePermissionsOnce(db);
@@ -1029,7 +1030,6 @@ async function initializeStorage() {
     if (result.rows[0]?.payload) {
       postgresState = normalizeDb(result.rows[0].payload);
       archiveAndRemoveCraneBeamData(postgresState);
-      ensureCraneBeams(postgresState, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
       removeDuplicateProductionRequests(postgresState);
       removeObsoletePressNoMaterialNodes(postgresState);
       removeKnownFalseDowntimes(postgresState);
@@ -1049,7 +1049,6 @@ async function initializeStorage() {
     } else {
       postgresState = readDbFile();
       archiveAndRemoveCraneBeamData(postgresState);
-      ensureCraneBeams(postgresState, DEFAULT_EQUIPMENT_REFERENCE_SERVER);
       removeDuplicateProductionRequests(postgresState);
       migrateLegacyDirectorApprovals(postgresState);
       resetMonthClosePermissionsOnce(postgresState);
@@ -2347,40 +2346,6 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
   }
 }
 
-async function sendCraneEventPushNotifications(event = {}, req = {}) {
-  if (!event?.event) return;
-  const db = readDb();
-  ensurePushConfig(db);
-  const origin = String(req.headers?.["x-client-id"] || "");
-  const targets = (db.pushNotifications.subscriptions || []).map(entry => currentPushEntry(db, entry)).filter(entry => {
-    if (origin && entry.clientId === origin) return false;
-    const profile = entry.profile || {}, role = permissionBaseRoleServer(profile.role);
-    if (["editor", "engineer", "mechanic", "electrician"].includes(role)) return true;
-    return ["operator", "shop"].includes(role) && userHasAreaServer(profile, event.workshop);
-  });
-  if (!targets.length) return;
-  const labels = {
-    defect_opened: event.prohibited ? "Эксплуатация запрещена — новое замечание" : "Новое замечание по осмотру",
-    awaiting_confirmation: "Устранение ожидает подтверждения инженера",
-    confirmed: "Устранение подтверждено инженером",
-    returned: "Устранение возвращено на доработку"
-  };
-  webPush.setVapidDetails("https://ppr-control-ramazan.onrender.com", db.pushNotifications.vapid.publicKey, db.pushNotifications.vapid.privateKey);
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer({ type: "crane-beam", title: "ALKZ — кран-балка", body: `${event.craneName}: ${labels[event.event] || "изменение состояния"}`, url: "/?view=equipment", entityId: event.craneId, tag: `crane:${event.craneId}:${event.event}` }, entry), { TTL: 86400, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Crane push failed: ${error?.message || error}`);
-    }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = (db.pushNotifications.subscriptions || []).filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
-  }
-}
-
 function engineerIncomingRequestItemCountServer(db) {
   return Object.values(db.requests || {}).reduce((sum, request) => {
     if (!request || request.deleted || request.done || request.stock || request.kind !== "tmc" || !request.engineerCombinedBatch
@@ -2614,35 +2579,6 @@ function sameRemarkAuthorServer(user = {}, remark = {}) {
 
 function sameRemarkAreaServer(left = "", right = "") {
   return String(left || "").trim().toLocaleLowerCase("ru-RU") === String(right || "").trim().toLocaleLowerCase("ru-RU");
-}
-
-async function recoverRetiredCraneBeamArchive() {
-  const db = readDb();
-  if (db.retiredCraneBeamArchive?.assets?.length) return false;
-  let legacy = null;
-  if (postgresPool) {
-    const result = await postgresPool.query(`SELECT payload FROM ppr_admin_backups
-      WHERE jsonb_object_length(COALESCE(payload->'gpmJournal'->'equipment','{}'::jsonb)) > 0
-      ORDER BY created_at DESC LIMIT 1`);
-    legacy = result.rows[0]?.payload || null;
-  } else if (fs.existsSync(backupDir)) {
-    const files = fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json")).sort().reverse();
-    for (const name of files) {
-      const candidate = JSON.parse(fs.readFileSync(path.join(backupDir, name), "utf8"));
-      if (Object.keys(candidate?.gpmJournal?.equipment || {}).length) { legacy = candidate; break; }
-    }
-  }
-  if (!legacy) return false;
-  const assets = Object.values(legacy.gpmJournal?.equipment || {}).filter(item => item && !item.deleted && item.id
-    && !(item.equipmentKind === "forklift" || /вилоч|погрузчик/iu.test(String(item.name || "")))).map(item => ({
-      id: String(item.id), name: String(item.name || "").trim(), workshop: String(item.location || item.sourceEquipmentName || "").trim(),
-      sourceEquipmentId: Number(item.sourceEquipmentId || 0) || null,
-      lowerQr: `PPRGPM|SHIFT|${item.id}`, upperQr: `PPRGPM|MONTHLY|${item.id}`
-    }));
-  if (!assets.length) return false;
-  db.retiredCraneBeamArchive = { archivedAt: new Date().toISOString(), assets };
-  writeDb(db, { action: "retired_crane_beam_archive_recovered", assets: assets.length });
-  return true;
 }
 
 function normalizedUserAreasServer(user = {}) {
@@ -5006,23 +4942,10 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
   writeDb
 });
 
-const handleCraneBeamsRoute = createCraneBeamsRoute({
-  adminPreviewOnly: true,
-  builtInEquipment: DEFAULT_EQUIPMENT_REFERENCE_SERVER,
-  enqueueStateWrite,
-  notifyCraneEvent: sendCraneEventPushNotifications,
-  readBody,
-  readDb,
-  sendJson,
-  writeDb
-});
-
 async function handleApi(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
-    || pathname === "/api/crane-beam-qr"
-    || pathname === "/api/gpm-qr"
     || pathname.startsWith("/api/photos/")
     || pathname.startsWith("/api/export/");
   const clientVersion = String(req.headers["x-app-version"] || url.searchParams.get("appVersion") || "");
@@ -5039,7 +4962,6 @@ async function handleApi(req, res, pathname, url) {
   }
   const publicRequest = pathname === "/api/health"
     || (pathname === "/api/qr" && req.method === "GET")
-    || (["/api/crane-beam-qr", "/api/gpm-qr"].includes(pathname) && req.method === "GET")
     || pathname === "/api/auth/register"
     || pathname === "/api/auth/login"
     || pathname === "/api/auth/session"
@@ -5058,8 +4980,6 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
-
-  if (await handleCraneBeamsRoute(req, res, pathname, url)) return true;
 
   if (await handleAdminStorageRoute(req, res, pathname)) return true;
 
@@ -8302,7 +8222,6 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(async storage => {
-    await recoverRetiredCraneBeamArchive().catch(error => console.warn(`Crane-beam archive recovery failed: ${error.message}`));
     startPostgresRecoveryMonitor();
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
