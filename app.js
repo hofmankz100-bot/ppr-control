@@ -19482,6 +19482,12 @@ resetAppNotificationsForOpen();
   startAttendanceRefresh();
   const deviceState = await loadStateFromDevice();
   if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
+  // Establish the server snapshot before the first full render. Some render paths
+  // initialise derived UI data and persist it locally; rendering the device cache
+  // first made that harmless work look like an offline edit and caused a large,
+  // unnecessary PUT /api/state immediately after every sign-in.
+  await loadRemoteState();
+  appBootstrapComplete = true;
   if (isProfileReady()) {
     const attendanceHandled = await handleIncomingAttendanceQrFromUrl();
     const craneHandled = attendanceHandled ? false : await handleIncomingCraneQrFromUrl();
@@ -19490,8 +19496,6 @@ resetAppNotificationsForOpen();
   } else {
     render();
   }
-  await loadRemoteState();
-  appBootstrapComplete = true;
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();
