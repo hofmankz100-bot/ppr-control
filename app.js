@@ -7574,10 +7574,10 @@ function openAllRemarkCards() {
   const overlay = document.createElement("div");
   overlay.className = "request-archive-overlay open-remarks-overlay";
   overlay.innerHTML = `
-    <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true">
+    <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true" aria-labelledby="openRemarksTitle">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong>${escapeHtml(remarksSectionLabel())}</strong><span>Учитывается: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · с причиной неустранения: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
-        <button type="button" data-close-open-remarks>Закрыть</button>
+        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong id="openRemarksTitle">${escapeHtml(remarksSectionLabel())}</strong><span>Учитывается: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · с причиной неустранения: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
+        <button type="button" data-close-open-remarks aria-label="Закрыть окно предупреждений">Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
         ${targets.map((target, index) => `
@@ -7609,11 +7609,21 @@ function openAllRemarkCards() {
       </div>
     </section>
   `;
-  const close = () => overlay.remove();
+  const closeButton = overlay.querySelector("[data-close-open-remarks]");
+  const close = () => {
+    document.removeEventListener("keydown", onKeydown);
+    document.body.classList.remove("open-remarks-open");
+    overlay.remove();
+    ui.alertCounter?.focus();
+  };
+  const onKeydown = event => {
+    if (event.key === "Escape") close();
+  };
   overlay.addEventListener("click", event => {
     if (event.target === overlay) close();
   });
-  overlay.querySelector("[data-close-open-remarks]")?.addEventListener("click", close);
+  closeButton?.addEventListener("click", close);
+  document.addEventListener("keydown", onKeydown);
   overlay.querySelectorAll("[data-close-remark-no-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     if (!canCloseRemarksForEmployees()) return;
     const decision = await askAdminRemarkClose(false);
@@ -7666,8 +7676,10 @@ function openAllRemarkCards() {
     close();
     show("checklist");
   }));
+  document.body.classList.add("open-remarks-open");
   document.body.append(overlay);
   translateUserTextsForCurrentProfile();
+  closeButton?.focus();
 }
 
 function askAdminRemarkClose(withScore = false) {

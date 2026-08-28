@@ -758,6 +758,121 @@ body.global-reminder-open {
   overflow-y: hidden;
 }
 
+body.open-remarks-open {
+  overflow: hidden;
+}
+
+.request-archive-overlay.open-remarks-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(10, 30, 43, .76);
+  overscroll-behavior: contain;
+}
+
+.open-remarks-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-height: calc(100dvh - max(32px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #c7d6de;
+  border-radius: 16px;
+  background: #f4f8fa;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, .34);
+}
+
+.open-remarks-dialog > header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #14324a, #245d78);
+  color: #fff;
+}
+
+.open-remarks-dialog > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.open-remarks-dialog > header strong { font-size: 21px; }
+.open-remarks-dialog > header span { font-size: 12px; opacity: .85; }
+.open-remarks-dialog > header button {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: 10px;
+  background: #fff;
+  color: #14324a;
+  font-weight: 800;
+}
+
+.open-remarks-dialog > header button:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.open-remarks-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px;
+}
+
+.open-remark-item {
+  margin: 0 0 12px;
+  padding: 14px;
+  border: 1px solid #cbd8df;
+  border-left: 5px solid #d85858;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.open-remark-item:last-child { margin-bottom: 0; }
+.open-remark-item > header,
+.open-remark-item > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.open-remark-item > header > span:first-child { display: grid; min-width: 0; gap: 3px; }
+.open-remark-item > header small,
+.open-remark-item > footer small { color: #607785; }
+.open-remark-item > footer { justify-content: flex-end; }
+.open-remark-item > footer small { margin-right: auto; }
+.open-remark-status { padding: 5px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 800; }
+
+@media (max-width: 600px) {
+  .request-archive-overlay.open-remarks-overlay {
+    place-items: stretch;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .open-remarks-dialog {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+
+  .open-remarks-dialog > header { padding: 12px; }
+  .open-remarks-dialog > header strong { font-size: 19px; }
+  .open-remarks-dialog > header button { padding-inline: 11px; }
+  .open-remarks-list { padding: 10px; }
+  .open-remark-item { padding: 12px; }
+  .open-remark-item > footer { align-items: stretch; }
+  .open-remark-item > footer button { flex: 1 1 100%; min-height: 44px; }
+}
+
 .icon-button {
   width: 42px;
   height: 42px;
