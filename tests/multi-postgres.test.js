@@ -39,6 +39,24 @@ test("a write succeeds when at least one database is available", async () => {
   assert.equal(cluster.status().active, "supabase");
 });
 
+test("known unhealthy replicas are left to the recovery monitor", async () => {
+  let unhealthyCalls = 0;
+  const unhealthy = fakeNode("neon", async () => {
+    unhealthyCalls += 1;
+    throw new Error("quota exceeded");
+  });
+  unhealthy.healthy = false;
+  const cluster = new MultiPostgres([
+    fakeNode("primary", async () => ({ rows: [] })),
+    unhealthy
+  ]);
+
+  await cluster.query("UPDATE ppr_settings SET payload=$1", ["{}"]);
+  await cluster.flushMirrors();
+  assert.equal(unhealthyCalls, 0);
+  assert.equal(cluster.status().nodes[1].healthy, false);
+});
+
 test("flushMirrors waits until delayed database mirrors finish", async () => {
   let releaseMirror;
   let mirrored = false;

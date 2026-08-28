@@ -104,7 +104,12 @@ class MultiPostgres {
     }
     this.activeIndex = chosen.index;
     this.onStatus(this.status());
-    for (const index of this.nodes.map((_, index) => index).filter(index => index !== chosen.index)) {
+    // A failed replica is checked by the recovery monitor. Retrying the same
+    // known-bad database after every user mutation wastes sockets and can create
+    // an error storm (for example while a hosted database quota is exhausted).
+    for (const index of this.nodes
+      .map((_, index) => index)
+      .filter(index => index !== chosen.index && this.nodes[index].healthy)) {
       const job = this.nodes[index].pool.query(sql, params)
         .then(() => this.markSuccess(index))
         .catch(error => this.markFailure(index, error))
