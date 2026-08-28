@@ -406,6 +406,7 @@ let realtimeReconnectTimer = null;
 let realtimePollTimer = null;
 let lastRealtimeMessageAt = 0;
 let lastRemoteUsersPollAt = 0;
+let appBootstrapComplete = false;
 const REALTIME_VERSION_KEY = "ppr-realtime-state-version-v1";
 let realtimeStateVersion = localStorage.getItem(REALTIME_VERSION_KEY) || "";
 let realtimeVersionPollInFlight = false;
@@ -18974,8 +18975,10 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
 
 window.addEventListener("online", () => {
   flushPendingWork();
-  syncRemoteChanges();
-  pollRemoteUsers(true);
+  if (appBootstrapComplete) {
+    syncRemoteChanges();
+    pollRemoteUsers(true);
+  }
 });
 
 function reportClientError(message, source = "", line = 0, column = 0) {
@@ -19494,6 +19497,7 @@ resetAppNotificationsForOpen();
     render();
   }
   await loadRemoteState();
+  appBootstrapComplete = true;
   if (window.Notification?.permission === "granted") verifyPushSubscription().then(() => renderProfile()).catch(() => {});
   handleIncomingNotificationLink();
   loadRemoteUsers();

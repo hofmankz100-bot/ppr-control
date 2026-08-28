@@ -783,6 +783,8 @@ test("idle synchronization avoids repeated user loads and oversized local storag
   const realtimeHandler = client.slice(client.indexOf("function handleRealtimeMessage"), client.indexOf("async function syncRemoteChanges"));
   assert.doesNotMatch(realtimeHandler, /loadRemoteUsers\(\)/);
   assert.match(client, /now - lastRemoteUsersPollAt < 30000/);
+  assert.match(client, /if \(appBootstrapComplete\) \{[\s\S]*?syncRemoteChanges\(\)/);
+  assert.match(client, /await loadRemoteState\(\);\s*appBootstrapComplete = true;/);
   assert.match(client, /Object\.entries\(snapshot\?\.checks \|\| \{\}\)\.slice\(-500\)/);
   assert.doesNotMatch(client.slice(client.indexOf("function persistStateLocally"), client.indexOf("let devicePersistTimer")), /\.\.\.snapshot/);
 });
