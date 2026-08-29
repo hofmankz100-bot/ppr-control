@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v713-session-hydration-retry-1";
+const APP_VERSION = "v714-physical-qr-alias-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4355,6 +4355,10 @@ function resolveNodeQrTarget(parsed = {}) {
   if (alternateIndex !== undefined) {
     return { ...parsed, nodeIndex: Number(alternateIndex), qrKind: parsed.qrKind === "upper" ? "lower" : "upper" };
   }
+  const aliasIndex = Object.entries(eq.qrTokenAliases || {}).find(([, values]) => (
+    Array.isArray(values) && values.some(value => String(value || "").trim() === token)
+  ))?.[0];
+  if (aliasIndex !== undefined) return { ...parsed, nodeIndex: Number(aliasIndex), qrKind: "lower" };
   return parsed;
 }
 
@@ -4362,7 +4366,9 @@ function currentNodeQrMatches(parsed = {}) {
   const resolved = resolveNodeQrTarget(parsed);
   const eq = equipmentById(Number(resolved.equipmentId));
   const expected = String((resolved.qrKind === "upper" ? eq?.upperQrTokens : eq?.qrTokens)?.[Number(resolved.nodeIndex)] || "").trim();
-  return !expected || expected === String(resolved.qrToken || "").trim();
+  const token = String(resolved.qrToken || "").trim();
+  const aliases = Array.isArray(eq?.qrTokenAliases?.[Number(resolved.nodeIndex)]) ? eq.qrTokenAliases[Number(resolved.nodeIndex)] : [];
+  return !expected || expected === token || aliases.some(value => String(value || "").trim() === token);
 }
 
 function markNodeWalkDoneByQr(equipmentId, nodeIndex, date = currentWalkShift().date, shiftInfo = currentWalkShift(), options = {}) {

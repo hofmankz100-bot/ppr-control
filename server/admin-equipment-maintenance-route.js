@@ -182,6 +182,7 @@ function createAdminEquipmentMaintenanceRoute({
       catalogItem.nodeOperationalPauses = shiftIndexedMap(catalogItem.nodeOperationalPauses);
       catalogItem.nodeCreatedAt = shiftIndexedMap(catalogItem.nodeCreatedAt);
       catalogItem.qrTokens = shiftIndexedMap(catalogItem.qrTokens);
+      catalogItem.qrTokenAliases = shiftIndexedMap(catalogItem.qrTokenAliases);
       catalogItem.qrUpdatedAt = shiftIndexedMap(catalogItem.qrUpdatedAt);
       catalogItem.updatedAt = new Date().toISOString();
       db.catalog.equipment[equipmentId] = catalogItem;

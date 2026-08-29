@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v713-session-hydration-retry-1";
+const SERVER_VERSION = "v714-physical-qr-alias-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -362,6 +362,17 @@ function restoreGasQrCatalog(db) {
   item.updatedAt = now;
 }
 
+function restoreKnownPhysicalQrAliases(db) {
+  const item = db?.catalog?.equipment?.["1"];
+  if (!item || !Array.isArray(item.nodes) || !item.nodes[0]) return false;
+  const token = "2e9d9743d114ce510f80bf70";
+  item.qrTokenAliases = item.qrTokenAliases && typeof item.qrTokenAliases === "object" ? item.qrTokenAliases : {};
+  const aliases = Array.isArray(item.qrTokenAliases[0]) ? item.qrTokenAliases[0] : [];
+  if (aliases.includes(token) || String(item.qrTokens?.[0] || "") === token) return false;
+  item.qrTokenAliases[0] = [...aliases, token];
+  return true;
+}
+
 function restorePress2400Catalog(db) {
   const item = db?.catalog?.equipment?.[PRESS_2400_EQUIPMENT_ID];
   if (!item || !Array.isArray(item.nodes)) return false;
@@ -532,6 +543,7 @@ function normalizeDb(db) {
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   repairCatalogNodeHistory(db);
+  restoreKnownPhysicalQrAliases(db);
   restoreGasQrCatalog(db);
   restorePress2400Catalog(db);
   db.systemBroadcasts ||= [];
@@ -5273,19 +5285,29 @@ async function handleApi(req, res, pathname, url) {
     let qrKind = body.qrKind === "upper" ? "upper" : "lower";
     if (qrCatalogItem && requestedQrToken) {
       const findTokenIndex = source => Object.entries(source || {}).find(([, value]) => String(value || "").trim() === requestedQrToken)?.[0];
+      const findAliasIndex = source => Object.entries(source || {}).find(([, values]) => (
+        Array.isArray(values) && values.some(value => String(value || "").trim() === requestedQrToken)
+      ))?.[0];
       const preferredIndex = findTokenIndex(qrKind === "upper" ? qrCatalogItem.upperQrTokens : qrCatalogItem.qrTokens);
       const alternateIndex = findTokenIndex(qrKind === "upper" ? qrCatalogItem.qrTokens : qrCatalogItem.upperQrTokens);
       if (preferredIndex !== undefined) nodeIndex = Number(preferredIndex);
       else if (alternateIndex !== undefined) {
         nodeIndex = Number(alternateIndex);
         qrKind = qrKind === "upper" ? "lower" : "upper";
+      } else {
+        const aliasIndex = findAliasIndex(qrCatalogItem.qrTokenAliases);
+        if (aliasIndex !== undefined) nodeIndex = Number(aliasIndex);
       }
     }
     if (!qrCatalogItem || !Array.isArray(qrCatalogItem.nodes) || !qrCatalogItem.nodes[nodeIndex] || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
       sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
       return true;
     }
-    const expectedQrTokens = [qrCatalogItem?.qrTokens?.[nodeIndex], qrCatalogItem?.upperQrTokens?.[nodeIndex]].map(value => String(value || "").trim()).filter(Boolean);
+    const expectedQrTokens = [
+      qrCatalogItem?.qrTokens?.[nodeIndex],
+      qrCatalogItem?.upperQrTokens?.[nodeIndex],
+      ...(Array.isArray(qrCatalogItem?.qrTokenAliases?.[nodeIndex]) ? qrCatalogItem.qrTokenAliases[nodeIndex] : [])
+    ].map(value => String(value || "").trim()).filter(Boolean);
     if (expectedQrTokens.length && !expectedQrTokens.includes(String(body.qrToken || "").trim())) {
       sendJson(res, 410, { ok: false, error: "node_qr_replaced" });
       return true;

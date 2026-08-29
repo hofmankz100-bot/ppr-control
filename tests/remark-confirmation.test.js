@@ -689,6 +689,16 @@ test("admin can rotate one node QR without changing other node indexes", () => {
   assert.match(serverSource, /error: "node_qr_replaced"/);
 });
 
+test("a recovered physical QR token remains valid as a node alias", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(serverSource, /restoreKnownPhysicalQrAliases\(db\)/);
+  assert.match(serverSource, /2e9d9743d114ce510f80bf70/);
+  assert.match(serverSource, /qrCatalogItem\?\.qrTokenAliases/);
+  assert.match(client, /eq\.qrTokenAliases \|\| \{\}/);
+  assert.match(client, /aliases\.some/);
+});
+
 test("admin can print one existing node QR without rotating it", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(client, /data-print-node-qr=/);
