@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v714-physical-qr-alias-1";
+const SERVER_VERSION = "v715-legacy-qr-recovery-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -363,14 +363,26 @@ function restoreGasQrCatalog(db) {
 }
 
 function restoreKnownPhysicalQrAliases(db) {
-  const item = db?.catalog?.equipment?.["1"];
-  if (!item || !Array.isArray(item.nodes) || !item.nodes[0]) return false;
-  const token = "2e9d9743d114ce510f80bf70";
-  item.qrTokenAliases = item.qrTokenAliases && typeof item.qrTokenAliases === "object" ? item.qrTokenAliases : {};
-  const aliases = Array.isArray(item.qrTokenAliases[0]) ? item.qrTokenAliases[0] : [];
-  if (aliases.includes(token) || String(item.qrTokens?.[0] || "") === token) return false;
-  item.qrTokenAliases[0] = [...aliases, token];
-  return true;
+  const recovered = [
+    ["1", 0, "2e9d9743d114ce510f80bf70"],
+    ["5", 0, "46d131a60520d348e7fa9eee"],
+    ["5", 1, "d9afaaf6007f018aa82cf5d3"],
+    ["5", 2, "0bad14cd03832bf96eec4ac9"],
+    ["5", 3, "7abaadeac301785627fa60a6"],
+    ["5", 4, "44174ba255e602429720ddc8"],
+    ["7", 0, "be14fe68c2a61dffba09369d"]
+  ];
+  let changed = false;
+  recovered.forEach(([equipmentId, nodeIndex, token]) => {
+    const item = db?.catalog?.equipment?.[equipmentId];
+    if (!item || !Array.isArray(item.nodes) || !item.nodes[nodeIndex]) return;
+    item.qrTokenAliases = item.qrTokenAliases && typeof item.qrTokenAliases === "object" ? item.qrTokenAliases : {};
+    const aliases = Array.isArray(item.qrTokenAliases[nodeIndex]) ? item.qrTokenAliases[nodeIndex] : [];
+    if (aliases.includes(token) || String(item.qrTokens?.[nodeIndex] || "") === token) return;
+    item.qrTokenAliases[nodeIndex] = [...aliases, token];
+    changed = true;
+  });
+  return changed;
 }
 
 function restorePress2400Catalog(db) {
