@@ -686,6 +686,8 @@ test("admin can rotate one node QR without changing other node indexes", () => {
   assert.match(client, /QR обновлён\. Для печати нажмите отдельную кнопку/);
   assert.match(equipmentQrRoute, /pathname !== "\/api\/admin\/equipment\/node-qr-rotate"/);
   assert.match(equipmentQrRoute, /randomBytes\(12\)\.toString\("hex"\)/);
+  assert.match(equipmentQrRoute, /item\.qrTokenAliases\[nodeIndex\] = \[\.\.\.new Set/);
+  assert.match(equipmentQrRoute, /previousTokens = \[item\.qrTokens\[nodeIndex\], item\.upperQrTokens\?\.\[nodeIndex\]\]/);
   assert.match(serverSource, /error: "node_qr_replaced"/);
 });
 

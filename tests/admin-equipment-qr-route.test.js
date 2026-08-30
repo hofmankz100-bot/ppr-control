@@ -59,6 +59,7 @@ test("equipment QR route rotates only the selected node and broadcasts its patch
   const item = database.catalog.equipment[7];
   assert.equal(item.qrTokens[0], "keep");
   assert.equal(item.qrTokens[1], "00112233445566778899aabb");
+  assert.deepEqual(item.qrTokenAliases[1], ["old"]);
   assert.equal(item.qrUpdatedAt[1], "2026-08-23T12:00:00.000Z");
   assert.deepEqual(audits[0], { action: "equipment_node_qr_rotated", user: authUser, targetId: "7:1", targetLabel: "Второй" });
   assert.deepEqual(broadcasts[0], ["node-qr-rotate", "", { catalog: { equipment: { 7: item } } }, true]);

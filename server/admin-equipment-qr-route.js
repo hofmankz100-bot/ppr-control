@@ -31,6 +31,12 @@ function createAdminEquipmentQrRoute(dependencies = {}) {
       const item = db.catalog?.equipment?.[String(equipmentId)];
       if (!item || !Array.isArray(item.nodes) || !item.nodes[nodeIndex]) return { error: "node_not_found" };
       item.qrTokens = item.qrTokens && typeof item.qrTokens === "object" ? item.qrTokens : {};
+      item.qrTokenAliases = item.qrTokenAliases && typeof item.qrTokenAliases === "object" ? item.qrTokenAliases : {};
+      const aliases = Array.isArray(item.qrTokenAliases[nodeIndex]) ? item.qrTokenAliases[nodeIndex] : [];
+      const previousTokens = [item.qrTokens[nodeIndex], item.upperQrTokens?.[nodeIndex]]
+        .map(value => String(value || "").trim())
+        .filter(Boolean);
+      item.qrTokenAliases[nodeIndex] = [...new Set([...aliases, ...previousTokens])];
       item.qrTokens[nodeIndex] = randomBytes(12).toString("hex");
       if (String(item.name || "").trim().toLocaleUpperCase("ru-RU") === "ГПМ") {
         item.upperQrTokens = item.upperQrTokens && typeof item.upperQrTokens === "object" ? item.upperQrTokens : {};
