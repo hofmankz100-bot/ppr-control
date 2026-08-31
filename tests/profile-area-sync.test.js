@@ -16,7 +16,7 @@ test("employee access follows current equipment areas and refreshes without logo
   assert.match(app, /equipment\.filter\(eq => areaAllowed\(equipmentEmployeeArea\(eq\)\)\)/);
   assert.match(app, /function userAreas\(user = \{\}\)/);
   assert.match(app, /function userHasArea\(user = \{\}, area = ""\)/);
-  assert.match(app, /data-user-extra-area/);
+  assert.doesNotMatch(app, /data-user-extra-area/);
   assert.match(app, /data-access-extra-area/);
   assert.match(server, /function normalizedUserAreasServer\(user = \{\}\)/);
   assert.match(server, /function userHasAreaServer\(user = \{\}, area = ""\)/);
@@ -29,7 +29,8 @@ test("employee access follows current equipment areas and refreshes without logo
 });
 
 test("one responsible employee can safely work in multiple workshops", () => {
-  assert.match(app, /const selectedAreas = new Set\(Array\.isArray\(draft\.areas\) \? draft\.areas : userAreas\(user\)\)/);
+  assert.doesNotMatch(app, /<legend>Все доступные участки<\/legend>[\s\S]*data-user-extra-area/);
+  assert.match(app, /const areas = userAreas\(user\)\.filter\(item => item !== user\.area\)/);
   assert.match(app, /areas: \[\.\.\.new Set\(\[area, \.\.\.areas\]\.filter\(Boolean\)\)\]/);
   assert.match(app, /if \(\["shop", "operator"\]\.includes\(profile\?\.role\)\) return userHasArea/);
   assert.match(server, /const shopUsers = area \? users\.filter\([\s\S]*?userHasAreaServer\(user, area\)/);

@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v722-qr-walk-counter-1";
+const APP_VERSION = "v723-user-area-picker-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -14603,7 +14603,7 @@ function renderDirector() {
     renderDirector();
   }));
   ui.directorPanel.querySelector("[data-open-admin-maintenance]")?.addEventListener("click", () => show("adminMaintenance"));
-  ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area], [data-user-extra-area]").forEach(select => {
+  ui.directorPanel.querySelectorAll("[data-user-role], [data-user-area]").forEach(select => {
     select.addEventListener("change", event => {
       const row = event.currentTarget.closest("[data-user-key]");
       const userKey = row?.dataset.userKey || "";
@@ -14613,9 +14613,6 @@ function renderDirector() {
         draft.role = event.currentTarget.value;
       }
       if (event.currentTarget.matches("[data-user-area]")) draft.area = event.currentTarget.value;
-      if (event.currentTarget.matches("[data-user-extra-area]")) {
-        draft.areas = [...row.querySelectorAll("[data-user-extra-area]:checked")].map(input => input.value);
-      }
       userApprovalDrafts.set(userKey, draft);
     });
   });
@@ -14628,7 +14625,7 @@ function renderDirector() {
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || user.role || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
-      const areas = [...(row?.querySelectorAll("[data-user-extra-area]:checked") || [])].map(input => input.value);
+      const areas = userAreas(user).filter(item => item !== user.area);
       if (!role) {
         window.alert("Сначала назначьте должность сотрудника.");
         return;
@@ -14675,7 +14672,7 @@ function renderDirector() {
       const row = event.currentTarget.closest(".director-user-row");
       const role = row?.querySelector("[data-user-role]")?.value || "";
       const area = row?.querySelector("[data-user-area]")?.value || "";
-      const areas = [...(row?.querySelectorAll("[data-user-extra-area]:checked") || [])].map(input => input.value);
+      const areas = userAreas(user).filter(item => item !== user.area);
       if (!user || !role) return;
       if (needsArea(permissionBaseRole(role)) && !area) {
         window.alert("Для этой должности сначала выберите участок.");
@@ -15775,7 +15772,6 @@ function renderDirectorUsers() {
         const draft = userApprovalDrafts.get(userKey) || {};
         const pending = user.approved === false || user.pendingApproval;
         const selectedRole = draft.role ?? user.role ?? "";
-        const selectedAreas = new Set(Array.isArray(draft.areas) ? draft.areas : userAreas(user));
         const login = user.loginDiagnostics || null;
         const loginWarnings = [
           login && !login.hasPassword ? "Пароль не задан" : "",
@@ -15795,13 +15791,12 @@ function renderDirectorUsers() {
           ${isEditorSession() ? `
             <label class="user-access-field"><span>Должность</span><select data-user-role>${roleOptions(selectedRole)}</select></label>
             <label class="user-access-field"><span>Основной участок</span><select data-user-area>${areaOptions(draft.area ?? user.area ?? "")}</select></label>
-            <fieldset class="user-area-picker"><legend>Все доступные участки</legend>${assignableEquipmentAreas().map(area => `<label><input type="checkbox" data-user-extra-area value="${escapeHtml(area)}" ${selectedAreas.has(area) ? "checked" : ""}><span>${escapeHtml(area)}</span></label>`).join("")}<small>Основной участок также должен быть отмечен. Можно выбрать несколько.</small></fieldset>
           ` : `<span>${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}${userAreas(user).length ? ` · ${escapeHtml(userAreas(user).join(", "))}` : ""}</span>`}
           <span class="user-approval-status">${pending ? "Ждёт подтверждения" : "Подтверждён"}</span>
           ${isEditorSession() ? `<span class="user-login-status ${loginWarnings.length ? "warning" : "ok"}" title="${escapeHtml(loginTitle)}">${escapeHtml(!login ? "Проверяем вход…" : loginWarnings.length ? loginWarnings.join(" · ") : "Вход настроен")}</span>` : ""}
           ${whatsappHref(user.phone) ? `<a class="mini-action" href="${whatsappHref(user.phone)}" target="_blank" rel="noopener" data-whatsapp-user="${escapeHtml(user.phone)}">WhatsApp</a>` : ""}
           ${profile?.role === "editor" && pending ? `<button type="button" class="mini-action" data-approve-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Подтвердить и назначить</button>` : ""}
-          ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность и участки</button>` : ""}
+          ${isEditorSession() && user.approved !== false && !user.pendingApproval ? `<button type="button" class="mini-action" data-save-user-role="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Сохранить должность и участок</button>` : ""}
           ${canResetPasswords ? `<button type="button" class="mini-action" data-reset-user-password="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Новый пароль</button>` : ""}
           ${isEditorSession() ? `<button type="button" class="mini-action" data-unlock-user-login="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Снять блокировку</button>` : ""}
           ${profile?.role === "editor" ? `<button type="button" class="mini-action" data-delete-user="${escapeHtml(user.id || user.employeeId || user.phone || user.name || "")}">Удалить</button>` : ""}
