@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v717-qr-index-integrity-1";
+const APP_VERSION = "v718-print-safe-qr-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4889,21 +4889,19 @@ function printNodeQrCode(eq, nodeIndex) {
       @page{size:A4 portrait;margin:8mm}
       *{box-sizing:border-box}
       body{margin:0;background:#eef3f6;font-family:Arial,sans-serif;color:#111827}
-      .sheet{width:94.5mm;height:136mm;margin:18px auto;background:#fff;padding:5mm;border:2px solid #111827;border-radius:8px;display:grid;grid-template-rows:auto auto 1fr auto auto auto;align-items:center;text-align:center;overflow:hidden}
+      .sheet{width:94.5mm;min-height:142mm;margin:18px auto;background:#fff;padding:6mm;border:2px solid #111827;border-radius:8px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:1.5mm;align-items:center;text-align:center;overflow:hidden}
       .top{font-size:7pt;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .head{min-height:18mm;display:grid;place-items:center;align-content:center}
-      h1{font-size:15pt;margin:0 0 1mm;text-transform:uppercase} p{margin:1mm 0;font-size:9pt;line-height:1.2}
+      p{margin:1mm 0;font-size:9pt;line-height:1.2}
       .head p{font-weight:800}.head p:first-of-type,.head p:nth-of-type(2){display:none}
-      .qr{display:grid;place-items:center;margin:1mm 0}.qr img{width:80mm;height:80mm;image-rendering:pixelated}
-      .hint{font-size:8pt;font-weight:700;color:#4b5563}
+      .qr{display:grid;place-items:center;margin:1mm 0;padding:1.5mm;background:#fff}.qr img{display:block;width:80mm;height:80mm;image-rendering:pixelated}
       .code{font-family:Consolas,monospace;font-size:18pt;font-weight:900;letter-spacing:.5px;text-align:center}
-      .link{font-size:7pt;font-weight:700;color:#374151;overflow-wrap:anywhere;max-height:9mm;overflow:hidden}
       .actions{position:sticky;bottom:0;background:#eef3f6;padding:10px;text-align:center}
       button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:800}
       .qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border-radius:50%;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:10}
       @media(max-width:700px){
         body{padding-top:72px}
-        .sheet{width:min(94.5mm,calc(100vw - 24px));height:auto;min-height:136mm;margin:0 auto 24px}
+        .sheet{width:min(94.5mm,calc(100vw - 24px));height:auto;min-height:142mm;margin:0 auto 24px}
         .qr img{width:min(80mm,100%);height:auto;aspect-ratio:1}
         .actions{display:none}
         .qr-back{display:block}
@@ -4914,15 +4912,12 @@ function printNodeQrCode(eq, nodeIndex) {
       <div class="sheet">
         <div class="top"><span>${escapeHtml(new Date().toLocaleString("ru-RU"))}</span><span>QR - ${escapeHtml(eq.name)} - ${escapeHtml(nodeName)}</span></div>
         <div class="head">
-          <h1>QR код обхода узла</h1>
           <p><strong>Оборудование:</strong> ${escapeHtml(eq.name)}</p>
           <p><strong>Участок:</strong> ${escapeHtml(eq.area || "")}</p>
           <p><strong>Узел:</strong> ${escapeHtml(nodeName)}</p>
         </div>
         <div class="qr"><img src="${qrUrl}" alt="QR код"></div>
-        <p class="hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</p>
         <div class="code">${escapeHtml(displayCode)}</div>
-        <div class="link">${escapeHtml(payload)} · ${escapeHtml(qrLink)}</div>
       </div>
       <div class="actions"><button onclick="window.print()">Печатать QR</button></div>
     </body></html>`);
@@ -4976,8 +4971,6 @@ function printEquipmentQrCodes(eq) {
         <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}</div>
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
         <div class="qr-code">${escapeHtml(displayCode)}</div>
-        <div class="qr-payload">${escapeHtml(qrLink)}</div>
-        <div class="qr-hint">Установите ППР на экран телефона, чтобы повторные QR открывались в приложении. Без установки используйте сканер внутри ППР.</div>
       </section>
     `;
   });
@@ -4993,14 +4986,12 @@ function printEquipmentQrCodes(eq) {
       body{margin:0;font-family:Arial,sans-serif;color:#111827;background:#e5e7eb}
       .qr-page{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:7mm;width:210mm;height:281mm;margin:0 auto 12px;background:#fff;page-break-after:always}
       .qr-page:last-child{page-break-after:auto}
-      .qr-card{border:2px solid #111827;border-radius:8px;padding:5mm;display:grid;grid-template-rows:auto auto auto 1fr auto auto auto;align-items:center;text-align:center;overflow:hidden}
+      .qr-card{border:2px solid #111827;border-radius:8px;padding:5mm;display:grid;grid-template-rows:auto auto auto 1fr auto;gap:1mm;align-items:center;text-align:center;overflow:hidden}
       .qr-title{font-size:15pt;font-weight:900;text-transform:uppercase}
       .qr-area{font-size:9pt;font-weight:800;color:#4b5563}
       .qr-node{min-height:18mm;display:grid;place-items:center;font-size:13pt;font-weight:800;line-height:1.15}
-      .qr-card img{width:80mm;height:80mm;margin:0 auto;image-rendering:pixelated}
+      .qr-card img{display:block;width:80mm;height:80mm;margin:0 auto;padding:1.5mm;background:#fff;image-rendering:pixelated}
       .qr-code{font-size:18pt;font-weight:900;letter-spacing:.5px}
-      .qr-payload{font-size:7pt;font-weight:700;color:#374151;overflow-wrap:anywhere}
-      .qr-hint{font-size:8pt;color:#4b5563;font-weight:700}
       .actions{position:fixed;left:0;right:0;bottom:0;background:#eef3f6;padding:10px;text-align:center;box-shadow:0 -6px 20px rgba(0,0,0,.12)}
       .actions button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:900}
       ${qrPopupMobileCss()}

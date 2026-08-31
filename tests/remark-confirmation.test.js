@@ -713,8 +713,11 @@ test("admin can print one existing node QR without rotating it", () => {
   assert.match(client, /@media\(max-width:700px\)/);
   assert.match(client, /\.actions\{display:none\}/);
   assert.match(client, /meta name="viewport" content="width=device-width,initial-scale=1"><title>QR -/);
-  assert.match(client, /\.sheet\{width:94\.5mm;height:136mm/);
-  assert.match(client, /\.qr img\{width:80mm;height:80mm/);
+  assert.match(client, /\.sheet\{width:94\.5mm;min-height:142mm/);
+  assert.match(client, /\.qr img\{display:block;width:80mm;height:80mm/);
+  assert.doesNotMatch(client, /QR код обхода узла/);
+  assert.doesNotMatch(client, /Установите ППР на экран телефона/);
+  assert.doesNotMatch(client, /class="qr-payload"/);
   assert.match(client, /@page\{size:A4 portrait;margin:8mm\}/);
   assert.match(client, /@media print\{body\{background:#fff;padding-top:0\}\.sheet\{margin:0\}/);
 });

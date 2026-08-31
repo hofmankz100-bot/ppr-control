@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v717-qr-index-integrity-1";
+const SERVER_VERSION = "v718-print-safe-qr-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5119,7 +5119,7 @@ async function handleApi(req, res, pathname, url) {
     }
     const requestedEcc = String(url.searchParams.get("ecc") || "H").toUpperCase();
     const errorCorrectionLevel = ["L", "M", "Q", "H"].includes(requestedEcc) ? requestedEcc : "H";
-    const margin = Math.min(Math.max(Number(url.searchParams.get("margin") || 2), 2), 8);
+    const margin = Math.min(Math.max(Number(url.searchParams.get("margin") || 4), 4), 8);
     const svg = await QRCode.toString(data, {
       type: "svg",
       margin,
