@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v742-remove-test-part-records-2";
+const SERVER_VERSION = "v743-remove-test-part-records-3";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -582,11 +582,10 @@ function repairKnownEncodingDamageServer(db) {
 }
 
 function removeAugust19TestInstalledPartRecords(db) {
-  const cleanupKey = "removeTestInstalledParts20260819";
+  const cleanupKey = "removeTestInstalledParts20260819v2";
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   if (db.targetedCleanupVersions[cleanupKey]) return 0;
-  const normalized = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
-  const compact = value => normalized(value).replace(/\s+/g, "");
+  const compact = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, "");
   let removed = 0;
   const affectedRecords = [];
   Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
@@ -594,15 +593,9 @@ function removeAugust19TestInstalledPartRecords(db) {
     if (!item || !Array.isArray(item.commentLog) || !recordKey.endsWith(":2026-08-19")) return;
     const before = item.commentLog.length;
     item.commentLog = item.commentLog.filter(entry => {
-      const originalRemark = normalized(entry?.text);
-      const completedWork = normalized(entry?.resolvedComment);
+      const completedWork = compact(entry?.resolvedComment);
       const installedPart = compact(entry?.partDescription);
-      const resolvedOnTargetDate = String(entry?.resolvedAt || entry?.confirmedAt || "").startsWith("2026-08-19");
-      const isTestRecord = resolvedOnTargetDate
-        && originalRemark.includes("3 ші пеш")
-        && (originalRemark.includes("истемиді") || originalRemark.includes("істемиді"))
-        && completedWork.includes("ремонт жасалды")
-        && completedWork.includes("1 тен салынды")
+      const isTestRecord = completedWork.includes("ремонтжасалды1тенсалынды")
         && installedPart.includes("тенауысты2квт");
       return !isTestRecord;
     });
@@ -5159,7 +5152,7 @@ async function handleApi(req, res, pathname, url) {
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
       productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
-      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819?.removed
+      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v2?.removed
     }));
     return true;
   }
