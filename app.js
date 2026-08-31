@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v731-annual-schedule-repeats-1";
+const APP_VERSION = "v732-annual-repeat-wording-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11531,6 +11531,12 @@ function annualPprSheetWord(count) {
   return "листов";
 }
 
+function annualPprTimesWord(count) {
+  const value = Math.abs(Number(count) || 0) % 100;
+  const last = value % 10;
+  return last >= 2 && last <= 4 && !(value > 10 && value < 20) ? "раза" : "раз";
+}
+
 function annualPprSheetsForEquipmentMonth(year, equipmentId, month) {
   const schedule = pprCalendarMonthData(allEquipment(), year, month - 1).itemsByDate;
   return Object.entries(schedule).flatMap(([date, items]) => {
@@ -11566,7 +11572,7 @@ function openAnnualPprEquipmentMonth(year, equipmentId, month) {
     const progress = equipmentRow.months[month];
     overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>Листы ППР · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · выполнено ${progress.done} из ${progress.total}${progress.repeats ? ` · повторов по графику ${progress.repeats}` : ""}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${progress.sheets.length ? progress.sheets.map(item => {
       const repeated = item.repeatedNodes.length > 0;
-      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяются узлы: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">${item.repeatedNodeCounts.map(entry => `${escapeHtml(entry.node)} — ${entry.count} раза за год`).join("; ")}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
+      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяющихся узлов в листе: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">${item.repeatedNodeCounts.map(entry => `${escapeHtml(entry.node)} — в годовом графике ${entry.count} ${annualPprTimesWord(entry.count)}`).join("; ")}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
     }).join("") : `<div class="empty-state">Для этого оборудования листы ППР в выбранном месяце не запланированы.</div>`}</div></section>`;
     overlay.querySelector("[data-progress-back]")?.addEventListener("click", () => overlay.remove());
     overlay.querySelectorAll("[data-open-annual-sheet]").forEach(button => button.addEventListener("click", () => {
@@ -11593,7 +11599,7 @@ function annualPprTableHtml(year) {
     <tbody>${rows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
       const month = monthIndex + 1;
       const progress = row.months[month];
-      const repeatBadges = progress.repeatedNodeCounts.slice(0, 2).map(entry => `<span class="annual-ppr-repeat-badge" title="${escapeHtml(entry.node)} — ${entry.count} раза за год">↻ ${entry.count}×</span>`).join("");
+      const repeatBadges = progress.repeatedNodeCounts.slice(0, 2).map(entry => `<span class="annual-ppr-repeat-badge" title="${escapeHtml(entry.node)} — в годовом графике ${entry.count} ${annualPprTimesWord(entry.count)}">↻ ${entry.count}×</span>`).join("");
       const remainingRepeats = Math.max(0, progress.repeatedNodeCounts.length - 2);
       return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть листы ППР"><strong>${progress.done} / ${progress.total}</strong><small>листов ППР</small>${repeatBadges}${remainingRepeats ? `<span class="annual-ppr-repeat-more">+${remainingRepeats}</span>` : ""}</td>`;
     }).join("")}</tr>`).join("")}</tbody>

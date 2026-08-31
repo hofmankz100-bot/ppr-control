@@ -2161,7 +2161,9 @@ test("annual PPR marks repeated accepted sheets separately", () => {
   assert.match(clientSource, /annual-ppr-repeat-badge/);
   assert.match(clientSource, /annual-ppr-repeat-label/);
   assert.match(clientSource, /↻ \$\{entry\.count\}×/);
-  assert.match(clientSource, /раза за год/);
+  assert.match(clientSource, /function annualPprTimesWord\(count\)/);
+  assert.match(clientSource, /Повторяющихся узлов в листе:/);
+  assert.match(clientSource, /в годовом графике \$\{entry\.count\} \$\{annualPprTimesWord\(entry\.count\)\}/);
   assert.match(clientSource, /Одинаково выделяются все совпавшие появления, включая первое/);
   assert.match(styles, /\.annual-ppr-repeat-badge/);
   assert.match(styles, /article\.repeated/);
