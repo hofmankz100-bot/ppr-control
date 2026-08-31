@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v716-permanent-qr-history-1";
+const SERVER_VERSION = "v717-qr-index-integrity-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -287,6 +287,21 @@ function catalogNodeTombstone(item, name, event = {}) {
   item.removedNodes = item.removedNodes.slice(-500);
 }
 
+const CATALOG_NODE_INDEXED_FIELDS = [
+  "reminders", "reminderMeta", "nodeOperationalPauses", "nodeCreatedAt",
+  "qrTokens", "upperQrTokens", "qrTokenAliases", "qrUpdatedAt"
+];
+
+function remapCatalogNodeIndexedFields(item, keptEntries = []) {
+  CATALOG_NODE_INDEXED_FIELDS.forEach(field => {
+    const source = item?.[field];
+    if (!source || typeof source !== "object" || Array.isArray(source)) return;
+    item[field] = Object.fromEntries(keptEntries.flatMap((entry, newIndex) => (
+      Object.prototype.hasOwnProperty.call(source, entry.oldIndex) ? [[newIndex, source[entry.oldIndex]]] : []
+    )));
+  });
+}
+
 function removeCatalogNodeByHistory(item, name, preferredIndex = -1) {
   if (!Array.isArray(item?.nodes)) return false;
   const normalizedName = normalizedCatalogNodeName(name);
@@ -296,7 +311,9 @@ function removeCatalogNodeByHistory(item, name, preferredIndex = -1) {
     ? preferredIndex
     : item.nodes.findIndex(node => normalizedCatalogNodeName(node) === normalizedName);
   if (index < 0 || item.nodes.length <= 1) return false;
-  item.nodes.splice(index, 1);
+  const kept = item.nodes.map((node, oldIndex) => ({ node, oldIndex })).filter(entry => entry.oldIndex !== index);
+  remapCatalogNodeIndexedFields(item, kept);
+  item.nodes = kept.map(entry => entry.node);
   return true;
 }
 
@@ -342,7 +359,10 @@ function repairCatalogNodeHistory(db) {
   for (const item of Object.values(equipment)) {
     if (!Array.isArray(item?.nodes) || !Array.isArray(item.removedNodes)) continue;
     const removed = new Set(item.removedNodes.map(entry => normalizedCatalogNodeName(entry?.name)).filter(Boolean));
-    item.nodes = item.nodes.filter(node => !removed.has(normalizedCatalogNodeName(node)));
+    const kept = item.nodes.map((node, oldIndex) => ({ node, oldIndex }))
+      .filter(entry => !removed.has(normalizedCatalogNodeName(entry.node)));
+    if (kept.length !== item.nodes.length && kept.length) remapCatalogNodeIndexedFields(item, kept);
+    if (kept.length) item.nodes = kept.map(entry => entry.node);
   }
 }
 
@@ -466,7 +486,9 @@ function archiveAndRemoveCraneBeamData(db) {
       upperQrToken: String(card.upperQrTokens?.[index] || "")
     }));
     card.nodes = kept.map(entry => entry.name);
-    card.qrTokens = Object.fromEntries(kept.map((entry, index) => [index, card.qrTokens?.[entry.oldIndex] || crypto.randomBytes(12).toString("hex")]));
+    remapCatalogNodeIndexedFields(card, kept);
+    card.qrTokens ||= {};
+    kept.forEach((entry, index) => { card.qrTokens[index] ||= crypto.randomBytes(12).toString("hex"); });
     delete card.upperQrTokens;
     delete card.legacyGpmQrAliases;
     card.updatedAt = now;

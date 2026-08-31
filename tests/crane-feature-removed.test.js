@@ -21,6 +21,9 @@ test("startup cleanup permanently removes crane collections and stale node mappi
   assert.match(server, /delete db\.craneBeams/);
   assert.match(server, /delete db\.retiredCraneBeamArchive/);
   assert.match(server, /archiveAndRemoveCraneBeamData\(postgresState\)/);
+  assert.match(server, /function remapCatalogNodeIndexedFields/);
+  assert.match(server, /"qrTokens", "upperQrTokens", "qrTokenAliases", "qrUpdatedAt"/);
+  assert.match(server, /remapCatalogNodeIndexedFields\(card, kept\)/);
 });
 
 test("online startup never renders the stale device snapshot", () => {
@@ -50,5 +53,6 @@ test("ordinary nodes removed by the broad cleanup are recovered with history", (
   assert.match(server, /ordinary_nodes_restored_after_crane_removal/);
   assert.match(server, /nodes: \[\], deleted: true/);
   assert.match(server, /const mergedNodes = placeholderCard \? \[\.\.\.sourceNodes\]/);
+  assert.match(server, /remapCatalogNodeIndexedFields\(item, kept\)/);
   assert.match(server, /await restoreOrdinaryNodesAfterCraneRemoval\(\)/);
 });
