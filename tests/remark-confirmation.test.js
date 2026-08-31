@@ -1823,6 +1823,8 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /\["ТО", "ТР", "АР"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
   assert.match(appSource, /@page\{size:A4 landscape/);
   assert.match(appSource, /--annual-ppr-row-height/);
+  assert.match(appSource, /clone\.querySelector\("\.annual-ppr-meta"\)\?\.remove\(\)/);
+  assert.match(appSource, /clone\.querySelector\("\.annual-ppr-note"\)\?\.remove\(\)/);
   assert.match(appSource, /Директор завода/);
   assert.doesNotMatch(appSource, /<br>Главный инженер/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);

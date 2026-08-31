@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v735-full-page-a4-print-1";
+const APP_VERSION = "v736-clean-a4-print-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11645,6 +11645,8 @@ function printAnnualPprSchedule(overlay, year) {
 function annualPprOutputClone(overlay) {
   const clone = overlay.querySelector(".annual-ppr-print-area")?.cloneNode(true);
   if (!clone) return null;
+  clone.querySelector(".annual-ppr-meta")?.remove();
+  clone.querySelector(".annual-ppr-note")?.remove();
   clone.querySelectorAll("select").forEach(select => { const span = document.createElement("span"); span.textContent = select.value || ""; select.replaceWith(span); });
   clone.querySelectorAll("input").forEach(input => { const span = document.createElement("span"); span.textContent = input.type === "date" && input.value ? dateHuman(input.value) : input.value || ""; input.replaceWith(span); });
   clone.classList.add("annual-ppr-pdf-output");
