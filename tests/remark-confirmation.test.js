@@ -2150,3 +2150,16 @@ test("saved PPR templates repair known replacement-character damage", () => {
   assert.match(serverSource, /repairField\(row, "work"\)/);
   assert.match(serverSource, /item\.reminders\[nodeIndex\] = lines\.map/);
 });
+
+test("annual PPR marks repeated accepted sheets separately", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.match(clientSource, /const seenNodes = new Set\(\)/);
+  assert.match(clientSource, /sheet\.repeatedNodes = sheet\.complete/);
+  assert.match(clientSource, /seenNodes\.has\(String\(node\)/);
+  assert.match(clientSource, /annual-ppr-repeat-badge/);
+  assert.match(clientSource, /annual-ppr-repeat-label/);
+  assert.match(clientSource, /Оранжевый кружок ↻ показывает узлы, которые уже встречались/);
+  assert.match(styles, /\.annual-ppr-repeat-badge/);
+  assert.match(styles, /article\.repeated/);
+});
