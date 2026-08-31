@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v743-remove-test-part-records-3";
+const SERVER_VERSION = "v744-remove-test-part-records-4";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -582,21 +582,26 @@ function repairKnownEncodingDamageServer(db) {
 }
 
 function removeAugust19TestInstalledPartRecords(db) {
-  const cleanupKey = "removeTestInstalledParts20260819v2";
+  const cleanupKey = "removeTestInstalledParts20260819v3";
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   if (db.targetedCleanupVersions[cleanupKey]) return 0;
   const compact = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, "");
   let removed = 0;
   const affectedRecords = [];
   Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+    const [rawEquipmentId, rawNodeIndex, recordDate] = recordKey.split(":");
+    const equipment = db.catalog?.equipment?.[rawEquipmentId];
+    const nodeName = String(equipment?.nodes?.[Number(rawNodeIndex)] || "").trim().toLocaleLowerCase("ru-RU");
+    const isTargetNode = nodeName.startsWith("печь матрица") || nodeName.startsWith("пульт управления");
     const item = record?.to;
-    if (!item || !Array.isArray(item.commentLog) || !recordKey.endsWith(":2026-08-19")) return;
+    if (!isTargetNode || !item || !Array.isArray(item.commentLog)) return;
     const before = item.commentLog.length;
     item.commentLog = item.commentLog.filter(entry => {
-      const completedWork = compact(entry?.resolvedComment);
       const installedPart = compact(entry?.partDescription);
-      const isTestRecord = completedWork.includes("ремонтжасалды1тенсалынды")
-        && installedPart.includes("тенауысты2квт");
+      const displayDate = String(entry?.resolvedAt || recordDate || "");
+      const isTargetDate = displayDate.startsWith("2026-08-19") || displayDate.includes("19.08.2026");
+      const isTestRecord = isTargetDate && entry?.partInstalled === true
+        && installedPart.includes("тен") && installedPart.includes("2квт");
       return !isTestRecord;
     });
     const recordRemoved = before - item.commentLog.length;
@@ -5152,7 +5157,7 @@ async function handleApi(req, res, pathname, url) {
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
       productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
-      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v2?.removed
+      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed
     }));
     return true;
   }
