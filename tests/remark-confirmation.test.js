@@ -1595,12 +1595,15 @@ test("collaborative resolution UI batches checked participants and shows every r
 
 test("an executor can submit work immediately and is joined automatically", () => {
   const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(source, /const canWriteResolution = currentParticipant \|\| actorCanJoin/);
   assert.match(source, /const ensureCurrentResolverJoined = async \(\) =>/);
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"update"/);
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
   assert.match(source, /<button type="button" data-remark-resolve>Устранено<\/button>/);
   assert.doesNotMatch(source, /data-remark-resolve data-permission-disabled/);
+  assert.match(styles, /\.remark-action-composer \[data-remark-resolve\][\s\S]*background: var\(--done\)/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.remark-action-composer \.node-walk-actions[\s\S]*grid-template-columns: 1fr/);
 });
 
 test("specialized executor roles can join collaborative resolution", () => {

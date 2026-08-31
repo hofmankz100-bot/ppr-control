@@ -9830,6 +9830,24 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   background: #f3fbf6;
 }
 
+.remark-action-composer {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.remark-action-composer textarea,
+.remark-action-composer input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.remark-action-composer [data-remark-resolve] {
+  background: var(--done);
+  color: #fff;
+}
+
 .remark-collaboration-head,
 .resolution-add-row {
   display: flex;
@@ -10021,6 +10039,18 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   .resolution-participant {
     flex: 1 1 100%;
     justify-content: space-between;
+  }
+
+  .remark-action-composer .node-walk-actions {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .remark-action-composer .node-walk-actions button {
+    width: 100%;
+    min-height: 52px;
+    border-radius: 12px;
+    font-size: 17px;
   }
 }
 
