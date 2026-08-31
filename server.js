@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v721-qr-identity-guard-1";
+const SERVER_VERSION = "v722-qr-walk-counter-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4282,19 +4282,17 @@ function purgeClosedWithoutScoreRemarksServer(db = {}) {
 }
 
 const NODE_CHECKLIST_ROLES = new Set([
-  "mechanic", "electrician", "welder", "turner", "forkliftDriver",
-  "operator", "shop", "engineer", "safetyEngineer", "energyEngineer",
-  "designEngineer", "mechanicalEngineer", "instrumentationEngineer",
-  "productionDirector", "generalDirector", "editor"
+  "mechanic", "operator", "shop", "engineer", "productionDirector", "editor"
 ]);
 
 function nodeMutationAccessServer(user = {}, catalogItem = {}) {
-  const role = String(user.role || "");
+  const rawRole = String(user.role || "");
+  const role = permissionBaseRoleServer(rawRole);
   if (!NODE_CHECKLIST_ROLES.has(role)) return false;
   if (["operator", "shop"].includes(role)) {
     return Boolean(catalogItem.area && userHasAreaServer(user, catalogItem.area));
   }
-  if (role === "forkliftDriver") {
+  if (rawRole === "forkliftDriver") {
     const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
     return catalogItem.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(text);
   }
@@ -5153,7 +5151,7 @@ async function handleApi(req, res, pathname, url) {
     const equipmentId = Number(url.searchParams.get("equipmentId"));
     const date = String(url.searchParams.get("date") || "");
     const shift = String(url.searchParams.get("shift") || "");
-    const role = String(req.authUser?.role || "");
+    const role = permissionBaseRoleServer(String(req.authUser?.role || ""));
     const requestedGroup = String(url.searchParams.get("group") || "");
     const expectedGroup = role === "editor" && ["technical", "operational"].includes(requestedGroup)
       ? requestedGroup
@@ -5301,20 +5299,14 @@ async function handleApi(req, res, pathname, url) {
     let nodeIndex = Number(body.nodeIndex);
     const date = String(body.date || "");
     const shift = String(body.shift || "");
-    const role = String(req.authUser?.role || "");
+    const role = permissionBaseRoleServer(String(req.authUser?.role || ""));
     const requestedGroup = String(body.group || "");
     const expectedGroup = role === "editor" && ["technical", "operational"].includes(requestedGroup)
       ? requestedGroup
       : ["operator", "shop"].includes(role) ? "operational" : "technical";
     const group = requestedGroup || expectedGroup;
-    const allowedRoles = new Set([
-      "editor", "engineer", "shop", "mechanic", "electrician", "operator",
-      "welder", "turner", "forkliftDriver", "safetyEngineer", "energyEngineer",
-      "designEngineer", "mechanicalEngineer", "instrumentationEngineer", "productionDirector", "generalDirector"
-    ]);
     if (
-      !allowedRoles.has(String(req.authUser?.role || ""))
-      || !Number.isSafeInteger(equipmentId)
+      !Number.isSafeInteger(equipmentId)
       || equipmentId < 0
       || equipmentId > 10000
       || !Number.isSafeInteger(nodeIndex)

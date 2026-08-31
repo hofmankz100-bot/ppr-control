@@ -253,7 +253,7 @@ test("production API requires a server session and rate-limits failed logins", a
       method: "POST",
       headers: nodeHeaders(directorCookie),
       body: JSON.stringify({ ...qrMarkBody, group: "technical", actionId: "director-qr-denied" })
-    })).status, 400);
+    })).status, 403);
     const allowedNodeUpdate = await fetch(`${baseUrl}/api/node-update`, {
       method: "PUT",
       headers: nodeHeaders(areaOperatorCookie),

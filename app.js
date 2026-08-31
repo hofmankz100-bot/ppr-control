@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v721-qr-identity-guard-1";
+const APP_VERSION = "v722-qr-walk-counter-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4489,22 +4489,36 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
   if (!navigator.onLine) {
     enqueuePendingQrWalkMark(payload);
     showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
-    return false;
+    return "queued";
   }
   try {
     await sendQrWalkPayload(payload);
-    return true;
+    return "saved";
   } catch (error) {
     if (isPermanentQrWalkError(error)) {
       console.warn("QR save rejected by server", error);
-      showQrSavedNotice(error?.message || "Сервер отклонил QR-отметку. Повторите сканирование.");
-      return false;
+      const message = String(error?.message || "");
+      showQrSavedNotice(message.includes("access_denied")
+        ? "Нет доступа к обходу этого оборудования. Обновите профиль или войдите заново."
+        : message.includes("node_qr_replaced")
+          ? "Эта наклейка была заменена. Распечатайте действующий QR-код."
+          : "Сервер отклонил QR-отметку. Повторите сканирование.");
+      return "rejected";
     }
     console.warn("QR save deferred until connection recovers", error);
     enqueuePendingQrWalkMark(payload);
     showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
-    return false;
+    return "queued";
   }
+}
+
+async function commitQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
+  const outcome = await publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken, customJournal, qrKind);
+  if (outcome === "rejected") return false;
+  if (outcome === "queued") {
+    markNodeWalkDoneByQr(equipmentId, nodeIndex, date, shiftInfo, { remote: false, customJournal, qrKind });
+  }
+  return true;
 }
 
 function shgrpSectionBRouteForQr(equipmentId, nodeIndex) {
@@ -5508,8 +5522,13 @@ function promptCompressorQrDecision(parsed) {
       submitting = true;
       setButtonBusy(event.currentTarget, true, "Сохраняем...");
       try {
-        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, null, parsed.qrKind);
+        const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, null, parsed.qrKind);
+        if (!walkSaved) {
+          submitting = false;
+          setButtonBusy(event.currentTarget, false);
+          if (errorEl) errorEl.textContent = "Обход не сохранён. Обновите профиль или войдите заново и повторите сканирование.";
+          return;
+        }
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = values.hasRemark
           ? appendCommentEntry(item, values.comment, "", { area: eq?.area || COMPRESSOR_JOURNAL_AREA })
@@ -5647,11 +5666,15 @@ function promptQrWalkDecision(parsed) {
       submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
-      markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal, qrKind: parsed.qrKind });
-      const sent = await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+      const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+      if (!walkSaved) {
+        submitting = false;
+        setButtonBusy(button, false);
+        return;
+      }
       await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
       await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
-      if (sent) showQrSavedNotice("QR отмечен и сохранён на сервере.");
+      showQrSavedNotice(`QR сохранён. Обойдено ${qrWalkProgress(parsed.equipmentId, shift).done} из ${qrWalkProgress(parsed.equipmentId, shift).total}.`);
       finish("continue");
     });
     const form = overlay.querySelector(".qr-remark-form");
@@ -5705,8 +5728,13 @@ function promptQrWalkDecision(parsed) {
         if (customJournal === false) { submitting = false; setButtonBusy(button, false); return; }
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        markNodeWalkDoneByQr(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, { remote: false, customJournal, qrKind: parsed.qrKind });
-        await publishQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+        const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+        if (!walkSaved) {
+          submitting = false;
+          setButtonBusy(button, false);
+          if (errorEl) errorEl.textContent = "Обход не сохранён. Обновите профиль или войдите заново и повторите сканирование.";
+          return;
+        }
         const item = record(parsed.equipmentId, parsed.nodeIndex, shift.date).to;
         const remarkEntry = appendCommentEntry(item, comment, photo, { area: eq?.area || "" });
         syncItemRemarkSummary(item);

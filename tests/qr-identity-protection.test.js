@@ -69,3 +69,21 @@ test("QR rotation and node deletion preserve all earlier physical identities", (
   assert.match(maintenanceRoute, /qrTokenAliases = shiftIndexedMap\(catalogItem\.qrTokenAliases\)/);
 });
 
+test("a rejected QR walk is not counted locally or treated as completed", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const commitStart = client.indexOf("async function commitQrWalkMark");
+  const commitEnd = client.indexOf("\n}\n", commitStart) + 3;
+  const commit = client.slice(commitStart, commitEnd);
+  assert.match(commit, /if \(outcome === "rejected"\) return false/);
+  assert.match(commit, /if \(outcome === "queued"\)[\s\S]*markNodeWalkDoneByQr/);
+  assert.doesNotMatch(commit, /markNodeWalkDoneByQr[\s\S]*publishQrWalkMark/);
+  assert.match(client, /if \(!walkSaved\)[\s\S]*return;[\s\S]*showQrSavedNotice\(`QR сохранён\. Обойдено/);
+});
+
+test("QR walk access uses the canonical permission role", () => {
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const accessStart = server.indexOf("function nodeMutationAccessServer");
+  const access = server.slice(accessStart, accessStart + 900);
+  assert.match(access, /permissionBaseRoleServer\(rawRole\)/);
+  assert.match(access, /rawRole === "forkliftDriver"/);
+});
