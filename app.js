@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v725-annual-ppr-node-progress-1";
+const APP_VERSION = "v726-annual-ppr-layout-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11551,8 +11551,9 @@ function annualPprTableHtml(year) {
   const rows = annualPprEquipmentRows(year);
   const months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
   return `<table class="annual-ppr-table">
-    <thead><tr><th>№</th><th>Оборудование</th>${months.map(month => `<th>${month}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((row, index) => `<tr data-annual-ppr-equipment="${row.eq.id}"><td>${index + 1}</td><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
+    <colgroup><col style="width:28%">${months.map(() => `<col style="width:6%">`).join("")}</colgroup>
+    <thead><tr><th>Оборудование</th>${months.map(month => `<th>${month}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
       const month = monthIndex + 1;
       const progress = row.months[month];
       return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть узлы и журнал работ"><strong>${progress.done} / ${progress.total}</strong><small>план ${progress.planned}</small></td>`;

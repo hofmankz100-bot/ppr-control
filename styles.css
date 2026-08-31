@@ -81,8 +81,7 @@
 .annual-ppr-table { width: 100%; min-width: 1200px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
 .annual-ppr-table th, .annual-ppr-table td { border: 1px solid #8fa0ad; padding: 4px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .annual-ppr-table thead th { position: sticky; top: 0; z-index: 2; background: #dce7ef; }
-.annual-ppr-table th:nth-child(2) { width: 220px; }
-.annual-ppr-table th:nth-child(n+3):nth-child(-n+14) { width: 70px; }
+.annual-ppr-table th:first-child { min-width: 250px; }
 .annual-ppr-table input, .annual-ppr-table select { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; }
 .annual-ppr-plan { background: #eef7e9; }
 .annual-ppr-fact { background: #fff8dc; font-weight: 800; }

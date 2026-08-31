@@ -2130,6 +2130,8 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
   assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
   assert.match(clientSource, /annualPprAcceptedToForMonth\(year, row, month\)/);
   assert.match(tableSource, /<th>Оборудование<\/th>/);
+  assert.doesNotMatch(tableSource, /<th>№<\/th>/);
+  assert.match(tableSource, /<colgroup><col style="width:28%">/);
   assert.doesNotMatch(tableSource, /<th>Участок<\/th>|Узел \/ объект ремонта/);
   assert.match(tableSource, /\$\{progress\.done\} \/ \$\{progress\.total\}/);
   assert.match(clientSource, /function openAnnualPprEquipmentMonth[\s\S]*ТО ППР по узлам/);
