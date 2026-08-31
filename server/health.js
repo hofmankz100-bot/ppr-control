@@ -25,7 +25,8 @@ function buildHealthPayload(options = {}) {
     websocket,
     websocketClients: Number(options.websocketClients || 0),
     eventClients,
-    productionRequestDuplicatesRemoved: Number(options.productionRequestDuplicatesRemoved || 0)
+    productionRequestDuplicatesRemoved: Number(options.productionRequestDuplicatesRemoved || 0),
+    testInstalledPartRecordsRemoved: Number(options.testInstalledPartRecordsRemoved || 0)
   };
 }
 

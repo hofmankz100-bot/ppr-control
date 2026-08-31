@@ -18,7 +18,8 @@ test("health payload preserves the public API contract", () => {
     websocketClients: 2,
     eventClients: 1,
     stateVersion: "state:1",
-    productionRequestDuplicatesRemoved: 30
+    productionRequestDuplicatesRemoved: 30,
+    testInstalledPartRecordsRemoved: 2
   });
 
   assert.deepEqual(payload, {
@@ -35,7 +36,8 @@ test("health payload preserves the public API contract", () => {
     websocket: true,
     websocketClients: 2,
     eventClients: 1,
-    productionRequestDuplicatesRemoved: 30
+    productionRequestDuplicatesRemoved: 30,
+    testInstalledPartRecordsRemoved: 2
   });
 });
 
