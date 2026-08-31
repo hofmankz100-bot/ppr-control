@@ -2128,12 +2128,14 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
   const tableEnd = clientSource.indexOf("function saveAnnualPprRow", tableStart);
   const tableSource = clientSource.slice(tableStart, tableEnd);
   assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
-  assert.match(clientSource, /annualPprAcceptedToForMonth\(year, row, month\)/);
+  assert.match(clientSource, /function annualPprCompletedSheetsForEquipmentMonth/);
+  assert.match(clientSource, /pprSheetCompletion\(date\)\.complete/);
   assert.match(tableSource, /<th>Оборудование<\/th>/);
   assert.doesNotMatch(tableSource, /<th>№<\/th>/);
   assert.match(tableSource, /<colgroup><col style="width:28%">/);
   assert.doesNotMatch(tableSource, /<th>Участок<\/th>|Узел \/ объект ремонта/);
-  assert.match(tableSource, /\$\{progress\.done\} \/ \$\{progress\.total\}/);
-  assert.match(clientSource, /function openAnnualPprEquipmentMonth[\s\S]*ТО ППР по узлам/);
-  assert.match(clientSource, /data-progress-journal/);
+  assert.match(tableSource, /\$\{progress\.count\}/);
+  assert.doesNotMatch(tableSource, /progress\.done|progress\.total|progress\.planned/);
+  assert.match(clientSource, /function openAnnualPprEquipmentMonth[\s\S]*Завершённые листы ППР/);
+  assert.match(clientSource, /Запланированные, пустые и частично заполненные листы в счётчик не входят/);
 });
