@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v728-ppr-sheet-plan-fact-1";
+const SERVER_VERSION = "v729-encoding-repair-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -542,6 +542,45 @@ function archiveAndRemoveCraneBeamData(db) {
   return true;
 }
 
+function repairKnownEncodingDamageServer(db) {
+  const repair = value => String(value || "")
+    .replace(/колон\uFFFD+ы/giu, "колонны")
+    .replace(/КОЛОН\uFFFD+Ы/gu, "КОЛОННЫ");
+  let repaired = 0;
+  const repairField = (target, field) => {
+    if (!target || typeof target[field] !== "string" || !target[field].includes("\uFFFD")) return;
+    const next = repair(target[field]);
+    if (next === target[field]) return;
+    target[field] = next;
+    repaired += 1;
+  };
+  Object.values(db.pprSheets || {}).forEach(sheet => {
+    (Array.isArray(sheet?.rows) ? sheet.rows : []).forEach(row => repairField(row, "work"));
+  });
+  Object.values(db.catalog?.equipment || {}).forEach(item => {
+    repairField(item, "name");
+    repairField(item, "area");
+    if (Array.isArray(item?.nodes)) item.nodes = item.nodes.map(value => {
+      const next = repair(value);
+      if (next !== value) repaired += 1;
+      return next;
+    });
+    Object.entries(item?.reminders || {}).forEach(([nodeIndex, lines]) => {
+      if (!Array.isArray(lines)) return;
+      item.reminders[nodeIndex] = lines.map(value => {
+        const next = repair(value);
+        if (next !== value) repaired += 1;
+        return next;
+      });
+    });
+  });
+  if (repaired) {
+    db.targetedCleanupVersions ||= {};
+    db.targetedCleanupVersions.encodingDamageRepair20260831 = { at: new Date().toISOString(), repaired };
+  }
+  return repaired;
+}
+
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
@@ -563,6 +602,7 @@ function normalizeDb(db) {
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
+  repairKnownEncodingDamageServer(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
