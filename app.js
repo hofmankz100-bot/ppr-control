@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v724-annual-ppr-dark-1";
+const APP_VERSION = "v725-annual-ppr-node-progress-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11489,17 +11489,74 @@ function annualPprMonthSelect(row, month) {
   return `<select data-annual-ppr-month="${month}" aria-label="План ${month}">${ANNUAL_PPR_TYPES.map(type => `<option value="${type}" ${type === value ? "selected" : ""}>${type || "—"}</option>`).join("")}</select>`;
 }
 
+function annualPprEquipmentRows(year) {
+  const grouped = new Map();
+  annualPprRows(year).forEach(row => {
+    const equipmentId = Number(row.eq.id);
+    if (!grouped.has(equipmentId)) grouped.set(equipmentId, { eq: row.eq, nodes: [] });
+    grouped.get(equipmentId).nodes.push(row);
+  });
+  return [...grouped.values()].map(item => ({
+    ...item,
+    months: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1;
+      const done = item.nodes.filter(row => annualPprAcceptedToForMonth(year, row, month)).length;
+      const planned = item.nodes.filter(row => Boolean(row.months[month])).length;
+      return [month, { done, total: item.nodes.length, planned }];
+    }))
+  }));
+}
+
+function saveAnnualPprNodeMonth(row, year, month, value) {
+  const record = annualPprYearRecord(year, true);
+  const saved = record.overrides[row.nodeKey] ||= { months: {} };
+  saved.months ||= {};
+  saved.months[month] = value;
+  saved.updatedAt = new Date().toISOString();
+  record.updatedAt = saved.updatedAt;
+  persistStateLocally(state);
+  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  publishStateNow().catch(scheduleRemoteRetry);
+}
+
+function openAnnualPprEquipmentMonth(year, equipmentId, month) {
+  document.querySelector(".annual-ppr-work-overlay")?.remove();
+  const equipmentRow = annualPprEquipmentRows(year).find(item => Number(item.eq.id) === Number(equipmentId));
+  if (!equipmentRow) return;
+  const overlay = document.createElement("div");
+  overlay.className = "annual-ppr-work-overlay";
+  const render = () => {
+    const progress = equipmentRow.months[month];
+    overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>ТО ППР по узлам · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · пройдено ${progress.done} из ${progress.total}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${equipmentRow.nodes.map(row => {
+      const done = annualPprAcceptedToForMonth(year, row, month);
+      return `<article class="${done ? "done" : "pending"}"><div><strong>${escapeHtml(row.node)}</strong><span>${done ? "✓ ТО ППР пройдено" : "Ожидает выполнения ТО ППР"}</span></div><label>План<select data-progress-plan="${escapeHtml(row.nodeKey)}">${ANNUAL_PPR_TYPES.map(type => `<option value="${type}" ${row.months[month] === type ? "selected" : ""}>${type || "—"}</option>`).join("")}</select></label><button type="button" data-progress-journal="${escapeHtml(row.nodeKey)}">Журнал работ</button></article>`;
+    }).join("")}</div></section>`;
+    overlay.querySelector("[data-progress-back]")?.addEventListener("click", () => overlay.remove());
+    overlay.querySelectorAll("[data-progress-plan]").forEach(select => select.addEventListener("change", () => {
+      const row = equipmentRow.nodes.find(item => item.nodeKey === select.dataset.progressPlan);
+      if (!row) return;
+      row.months[month] = select.value;
+      saveAnnualPprNodeMonth(row, year, month, select.value);
+    }));
+    overlay.querySelectorAll("[data-progress-journal]").forEach(button => button.addEventListener("click", () => {
+      const row = equipmentRow.nodes.find(item => item.nodeKey === button.dataset.progressJournal);
+      if (row) openAnnualPprMonthJournal(year, row, month);
+    }));
+  };
+  document.body.append(overlay);
+  render();
+}
+
 function annualPprTableHtml(year) {
-  const rows = annualPprRows(year);
+  const rows = annualPprEquipmentRows(year);
   const months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
-  let number = 0;
   return `<table class="annual-ppr-table">
-    <thead><tr><th>№</th><th>Участок</th><th>Оборудование</th><th>Узел / объект ремонта</th><th>Строка</th>${months.map(month => `<th>${month}</th>`).join("")}<th>Периодичность</th><th>Последний ремонт</th><th>Ответственный</th></tr></thead>
-    <tbody>${rows.map(row => {
-      number += 1;
-      return `<tr data-annual-ppr-row="${escapeHtml(row.nodeKey)}"><td rowspan="2">${number}</td><td rowspan="2">${escapeHtml(row.eq.area)}</td><td rowspan="2">${escapeHtml(row.eq.name)}</td><td rowspan="2">${escapeHtml(row.node)}</td><th>План</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-plan annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${annualPprMonthSelect(row, index + 1)}</td>`).join("")}<td rowspan="2"><input data-annual-ppr-field="periodicity" value="${escapeHtml(row.periodicity)}"></td><td rowspan="2"><input data-annual-ppr-field="lastRepair" type="date" value="${escapeHtml(row.lastRepair)}"></td><td rowspan="2"><input data-annual-ppr-field="responsible" value="${escapeHtml(row.responsible)}" placeholder="Ф.И.О."></td></tr>
-      <tr data-annual-ppr-fact-row="${escapeHtml(row.nodeKey)}"><th>Факт</th>${Array.from({ length: 12 }, (_, index) => `<td class="annual-ppr-fact annual-ppr-clickable-month" data-open-ppr-month="${index + 1}" title="Открыть перечень работ">${escapeHtml(row.facts[index + 1] || "")}</td>`).join("")}</tr>`;
-    }).join("")}</tbody>
+    <thead><tr><th>№</th><th>Оборудование</th>${months.map(month => `<th>${month}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((row, index) => `<tr data-annual-ppr-equipment="${row.eq.id}"><td>${index + 1}</td><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
+      const month = monthIndex + 1;
+      const progress = row.months[month];
+      return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть узлы и журнал работ"><strong>${progress.done} / ${progress.total}</strong><small>план ${progress.planned}</small></td>`;
+    }).join("")}</tr>`).join("")}</tbody>
   </table>`;
 }
 
@@ -11614,21 +11671,18 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   const record = annualPprYearRecord(year, true);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите «Журнал» или строку факта нужного месяца</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">ТО — техническое обслуживание; ТР — текущий ремонт; АР — аварийный ремонт; КР — капитальный ремонт. ЗМ, МВ и остальные акты создаются отдельными кнопками внутри конкретной работы. Замечания автоматически попадают в ТР, аварийные простои — в АР.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите месячный счётчик, чтобы открыть узлы и журнал работ</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из действующего каталога ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">В каждом месяце показано количество узлов с подтверждённым ТО ППР / общее количество узлов. Строка «план» показывает, для скольких узлов назначено ТО или КР. Нажмите на счётчик для подробностей и журнала работ.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
   overlay.querySelector("[data-annual-ppr-year]")?.addEventListener("change", event => { overlay.remove(); openAnnualPprSchedule(event.currentTarget.value); });
   overlay.querySelector("[data-print-annual-ppr]")?.addEventListener("click", () => printAnnualPprSchedule(overlay, year));
   overlay.querySelector("[data-share-annual-ppr-pdf]")?.addEventListener("click", event => shareAnnualPprPdf(overlay, year, event.currentTarget));
-  overlay.querySelectorAll("[data-annual-ppr-row]").forEach(row => row.addEventListener("change", () => saveAnnualPprRow(row, year)));
   overlay.querySelectorAll("[data-open-ppr-month]").forEach(cell => cell.addEventListener("click", event => {
-    if (event.target.closest("select,input")) return;
     event.preventDefault();
     const tr = cell.closest("tr");
-    const nodeKey = tr?.dataset.annualPprRow || tr?.dataset.annualPprFactRow;
-    const row = annualPprRows(year).find(item => item.nodeKey === nodeKey);
-    if (row) openAnnualPprMonthJournal(year, row, Number(cell.dataset.openPprMonth));
+    const equipmentId = Number(tr?.dataset.annualPprEquipment);
+    if (Number.isSafeInteger(equipmentId)) openAnnualPprEquipmentMonth(year, equipmentId, Number(cell.dataset.openPprMonth));
   }));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
     const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);

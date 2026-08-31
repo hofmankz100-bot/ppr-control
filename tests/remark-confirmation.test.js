@@ -2121,3 +2121,17 @@ test("deleted warnings cannot return from a stale device", () => {
   assert.match(serverSource, /замена краник сварщик керек/);
   assert.match(serverSource, /стол жасау керек/);
 });
+
+test("annual PPR groups nodes by equipment and shows monthly completed counters", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const tableStart = clientSource.indexOf("function annualPprTableHtml");
+  const tableEnd = clientSource.indexOf("function saveAnnualPprRow", tableStart);
+  const tableSource = clientSource.slice(tableStart, tableEnd);
+  assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
+  assert.match(clientSource, /annualPprAcceptedToForMonth\(year, row, month\)/);
+  assert.match(tableSource, /<th>Оборудование<\/th>/);
+  assert.doesNotMatch(tableSource, /<th>Участок<\/th>|Узел \/ объект ремонта/);
+  assert.match(tableSource, /\$\{progress\.done\} \/ \$\{progress\.total\}/);
+  assert.match(clientSource, /function openAnnualPprEquipmentMonth[\s\S]*ТО ППР по узлам/);
+  assert.match(clientSource, /data-progress-journal/);
+});
