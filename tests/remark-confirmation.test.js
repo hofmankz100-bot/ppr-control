@@ -2154,12 +2154,15 @@ test("saved PPR templates repair known replacement-character damage", () => {
 test("annual PPR marks repeated accepted sheets separately", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(clientSource, /const seenNodes = new Set\(\)/);
-  assert.match(clientSource, /sheet\.repeatedNodes = sheet\.complete/);
-  assert.match(clientSource, /seenNodes\.has\(String\(node\)/);
+  assert.match(clientSource, /const nodeFrequency = new Map\(\)/);
+  assert.match(clientSource, /sheet\.repeatedNodes = sheet\.nodes\.filter/);
+  assert.match(clientSource, /sheet\.repeatedNodeCounts = sheet\.repeatedNodes\.map/);
+  assert.match(clientSource, /nodeFrequency\.get\(String\(node\)[\s\S]*> 1/);
   assert.match(clientSource, /annual-ppr-repeat-badge/);
   assert.match(clientSource, /annual-ppr-repeat-label/);
-  assert.match(clientSource, /Оранжевый кружок ↻ показывает узлы, которые уже встречались/);
+  assert.match(clientSource, /↻ \$\{entry\.count\}×/);
+  assert.match(clientSource, /раза за год/);
+  assert.match(clientSource, /Одинаково выделяются все совпавшие появления, включая первое/);
   assert.match(styles, /\.annual-ppr-repeat-badge/);
   assert.match(styles, /article\.repeated/);
 });

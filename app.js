@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v730-annual-ppr-repeats-1";
+const APP_VERSION = "v731-annual-schedule-repeats-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11497,19 +11497,26 @@ function annualPprEquipmentRows(year) {
     grouped.get(equipmentId).nodes.push(row);
   });
   return [...grouped.values()].map(item => {
-    const seenNodes = new Set();
+    const sheetsByMonth = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1;
+      return [month, annualPprSheetsForEquipmentMonth(year, item.eq.id, month)];
+    }));
+    const nodeFrequency = new Map();
+    Object.values(sheetsByMonth).flat().forEach(sheet => sheet.nodes.forEach(node => {
+      const key = String(node).trim().toLocaleLowerCase("ru");
+      nodeFrequency.set(key, (nodeFrequency.get(key) || 0) + 1);
+    }));
     const months = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
       const month = index + 1;
-      const sheets = annualPprSheetsForEquipmentMonth(year, item.eq.id, month);
+      const sheets = sheetsByMonth[month];
       sheets.forEach(sheet => {
-        sheet.repeatedNodes = sheet.complete
-          ? sheet.nodes.filter(node => seenNodes.has(String(node).trim().toLocaleLowerCase("ru")))
-          : [];
-        if (sheet.complete) sheet.nodes.forEach(node => seenNodes.add(String(node).trim().toLocaleLowerCase("ru")));
+        sheet.repeatedNodes = sheet.nodes.filter(node => nodeFrequency.get(String(node).trim().toLocaleLowerCase("ru")) > 1);
+        sheet.repeatedNodeCounts = sheet.repeatedNodes.map(node => ({ node, count: nodeFrequency.get(String(node).trim().toLocaleLowerCase("ru")) }));
       });
       const done = sheets.filter(sheet => sheet.complete).length;
       const repeats = sheets.reduce((sum, sheet) => sum + sheet.repeatedNodes.length, 0);
-      return [month, { sheets, done, total: sheets.length, repeats }];
+      const repeatedNodeCounts = [...new Map(sheets.flatMap(sheet => sheet.repeatedNodeCounts).map(entry => [String(entry.node).trim().toLocaleLowerCase("ru"), entry])).values()];
+      return [month, { sheets, done, total: sheets.length, repeats, repeatedNodeCounts }];
     }));
     return { ...item, months };
   });
@@ -11557,9 +11564,9 @@ function openAnnualPprEquipmentMonth(year, equipmentId, month) {
   overlay.className = "annual-ppr-work-overlay";
   const render = () => {
     const progress = equipmentRow.months[month];
-    overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>Листы ППР · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · выполнено ${progress.done} из ${progress.total}${progress.repeats ? ` · повторных ${progress.repeats}` : ""}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${progress.sheets.length ? progress.sheets.map(item => {
+    overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>Листы ППР · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · выполнено ${progress.done} из ${progress.total}${progress.repeats ? ` · повторов по графику ${progress.repeats}` : ""}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${progress.sheets.length ? progress.sheets.map(item => {
       const repeated = item.repeatedNodes.length > 0;
-      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяются узлы: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">Совпали: ${escapeHtml(item.repeatedNodes.join(", "))}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
+      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяются узлы: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">${item.repeatedNodeCounts.map(entry => `${escapeHtml(entry.node)} — ${entry.count} раза за год`).join("; ")}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
     }).join("") : `<div class="empty-state">Для этого оборудования листы ППР в выбранном месяце не запланированы.</div>`}</div></section>`;
     overlay.querySelector("[data-progress-back]")?.addEventListener("click", () => overlay.remove());
     overlay.querySelectorAll("[data-open-annual-sheet]").forEach(button => button.addEventListener("click", () => {
@@ -11586,7 +11593,9 @@ function annualPprTableHtml(year) {
     <tbody>${rows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
       const month = monthIndex + 1;
       const progress = row.months[month];
-      return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть листы ППР"><strong>${progress.done} / ${progress.total}</strong><small>листов ППР</small>${progress.repeats ? `<span class="annual-ppr-repeat-badge" title="Узлы, повторившиеся в принятых листах">↻ ${progress.repeats}</span>` : ""}</td>`;
+      const repeatBadges = progress.repeatedNodeCounts.slice(0, 2).map(entry => `<span class="annual-ppr-repeat-badge" title="${escapeHtml(entry.node)} — ${entry.count} раза за год">↻ ${entry.count}×</span>`).join("");
+      const remainingRepeats = Math.max(0, progress.repeatedNodeCounts.length - 2);
+      return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть листы ППР"><strong>${progress.done} / ${progress.total}</strong><small>листов ППР</small>${repeatBadges}${remainingRepeats ? `<span class="annual-ppr-repeat-more">+${remainingRepeats}</span>` : ""}</td>`;
     }).join("")}</tr>`).join("")}</tbody>
   </table>`;
 }
@@ -11702,7 +11711,7 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   const record = annualPprYearRecord(year, true);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите месячный счётчик, чтобы открыть листы ППР</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из календаря и листов ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">Формат счётчика: выполнено / должно быть по календарю. Оранжевый кружок ↻ показывает узлы, которые уже встречались в более ранних принятых листах этого оборудования за выбранный год. Нажмите на счётчик, чтобы открыть совпавшие листы и узлы.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите месячный счётчик, чтобы открыть листы ППР</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из календаря и листов ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">Формат счётчика: выполнено / должно быть по календарю. Оранжевый кружок ↻ показывает узлы, встречающиеся в графике этого оборудования больше одного раза за выбранный год — независимо от выполнения листа. Одинаково выделяются все совпавшие появления, включая первое. Нажмите на счётчик, чтобы открыть совпавшие листы и узлы.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });
