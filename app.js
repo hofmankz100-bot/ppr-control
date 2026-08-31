@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v718-print-safe-qr-1";
+const APP_VERSION = "v719-clean-qr-label-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4895,7 +4895,7 @@ function printNodeQrCode(eq, nodeIndex) {
       p{margin:1mm 0;font-size:9pt;line-height:1.2}
       .head p{font-weight:800}.head p:first-of-type,.head p:nth-of-type(2){display:none}
       .qr{display:grid;place-items:center;margin:1mm 0;padding:1.5mm;background:#fff}.qr img{display:block;width:80mm;height:80mm;image-rendering:pixelated}
-      .code{font-family:Consolas,monospace;font-size:18pt;font-weight:900;letter-spacing:.5px;text-align:center}
+      .code{display:inline-flex;align-items:baseline;justify-content:center;gap:2mm;margin:1mm auto 0;padding:2mm 3mm;border:1px solid #cbd5e1;border-radius:6px;font-size:9pt;color:#475569;white-space:nowrap}.code strong{font-family:Consolas,monospace;font-size:13pt;color:#111827;letter-spacing:.4px}
       .actions{position:sticky;bottom:0;background:#eef3f6;padding:10px;text-align:center}
       button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:800}
       .qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border-radius:50%;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:10}
@@ -4917,7 +4917,7 @@ function printNodeQrCode(eq, nodeIndex) {
           <p><strong>Узел:</strong> ${escapeHtml(nodeName)}</p>
         </div>
         <div class="qr"><img src="${qrUrl}" alt="QR код"></div>
-        <div class="code">${escapeHtml(displayCode)}</div>
+        <div class="code"><span>Код наклейки:</span><strong>${escapeHtml(displayCode)}</strong></div>
       </div>
       <div class="actions"><button onclick="window.print()">Печатать QR</button></div>
     </body></html>`);
@@ -4970,7 +4970,7 @@ function printEquipmentQrCodes(eq) {
         <div class="qr-area">${escapeHtml(eq.area || "")}</div>
         <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}</div>
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
-        <div class="qr-code">${escapeHtml(displayCode)}</div>
+        <div class="qr-code"><span>Код наклейки:</span><strong>${escapeHtml(displayCode)}</strong></div>
       </section>
     `;
   });
@@ -4991,7 +4991,7 @@ function printEquipmentQrCodes(eq) {
       .qr-area{font-size:9pt;font-weight:800;color:#4b5563}
       .qr-node{min-height:18mm;display:grid;place-items:center;font-size:13pt;font-weight:800;line-height:1.15}
       .qr-card img{display:block;width:80mm;height:80mm;margin:0 auto;padding:1.5mm;background:#fff;image-rendering:pixelated}
-      .qr-code{font-size:18pt;font-weight:900;letter-spacing:.5px}
+      .qr-code{display:inline-flex;align-items:baseline;justify-content:center;gap:1.5mm;margin:1mm auto 0;padding:1.5mm 2.5mm;border:1px solid #cbd5e1;border-radius:6px;font-size:8pt;color:#475569;white-space:nowrap}.qr-code strong{font-family:Consolas,monospace;font-size:12pt;color:#111827;letter-spacing:.3px}
       .actions{position:fixed;left:0;right:0;bottom:0;background:#eef3f6;padding:10px;text-align:center;box-shadow:0 -6px 20px rgba(0,0,0,.12)}
       .actions button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:900}
       ${qrPopupMobileCss()}
