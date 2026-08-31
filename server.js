@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v746-protected-gas-catalog-1";
+const SERVER_VERSION = "v747-extensible-protected-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -385,8 +385,11 @@ function restoreGasQrCatalog(db) {
   if (!item || !Array.isArray(item.nodes)) return;
   const currentNames = item.nodes.map(normalizedCatalogNodeName);
   const historicalNames = GAS_QR_NODES.map(normalizedCatalogNodeName);
-  const completeAndOrdered = currentNames.length === historicalNames.length
-    && currentNames.every((name, index) => name === historicalNames[index]);
+  const extraNodes = item.nodes.filter(name => !historicalNames.includes(normalizedCatalogNodeName(name)));
+  const targetNodes = [...GAS_QR_NODES, ...extraNodes];
+  const targetNames = targetNodes.map(normalizedCatalogNodeName);
+  const completeAndOrdered = currentNames.length === targetNames.length
+    && currentNames.every((name, index) => name === targetNames[index]);
   if (item.gasQrRestoreVersion === "historical-order-v2" && completeAndOrdered) return false;
 
   const now = new Date().toISOString();
@@ -394,7 +397,7 @@ function restoreGasQrCatalog(db) {
   CATALOG_NODE_INDEXED_FIELDS.forEach(field => {
     const source = item[field];
     if (!source || typeof source !== "object" || Array.isArray(source)) return;
-    item[field] = Object.fromEntries(GAS_QR_NODES.flatMap((name, newIndex) => {
+    item[field] = Object.fromEntries(targetNodes.flatMap((name, newIndex) => {
       const oldIndex = oldIndexByName.get(normalizedCatalogNodeName(name));
       return oldIndex !== undefined && Object.prototype.hasOwnProperty.call(source, oldIndex)
         ? [[newIndex, source[oldIndex]]]
@@ -406,14 +409,14 @@ function restoreGasQrCatalog(db) {
     const parts = recordKey.split(":");
     if (parts[0] !== GAS_QR_EQUIPMENT_ID) { nextChecks[recordKey] = record; return; }
     const nodeName = currentNames[Number(parts[1])];
-    const newIndex = historicalNames.indexOf(nodeName);
+    const newIndex = targetNames.indexOf(nodeName);
     if (newIndex < 0) return;
     nextChecks[`${GAS_QR_EQUIPMENT_ID}:${newIndex}:${parts.slice(2).join(":")}`] = record;
   });
   const restoredArchiveIndexes = new Set();
   (db.archivedNodeChecks || []).forEach((archive, archiveIndex) => {
     if (String(archive?.equipmentId) !== GAS_QR_EQUIPMENT_ID) return;
-    const newIndex = historicalNames.indexOf(normalizedCatalogNodeName(archive?.node));
+    const newIndex = targetNames.indexOf(normalizedCatalogNodeName(archive?.node));
     if (newIndex < 0) return;
     const date = String(archive?.recordKey || "").split(":").slice(2).join(":");
     const restoredKey = `${GAS_QR_EQUIPMENT_ID}:${newIndex}:${date}`;
@@ -427,7 +430,7 @@ function restoreGasQrCatalog(db) {
   const restoreLinkedNode = linked => {
     if (String(linked?.equipmentId) !== GAS_QR_EQUIPMENT_ID) return;
     const oldName = linked.archivedNodeName || currentNames[Number(linked.nodeIndex)] || linked.node;
-    const newIndex = historicalNames.indexOf(normalizedCatalogNodeName(oldName));
+    const newIndex = targetNames.indexOf(normalizedCatalogNodeName(oldName));
     if (newIndex < 0) return;
     linked.nodeIndex = newIndex;
     if (linked.archivedNodeName) {
@@ -438,7 +441,7 @@ function restoreGasQrCatalog(db) {
   };
   (db.qrWalkJournal || []).forEach(restoreLinkedNode);
   (db.downtimes || []).forEach(restoreLinkedNode);
-  item.nodes = [...GAS_QR_NODES];
+  item.nodes = targetNodes;
   item.removedNodes = (Array.isArray(item.removedNodes) ? item.removedNodes : [])
     .filter(entry => !GAS_QR_NODES.some(name => normalizedCatalogNodeName(name) === normalizedCatalogNodeName(entry?.name)));
   ensureCatalogNodeQrTokens(item);
