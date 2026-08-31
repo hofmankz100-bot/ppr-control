@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v744-remove-test-part-records-4";
+const SERVER_VERSION = "v745-stable-node-counters-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -383,15 +383,69 @@ function restoreGasQrCatalog(db) {
   if (!equipment || typeof equipment !== "object") return;
   const item = equipment[GAS_QR_EQUIPMENT_ID];
   if (!item || !Array.isArray(item.nodes)) return;
-  if (item.gasQrRestoreVersion === "historical-order-v1") return;
+  const currentNames = item.nodes.map(normalizedCatalogNodeName);
+  const historicalNames = GAS_QR_NODES.map(normalizedCatalogNodeName);
+  const completeAndOrdered = currentNames.length === historicalNames.length
+    && currentNames.every((name, index) => name === historicalNames[index]);
+  if (item.gasQrRestoreVersion === "historical-order-v2" && completeAndOrdered) return false;
 
   const now = new Date().toISOString();
+  const oldIndexByName = new Map(currentNames.map((name, index) => [name, index]));
+  CATALOG_NODE_INDEXED_FIELDS.forEach(field => {
+    const source = item[field];
+    if (!source || typeof source !== "object" || Array.isArray(source)) return;
+    item[field] = Object.fromEntries(GAS_QR_NODES.flatMap((name, newIndex) => {
+      const oldIndex = oldIndexByName.get(normalizedCatalogNodeName(name));
+      return oldIndex !== undefined && Object.prototype.hasOwnProperty.call(source, oldIndex)
+        ? [[newIndex, source[oldIndex]]]
+        : [];
+    }));
+  });
+  const nextChecks = {};
+  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
+    const parts = recordKey.split(":");
+    if (parts[0] !== GAS_QR_EQUIPMENT_ID) { nextChecks[recordKey] = record; return; }
+    const nodeName = currentNames[Number(parts[1])];
+    const newIndex = historicalNames.indexOf(nodeName);
+    if (newIndex < 0) return;
+    nextChecks[`${GAS_QR_EQUIPMENT_ID}:${newIndex}:${parts.slice(2).join(":")}`] = record;
+  });
+  const restoredArchiveIndexes = new Set();
+  (db.archivedNodeChecks || []).forEach((archive, archiveIndex) => {
+    if (String(archive?.equipmentId) !== GAS_QR_EQUIPMENT_ID) return;
+    const newIndex = historicalNames.indexOf(normalizedCatalogNodeName(archive?.node));
+    if (newIndex < 0) return;
+    const date = String(archive?.recordKey || "").split(":").slice(2).join(":");
+    const restoredKey = `${GAS_QR_EQUIPMENT_ID}:${newIndex}:${date}`;
+    if (date && !nextChecks[restoredKey] && archive.record) nextChecks[restoredKey] = archive.record;
+    restoredArchiveIndexes.add(archiveIndex);
+  });
+  db.checks = nextChecks;
+  if (restoredArchiveIndexes.size) {
+    db.archivedNodeChecks = db.archivedNodeChecks.filter((_, index) => !restoredArchiveIndexes.has(index));
+  }
+  const restoreLinkedNode = linked => {
+    if (String(linked?.equipmentId) !== GAS_QR_EQUIPMENT_ID) return;
+    const oldName = linked.archivedNodeName || currentNames[Number(linked.nodeIndex)] || linked.node;
+    const newIndex = historicalNames.indexOf(normalizedCatalogNodeName(oldName));
+    if (newIndex < 0) return;
+    linked.nodeIndex = newIndex;
+    if (linked.archivedNodeName) {
+      delete linked.archivedNode;
+      delete linked.archivedNodeIndex;
+      delete linked.archivedNodeName;
+    }
+  };
+  (db.qrWalkJournal || []).forEach(restoreLinkedNode);
+  (db.downtimes || []).forEach(restoreLinkedNode);
   item.nodes = [...GAS_QR_NODES];
   item.removedNodes = (Array.isArray(item.removedNodes) ? item.removedNodes : [])
     .filter(entry => !GAS_QR_NODES.some(name => normalizedCatalogNodeName(name) === normalizedCatalogNodeName(entry?.name)));
+  ensureCatalogNodeQrTokens(item);
   item.nodeHistoryRestoredAt = now;
-  item.gasQrRestoreVersion = "historical-order-v1";
+  item.gasQrRestoreVersion = "historical-order-v2";
   item.updatedAt = now;
+  return true;
 }
 
 function restoreKnownPhysicalQrAliases(db) {
@@ -5157,7 +5211,8 @@ async function handleApi(req, res, pathname, url) {
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
       productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
-      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed
+      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
+      gasQrNodeCount: readDb().catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
     }));
     return true;
   }

@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v744-remove-test-part-records-4";
+const APP_VERSION = "v745-stable-node-counters-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -9927,11 +9927,12 @@ function renderEquipment() {
         const downtimeOpen = equipmentDowntimeOpen;
         const td = document.createElement("td");
         const signalClass = downtimeOpen ? "downtime-cell" : summary.open ? "comment-cell" : "";
-        const baseClass = operationalPause ? "operational-paused-day" : summary.done === summary.total ? "completed-day" : "to";
+        const baseClass = operationalPause ? "operational-paused-day" : summary.complete ? "completed-day" : "to";
           td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.innerHTML = operationalPause ? "Пауза" : summary.done === summary.total ? "✓" : `${summary.done}/${summary.total}`;
-        td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}`;
+        td.innerHTML = operationalPause ? "Пауза" : `${summary.done}/${summary.total}`;
+        const pausedHint = summary.pausedTotal ? ` · на паузе ${summary.pausedTotal}` : "";
+        td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий${pausedHint}` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}${pausedHint}`;
         td.addEventListener("click", () => {
           if (!canOpenEquipmentDate(date)) return;
           current.equipmentId = eq.id;
@@ -9981,11 +9982,15 @@ function renderEquipment() {
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
-  const activeNodeIndexes = ordinaryNodeIndexes(eq)
+  const allNodeIndexes = ordinaryNodeIndexes(eq);
+  const activeNodeIndexes = allNodeIndexes
     .filter(index => !activeOperationalPause(eq, index, date));
   const rows = activeNodeIndexes.map(index => getRecord(eq.id, index, date));
   const shiftKeys = walkShiftKeysDueForDate(date);
-  const total = activeNodeIndexes.length * Math.max(1, shiftKeys.length);
+  const shiftCount = Math.max(1, shiftKeys.length);
+  const total = allNodeIndexes.length * shiftCount;
+  const activeTotal = activeNodeIndexes.length * shiftCount;
+  const pausedTotal = total - activeTotal;
   const done = shiftKeys.length
     ? rows.reduce((sum, rec) => sum + shiftKeys.filter(shiftKey => isNodeShiftChecked(rec, shiftKey, group)).length, 0)
     : rows.filter(rec => isNodeCheckedForGroup(rec, group)).length;
@@ -9993,9 +9998,12 @@ function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
   return {
     done,
     total,
+    activeTotal,
+    pausedTotal,
+    complete: activeTotal > 0 && done === activeTotal,
     open,
-    overdue: total > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < total,
-    blinkToday: total > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < total
+    overdue: activeTotal > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < activeTotal,
+    blinkToday: activeTotal > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < activeTotal
   };
 }
 
