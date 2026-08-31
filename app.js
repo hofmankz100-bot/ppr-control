@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v734-remove-repeat-badges-1";
+const APP_VERSION = "v735-full-page-a4-print-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11634,9 +11634,11 @@ function saveAnnualPprRow(rowElement, year) {
 function printAnnualPprSchedule(overlay, year) {
   const clone = annualPprOutputClone(overlay);
   if (!clone) return;
+  const rowCount = Math.max(1, clone.querySelectorAll(".annual-ppr-table tbody tr").length);
+  clone.style.setProperty("--annual-ppr-row-height", `${Math.max(5, Math.min(10, 150 / rowCount)).toFixed(2)}mm`);
   const popup = window.open("", "_blank", "width=1500,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
-  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A3 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0}.annual-ppr-print-title{text-align:center;margin:0 0 4mm}.annual-ppr-print-title h1{font-size:14pt;margin:0 0 2mm}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:3mm;font-size:8pt;line-height:1.5}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:7pt;margin-bottom:2mm}.annual-ppr-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:5.7pt}.annual-ppr-table th,.annual-ppr-table td{border:.25mm solid #222;padding:.7mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{background:#dde7ef}.annual-ppr-table th:nth-child(4),.annual-ppr-table td:nth-child(4){text-align:left}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:12mm;margin-top:4mm;font-size:8pt}.annual-ppr-note{font-size:6.5pt;margin-top:2mm}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A4 landscape;margin:4mm}*{box-sizing:border-box}html,body{width:100%;margin:0}body{font-family:Arial,sans-serif;color:#111}.annual-ppr-print-area{width:100%}.annual-ppr-print-title{text-align:center;margin:0 0 2mm}.annual-ppr-print-title h1{font-size:11pt;margin:0 0 .7mm}.annual-ppr-print-title div{font-size:7pt}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:1mm;font-size:7pt;line-height:1.25}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:6pt;margin-bottom:1mm}.annual-ppr-scroll{width:100%}.annual-ppr-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:5.2pt}.annual-ppr-table th,.annual-ppr-table td{border:.2mm solid #222;padding:.55mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table tbody tr{height:var(--annual-ppr-row-height,6mm)}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{height:5mm;background:#dde7ef}.annual-ppr-equipment-name{text-align:left!important}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin-top:2mm;font-size:6.5pt}.annual-ppr-note{font-size:5.5pt;margin:1mm 0}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
   finalizeJournalPopup(popup);
 }
 
@@ -11671,14 +11673,17 @@ async function shareAnnualPprPdf(overlay, year, button) {
     const fileName = `godovoy-grafik-ppr-${year}.pdf`;
     const sourceRows = [...clone.querySelectorAll(".annual-ppr-table tbody tr")];
     const rowPairs = Array.from({ length: Math.ceil(sourceRows.length / 2) }, (_, index) => sourceRows.slice(index * 2, index * 2 + 2));
-    const chunks = Array.from({ length: Math.max(1, Math.ceil(rowPairs.length / 12)) }, (_, index) => rowPairs.slice(index * 12, index * 12 + 12));
-    const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a3", orientation: "landscape", compress: true });
+    const chunks = Array.from({ length: Math.max(1, Math.ceil(rowPairs.length / 9)) }, (_, index) => rowPairs.slice(index * 9, index * 9 + 9));
+    const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
     for (let pageIndex = 0; pageIndex < chunks.length; pageIndex += 1) {
       const page = clone.cloneNode(true);
       const pageRows = [...page.querySelectorAll(".annual-ppr-table tbody tr")];
-      const firstRow = pageIndex * 24;
+      const firstRow = pageIndex * 18;
       const lastRow = firstRow + chunks[pageIndex].length * 2;
       pageRows.forEach((row, index) => { if (index < firstRow || index >= lastRow) row.remove(); });
+      const visibleRows = [...page.querySelectorAll(".annual-ppr-table tbody tr")];
+      const pdfRowHeight = Math.max(28, Math.min(58, 760 / Math.max(1, visibleRows.length)));
+      visibleRows.forEach(row => { row.style.height = `${pdfRowHeight}px`; });
       if (pageIndex > 0) page.querySelector(".annual-ppr-approval")?.remove();
       if (pageIndex < chunks.length - 1) {
         page.querySelector(".annual-ppr-note")?.remove();
@@ -11692,13 +11697,13 @@ async function shareAnnualPprPdf(overlay, year, button) {
       document.body.append(page);
       const canvas = await window.html2canvas(page, { scale: 1.15, useCORS: true, backgroundColor: "#ffffff", width: 1580, windowWidth: 1640, scrollX: 0, scrollY: 0 });
       page.remove();
-      if (pageIndex > 0) pdf.addPage("a3", "landscape");
-      const availableWidth = 406;
-      const availableHeight = 283;
+      if (pageIndex > 0) pdf.addPage("a4", "landscape");
+      const availableWidth = 285;
+      const availableHeight = 198;
       const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
       const imageWidth = canvas.width * ratio;
       const imageHeight = canvas.height * ratio;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 7 + (availableWidth - imageWidth) / 2, 7, imageWidth, imageHeight, undefined, "FAST");
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 6 + (availableWidth - imageWidth) / 2, 6, imageWidth, imageHeight, undefined, "FAST");
     }
     const blob = pdf.output("blob");
     const file = new File([blob], fileName, { type: "application/pdf" });
@@ -11712,7 +11717,7 @@ async function shareAnnualPprPdf(overlay, year, button) {
       showAppToast("PDF скачан. Его можно отправить как обычный файл.");
     }
   } catch (error) {
-    if (error?.name !== "AbortError") { console.error("Annual PPR PDF failed", error); window.alert("Не удалось создать PDF. Используйте кнопку «Печать A3» и выберите сохранение в PDF."); }
+    if (error?.name !== "AbortError") { console.error("Annual PPR PDF failed", error); window.alert("Не удалось создать PDF. Используйте кнопку «Печать A4» и выберите сохранение в PDF."); }
   } finally {
     clone.remove();
     if (button) { button.disabled = false; button.textContent = originalText; }
@@ -11727,7 +11732,7 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   const record = annualPprYearRecord(year, true);
   const overlay = document.createElement("div");
   overlay.className = "annual-ppr-overlay";
-  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите месячный счётчик, чтобы открыть листы ППР</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A3</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Главный инженер <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из календаря и листов ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">Формат счётчика: выполнено / должно быть по календарю. Нажмите на счётчик, чтобы открыть список и сам лист ППР.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
+  overlay.innerHTML = `<section class="annual-ppr-dialog"><header class="no-print"><div><strong>Годовой график ППР</strong><span>Нажмите месячный счётчик, чтобы открыть листы ППР</span></div><div><label>Год <input data-annual-ppr-year type="number" min="2020" max="2100" value="${year}"></label><button type="button" data-share-annual-ppr-pdf>Скачать / отправить PDF</button><button type="button" data-print-annual-ppr>Печать A4</button><button type="button" data-close-annual-ppr>← Назад</button></div></header><div class="annual-ppr-print-area"><div class="annual-ppr-approval"><div><strong>УТВЕРЖДАЮ</strong><br>Директор завода <input data-annual-ppr-meta="approvedBy" value="${escapeHtml(record.approvedBy || "")}" placeholder="Ф.И.О."><br>«___» __________ ${year} г.</div></div><div class="annual-ppr-print-title"><h1>ГОДОВОЙ ГРАФИК ПЛАНОВО-ПРЕДУПРЕДИТЕЛЬНЫХ РЕМОНТОВ ОБОРУДОВАНИЯ НА ${year} ГОД</h1><div>ТОО «Aluminium of Kazakhstan»</div></div><div class="annual-ppr-meta"><span>Редакция: <input data-annual-ppr-meta="revision" value="${escapeHtml(record.revision || "01")}"></span><span>Сформирован из календаря и листов ППР: ${dateHuman(todayISO())}</span></div><div class="annual-ppr-scroll">${annualPprTableHtml(year)}</div><p class="annual-ppr-note">Формат счётчика: выполнено / должно быть по календарю. Нажмите на счётчик, чтобы открыть список и сам лист ППР.</p><div class="annual-ppr-signatures"><label>Согласовано: директор по производству<input data-annual-ppr-meta="agreedProductionBy" value="${escapeHtml(record.agreedProductionBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Согласовано: ответственный за ОТ и ПБ<input data-annual-ppr-meta="agreedSafetyBy" value="${escapeHtml(record.agreedSafetyBy || "")}" placeholder="Ф.И.О. / подпись"></label><label>Составил: ответственный инженер<input data-annual-ppr-meta="preparedBy" value="${escapeHtml(record.preparedBy || profile?.name || "")}" placeholder="Ф.И.О. / подпись"></label></div></div></section>`;
   document.body.append(overlay);
   overlay.querySelector("[data-close-annual-ppr]")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", event => { if (event.target === overlay) overlay.remove(); });

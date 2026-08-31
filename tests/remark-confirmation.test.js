@@ -1821,7 +1821,10 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
   assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
   assert.match(appSource, /\["ТО", "ТР", "АР"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
-  assert.match(appSource, /@page\{size:A3 landscape/);
+  assert.match(appSource, /@page\{size:A4 landscape/);
+  assert.match(appSource, /--annual-ppr-row-height/);
+  assert.match(appSource, /Директор завода/);
+  assert.doesNotMatch(appSource, /<br>Главный инженер/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
 });
 
@@ -1873,14 +1876,14 @@ test("forklift drivers, welders and turners never participate in the employee ra
   assert.match(appSource, /filter\(item => eligibleKeys\.has\(String\(item\?\.key/);
 });
 
-test("annual PPR can be downloaded or shared as an A3 landscape PDF", () => {
+test("annual PPR can be downloaded or shared as an A4 landscape PDF", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(appSource, /async function shareAnnualPprPdf\(/);
-  assert.match(appSource, /format: "a3", orientation: "landscape"/);
-  assert.match(appSource, /Math\.ceil\(rowPairs\.length \/ 12\)/);
+  assert.match(appSource, /format: "a4", orientation: "landscape"/);
+  assert.match(appSource, /Math\.ceil\(rowPairs\.length \/ 9\)/);
   assert.match(appSource, /await window\.html2canvas\(page/);
-  assert.match(appSource, /pdf\.addPage\("a3", "landscape"\)/);
+  assert.match(appSource, /pdf\.addPage\("a4", "landscape"\)/);
   assert.match(serverSource, /node_modules\/html2canvas\/dist\/html2canvas\.min\.js/);
   assert.match(serverSource, /node_modules\/jspdf\/dist\/jspdf\.umd\.min\.js/);
   assert.match(appSource, /navigator\.canShare\?\.\(\{ files: \[file\] \}\)/);
