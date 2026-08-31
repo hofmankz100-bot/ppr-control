@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v750-completed-walk-checkmark-only-1";
+const APP_VERSION = "v751-current-shift-counter-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -9986,7 +9986,8 @@ function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
   const activeNodeIndexes = allNodeIndexes
     .filter(index => !activeOperationalPause(eq, index, date));
   const rows = activeNodeIndexes.map(index => getRecord(eq.id, index, date));
-  const shiftKeys = walkShiftKeysDueForDate(date);
+  const activeShift = currentWalkShift();
+  const shiftKeys = date === activeShift.date ? [activeShift.key] : walkShiftKeysDueForDate(date);
   const shiftCount = Math.max(1, shiftKeys.length);
   const total = allNodeIndexes.length * shiftCount;
   const activeTotal = activeNodeIndexes.length * shiftCount;
@@ -10003,7 +10004,7 @@ function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
     complete: activeTotal > 0 && done === activeTotal,
     open,
     overdue: activeTotal > 0 && isDueOrPast(date) && shiftKeys.length > 0 && done < activeTotal,
-    blinkToday: activeTotal > 0 && date === currentWalkShift().date && shiftKeys.length > 0 && done < activeTotal
+    blinkToday: activeTotal > 0 && date === activeShift.date && shiftKeys.length > 0 && done < activeTotal
   };
 }
 
