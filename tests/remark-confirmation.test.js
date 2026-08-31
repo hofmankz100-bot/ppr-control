@@ -1599,6 +1599,8 @@ test("an executor can submit work immediately and is joined automatically", () =
   assert.match(source, /const ensureCurrentResolverJoined = async \(\) =>/);
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"update"/);
   assert.match(source, /await ensureCurrentResolverJoined\(\);[\s\S]*?"resolve"/);
+  assert.match(source, /<button type="button" data-remark-resolve>Устранено<\/button>/);
+  assert.doesNotMatch(source, /data-remark-resolve data-permission-disabled/);
 });
 
 test("specialized executor roles can join collaborative resolution", () => {

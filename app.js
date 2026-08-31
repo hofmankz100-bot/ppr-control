@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v738-blank-prepared-signature-1";
+const APP_VERSION = "v739-restore-remark-resolve-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -5969,12 +5969,6 @@ function canManageResolutionParticipants(item) {
     || Boolean(item?.resolutionLeadKey && item.resolutionLeadKey === actor.key);
 }
 
-function canCompleteCollaborativeResolution(item) {
-  const actor = resolutionActor();
-  if (!isResolutionExecutorRole(actor.jobRole || actor.role)) return false;
-  return isResolutionParticipant(item, actor);
-}
-
 function eligibleResolutionUsers(eq) {
   const actor = resolutionActor();
   const users = [...loadUsers(), actor]
@@ -6415,7 +6409,6 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const resolutionStartedText = entry.resolutionStartedAt ? `В работе с ${dateTimeHuman(entry.resolutionStartedAt)}` : "Нажмите «Начать устранение»";
   const photoKey = `${key(eq.id, nodeIndex, current.date)}:${remarkId}`;
   const draftPhoto = remarkResolutionPhotoDrafts.get(photoKey) || "";
-  const canResolve = canCompleteCollaborativeResolution(entry);
   const canConfirm = canCurrentUserConfirmRemark(entry, eq);
   const resolvedRole = ROLE_ACCESS[entry.resolvedByRole]?.label || entry.resolvedByRole || "";
   const resolvedBy = entry.resolvedByName ? `${entry.resolvedByName}${resolvedRole ? ` (${resolvedRole})` : ""}` : resolvedRole;
@@ -6523,7 +6516,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             <div class="photo-preview remark-action-preview">${draftPhoto ? `<img src="${draftPhoto}" alt="Фото работы"><button type="button" data-clear-remark-photo>Удалить фото</button>` : ""}</div>
             <div class="node-walk-actions">
               <button type="button" class="secondary" data-remark-work-update ${canWriteResolution ? "" : "disabled"}>Добавить запись о работе</button>
-              <button type="button" data-remark-resolve data-permission-disabled="${canResolve || actorCanJoin ? "false" : "true"}" ${canResolve || actorCanJoin ? "" : "disabled"}>Устранено</button>
+              <button type="button" data-remark-resolve>Устранено</button>
               ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
             </div>
           </div>
