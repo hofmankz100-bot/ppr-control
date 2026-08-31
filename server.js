@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v720-minimal-qr-print-1";
+const SERVER_VERSION = "v721-qr-identity-guard-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -300,6 +300,18 @@ function remapCatalogNodeIndexedFields(item, keptEntries = []) {
       Object.prototype.hasOwnProperty.call(source, entry.oldIndex) ? [[newIndex, source[entry.oldIndex]]] : []
     )));
   });
+}
+
+function ensureCatalogNodeQrTokens(item) {
+  if (!item || !Array.isArray(item.nodes)) return 0;
+  item.qrTokens = item.qrTokens && typeof item.qrTokens === "object" && !Array.isArray(item.qrTokens) ? item.qrTokens : {};
+  let created = 0;
+  item.nodes.forEach((node, index) => {
+    if (!String(node || "").trim() || String(item.qrTokens[index] || "").trim()) return;
+    item.qrTokens[index] = crypto.randomBytes(12).toString("hex");
+    created += 1;
+  });
+  return created;
 }
 
 function removeCatalogNodeByHistory(item, name, preferredIndex = -1) {
@@ -580,6 +592,7 @@ function normalizeDb(db) {
   restoreKnownPhysicalQrAliases(db);
   restoreGasQrCatalog(db);
   restorePress2400Catalog(db);
+  Object.values(db.catalog?.equipment || {}).forEach(ensureCatalogNodeQrTokens);
   db.systemBroadcasts ||= [];
   db.systemBroadcasts = db.systemBroadcasts.filter(item => item?.id !== "admin-stages-18-25-complete-v1");
   db.operationalResetAt ||= "";
@@ -5933,6 +5946,7 @@ async function handleApi(req, res, pathname, url) {
               });
             }
             item.nodes = requestedNodes;
+            ensureCatalogNodeQrTokens(item);
           }
           if (rawItem.reminders && typeof rawItem.reminders === "object") {
             item.reminders = {};
