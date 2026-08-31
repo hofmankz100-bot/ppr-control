@@ -8,6 +8,7 @@ function createAdminEquipmentMaintenanceRoute({
   normalizedAdminConfig,
   normalizedCatalogNodeName,
   passwordMatches,
+  protectedCatalogNode = () => false,
   publicState,
   randomBytes,
   readBody,
@@ -118,6 +119,9 @@ function createAdminEquipmentMaintenanceRoute({
     const nodes = Array.isArray(body.nodes) ? body.nodes.map(value => String(value || "").trim().slice(0, 200)).filter(Boolean) : [];
     if (!Number.isSafeInteger(equipmentId) || !Number.isSafeInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= nodes.length || nodes.length <= 1) {
       sendJson(res, 400, { ok: false, error: "node_delete_invalid" }); return true;
+    }
+    if (protectedCatalogNode(equipmentId, nodes[nodeIndex])) {
+      sendJson(res, 409, { ok: false, error: "protected_catalog_node" }); return true;
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();

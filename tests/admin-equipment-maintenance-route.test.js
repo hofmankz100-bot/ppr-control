@@ -16,6 +16,7 @@ function createHarness(database = {}, options = {}) {
     normalizedAdminConfig: () => ({ trashRetentionDays: 30 }),
     normalizedCatalogNodeName: value => String(value).trim().toLocaleLowerCase("ru-RU"),
     passwordMatches: () => true,
+    protectedCatalogNode: options.protectedCatalogNode || (() => false),
     publicState: db => ({ catalog: db.catalog, checks: db.checks }),
     randomBytes: size => Buffer.alloc(size, size),
     readBody: async req => req.body || {},
@@ -104,4 +105,16 @@ test("node deletion archives its checks and shifts every current linked index", 
   assert.equal(database.qrWalkJournal[0].archivedNode, true);
   assert.equal(audits[0].action, "equipment_node_deleted");
   assert.equal(responses[0].status, 200);
+});
+
+test("protected mandatory nodes cannot be deleted", async () => {
+  const database = { catalog: { equipment: { 15: { nodes: ["ШГРП", "ПСК"] } } } };
+  const { handler, responses, audits, broadcasts } = createHarness(database, {
+    protectedCatalogNode: (equipmentId, nodeName) => Number(equipmentId) === 15 && nodeName === "ШГРП"
+  });
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 15, nodeIndex: 0, nodes: ["ШГРП", "ПСК"] } }, {}, "/api/admin/equipment/node-delete");
+  assert.deepEqual(responses[0], { status: 409, payload: { ok: false, error: "protected_catalog_node" } });
+  assert.deepEqual(database.catalog.equipment[15].nodes, ["ШГРП", "ПСК"]);
+  assert.deepEqual(audits, []);
+  assert.deepEqual(broadcasts, []);
 });

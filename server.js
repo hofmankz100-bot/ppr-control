@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v745-stable-node-counters-1";
+const SERVER_VERSION = "v746-protected-gas-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4683,6 +4683,8 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
   normalizedAdminConfig,
   normalizedCatalogNodeName,
   passwordMatches,
+  protectedCatalogNode: (equipmentId, nodeName) => String(equipmentId) === GAS_QR_EQUIPMENT_ID
+    && GAS_QR_NODES.some(name => normalizedCatalogNodeName(name) === normalizedCatalogNodeName(nodeName)),
   publicState,
   randomBytes: crypto.randomBytes,
   readBody,
