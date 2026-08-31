@@ -1829,6 +1829,8 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /Директор завода/);
   assert.match(appSource, /annual-ppr-sign-caption">Ф\.И\.О\. \/ подпись/);
   assert.match(appSource, /span\.className = "annual-ppr-print-value"/);
+  assert.match(appSource, /preparedByInput\) preparedByInput\.value = ""/);
+  assert.doesNotMatch(appSource, /record\.preparedBy \|\| profile\?\.name/);
   assert.doesNotMatch(appSource, /<br>Главный инженер/);
   assert.match(stylesSource, /@media \(max-width: 900px\)[\s\S]*\.desktop-annual-ppr-button, \.annual-ppr-overlay/);
 });
@@ -2136,10 +2138,11 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
   const tableEnd = clientSource.indexOf("function saveAnnualPprRow", tableStart);
   const tableSource = clientSource.slice(tableStart, tableEnd);
   assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
+  assert.match(clientSource, /<th>Оборудование \/ участок<\/th>/);
   assert.match(clientSource, /function annualPprSheetsForEquipmentMonth/);
   assert.match(clientSource, /pprCalendarMonthData\(allEquipment\(\), year, month - 1\)/);
   assert.match(clientSource, /sheets\.filter\(sheet => sheet\.complete\)\.length/);
-  assert.match(tableSource, /<th>Оборудование<\/th>/);
+  assert.match(tableSource, /<th>Оборудование \/ участок<\/th>/);
   assert.doesNotMatch(tableSource, /<th>№<\/th>/);
   assert.match(tableSource, /<colgroup><col style="width:28%">/);
   assert.doesNotMatch(tableSource, /<th>Участок<\/th>|Узел \/ объект ремонта/);
