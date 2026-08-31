@@ -36,6 +36,9 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.director-user-row/);
   assert.match(styles, /html\[data-theme="dark"\] \.annual-ppr-act-dialog/);
   assert.match(styles, /html\[data-theme="dark"\] \.annual-ppr-work-dialog/);
+  assert.match(styles, /html\[data-theme="dark"\] \.annual-ppr-print-area:not\(\.annual-ppr-pdf-output\)/);
+  assert.match(styles, /annual-ppr-print-area:not\(\.annual-ppr-pdf-output\) \.annual-ppr-plan[\s\S]*background: #12332e/);
+  assert.match(styles, /annual-ppr-print-area:not\(\.annual-ppr-pdf-output\) \.annual-ppr-fact[\s\S]*background: #342d1b/);
   assert.match(styles, /html\[data-theme="dark"\] \.work-permit-paper/);
   assert.match(styles, /html\[data-theme="dark"\] \.global-reminder-panel/);
   assert.match(styles, /html\[data-theme="dark"\] \.director-reminder-row\.yellow/);

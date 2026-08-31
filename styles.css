@@ -12962,6 +12962,61 @@ html[data-theme="dark"] .pull-refresh-indicator {
     color: #e9edef;
   }
 
+  html[data-theme="dark"] .annual-ppr-dialog,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) {
+    background: #111b21;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .annual-ppr-dialog > header {
+    border-bottom: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-scroll,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table th,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table td {
+    border-color: #3b4a54;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table thead th {
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table tbody td,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table tbody th {
+    background: #111b21;
+    color: #dfe7eb;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-plan {
+    background: #12332e;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-fact {
+    background: #342d1b;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) input,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) select {
+    border-color: #3b4a54;
+    background: #202c33;
+    color: #e9edef;
+    color-scheme: dark;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-note {
+    color: #aebac1;
+  }
+
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-signatures input,
+  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-approval input {
+    border-bottom-color: #6d7d86;
+    background: transparent;
+  }
+
   html[data-theme="dark"] .work-permit-screen,
   html[data-theme="dark"] .work-permit-paper,
   html[data-theme="dark"] .work-permit-document-head,
