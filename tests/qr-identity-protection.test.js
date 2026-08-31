@@ -86,4 +86,6 @@ test("QR walk access uses the canonical permission role", () => {
   const access = server.slice(accessStart, accessStart + 900);
   assert.match(access, /permissionBaseRoleServer\(rawRole\)/);
   assert.match(access, /rawRole === "forkliftDriver"/);
+  assert.match(access, /\[catalogItem\.area, catalogItem\.name\]/);
+  assert.match(access, /accessLabels\.some\(label => userHasAreaServer\(user, label\)\)/);
 });

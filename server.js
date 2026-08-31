@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v747-extensible-protected-catalog-1";
+const SERVER_VERSION = "v748-equipment-area-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4425,7 +4425,10 @@ function nodeMutationAccessServer(user = {}, catalogItem = {}) {
   const role = permissionBaseRoleServer(rawRole);
   if (!NODE_CHECKLIST_ROLES.has(role)) return false;
   if (["operator", "shop"].includes(role)) {
-    return Boolean(catalogItem.area && userHasAreaServer(user, catalogItem.area));
+    const accessLabels = [catalogItem.area, catalogItem.name]
+      .map(value => String(value || "").trim())
+      .filter(value => value && normalizedCatalogNodeName(value) !== "резерв");
+    return accessLabels.some(label => userHasAreaServer(user, label));
   }
   if (rawRole === "forkliftDriver") {
     const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
