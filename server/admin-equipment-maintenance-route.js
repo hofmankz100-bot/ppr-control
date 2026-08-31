@@ -3,6 +3,7 @@
 function createAdminEquipmentMaintenanceRoute({
   broadcastState,
   builtInEquipmentIds = new Set(),
+  canEditCatalogItem = user => user?.role === "editor",
   catalogNodeTombstone,
   enqueueStateWrite,
   normalizedAdminConfig,
@@ -108,6 +109,50 @@ function createAdminEquipmentMaintenanceRoute({
     if (result.error) { sendJson(res, 409, { ok: false, error: result.error }); return true; }
     const stateVersion = broadcastState("equipment-node-added", "", result.state, true);
     sendJson(res, 200, { ok: true, nodeIndex: result.nodeIndex, state: result.state, stateVersion });
+    return true;
+  }
+
+  if (pathname === "/api/admin/equipment/node-rename" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const equipmentId = Number(body.equipmentId);
+    const nodeIndex = Number(body.nodeIndex);
+    const node = String(body.node || "").trim().slice(0, 200);
+    if (!Number.isSafeInteger(equipmentId) || !Number.isSafeInteger(nodeIndex) || nodeIndex < 0 || !node) {
+      sendJson(res, 400, { ok: false, error: "node_rename_invalid" }); return true;
+    }
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const catalogItem = db.catalog?.equipment?.[equipmentId];
+      if (!catalogItem || !Array.isArray(catalogItem.nodes) || nodeIndex >= catalogItem.nodes.length) return { error: "node_not_found", status: 404 };
+      if (!canEditCatalogItem(req.authUser, catalogItem)) return { error: "permission_denied", status: 403 };
+      const previousNode = String(catalogItem.nodes[nodeIndex] || "").trim();
+      const normalized = normalizedCatalogNodeName(node);
+      if (catalogItem.nodes.some((value, index) => index !== nodeIndex && normalizedCatalogNodeName(value) === normalized)) {
+        return { error: "node_already_exists", status: 409 };
+      }
+      if (previousNode === node) return { state: publicState(db), unchanged: true };
+      catalogItem.nodes = [...catalogItem.nodes];
+      catalogItem.nodes[nodeIndex] = node;
+      if (catalogItem.reminderMeta?.[nodeIndex]?.mode === "auto") catalogItem.reminderMeta[nodeIndex].stale = true;
+      const updateOpenLabel = item => {
+        if (!item || Number(item.equipmentId) !== equipmentId || Number(item.nodeIndex) !== nodeIndex) return;
+        if (item.completedAt || item.closedAt || item.archivedAt || item.deletedAt || item.fixed === true) return;
+        item.node = node;
+      };
+      (db.downtimes || []).forEach(updateOpenLabel);
+      Object.values(db.pprSheets || {}).forEach(sheet => {
+        updateOpenLabel(sheet);
+        (sheet?.works || []).forEach(updateOpenLabel);
+        (sheet?.rows || []).forEach(updateOpenLabel);
+      });
+      Object.values(db.annualPpr || {}).forEach(record => (record?.works || []).forEach(updateOpenLabel));
+      catalogItem.updatedAt = new Date().toISOString();
+      writeDb(db, { action: "equipment_node_renamed", user: req.authUser, targetId: `${equipmentId}:${nodeIndex}`, targetLabel: `${previousNode} → ${node}` });
+      return { state: publicState(db) };
+    });
+    if (result.error) { sendJson(res, result.status || 409, { ok: false, error: result.error }); return true; }
+    const stateVersion = broadcastState("equipment-node-renamed", "", result.state, true);
+    sendJson(res, 200, { ok: true, unchanged: result.unchanged === true, state: result.state, stateVersion });
     return true;
   }
 

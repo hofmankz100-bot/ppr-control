@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v751-current-shift-counter-1";
+const APP_VERSION = "v752-protect-catalog-nodes-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -3651,22 +3651,24 @@ function saveEquipmentCatalog(equipmentId, patch) {
   return true;
 }
 
-function saveNodeName(equipmentId, nodeIndex, value) {
+async function saveNodeName(equipmentId, nodeIndex, value) {
   if (!canEditEquipmentCatalog(equipmentId)) return false;
   const eq = equipmentById(equipmentId);
   if (!eq || !Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= eq.nodes.length) return false;
   const previousName = eq.nodes[nodeIndex];
   const nextName = String(value || "").trim() || previousName;
   if (nextName === previousName) return true;
-  const item = equipmentOverride(equipmentId);
-  item.nodes = [...eq.nodes];
-  item.nodes[nodeIndex] = nextName;
-  syncOpenEquipmentLabels(equipmentId, eq.name, eq.area, nodeIndex, nextName);
-  if (item.reminderMeta?.[nodeIndex]?.mode === "auto") item.reminderMeta[nodeIndex].stale = true;
-  item.area ||= eq.area;
-  item.updatedAt = new Date().toISOString();
-  recordAudit("Изменил название узла", `${eq.name} · ${previousName}`, "", `Новое название: ${nextName}`);
-  saveState();
+  if (!navigator.onLine) {
+    showAppToast("Для безопасного переименования узла требуется связь с сервером.");
+    return false;
+  }
+  const result = await apiJson("/api/admin/equipment/node-rename", {
+    method: "POST",
+    timeout: 60000,
+    body: JSON.stringify({ equipmentId, nodeIndex, node: nextName })
+  });
+  if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+  if (result?.ok !== true) return false;
   return true;
 }
 
@@ -10458,9 +10460,9 @@ function renderNodeWalkthrough(eq) {
         renderNodeWalkthrough(eq);
       });
       bindNodeDocumentMemoControls(row, () => renderNodeWalkthrough(equipmentById(eq.id)));
-      row.querySelector("[data-save-node-name]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {
+      row.querySelector("[data-save-node-name]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         const input = row.querySelector("[data-node-name-list]");
-        if (!saveNodeName(eq.id, index, input?.value || nodeName)) return;
+        if (!await saveNodeName(eq.id, index, input?.value || nodeName)) return;
         renderNodeWalkthrough(equipmentById(eq.id));
       }, "Сохраняется..."));
       row.querySelector("[data-cancel-node-name]")?.addEventListener("click", () => {
@@ -10598,9 +10600,9 @@ function renderNodeWalkthrough(eq) {
       renderNodeWalkthrough(eq);
     });
     bindNodeDocumentMemoControls(row, () => renderNodeWalkthrough(equipmentById(eq.id)));
-    row.querySelector("[data-node-name]")?.addEventListener("change", event => {
+    row.querySelector("[data-node-name]")?.addEventListener("change", async event => {
       if (!canEditCatalog()) return;
-      saveNodeName(eq.id, index, event.target.value);
+      if (!await saveNodeName(eq.id, index, event.target.value)) return;
       renderNodeWalkthrough(equipmentById(eq.id));
     });
     row.querySelector("[data-save-reminder]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, () => {

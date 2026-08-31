@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v751-current-shift-counter-1";
+const SERVER_VERSION = "v752-protect-catalog-nodes-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4684,6 +4684,13 @@ const handleAdminEquipmentConfigRoute = createAdminEquipmentConfigRoute({
 const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRoute({
   broadcastState,
   builtInEquipmentIds: new Set(Object.keys(DEFAULT_EQUIPMENT_AREAS_SERVER)),
+  canEditCatalogItem: (user, item) => {
+    const role = permissionBaseRoleServer(String(user?.role || ""));
+    const individualEquipmentEdit = activeUserPermission(user, "equipmentEdit");
+    if (role === "editor" || individualEquipmentEdit) return true;
+    if (role === "shop" && !userHasAreaServer(user, String(item?.area || ""))) return false;
+    return ["engineer", "shop"].includes(role) && item?.editingEnabled === true;
+  },
   catalogNodeTombstone,
   enqueueStateWrite,
   normalizedAdminConfig,
@@ -6064,22 +6071,11 @@ async function handleApi(req, res, pathname, url) {
               .map(value => String(value || "").trim().slice(0, 200))
               .filter(value => value && !removed.has(normalizedCatalogNodeName(value)))
               .slice(0, 200);
-            if (requestedNodes.length < currentNodes.length) {
-              const requestedNames = new Set(requestedNodes.map(normalizedCatalogNodeName));
-              currentNodes.forEach(oldName => {
-                if (!requestedNames.has(normalizedCatalogNodeName(oldName))) {
-                  catalogNodeTombstone(item, oldName, { at: rawItem.updatedAt, by: req.authUser?.name });
-                }
-              });
-            } else if (requestedNodes.length === currentNodes.length) {
-              currentNodes.forEach((oldName, index) => {
-                const nextName = requestedNodes[index];
-                if (nextName && normalizedCatalogNodeName(oldName) !== normalizedCatalogNodeName(nextName)) {
-                  catalogNodeTombstone(item, oldName, { at: rawItem.updatedAt, by: req.authUser?.name });
-                }
-              });
-            }
-            item.nodes = requestedNodes;
+            // A full-state phone sync is never allowed to alter an existing
+            // node list. Structural edits use dedicated, audited endpoints so
+            // an old or partially loaded device cannot delete or rename nodes.
+            if (!currentNodes.length && requestedNodes.length) item.nodes = requestedNodes;
+            else item.nodes = currentNodes;
             ensureCatalogNodeQrTokens(item);
           }
           if (rawItem.reminders && typeof rawItem.reminders === "object") {

@@ -11,6 +11,7 @@ function createHarness(database = {}, options = {}) {
   const handler = createAdminEquipmentMaintenanceRoute({
     broadcastState: (...args) => { broadcasts.push(args); return "state-v4"; },
     builtInEquipmentIds: options.builtInEquipmentIds || new Set(),
+    canEditCatalogItem: options.canEditCatalogItem || (user => user?.role === "editor"),
     catalogNodeTombstone: (item, node, meta) => { (item.deletedNodes ||= []).push({ node, ...meta }); },
     enqueueStateWrite: async task => task(),
     normalizedAdminConfig: () => ({ trashRetentionDays: 30 }),
@@ -105,6 +106,28 @@ test("node deletion archives its checks and shifts every current linked index", 
   assert.equal(database.qrWalkJournal[0].archivedNode, true);
   assert.equal(audits[0].action, "equipment_node_deleted");
   assert.equal(responses[0].status, 200);
+});
+
+test("node rename is audited and preserves QR identity and neighboring nodes", async () => {
+  const database = { catalog: { equipment: { 6: { nodes: ["Редуктор", "Двигатель"], qrTokens: { 0: "qr-a", 1: "qr-b" } } } } };
+  const { handler, responses, audits, broadcasts } = createHarness(database);
+  await handler({ method: "POST", authUser: { role: "editor", name: "Админ" }, body: { equipmentId: 6, nodeIndex: 0, node: "Редуктор главный" } }, {}, "/api/admin/equipment/node-rename");
+  assert.equal(responses[0].status, 200);
+  assert.deepEqual(database.catalog.equipment[6].nodes, ["Редуктор главный", "Двигатель"]);
+  assert.deepEqual(database.catalog.equipment[6].qrTokens, { 0: "qr-a", 1: "qr-b" });
+  assert.equal(audits[0].action, "equipment_node_renamed");
+  assert.deepEqual(broadcasts[0].slice(0, 2), ["equipment-node-renamed", ""]);
+});
+
+test("node rename validates duplicates and permissions without changing the catalog", async () => {
+  const database = { catalog: { equipment: { 6: { nodes: ["Редуктор", "Двигатель"] } } } };
+  const { handler, responses, audits } = createHarness(database);
+  await handler({ method: "POST", authUser: { role: "viewer" }, body: { equipmentId: 6, nodeIndex: 0, node: "Новый" } }, {}, "/api/admin/equipment/node-rename");
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 6, nodeIndex: 0, node: "Двигатель" } }, {}, "/api/admin/equipment/node-rename");
+  assert.equal(responses[0].status, 403);
+  assert.equal(responses[1].status, 409);
+  assert.deepEqual(database.catalog.equipment[6].nodes, ["Редуктор", "Двигатель"]);
+  assert.deepEqual(audits, []);
 });
 
 test("protected mandatory nodes cannot be deleted", async () => {

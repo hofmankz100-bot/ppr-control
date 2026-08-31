@@ -644,9 +644,9 @@ test("node editing permission is selective per equipment and admin keeps full ac
   assert.equal(response.status, 200);
   const after = await (await fetch(`${baseUrl}/api/state`)).json();
   assert.equal(after.catalog.equipment["1"].name, "Changed press");
-  assert.deepEqual(after.catalog.equipment["1"].nodes, ["Changed node"]);
+  assert.deepEqual(after.catalog.equipment["1"].nodes, before.catalog.equipment["1"].nodes);
   assert.equal(after.catalog.equipment["2"].name, "Changed press 2");
-  assert.deepEqual(after.catalog.equipment["2"].nodes, ["Changed node 2"]);
+  assert.deepEqual(after.catalog.equipment["2"].nodes, before.catalog.equipment["2"].nodes);
 });
 
 test("deleted and renamed equipment nodes cannot return from stale clients", () => {
@@ -657,6 +657,10 @@ test("deleted and renamed equipment nodes cannot return from stale clients", () 
   assert.match(serverSource, /function repairCatalogNodeHistory\(db\)/);
   assert.match(serverSource, /entry\?\.action !== "equipment_node_deleted"/);
   assert.match(equipmentRoute, /catalogNodeTombstone\(catalogItem, nodes\[nodeIndex\]/);
+  assert.match(equipmentRoute, /pathname === "\/api\/admin\/equipment\/node-rename"/);
+  assert.match(source, /\/api\/admin\/equipment\/node-rename/);
+  assert.match(serverSource, /full-state phone sync is never allowed to alter an existing/);
+  assert.match(serverSource, /if \(!currentNodes\.length && requestedNodes\.length\) item\.nodes = requestedNodes/);
   assert.match(serverSource, /incomingUpdatedAt < currentUpdatedAt/);
   assert.match(serverSource, /removed\.has\(normalizedCatalogNodeName\(value\)\)/);
 });
@@ -783,7 +787,8 @@ test("new catalog nodes are registered atomically with a permanent QR identity",
   assert.match(server, /broadcastState\("equipment-node-added"/);
   assert.match(client, /function syncOpenEquipmentLabels\(equipmentId, name, area, nodeIndex = null, nodeName = ""\)/);
   assert.match(client, /syncOpenEquipmentLabels\(equipmentId, nextName, nextArea\)/);
-  assert.match(client, /syncOpenEquipmentLabels\(equipmentId, eq\.name, eq\.area, nodeIndex, nextName\)/);
+  assert.match(client, /\/api\/admin\/equipment\/node-rename/);
+  assert.match(server, /\(db\.downtimes \|\| \[\]\)\.forEach\(updateOpenLabel\)/);
 });
 
 test("admin can create complete equipment cards from the main screen", () => {
@@ -836,11 +841,12 @@ test("admin can temporarily pause equipment or one node without creating PPR ove
 test("maintenance work can be auto-filled from renamed equipment and node names, then edited", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const equipmentRoute = fs.readFileSync(path.join(__dirname, "..", "server", "admin-equipment-maintenance-route.js"), "utf8");
   assert.match(source, /function nodeReminderItems\(nodeName, equipmentName = ""\)/);
   assert.match(source, /data-autofill-reminder/);
   assert.match(source, /После автозаполнения его можно редактировать/);
   assert.match(source, /meta\?\.mode === "auto"\) meta\.stale = true/);
-  assert.match(source, /item\.reminderMeta\[nodeIndex\]\.stale = true/);
+  assert.match(equipmentRoute, /catalogItem\.reminderMeta\[nodeIndex\]\.stale = true/);
   assert.match(source, /Заменить текущий список типовыми работами/);
   assert.match(server, /rawItem\.reminderMeta/);
   assert.match(server, /rawItem\.operationalPauses/);
