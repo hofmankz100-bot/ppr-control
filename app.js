@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v749-completed-walk-checkmark-1";
+const APP_VERSION = "v750-completed-walk-checkmark-only-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -9930,7 +9930,7 @@ function renderEquipment() {
         const baseClass = operationalPause ? "operational-paused-day" : summary.complete ? "completed-day" : "to";
           td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.innerHTML = operationalPause ? "Пауза" : `${summary.complete ? "✓ " : ""}${summary.done}/${summary.total}`;
+        td.innerHTML = operationalPause ? "Пауза" : summary.complete ? "✓" : `${summary.done}/${summary.total}`;
         const pausedHint = summary.pausedTotal ? ` · на паузе ${summary.pausedTotal}` : "";
         td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий${pausedHint}` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}${pausedHint}`;
         td.addEventListener("click", () => {
