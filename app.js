@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v732-annual-repeat-wording-1";
+const APP_VERSION = "v733-annual-repeat-per-year-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -11501,21 +11501,28 @@ function annualPprEquipmentRows(year) {
       const month = index + 1;
       return [month, annualPprSheetsForEquipmentMonth(year, item.eq.id, month)];
     }));
-    const nodeFrequency = new Map();
-    Object.values(sheetsByMonth).flat().forEach(sheet => sheet.nodes.forEach(node => {
-      const key = String(node).trim().toLocaleLowerCase("ru");
-      nodeFrequency.set(key, (nodeFrequency.get(key) || 0) + 1);
-    }));
+    const nodeMonths = new Map();
+    Object.entries(sheetsByMonth).forEach(([month, sheets]) => {
+      const monthNodes = new Map();
+      sheets.flatMap(sheet => sheet.nodes).forEach(node => monthNodes.set(String(node).trim().toLocaleLowerCase("ru"), node));
+      monthNodes.forEach((node, key) => {
+        if (!nodeMonths.has(key)) nodeMonths.set(key, { node, months: new Set() });
+        nodeMonths.get(key).months.add(Number(month));
+      });
+    });
     const months = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
       const month = index + 1;
       const sheets = sheetsByMonth[month];
       sheets.forEach(sheet => {
-        sheet.repeatedNodes = sheet.nodes.filter(node => nodeFrequency.get(String(node).trim().toLocaleLowerCase("ru")) > 1);
-        sheet.repeatedNodeCounts = sheet.repeatedNodes.map(node => ({ node, count: nodeFrequency.get(String(node).trim().toLocaleLowerCase("ru")) }));
+        sheet.repeatedNodes = sheet.nodes.filter(node => nodeMonths.get(String(node).trim().toLocaleLowerCase("ru"))?.months.size > 1);
+        sheet.repeatedNodeCounts = sheet.repeatedNodes.map(node => {
+          const months = [...nodeMonths.get(String(node).trim().toLocaleLowerCase("ru")).months].sort((left, right) => left - right);
+          return { node, count: months.length, months };
+        });
       });
       const done = sheets.filter(sheet => sheet.complete).length;
-      const repeats = sheets.reduce((sum, sheet) => sum + sheet.repeatedNodes.length, 0);
       const repeatedNodeCounts = [...new Map(sheets.flatMap(sheet => sheet.repeatedNodeCounts).map(entry => [String(entry.node).trim().toLocaleLowerCase("ru"), entry])).values()];
+      const repeats = repeatedNodeCounts.length;
       return [month, { sheets, done, total: sheets.length, repeats, repeatedNodeCounts }];
     }));
     return { ...item, months };
@@ -11535,6 +11542,11 @@ function annualPprTimesWord(count) {
   const value = Math.abs(Number(count) || 0) % 100;
   const last = value % 10;
   return last >= 2 && last <= 4 && !(value > 10 && value < 20) ? "раза" : "раз";
+}
+
+function annualPprMonthNames(months = []) {
+  const names = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+  return months.map(month => names[Number(month) - 1]).filter(Boolean).join(", ");
 }
 
 function annualPprSheetsForEquipmentMonth(year, equipmentId, month) {
@@ -11570,9 +11582,9 @@ function openAnnualPprEquipmentMonth(year, equipmentId, month) {
   overlay.className = "annual-ppr-work-overlay";
   const render = () => {
     const progress = equipmentRow.months[month];
-    overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>Листы ППР · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · выполнено ${progress.done} из ${progress.total}${progress.repeats ? ` · повторов по графику ${progress.repeats}` : ""}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${progress.sheets.length ? progress.sheets.map(item => {
+    overlay.innerHTML = `<section class="annual-ppr-work-dialog annual-ppr-node-progress-dialog"><header><div><strong>Листы ППР · ${escapeHtml(equipmentRow.eq.name)}</strong><span>${String(month).padStart(2, "0")}.${year} · выполнено ${progress.done} из ${progress.total}${progress.repeats ? ` · повторяющихся узлов ${progress.repeats}` : ""}</span></div><button type="button" data-progress-back>← Назад</button></header><div class="annual-ppr-node-progress-list">${progress.sheets.length ? progress.sheets.map(item => {
       const repeated = item.repeatedNodes.length > 0;
-      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяющихся узлов в листе: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">${item.repeatedNodeCounts.map(entry => `${escapeHtml(entry.node)} — в годовом графике ${entry.count} ${annualPprTimesWord(entry.count)}`).join("; ")}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
+      return `<article class="${item.complete ? "done" : "pending"}${repeated ? " repeated" : ""}"><div><strong>${item.complete ? "✓" : item.awaitingApproval ? "!" : "○"} Лист ППР · ${escapeHtml(dateHuman(item.date))}${repeated ? `<em class="annual-ppr-repeat-label">Повторяющихся узлов в листе: ${item.repeatedNodes.length}</em>` : ""}</strong><span>Узлы: ${escapeHtml(item.nodes.join(", ") || "по графику")}</span>${repeated ? `<span class="annual-ppr-repeated-nodes">${item.repeatedNodeCounts.map(entry => `${escapeHtml(entry.node)} — ${escapeHtml(annualPprMonthNames(entry.months))} · ${entry.count} ${annualPprTimesWord(entry.count)} за год`).join("; ")}</span>` : ""}<small>${item.complete ? `Выполнен · принял ${escapeHtml(item.sheet.approvedByName || "инженер")}` : item.awaitingApproval ? "Работы выполнены · ожидает приёмки инженером" : item.partial ? "Заполняется" : "Запланирован"}</small></div><button type="button" data-open-annual-sheet="${escapeHtml(item.date)}">Открыть лист ППР</button></article>`;
     }).join("") : `<div class="empty-state">Для этого оборудования листы ППР в выбранном месяце не запланированы.</div>`}</div></section>`;
     overlay.querySelector("[data-progress-back]")?.addEventListener("click", () => overlay.remove());
     overlay.querySelectorAll("[data-open-annual-sheet]").forEach(button => button.addEventListener("click", () => {
@@ -11599,7 +11611,7 @@ function annualPprTableHtml(year) {
     <tbody>${rows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
       const month = monthIndex + 1;
       const progress = row.months[month];
-      const repeatBadges = progress.repeatedNodeCounts.slice(0, 2).map(entry => `<span class="annual-ppr-repeat-badge" title="${escapeHtml(entry.node)} — в годовом графике ${entry.count} ${annualPprTimesWord(entry.count)}">↻ ${entry.count}×</span>`).join("");
+      const repeatBadges = progress.repeatedNodeCounts.slice(0, 2).map(entry => `<span class="annual-ppr-repeat-badge" title="${escapeHtml(entry.node)} — ${escapeHtml(annualPprMonthNames(entry.months))} · ${entry.count} ${annualPprTimesWord(entry.count)} за год">↻ ${entry.count}/год</span>`).join("");
       const remainingRepeats = Math.max(0, progress.repeatedNodeCounts.length - 2);
       return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть листы ППР"><strong>${progress.done} / ${progress.total}</strong><small>листов ППР</small>${repeatBadges}${remainingRepeats ? `<span class="annual-ppr-repeat-more">+${remainingRepeats}</span>` : ""}</td>`;
     }).join("")}</tr>`).join("")}</tbody>

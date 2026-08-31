@@ -2151,19 +2151,21 @@ test("saved PPR templates repair known replacement-character damage", () => {
   assert.match(serverSource, /item\.reminders\[nodeIndex\] = lines\.map/);
 });
 
-test("annual PPR marks repeated accepted sheets separately", () => {
+test("annual PPR marks nodes scheduled in multiple months", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(clientSource, /const nodeFrequency = new Map\(\)/);
+  assert.match(clientSource, /const nodeMonths = new Map\(\)/);
   assert.match(clientSource, /sheet\.repeatedNodes = sheet\.nodes\.filter/);
   assert.match(clientSource, /sheet\.repeatedNodeCounts = sheet\.repeatedNodes\.map/);
-  assert.match(clientSource, /nodeFrequency\.get\(String\(node\)[\s\S]*> 1/);
+  assert.match(clientSource, /nodeMonths\.get\(String\(node\)[\s\S]*months\.size > 1/);
   assert.match(clientSource, /annual-ppr-repeat-badge/);
   assert.match(clientSource, /annual-ppr-repeat-label/);
-  assert.match(clientSource, /↻ \$\{entry\.count\}×/);
+  assert.match(clientSource, /↻ \$\{entry\.count\}\/год/);
   assert.match(clientSource, /function annualPprTimesWord\(count\)/);
+  assert.match(clientSource, /function annualPprMonthNames\(months = \[\]\)/);
   assert.match(clientSource, /Повторяющихся узлов в листе:/);
-  assert.match(clientSource, /в годовом графике \$\{entry\.count\} \$\{annualPprTimesWord\(entry\.count\)\}/);
+  assert.match(clientSource, /annualPprMonthNames\(entry\.months\)/);
+  assert.match(clientSource, /\$\{entry\.count\} \$\{annualPprTimesWord\(entry\.count\)\} за год/);
   assert.match(clientSource, /Одинаково выделяются все совпавшие появления, включая первое/);
   assert.match(styles, /\.annual-ppr-repeat-badge/);
   assert.match(styles, /article\.repeated/);
