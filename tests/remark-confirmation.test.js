@@ -1896,7 +1896,10 @@ test("forklift drivers, welders and turners never participate in the employee ra
 
 test("annual PPR can be downloaded or shared as an A4 landscape PDF", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const serverSource = [
+    fs.readFileSync(path.join(root, "server.js"), "utf8"),
+    fs.readFileSync(path.join(root, "server", "static-files.js"), "utf8")
+  ].join("\n");
   assert.match(appSource, /async function shareAnnualPprPdf\(/);
   assert.match(appSource, /format: "a4", orientation: "landscape"/);
   assert.match(appSource, /Math\.ceil\(rowPairs\.length \/ 9\)/);
