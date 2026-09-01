@@ -257,7 +257,7 @@ test("service worker caches the current permit assets", () => {
   assert.ok(appVersion && serviceWorker.includes(`ppr-${appVersion}`));
   assert.doesNotMatch(serviceWorker, /html2canvas\.min\.js|jspdf\.umd\.min\.js|html2pdf\.bundle\.min\.js|mammoth\.browser\.min\.js/);
   assert.doesNotMatch(serviceWorker, /modules\/work-permit\.js/);
-  assert.ok(serviceWorker.includes(`styles.css?v=${appVersion}`));
-  assert.ok(serviceWorker.includes(`app.js?v=${appVersion}`));
+  assert.ok(serviceWorker.includes(`styles.min.css?v=${appVersion}`));
+  assert.ok(serviceWorker.includes(`app.min.js?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`node_modules/jsqr/dist/jsQR.js?v=${appVersion}`));
 });

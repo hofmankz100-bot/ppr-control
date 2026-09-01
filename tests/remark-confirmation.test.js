@@ -942,9 +942,9 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
   assert.match(styles, /\.worker-rating-ledger-modal/);
   assert.match(styles, /max-height: 94dvh/);
   const deployedVersion = client.match(/const APP_VERSION = "([^"]+)"/)?.[1] || "";
-  assert.ok(deployedVersion && html.includes(`app.js?v=${deployedVersion}`));
-  assert.ok(html.includes(`styles.css?v=${deployedVersion}`));
-  assert.ok(serviceWorker.includes(`app.js?v=${deployedVersion}`));
+  assert.ok(deployedVersion && html.includes(`app.min.js?v=${deployedVersion}`));
+  assert.ok(html.includes(`styles.min.css?v=${deployedVersion}`));
+  assert.ok(serviceWorker.includes(`app.min.js?v=${deployedVersion}`));
 });
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {

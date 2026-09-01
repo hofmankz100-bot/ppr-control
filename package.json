@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "esbuild app.js --minify --outfile=app.min.js && esbuild styles.css --minify --loader:.css=css --outfile=styles.min.css",
+    "build": "esbuild app.js --minify --charset=utf8 --outfile=app.min.js && esbuild styles.css --minify --charset=utf8 --loader:.css=css --outfile=styles.min.css",
     "check": "npm run build && npm test",
     "dev": "node server.js",
     "start": "node server.js",
