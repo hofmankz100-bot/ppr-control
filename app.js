@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v761-lazy-document-libraries-1";
+const APP_VERSION = "v762-lazy-work-permit-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -103,6 +103,7 @@ function loadOptionalScript(pathname, ready) {
 }
 
 async function ensurePprOptionalLibrary(name) {
+  if (name === "work-permit") return loadOptionalScript("/modules/work-permit.js", () => Boolean(window.PprWorkPermit?.activate));
   if (name === "mammoth") return loadOptionalScript("/node_modules/mammoth/mammoth.browser.min.js", () => Boolean(window.mammoth?.extractRawText));
   if (name === "html2pdf") return loadOptionalScript("/node_modules/html2pdf.js/dist/html2pdf.bundle.min.js", () => typeof window.html2pdf === "function");
   if (name === "annual-pdf") {
@@ -16078,9 +16079,19 @@ ui.engineerReportPrint?.addEventListener("click", () => {
 ui.alertCounter?.addEventListener("click", openAllRemarkCards);
 ui.ordersButton?.addEventListener("click", () => show("orders"));
 
-ui.workPermitButton?.addEventListener("click", () => {
-  show("workPermit");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+ui.workPermitButton?.addEventListener("click", async event => {
+  const button = event.currentTarget;
+  setButtonBusy(button, true, "Открываем наряд-допуск...");
+  try {
+    await ensurePprOptionalLibrary("work-permit");
+    show("workPermit");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) {
+    console.error("Work permit module failed to load", error);
+    showAppToast("Не удалось открыть наряд-допуск. Проверьте интернет и повторите.", "error");
+  } finally {
+    if (button?.isConnected) setButtonBusy(button, false);
+  }
 });
 
 ui.prevMonth.addEventListener("click", () => {

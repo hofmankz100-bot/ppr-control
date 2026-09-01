@@ -8022,10 +8022,13 @@
     saveDraft(false);
   }
 
-  initialize();
+  const initializationPromise = initialize();
 
   window.PprWorkPermit = {
-    activate,
+    activate: async () => {
+      await initializationPromise;
+      return activate();
+    },
     print: printPermit,
     complete: completePermit,
     clear: clearForm,

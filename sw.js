@@ -1,16 +1,15 @@
-const CACHE_NAME = "ppr-v761-lazy-document-libraries-1";
+const CACHE_NAME = "ppr-v762-lazy-work-permit-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=v761-lazy-document-libraries-1",
+  "./styles.css?v=v762-lazy-work-permit-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./modules/work-permit.js?v=658-cleanup",
-  "./app.js?v=v761-lazy-document-libraries-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v761-lazy-document-libraries-1",
+  "./app.js?v=v762-lazy-work-permit-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v762-lazy-work-permit-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

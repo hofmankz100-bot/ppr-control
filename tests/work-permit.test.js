@@ -20,9 +20,12 @@ test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(app, /if \(name === "mammoth"\) return loadOptionalScript\("\/node_modules\/mammoth\/mammoth\.browser\.min\.js"/);
   assert.match(app, /if \(name === "html2pdf"\) return loadOptionalScript\("\/node_modules\/html2pdf\.js\/dist\/html2pdf\.bundle\.min\.js"/);
   assert.match(app, /if \(name === "annual-pdf"\)[\s\S]*?html2canvas\.min\.js[\s\S]*?jspdf\.umd\.min\.js/);
-  assert.match(html, /modules\/work-permit\.js\?v=658-cleanup/);
+  assert.doesNotMatch(html, /modules\/work-permit\.js/);
+  assert.match(app, /if \(name === "work-permit"\) return loadOptionalScript\("\/modules\/work-permit\.js"/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
+  assert.match(app, /await ensurePprOptionalLibrary\("work-permit"\)[\s\S]*?show\("workPermit"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
+  assert.match(permit, /const initializationPromise = initialize\(\)/);
 });
 
 test("all permit sections stay visible while optional rows remain dynamic", () => {
@@ -253,7 +256,7 @@ test("permit completion fields are optional and official output is compact A4", 
 test("service worker caches the current permit assets", () => {
   assert.ok(appVersion && serviceWorker.includes(`ppr-${appVersion}`));
   assert.doesNotMatch(serviceWorker, /html2canvas\.min\.js|jspdf\.umd\.min\.js|html2pdf\.bundle\.min\.js|mammoth\.browser\.min\.js/);
-  assert.match(serviceWorker, /modules\/work-permit\.js\?v=658-cleanup/);
+  assert.doesNotMatch(serviceWorker, /modules\/work-permit\.js/);
   assert.ok(serviceWorker.includes(`styles.css?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`app.js?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`node_modules/jsqr/dist/jsQR.js?v=${appVersion}`));
