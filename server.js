@@ -59,7 +59,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v764-print-assets-module-1";
+const SERVER_VERSION = "v765-critical-error-observability-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1210,6 +1210,14 @@ function appendActionLog(action) {
 }
 
 const runtimeMonitor = { requests: 0, errors5xx: 0, slowRequests: 0, clientErrors: [] };
+const serverDiagnosticLastAt = new Map();
+
+function warnServerDiagnostic(scope, error, throttleMs = 60000) {
+  const now = Date.now();
+  if (now - Number(serverDiagnosticLastAt.get(scope) || 0) < throttleMs) return;
+  serverDiagnosticLastAt.set(scope, now);
+  console.warn(`[${scope}] ${error?.stack || error?.message || error || "Unknown server error"}`);
+}
 
 const DEFAULT_ADMIN_CONFIG = Object.freeze({
   companyName: "ТОО «Aluminium of Kazakhstan»",
@@ -1407,10 +1415,16 @@ async function systemMonitoringSnapshot() {
   const snapshot = {
     checkedAt,
     node: { online: true, uptimeSeconds: Math.round(process.uptime()), memoryMb, memoryLimitMb },
-    api: { requests: runtimeMonitor.requests, errors5xx: runtimeMonitor.errors5xx, slowRequests: runtimeMonitor.slowRequests, clientErrors10m: runtimeMonitor.clientErrors.filter(at => Date.now() - new Date(at).getTime() < 600000).length },
+    api: {
+      requests: runtimeMonitor.requests,
+      errors5xx: runtimeMonitor.errors5xx,
+      slowRequests: runtimeMonitor.slowRequests,
+      clientErrors10m: runtimeMonitor.clientErrors.filter(item => Date.now() - new Date(item.at || item).getTime() < 600000).length,
+      recentClientErrors: runtimeMonitor.clientErrors.slice(-10).reverse().map(item => typeof item === "string" ? { at: item } : item)
+    },
     postgres: { connected: false, mode: storageStatus.mode || "json", sizeBytes: 0, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: 0, activeConnections: 0, lastBackupAt: latestLocalBackupAt(), lastWriteAt: storageStatus.lastWriteAt || "", error: storageStatus.error || "" }
   };
-  runtimeMonitor.clientErrors = runtimeMonitor.clientErrors.filter(at => Date.now() - new Date(at).getTime() < 86400000);
+  runtimeMonitor.clientErrors = runtimeMonitor.clientErrors.filter(item => Date.now() - new Date(item.at || item).getTime() < 86400000);
   if (!postgresPool) return snapshot;
   try {
     const result = await postgresPool.query(`SELECT now() AS now, pg_database_size(current_database()) AS size,
@@ -5288,7 +5302,14 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/client-error" && req.method === "POST") {
     const body = await readBody(req).catch(() => ({}));
-    runtimeMonitor.clientErrors.push(new Date().toISOString());
+    const clientError = {
+      at: new Date().toISOString(),
+      scope: String(body.source || "").slice(0, 120),
+      message: String(body.message || "").slice(0, 500),
+      userName: String(req.authUser?.name || "").slice(0, 120),
+      appVersion: String(body.appVersion || "").slice(0, 100)
+    };
+    runtimeMonitor.clientErrors.push(clientError);
     appendActionLog({
       action: "client_error",
       user: { id: req.authUser?.id || "", name: req.authUser?.name || "", role: req.authUser?.role || "" },
@@ -7599,7 +7620,9 @@ if (WebSocketServer) {
       try {
         const msg = JSON.parse(String(raw || "{}"));
         if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-      } catch {}
+      } catch (error) {
+        warnServerDiagnostic("websocket.message", error);
+      }
     });
   });
   const qrWss = new WebSocketServer({
@@ -7616,7 +7639,9 @@ if (WebSocketServer) {
       try {
         const msg = JSON.parse(String(raw || "{}"));
         if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-      } catch {}
+      } catch (error) {
+        warnServerDiagnostic("qr-websocket.message", error);
+      }
     });
   });
   if (httpsServer) {
@@ -7638,7 +7663,9 @@ if (WebSocketServer) {
         try {
           const msg = JSON.parse(String(raw || "{}"));
           if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-        } catch {}
+        } catch (error) {
+          warnServerDiagnostic("https-websocket.message", error);
+        }
       });
     });
   }
@@ -7648,11 +7675,11 @@ const heartbeatTimer = setInterval(() => {
   for (const wsServer of wsServers) {
     for (const ws of wsServer.clients) {
       if (ws.isAlive === false) {
-        try { ws.terminate(); } catch {}
+        try { ws.terminate(); } catch (error) { warnServerDiagnostic("websocket.terminate", error); }
         continue;
       }
       ws.isAlive = false;
-      try { ws.ping(); } catch {}
+      try { ws.ping(); } catch (error) { warnServerDiagnostic("websocket.ping", error); }
     }
   }
   for (const client of sseClients) {
@@ -7677,7 +7704,9 @@ async function shutdown() {
     flushLocalBackup();
     await flushPostgresWrites();
     if (postgresPool) await postgresPool.end();
-  } catch {}
+  } catch (error) {
+    warnServerDiagnostic("server.shutdown", error, 0);
+  }
   server.close(() => process.exit(0));
   qrServer.close(() => {});
   if (httpsServer) httpsServer.close(() => {});

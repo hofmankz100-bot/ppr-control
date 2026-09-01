@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v764-print-assets-module-1";
+const APP_VERSION = "v765-critical-error-observability-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -843,7 +843,9 @@ function persistStateLocally(snapshot = state) {
         operationalResetAt: lightweight.operationalResetAt || "",
         walkShiftCleanupVersion: lightweight.walkShiftCleanupVersion || ""
       }));
-    } catch {}
+    } catch (fallbackError) {
+      reportCaughtClientError("storage.local-fallback", fallbackError, 300000);
+    }
     console.warn("Local fallback state was reduced because browser storage is full", error);
     return false;
   }
@@ -867,7 +869,7 @@ function scheduleDeviceStatePersist(snapshot = state) {
     devicePersistTimer = null;
     const nextSnapshot = pendingDeviceSnapshot;
     pendingDeviceSnapshot = null;
-    persistStateToDevice(nextSnapshot).catch(error => console.warn("Device database save failed", error));
+    persistStateToDevice(nextSnapshot).catch(error => reportCaughtClientError("indexeddb.write", error, 60000));
   }, 180);
 }
 
@@ -921,7 +923,8 @@ async function loadStateFromDevice() {
     });
     db.close();
     return cached;
-  } catch {
+  } catch (error) {
+    reportCaughtClientError("indexeddb.read", error, 60000);
     return null;
   }
 }
@@ -939,7 +942,9 @@ async function refreshStaleAssetCache() {
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map(registration => registration.update()));
     }
-  } catch {}
+  } catch (error) {
+    reportCaughtClientError("service-worker.refresh", error, 300000);
+  }
 }
 
 function saveState(options = {}) {
@@ -1002,7 +1007,9 @@ function applyAppIconBadge(count) {
     } else if (typeof navigator.clearAppBadge === "function") {
       navigator.clearAppBadge().catch(() => {});
     }
-  } catch {}
+  } catch (error) {
+    console.debug("App badge update is unavailable", error);
+  }
 }
 
 function appNotificationPermissionButton() {
@@ -1296,7 +1303,9 @@ async function showBackgroundSystemNotification(added, total) {
       vibrate: [180, 80, 220],
       data: { url: "/" }
     });
-  } catch {}
+  } catch (error) {
+    console.debug("Background notification is unavailable", error);
+  }
 }
 
 function resetAppNotificationsForOpen() {
@@ -1553,7 +1562,9 @@ async function checkRequiredClientVersion() {
   try {
     const health = await apiJson("/api/health", { timeout: 8000 });
     if (health?.version && health.version !== APP_VERSION) showRequiredClientUpdate(health.version);
-  } catch {}
+  } catch (error) {
+    reportCaughtClientError("client-version.check", error, 300000);
+  }
 }
 
 function attendanceRole() {
@@ -2329,7 +2340,9 @@ function handleRealtimeMessage(data) {
     }
     if (msg.stateVersion) setRealtimeStateVersion(msg.stateVersion);
     scheduleRender();
-  } catch {}
+  } catch (error) {
+    reportCaughtClientError("realtime.message", error, 60000);
+  }
 }
 
 async function syncRemoteChanges(expectedVersion = "") {
@@ -2459,7 +2472,12 @@ function startRealtimePoll() {
     pollRealtimeStateVersion();
     if (eventsAlive || socketAlive) {
       if (socketAlive && Date.now() - lastRealtimeMessageAt > 20000) {
-        try { realtimeSocket.send(JSON.stringify({ type: "ping" })); } catch {}
+        try {
+          realtimeSocket.send(JSON.stringify({ type: "ping" }));
+        } catch (error) {
+          reportCaughtClientError("realtime.ping", error, 60000);
+          try { realtimeSocket.close(); } catch (closeError) { console.debug("Realtime socket close failed", closeError); }
+        }
       }
       return;
     }
@@ -2735,6 +2753,7 @@ async function saveRemoteState() {
       showAppToast("Период записей был обновлён. Данные синхронизированы — повторите последнее действие.", "error");
     } else {
       // If the backend is unavailable, local work remains saved and will be resent.
+      reportCaughtClientError("sync.state-save", error, 60000);
       scheduleRemoteRetry();
     }
   } finally {
@@ -5046,7 +5065,9 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
         script.addEventListener("error", reject, { once: true });
         document.head.append(script);
       });
-    } catch {}
+    } catch (error) {
+      reportCaughtClientError("qr.decoder.load", error, 60000);
+    }
     return typeof window.jsQR === "function";
   };
 
@@ -5137,7 +5158,8 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
                 }
                 if (messageEl) messageEl.textContent = statusEl?.textContent || "Этот QR не подходит. Наведите камеру на нужный код.";
               }
-            } catch {
+            } catch (error) {
+              reportCaughtClientError("qr.camera-frame", error, 60000);
             } finally {
               scanning = false;
             }
@@ -5151,6 +5173,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       video.hidden = true;
       video.srcObject = null;
       activeVideoTrack = null;
+      reportCaughtClientError("qr.camera-start", cameraError, 60000);
       if (messageEl) messageEl.textContent = ["NotAllowedError", "SecurityError"].includes(cameraError?.name)
         ? "Нет доступа к камере. Разрешите камеру для ППР Контроль в настройках браузера или приложения и повторите."
         : "Камера не запустилась. Закройте другие приложения, использующие камеру, и нажмите «Перезапустить сканер».";
@@ -5236,7 +5259,9 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
           const value = await detectQrWithJsQr(bitmap, size);
           if (value) return value;
         }
-      } catch {}
+      } catch (error) {
+        reportCaughtClientError("qr.photo-bitmap", error, 60000);
+      }
     }
     const img = await loadImageFromFile(file);
     const nativeValue = await detectQrWithNativeDetector(img);
@@ -5286,7 +5311,8 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
           return;
         }
         finish(applyScannedValue(value));
-      } catch {
+      } catch (error) {
+        reportCaughtClientError("qr.photo-read", error, 60000);
         if (messageEl) messageEl.textContent = "Фото не удалось прочитать. Попробуйте ближе или откройте QR обычной камерой.";
         finish(false);
       }
@@ -16195,6 +16221,17 @@ function reportClientError(message, source = "", line = 0, column = 0) {
       appVersion: APP_VERSION
     })
   }).catch(() => {});
+}
+
+function reportCaughtClientError(scope, error, throttleMs = 60000) {
+  const normalizedScope = String(scope || "client.caught-error").slice(0, 120);
+  const cache = reportCaughtClientError.lastReportedAt ||= new Map();
+  const now = Date.now();
+  if (now - Number(cache.get(normalizedScope) || 0) < throttleMs) return;
+  cache.set(normalizedScope, now);
+  const detail = String(error?.message || error || "Unknown caught error").slice(0, 700);
+  console.warn(`[${normalizedScope}] ${detail}`, error);
+  reportClientError(detail, normalizedScope);
 }
 
 function placeSingleAttendanceButton() {
