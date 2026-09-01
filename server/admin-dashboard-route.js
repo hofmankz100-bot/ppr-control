@@ -1,5 +1,16 @@
 "use strict";
 
+function stateSectionSizeSummary(db = {}) {
+  return Object.entries(db)
+    .map(([section, value]) => {
+      let sizeBytes = 0;
+      try { sizeBytes = Buffer.byteLength(JSON.stringify(value)); } catch {}
+      return { section, sizeBytes };
+    })
+    .sort((a, b) => b.sizeBytes - a.sizeBytes)
+    .slice(0, 30);
+}
+
 function createAdminDashboardRoute(dependencies = {}) {
   const {
     adminActivityFeed,
@@ -29,6 +40,7 @@ function createAdminDashboardRoute(dependencies = {}) {
     }
     const db = readDb();
     const requestedTab = String(url.searchParams.get("tab") || "all");
+    const storageBreakdown = ["storage", "report"].includes(requestedTab) ? stateSectionSizeSummary(db) : [];
     const needsBackups = requestedTab === "all" || ["backups", "report", "guide", "storage", "automation"].includes(requestedTab);
     const needsArchives = requestedTab === "all" || ["archives", "guide", "storage"].includes(requestedTab);
     const storageMode = getStorageMode();
@@ -150,6 +162,7 @@ function createAdminDashboardRoute(dependencies = {}) {
       automation: adminAutomationSnapshot(db),
       integrity,
       archivePreview: { days: archivePreview.days, cutoffAt: archivePreview.cutoffAt, counts: archivePreview.counts },
+      storageBreakdown,
       archives,
       postgres,
       backups,
@@ -163,4 +176,4 @@ function createAdminDashboardRoute(dependencies = {}) {
   };
 }
 
-module.exports = { createAdminDashboardRoute };
+module.exports = { createAdminDashboardRoute, stateSectionSizeSummary };

@@ -68,6 +68,20 @@ test("admin dashboard loads only data required by the selected tab", async () =>
   assert.deepEqual(responses[0].payload.systemReport.checks, []);
 });
 
+test("storage tab reports the largest state sections without returning their contents twice", async () => {
+  const database = { adminTrash: [], users: [], adminAlerts: [], adminConfig: {}, checks: { one: "x".repeat(200) }, qrWalkJournal: ["small"] };
+  const { handler, responses } = createHarness(database);
+  await handler(
+    { method: "GET", authUser: { role: "editor" } },
+    {},
+    "/api/admin/maintenance",
+    new URL("https://example.test/api/admin/maintenance?tab=storage")
+  );
+  assert.equal(responses[0].payload.storageBreakdown[0].section, "checks");
+  assert.equal(typeof responses[0].payload.storageBreakdown[0].sizeBytes, "number");
+  assert.equal("value" in responses[0].payload.storageBreakdown[0], false);
+});
+
 test("admin dashboard summarizes broadcast recipients and read receipts", async () => {
   const database = {
     adminTrash: [],
