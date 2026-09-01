@@ -74,7 +74,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v759-qr-pending-reconcile-1";
+const SERVER_VERSION = "v760-automatic-storage-compression-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -974,6 +974,34 @@ async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
   }
 }
 
+async function compressLegacyBackupTables(queryable) {
+  if (!queryable?.query) return 0;
+  await queryable.query(`CREATE TABLE IF NOT EXISTS ppr_state_backups (
+    backup_date date PRIMARY KEY, payload jsonb, payload_gzip bytea,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await queryable.query(`CREATE TABLE IF NOT EXISTS ppr_admin_backups (
+    backup_id text PRIMARY KEY, label text NOT NULL, payload jsonb, payload_gzip bytea,
+    checksum text NOT NULL, created_by text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await queryable.query("ALTER TABLE ppr_state_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
+  await queryable.query("ALTER TABLE ppr_state_backups ALTER COLUMN payload DROP NOT NULL");
+  await queryable.query("ALTER TABLE ppr_admin_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
+  await queryable.query("ALTER TABLE ppr_admin_backups ALTER COLUMN payload DROP NOT NULL");
+  let converted = 0;
+  for (const table of ["ppr_admin_backups", "ppr_state_backups"]) {
+    const idColumn = table === "ppr_admin_backups" ? "backup_id" : "backup_date";
+    const legacy = await queryable.query(`SELECT ${idColumn} AS id, payload FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
+    for (const row of legacy.rows) {
+      const compressed = compressBackupPayload(row.payload);
+      const result = await queryable.query(`UPDATE ${table} SET payload_gzip=$1, payload=NULL WHERE ${idColumn}=$2 AND payload IS NOT NULL`, [compressed, row.id]);
+      converted += Number(result.rowCount || 0);
+    }
+  }
+  return converted;
+}
+
 async function recoverPostgresReplicas() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2) return;
   const sourceIndex = postgresPool.activeIndex;
@@ -989,6 +1017,7 @@ async function recoverPostgresReplicas() {
       target.error = "";
       target.lastSuccessAt = new Date().toISOString();
       if (!wasHealthy) {
+        await compressLegacyBackupTables(target.pool);
         const current = await source.pool.query("SELECT payload,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
         if (current.rows[0]?.payload) {
           await target.pool.query(
@@ -1116,15 +1145,8 @@ async function initializeStorage() {
     `);
     await pool.query("ALTER TABLE ppr_admin_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
     await pool.query("ALTER TABLE ppr_admin_backups ALTER COLUMN payload DROP NOT NULL");
-    // Convert legacy JSONB copies one at a time. Checksums and identifiers stay
-    // unchanged, so restoration remains verifiable while storage becomes small.
-    for (const table of ["ppr_admin_backups", "ppr_state_backups"]) {
-      const legacy = await pool.query(`SELECT ${table === "ppr_admin_backups" ? "backup_id" : "backup_date"} AS id, payload FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
-      for (const row of legacy.rows) {
-        const compressed = compressBackupPayload(row.payload);
-        await pool.query(`UPDATE ${table} SET payload_gzip=$1, payload=NULL WHERE ${table === "ppr_admin_backups" ? "backup_id" : "backup_date"}=$2 AND payload IS NOT NULL`, [compressed, row.id]);
-      }
-    }
+    // Checksums and identifiers stay unchanged while old copies become small.
+    await compressLegacyBackupTables(pool);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_admin_archives (
         archive_id text PRIMARY KEY,
