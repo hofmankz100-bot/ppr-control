@@ -74,7 +74,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v754-compressed-backups-1";
+const SERVER_VERSION = "v755-storage-breakdown-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1426,10 +1426,34 @@ async function systemMonitoringSnapshot() {
   try {
     const result = await postgresPool.query(`SELECT now() AS now, pg_database_size(current_database()) AS size,
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database()) AS connections,
-      (SELECT max(backup_date) FROM ppr_state_backups) AS last_backup`);
+      (SELECT max(backup_date) FROM ppr_state_backups) AS last_backup,
+      pg_total_relation_size('ppr_settings') AS settings_size,
+      pg_total_relation_size('ppr_photos') AS photos_size,
+      pg_total_relation_size('ppr_state_backups') AS state_backups_size,
+      pg_total_relation_size('ppr_admin_backups') AS admin_backups_size,
+      pg_total_relation_size('ppr_admin_archives') AS admin_archives_size`);
     const row = result.rows[0] || {};
     const sizeBytes = Number(row.size || 0);
-    snapshot.postgres = { connected: true, mode: "postgres-cluster", checkedAt: row.now, sizeBytes, sizeLimitBytes: databaseLimitMb * 1024 * 1024, usagePercent: Math.round(sizeBytes / (databaseLimitMb * 1024 * 1024) * 1000) / 10, activeConnections: Number(row.connections || 0), lastBackupAt: row.last_backup || "", lastWriteAt: storageStatus.lastWriteAt || "", error: "", cluster: postgresClusterStatus };
+    snapshot.postgres = {
+      connected: true,
+      mode: "postgres-cluster",
+      checkedAt: row.now,
+      sizeBytes,
+      sizeLimitBytes: databaseLimitMb * 1024 * 1024,
+      usagePercent: Math.round(sizeBytes / (databaseLimitMb * 1024 * 1024) * 1000) / 10,
+      activeConnections: Number(row.connections || 0),
+      lastBackupAt: row.last_backup || "",
+      lastWriteAt: storageStatus.lastWriteAt || "",
+      tableSizes: {
+        state: Number(row.settings_size || 0),
+        photos: Number(row.photos_size || 0),
+        dailyBackups: Number(row.state_backups_size || 0),
+        adminBackups: Number(row.admin_backups_size || 0),
+        adminArchives: Number(row.admin_archives_size || 0)
+      },
+      error: "",
+      cluster: postgresClusterStatus
+    };
   } catch (error) {
     snapshot.postgres = { ...snapshot.postgres, mode: "postgres-degraded", error: String(error.message || error) };
   }
