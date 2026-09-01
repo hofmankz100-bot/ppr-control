@@ -11,8 +11,6 @@ db*.json
 
 # Dependencies and temporary files
 node_modules/
-app.min.js
-styles.min.css
 work/
 *.zip
 *.bak
