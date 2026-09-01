@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v765-critical-error-observability-1";
+const CACHE_NAME = "ppr-v766-admin-error-details-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.min.css?v=v765-critical-error-observability-1",
+  "./styles.min.css?v=v766-admin-error-details-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./modules/print-assets.js?v=v765-critical-error-observability-1",
-  "./app.min.js?v=v765-critical-error-observability-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v765-critical-error-observability-1",
+  "./modules/print-assets.js?v=v766-admin-error-details-1",
+  "./app.min.js?v=v766-admin-error-details-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v766-admin-error-details-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

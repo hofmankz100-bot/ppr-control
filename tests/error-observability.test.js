@@ -37,3 +37,10 @@ test("server monitoring retains bounded diagnostic details for administrators", 
   assert.match(server, /warnServerDiagnostic\("websocket\.message", error\)/);
   assert.match(server, /warnServerDiagnostic\("websocket\.ping", error\)/);
 });
+
+test("administrator monitoring renders recent client error reasons", () => {
+  assert.match(app, /Последние ошибки телефонов и браузеров/);
+  assert.match(app, /monitor\.api\?\.recentClientErrors/);
+  assert.match(app, /item\.scope \|\| "Ошибка браузера"/);
+  assert.match(app, /item\.message \|\| "Причина не передана"/);
+});
