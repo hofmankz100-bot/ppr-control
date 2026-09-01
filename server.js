@@ -74,7 +74,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v757-state-size-audit-1";
+const SERVER_VERSION = "v758-compressed-backup-storage-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1097,10 +1097,13 @@ async function initializeStorage() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_state_backups (
         backup_date date PRIMARY KEY,
-        payload jsonb NOT NULL,
+        payload jsonb,
+        payload_gzip bytea,
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    await pool.query("ALTER TABLE ppr_state_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
+    await pool.query("ALTER TABLE ppr_state_backups ALTER COLUMN payload DROP NOT NULL");
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_admin_backups (
         backup_id text PRIMARY KEY,
@@ -1113,6 +1116,15 @@ async function initializeStorage() {
     `);
     await pool.query("ALTER TABLE ppr_admin_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
     await pool.query("ALTER TABLE ppr_admin_backups ALTER COLUMN payload DROP NOT NULL");
+    // Convert legacy JSONB copies one at a time. Checksums and identifiers stay
+    // unchanged, so restoration remains verifiable while storage becomes small.
+    for (const table of ["ppr_admin_backups", "ppr_state_backups"]) {
+      const legacy = await pool.query(`SELECT ${table === "ppr_admin_backups" ? "backup_id" : "backup_date"} AS id, payload FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
+      for (const row of legacy.rows) {
+        const compressed = compressBackupPayload(row.payload);
+        await pool.query(`UPDATE ${table} SET payload_gzip=$1, payload=NULL WHERE ${table === "ppr_admin_backups" ? "backup_id" : "backup_date"}=$2 AND payload IS NOT NULL`, [compressed, row.id]);
+      }
+    }
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_admin_archives (
         archive_id text PRIMARY KEY,
@@ -2147,10 +2159,10 @@ function schedulePostgresWrite(db) {
         const backupDate = todayStamp();
         if (lastPostgresBackupDate !== backupDate) {
           await postgresPool.query(
-            `INSERT INTO ppr_state_backups(backup_date, payload)
-             VALUES (current_date, $1::jsonb)
+            `INSERT INTO ppr_state_backups(backup_date, payload, payload_gzip)
+             VALUES (current_date, NULL, $1)
              ON CONFLICT(backup_date) DO NOTHING`,
-            [JSON.stringify(latest)]
+            [compressBackupPayload(latest)]
           );
           // Full administrator backups already keep the longer daily/weekly/monthly
           // history. This lightweight recovery table only needs one rolling week;
