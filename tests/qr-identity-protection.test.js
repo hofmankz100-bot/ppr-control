@@ -53,9 +53,7 @@ test("ordinary state synchronization cannot overwrite server QR identity", () =>
 
 test("every catalog node receives a token without replacing an existing token", () => {
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  const helperStart = server.indexOf("function ensureCatalogNodeQrTokens");
-  const helperEnd = server.indexOf("\n}\n", helperStart) + 3;
-  const helper = server.slice(helperStart, helperEnd);
+  const helper = server.match(/function ensureCatalogNodeQrTokens[\s\S]*?\r?\n}\r?\n/)?.[0] || "";
   assert.match(helper, /String\(item\.qrTokens\[index\] \|\| ""\)\.trim\(\)/);
   assert.match(helper, /item\.qrTokens\[index\] = crypto\.randomBytes\(12\)/);
   assert.match(server, /Object\.values\(db\.catalog\?\.equipment \|\| \{\}\)\.forEach\(ensureCatalogNodeQrTokens\)/);

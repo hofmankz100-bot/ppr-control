@@ -15,8 +15,11 @@ const appVersion = app.match(/const APP_VERSION = "([^"]+)"/)?.[1] || "";
 test("work permit is available and loads its mobile PDF dependency", () => {
   assert.match(html, /id="workPermitButton"/);
   assert.match(html, /id="workPermitScreen" class="view work-permit-screen" data-no-translate/);
-  assert.ok(appVersion && html.includes(`html2pdf.bundle.min.js?v=${appVersion}`));
-  assert.ok(html.includes(`mammoth.browser.min.js?v=${appVersion}`));
+  assert.ok(appVersion);
+  assert.doesNotMatch(html, /html2canvas\.min\.js|jspdf\.umd\.min\.js|html2pdf\.bundle\.min\.js|mammoth\.browser\.min\.js/);
+  assert.match(app, /if \(name === "mammoth"\) return loadOptionalScript\("\/node_modules\/mammoth\/mammoth\.browser\.min\.js"/);
+  assert.match(app, /if \(name === "html2pdf"\) return loadOptionalScript\("\/node_modules\/html2pdf\.js\/dist\/html2pdf\.bundle\.min\.js"/);
+  assert.match(app, /if \(name === "annual-pdf"\)[\s\S]*?html2canvas\.min\.js[\s\S]*?jspdf\.umd\.min\.js/);
   assert.match(html, /modules\/work-permit\.js\?v=658-cleanup/);
   assert.match(app, /workPermitButton:\s*document\.querySelector\("#workPermitButton"\)/);
   assert.match(app, /window\.PprWorkPermit\?\.activate\(\)/);
@@ -249,8 +252,7 @@ test("permit completion fields are optional and official output is compact A4", 
 
 test("service worker caches the current permit assets", () => {
   assert.ok(appVersion && serviceWorker.includes(`ppr-${appVersion}`));
-  assert.ok(serviceWorker.includes(`html2pdf.bundle.min.js?v=${appVersion}`));
-  assert.ok(serviceWorker.includes(`mammoth.browser.min.js?v=${appVersion}`));
+  assert.doesNotMatch(serviceWorker, /html2canvas\.min\.js|jspdf\.umd\.min\.js|html2pdf\.bundle\.min\.js|mammoth\.browser\.min\.js/);
   assert.match(serviceWorker, /modules\/work-permit\.js\?v=658-cleanup/);
   assert.ok(serviceWorker.includes(`styles.css?v=${appVersion}`));
   assert.ok(serviceWorker.includes(`app.js?v=${appVersion}`));
