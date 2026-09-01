@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v758-compressed-backup-storage-1";
+const APP_VERSION = "v759-qr-pending-reconcile-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const optionalScriptPromises = new Map();
@@ -4621,10 +4621,22 @@ async function refreshQrWalkStatusFromServer(equipmentId, shiftInfo = currentWal
 function reconcileQrWalkStatusFromServer(equipmentId, shiftInfo, group, serverChecks = {}) {
   const eq = equipmentById(equipmentId);
   if (!eq || !shiftInfo?.date || !shiftInfo?.key || !["technical", "operational"].includes(group)) return false;
+  // An offline QR may still be waiting in the durable phone queue when the
+  // first status request reaches the server. An empty server response is not
+  // evidence that this local mark is invalid; the queued request must win and
+  // will shortly be merged back with the server response.
+  const pendingMarks = pendingQrWalkMarks();
+  const hasPendingMark = nodeIndex => pendingMarks.some(mark => (
+    Number(mark?.equipmentId) === Number(equipmentId)
+    && Number(mark?.nodeIndex) === Number(nodeIndex)
+    && String(mark?.date || "") === String(shiftInfo.date)
+    && String(mark?.shift || "") === String(shiftInfo.key)
+    && String(mark?.group || "technical") === group
+  ));
   let changed = false;
   eq.nodes.forEach((_, nodeIndex) => {
     const recordKey = key(equipmentId, nodeIndex, shiftInfo.date);
-    if (serverChecks[recordKey]) return;
+    if (serverChecks[recordKey] || hasPendingMark(nodeIndex)) return;
     const rec = state.checks?.[recordKey];
     const item = rec?.to;
     if (!item) return;
