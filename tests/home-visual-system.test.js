@@ -68,6 +68,12 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /\.app-title \{[\s\S]*?font-size: 15px/);
 });
 
+test("iPhone header actions stay below the status bar and Dynamic Island", () => {
+  assert.match(styles, /Keep every header action below the iPhone status bar and Dynamic Island/);
+  assert.match(styles, /min-height:calc\(62px \+ env\(safe-area-inset-top\)\)/);
+  assert.match(styles, /padding:calc\(8px \+ env\(safe-area-inset-top\)\)[\s\S]*?env\(safe-area-inset-right\)[\s\S]*?env\(safe-area-inset-left\)/);
+});
+
 test("phone equipment cards use calm surfaces with area accents", () => {
   assert.match(styles, /Phone equipment rows: keep the area color as an accent/);
   assert.match(styles, /border-left: 6px solid var\(--downtime-area-color, var\(--ui-brand\)\)/);
