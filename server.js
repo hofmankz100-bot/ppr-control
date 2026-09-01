@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
+const { compressBackupPayload, decodeBackupPayload } = require("./server/backup-codec");
 const { buildHealthPayload } = require("./server/health");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
@@ -73,7 +74,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v753-reliable-backup-read-1";
+const SERVER_VERSION = "v754-compressed-backups-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -942,10 +943,10 @@ async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
     },
     {
       table: "ppr_admin_backups",
-      select: "SELECT backup_id,label,payload,checksum,created_by,created_at FROM ppr_admin_backups",
-      insert: `INSERT INTO ppr_admin_backups(backup_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)
+      select: "SELECT backup_id,label,payload,payload_gzip,checksum,created_by,created_at FROM ppr_admin_backups",
+      insert: `INSERT INTO ppr_admin_backups(backup_id,label,payload,payload_gzip,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7)
         ON CONFLICT(backup_id) DO NOTHING`,
-      values: row => [row.backup_id, row.label, JSON.stringify(row.payload), row.checksum, row.created_by, row.created_at]
+      values: row => [row.backup_id, row.label, row.payload ? JSON.stringify(row.payload) : null, row.payload_gzip || null, row.checksum, row.created_by, row.created_at]
     },
     {
       table: "ppr_admin_archives",
@@ -1110,6 +1111,8 @@ async function initializeStorage() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    await pool.query("ALTER TABLE ppr_admin_backups ADD COLUMN IF NOT EXISTS payload_gzip bytea");
+    await pool.query("ALTER TABLE ppr_admin_backups ALTER COLUMN payload DROP NOT NULL");
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_admin_archives (
         archive_id text PRIMARY KEY,
@@ -1838,11 +1841,13 @@ async function createAdminBackup(label = "manual", actorName = "Админист
   const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel);
   if (!postgresPool) id = path.basename(localFile);
   if (postgresPool) {
+    const compressed = compressBackupPayload(payload);
     await postgresPool.query(
-      `INSERT INTO ppr_admin_backups(backup_id, label, payload, checksum, created_by, created_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5, now())`,
-      [id, cleanLabel, JSON.stringify(payload), checksum, String(actorName || "Администратор").slice(0, 200)]
+      `INSERT INTO ppr_admin_backups(backup_id, label, payload, payload_gzip, checksum, created_by, created_at)
+       VALUES ($1, $2, NULL, $3, $4, $5, now())`,
+      [id, cleanLabel, compressed, checksum, String(actorName || "Администратор").slice(0, 200)]
     );
+    await postgresPool.flushMirrors?.();
   }
   await applyAdminBackupRetention();
   return { id, label: cleanLabel, checksum, sizeBytes: Buffer.byteLength(JSON.stringify(payload)), file: path.basename(localFile), createdBy: actorName, createdAt: new Date().toISOString(), storage: postgresPool ? "postgres" : "json" };
@@ -1858,7 +1863,7 @@ function backupRetentionTier(createdAt) {
 
 async function listAdminBackups() {
   if (postgresPool) {
-    const sql = `SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 200`;
+    const sql = `SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", COALESCE(octet_length(payload_gzip), octet_length(payload::text), 0) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 200`;
     const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql) : [{ result: await postgresPool.query(sql) }];
     const unique = new Map();
     for (const { result } of results) {
@@ -1880,13 +1885,15 @@ async function listAdminBackups() {
 
 async function readAdminBackupPayload(id) {
   if (postgresPool) {
-    const sql = "SELECT payload, checksum FROM ppr_admin_backups WHERE backup_id=$1 LIMIT 1";
+    const sql = "SELECT payload, payload_gzip, checksum FROM ppr_admin_backups WHERE backup_id=$1 LIMIT 1";
     const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql, [id]) : [{ result: await postgresPool.query(sql, [id]) }];
     let damaged = null;
     for (const { result } of results) {
       const row = result.rows[0];
       if (!row) continue;
-      const candidate = { payload: row.payload, checksum: row.checksum, valid: backupChecksum(row.payload) === row.checksum };
+      let payload = null;
+      try { payload = decodeBackupPayload(row); } catch { payload = null; }
+      const candidate = { payload, checksum: row.checksum, valid: Boolean(payload) && backupChecksum(payload) === row.checksum };
       if (candidate.valid) return candidate;
       damaged ||= candidate;
     }
