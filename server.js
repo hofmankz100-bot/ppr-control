@@ -74,7 +74,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v755-storage-breakdown-1";
+const SERVER_VERSION = "v756-trim-duplicate-backups-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2152,7 +2152,10 @@ function schedulePostgresWrite(db) {
              ON CONFLICT(backup_date) DO NOTHING`,
             [JSON.stringify(latest)]
           );
-          await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '30 days'");
+          // Full administrator backups already keep the longer daily/weekly/monthly
+          // history. This lightweight recovery table only needs one rolling week;
+          // retaining another full month duplicated the largest state payloads.
+          await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '7 days'");
           lastPostgresBackupDate = backupDate;
         }
         storageStatus = {
