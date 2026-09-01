@@ -44,3 +44,12 @@ test("administrator monitoring renders recent client error reasons", () => {
   assert.match(app, /item\.scope \|\| "Ошибка браузера"/);
   assert.match(app, /item\.message \|\| "Причина не передана"/);
 });
+
+test("startup errors wait for an authenticated profile and flush after login", () => {
+  assert.match(app, /const queue = reportClientError\.pending \|\|= \[\]/);
+  assert.match(app, /if \(queue\.length > 20\) queue\.shift\(\)/);
+  assert.match(app, /function flushPendingClientErrors\(\)/);
+  assert.match(app, /renderProfile\(\);\s*flushPendingClientErrors\(\);/);
+  assert.match(app, /window\.addEventListener\("online"[^]*?flushPendingClientErrors\(\)/);
+  assert.match(app, /if \(!isProfileReady\(\) \|\| !navigator\.onLine\) \{\s*const queue = reportClientError\.pending/);
+});

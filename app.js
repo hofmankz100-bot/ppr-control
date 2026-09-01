@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v766-admin-error-details-1";
+const APP_VERSION = "v767-startup-error-queue-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -4091,7 +4091,10 @@ function setupLogin() {
     return;
   }
   ui.loginOverlay.hidden = isProfileReady();
-  if (isProfileReady()) renderProfile();
+  if (isProfileReady()) {
+    renderProfile();
+    flushPendingClientErrors();
+  }
   applyLanguage();
   queueTranslateVisiblePage(true);
 }
@@ -16206,25 +16209,42 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
 window.addEventListener("online", () => {
   if (appBootstrapComplete) {
     flushPendingWork();
+    flushPendingClientErrors();
     syncRemoteChanges();
     pollRemoteUsers(true);
   }
 });
 
 function reportClientError(message, source = "", line = 0, column = 0) {
-  if (!isProfileReady() || !navigator.onLine) return;
-  fetch("/api/client-error", {
+  const payload = {
+    message: String(message || "Unknown client error").slice(0, 1000),
+    source: String(source || "").slice(0, 500),
+    line: Number(line || 0),
+    column: Number(column || 0),
+    appVersion: APP_VERSION
+  };
+  if (!isProfileReady() || !navigator.onLine) {
+    const queue = reportClientError.pending ||= [];
+    queue.push(payload);
+    if (queue.length > 20) queue.shift();
+    return;
+  }
+  sendClientErrorPayload(payload);
+}
+
+function sendClientErrorPayload(payload) {
+  return fetch("/api/client-error", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     keepalive: true,
-    body: JSON.stringify({
-      message: String(message || "Unknown client error").slice(0, 1000),
-      source: String(source || "").slice(0, 500),
-      line: Number(line || 0),
-      column: Number(column || 0),
-      appVersion: APP_VERSION
-    })
-  }).catch(() => {});
+    body: JSON.stringify(payload)
+  }).catch(() => false);
+}
+
+function flushPendingClientErrors() {
+  if (!isProfileReady() || !navigator.onLine) return;
+  const queued = (reportClientError.pending || []).splice(0, 20);
+  queued.forEach(sendClientErrorPayload);
 }
 
 function reportCaughtClientError(scope, error, throttleMs = 60000) {
