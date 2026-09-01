@@ -59,7 +59,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v767-startup-error-queue-1";
+const SERVER_VERSION = "v768-silent-error-cleanup-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -792,7 +792,9 @@ function readDbFile() {
         fs.copyFileSync(backupFile, dbFile);
         return normalizeDb(JSON.parse(fs.readFileSync(dbFile, "utf8")));
       }
-    } catch {}
+    } catch (recoveryError) {
+      console.error(`JSON state recovery failed: ${recoveryError.stack || recoveryError.message || recoveryError}`);
+    }
     return emptyDb();
   }
 }
@@ -1191,7 +1193,9 @@ function pruneOldBackups(keep = 14) {
     for (const name of files.slice(0, Math.max(0, files.length - keep))) {
       fs.unlinkSync(path.join(backupDir, name));
     }
-  } catch {}
+  } catch (error) {
+    console.warn(`Local backup pruning failed: ${error.message || error}`);
+  }
 }
 
 function backupDbOncePerDay() {

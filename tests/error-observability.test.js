@@ -53,3 +53,11 @@ test("startup errors wait for an authenticated profile and flush after login", (
   assert.match(app, /window\.addEventListener\("online"[^]*?flushPendingClientErrors\(\)/);
   assert.match(app, /if \(!isProfileReady\(\) \|\| !navigator\.onLine\) \{\s*const queue = reportClientError\.pending/);
 });
+
+test("broadcast acknowledgement and JSON recovery failures are not silent", () => {
+  assert.match(app, /reportCaughtClientError\("sync\.broadcast-read", error, 60000\)/);
+  assert.match(app, /Не удалось подтвердить ознакомление/);
+  assert.doesNotMatch(app, /data-read-system-broadcast[^\n]+catch \{\}/);
+  assert.match(server, /JSON state recovery failed/);
+  assert.match(server, /Local backup pruning failed/);
+});

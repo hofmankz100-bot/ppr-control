@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v767-startup-error-queue-1";
+const APP_VERSION = "v768-silent-error-cleanup-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -15871,7 +15871,19 @@ function renderSystemBroadcastNotice() {
   notice.innerHTML = `<div><strong>${escapeHtml(item.title || "Объявление администратора")}</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span>${item.expiresAt ? `<small>Действует до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small>` : ""}</div><div>${item.type === "print-archive" ? `<button type="button" data-print-broadcast-report>Распечатать отчёт</button>` : ""}<button type="button" class="secondary" data-read-system-broadcast>Прочитал и ознакомился</button></div>`;
   document.body.append(notice);
   notice.querySelector("[data-print-broadcast-report]")?.addEventListener("click", printSystemArchiveReport);
-  notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", async () => { try { await apiJson("/api/broadcasts/read", { method: "POST", body: JSON.stringify({ id: item.id }) }); } catch {} localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1"); notice.remove(); });
+  notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    setButtonBusy(button, true, "Сохраняем…");
+    try {
+      await apiJson("/api/broadcasts/read", { method: "POST", body: JSON.stringify({ id: item.id }) });
+      localStorage.setItem(`ppr-broadcast-read-${item.id}`, "1");
+      notice.remove();
+    } catch (error) {
+      reportCaughtClientError("sync.broadcast-read", error, 60000);
+      showAppToast("Не удалось подтвердить ознакомление. Проверьте интернет и повторите.", "error");
+      setButtonBusy(button, false);
+    }
+  });
 }
 
 function renderDirectorUsers() {
