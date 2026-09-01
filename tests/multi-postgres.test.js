@@ -39,6 +39,35 @@ test("a write succeeds when at least one database is available", async () => {
   assert.equal(cluster.status().active, "supabase");
 });
 
+test("readAll returns records from every healthy database without changing the active node", async () => {
+  const calls = [];
+  const cluster = new MultiPostgres([
+    fakeNode("primary", async sql => { calls.push(["primary", sql]); return { rows: [{ id: "backup-primary" }] }; }),
+    fakeNode("replica", async sql => { calls.push(["replica", sql]); return { rows: [{ id: "backup-replica" }] }; })
+  ]);
+
+  const results = await cluster.readAll("SELECT id FROM backups");
+
+  assert.deepEqual(results.map(item => item.result.rows[0].id), ["backup-primary", "backup-replica"]);
+  assert.equal(cluster.activeIndex, 0);
+  assert.deepEqual(calls.map(item => item[0]), ["primary", "replica"]);
+});
+
+test("readAll skips a known unhealthy database", async () => {
+  let offlineCalls = 0;
+  const offline = fakeNode("offline", async () => { offlineCalls += 1; throw new Error("quota exceeded"); });
+  offline.healthy = false;
+  const cluster = new MultiPostgres([
+    fakeNode("primary", async () => ({ rows: [{ id: "backup-primary" }] })),
+    offline
+  ]);
+
+  const results = await cluster.readAll("SELECT id FROM backups");
+
+  assert.equal(results.length, 1);
+  assert.equal(offlineCalls, 0);
+});
+
 test("known unhealthy replicas are left to the recovery monitor", async () => {
   let unhealthyCalls = 0;
   const unhealthy = fakeNode("neon", async () => {

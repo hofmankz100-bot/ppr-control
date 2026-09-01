@@ -73,7 +73,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v752-protect-catalog-nodes-1";
+const SERVER_VERSION = "v753-reliable-backup-read-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1858,8 +1858,16 @@ function backupRetentionTier(createdAt) {
 
 async function listAdminBackups() {
   if (postgresPool) {
-    const result = await postgresPool.query(`SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 200`);
-    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres", retentionTier: backupRetentionTier(row.createdAt) }));
+    const sql = `SELECT backup_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_backups ORDER BY created_at DESC LIMIT 200`;
+    const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql) : [{ result: await postgresPool.query(sql) }];
+    const unique = new Map();
+    for (const { result } of results) {
+      for (const row of result.rows) if (!unique.has(String(row.id))) unique.set(String(row.id), row);
+    }
+    return [...unique.values()]
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 200)
+      .map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres", retentionTier: backupRetentionTier(row.createdAt) }));
   }
   try {
     return fs.readdirSync(backupDir).filter(name => name.startsWith("db_backup_") && name.endsWith(".json")).map(name => {
@@ -1872,10 +1880,17 @@ async function listAdminBackups() {
 
 async function readAdminBackupPayload(id) {
   if (postgresPool) {
-    const result = await postgresPool.query("SELECT payload, checksum FROM ppr_admin_backups WHERE backup_id=$1 LIMIT 1", [id]);
-    if (!result.rows[0]) return null;
-    const payload = result.rows[0].payload;
-    return { payload, checksum: result.rows[0].checksum, valid: backupChecksum(payload) === result.rows[0].checksum };
+    const sql = "SELECT payload, checksum FROM ppr_admin_backups WHERE backup_id=$1 LIMIT 1";
+    const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql, [id]) : [{ result: await postgresPool.query(sql, [id]) }];
+    let damaged = null;
+    for (const { result } of results) {
+      const row = result.rows[0];
+      if (!row) continue;
+      const candidate = { payload: row.payload, checksum: row.checksum, valid: backupChecksum(row.payload) === row.checksum };
+      if (candidate.valid) return candidate;
+      damaged ||= candidate;
+    }
+    return damaged;
   }
   const safeName = path.basename(String(id || ""));
   if (safeName !== id || !safeName.startsWith("db_backup_") || !safeName.endsWith(".json")) return null;
@@ -2019,8 +2034,16 @@ function adminArchiveSelection(db, days = 180) {
 
 async function listAdminArchives(db = readDb()) {
   if (postgresPool) {
-    const result = await postgresPool.query(`SELECT archive_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_archives ORDER BY created_at DESC LIMIT 50`);
-    return result.rows.map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres" }));
+    const sql = `SELECT archive_id AS id, label, checksum, created_by AS "createdBy", created_at AS "createdAt", octet_length(payload::text) AS "sizeBytes" FROM ppr_admin_archives ORDER BY created_at DESC LIMIT 50`;
+    const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql) : [{ result: await postgresPool.query(sql) }];
+    const unique = new Map();
+    for (const { result } of results) {
+      for (const row of result.rows) if (!unique.has(String(row.id))) unique.set(String(row.id), row);
+    }
+    return [...unique.values()]
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 50)
+      .map(row => ({ ...row, sizeBytes: Number(row.sizeBytes || 0), storage: "postgres" }));
   }
   return (db.adminArchives || []).slice(0, 50).map(item => ({ id: item.id, label: item.label, checksum: item.checksum, createdBy: item.createdBy, createdAt: item.createdAt, sizeBytes: Number(item.sizeBytes || 0), storage: "json" }));
 }
@@ -2038,9 +2061,17 @@ async function createAdminArchive(payload, label, actorName) {
 
 async function readAdminArchive(id, db = readDb()) {
   if (postgresPool) {
-    const result = await postgresPool.query("SELECT payload, checksum FROM ppr_admin_archives WHERE archive_id=$1 LIMIT 1", [id]);
-    if (!result.rows[0]) return null;
-    return { payload: result.rows[0].payload, checksum: result.rows[0].checksum };
+    const sql = "SELECT payload, checksum FROM ppr_admin_archives WHERE archive_id=$1 LIMIT 1";
+    const results = typeof postgresPool.readAll === "function" ? await postgresPool.readAll(sql, [id]) : [{ result: await postgresPool.query(sql, [id]) }];
+    let damaged = null;
+    for (const { result } of results) {
+      const row = result.rows[0];
+      if (!row) continue;
+      const candidate = { payload: row.payload, checksum: row.checksum };
+      if (backupChecksum(candidate.payload) === candidate.checksum) return candidate;
+      damaged ||= candidate;
+    }
+    return damaged;
   }
   return (db.adminArchives || []).find(item => item.id === id) || null;
 }

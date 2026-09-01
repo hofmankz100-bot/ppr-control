@@ -84,6 +84,30 @@ class MultiPostgres {
     throw lastError || new Error("All PostgreSQL databases are unavailable");
   }
 
+  async readAll(sql, params) {
+    if (!this.nodes.length) throw new Error("PostgreSQL databases are not configured");
+    const healthyIndexes = this.nodes
+      .map((node, index) => ({ node, index }))
+      .filter(({ node }) => node.healthy)
+      .map(({ index }) => index);
+    const indexes = healthyIndexes.length ? healthyIndexes : this.orderedIndexes();
+    const results = [];
+    let lastError = null;
+    for (const index of indexes) {
+      try {
+        const result = await this.nodes[index].pool.query(sql, params);
+        this.markSuccess(index);
+        results.push({ index, name: this.nodes[index].name, result });
+      } catch (error) {
+        lastError = error;
+        this.markFailure(index, error);
+      }
+    }
+    this.onStatus(this.status());
+    if (!results.length) throw lastError || new Error("Read failed in all PostgreSQL databases");
+    return results;
+  }
+
   async write(sql, params) {
     let chosen = null;
     let lastError = null;
