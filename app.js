@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v770-qr-job-role-access-1";
+const APP_VERSION = "v771-upper-qr-counter-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -5829,6 +5829,11 @@ function legacyNodeChecked(item) {
 function nodeShiftRecord(item, shiftKey, group = qrWalkGroup()) {
   const grouped = item?.walkGroups?.[group]?.[shiftKey];
   if (grouped) return grouped;
+  // Upper and lower labels identify the same physical node. Keep their
+  // server records separate for audit, but either successful scan completes
+  // the node for the selected shift and must be visible to every counter.
+  const upperGrouped = item?.walkGroups?.[group]?.[`${shiftKey}:upper`];
+  if (upperGrouped) return upperGrouped;
   return group === "technical" ? item?.walkShifts?.[shiftKey] || null : null;
 }
 

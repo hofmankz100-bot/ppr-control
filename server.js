@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v770-qr-job-role-access-1";
+const SERVER_VERSION = "v771-upper-qr-counter-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5404,6 +5404,7 @@ async function handleApi(req, res, pathname, url) {
     Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
       if (!recordKey.startsWith(prefix) || !recordKey.endsWith(suffix)) return;
       const mark = record?.to?.walkGroups?.[group]?.[shift]
+        || record?.to?.walkGroups?.[group]?.[`${shift}:upper`]
         || (group === "technical" ? record?.to?.walkShifts?.[shift] : null);
       if (mark?.done) checks[recordKey] = record;
     });
