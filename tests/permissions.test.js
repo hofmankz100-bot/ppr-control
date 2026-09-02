@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
+  qrPermissionRoles,
   createServerPermissions
 } = require("../server/permissions");
 
@@ -18,6 +19,13 @@ test("specialized roles inherit their agreed permission base", () => {
   assert.equal(permissions.permissionBaseRole("operator"), "operator");
   assert.equal(permissions.samePermissionRole("electrician", "mechanic"), true);
   assert.equal(permissions.samePermissionRole("operator", "mechanic"), false);
+});
+
+test("QR access honors the administrator-assigned job role", () => {
+  assert.deepEqual(qrPermissionRoles({ role: "operator", jobRole: "electrician" }), ["operator", "mechanic"]);
+  assert.deepEqual(qrPermissionRoles({ role: "operator", jobRole: "engineer" }), ["operator", "engineer"]);
+  assert.deepEqual(qrPermissionRoles({ role: "shop", jobRole: "turner" }), ["shop", "mechanic"]);
+  assert.deepEqual(qrPermissionRoles({ role: "operator" }), ["operator"]);
 });
 
 test("only the configured editor receives the primary engineer capability", () => {

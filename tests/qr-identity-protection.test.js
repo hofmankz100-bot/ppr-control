@@ -78,12 +78,13 @@ test("a rejected QR walk is not counted locally or treated as completed", () => 
   assert.match(client, /if \(!walkSaved\)[\s\S]*return;[\s\S]*showQrSavedNotice\(`QR сохранён\. Обойдено/);
 });
 
-test("QR walk access uses the canonical permission role", () => {
+test("QR walk access uses canonical account and assigned job roles", () => {
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const accessStart = server.indexOf("function nodeMutationAccessServer");
-  const access = server.slice(accessStart, accessStart + 900);
-  assert.match(access, /permissionBaseRoleServer\(rawRole\)/);
-  assert.match(access, /rawRole === "forkliftDriver"/);
+  const access = server.slice(accessStart, accessStart + 1200);
+  assert.match(access, /qrPermissionRoles\(user\)/);
+  assert.match(access, /rawRole === "forkliftDriver" \|\| String\(user\.jobRole \|\| ""\) === "forkliftDriver"/);
+  assert.match(access, /\["mechanic", "engineer", "productionDirector", "editor"\]/);
   assert.match(access, /\[catalogItem\.area, catalogItem\.name\]/);
   assert.match(access, /accessLabels\.some\(label => userHasAreaServer\(user, label\)\)/);
 });

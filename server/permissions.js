@@ -42,6 +42,12 @@ function activeUserPermission(user = {}, key = "", now = Date.now()) {
     || (Number.isFinite(Date.parse(entry.expiresAt)) && Date.parse(entry.expiresAt) > now);
 }
 
+function qrPermissionRoles(user = {}) {
+  return [...new Set([user.role, user.jobRole]
+    .map(value => ROLE_PERMISSION_BASE[String(value || "")] || String(value || ""))
+    .filter(Boolean))];
+}
+
 function createServerPermissions(options = {}) {
   const primaryAdminEmployeeId = String(options.primaryAdminEmployeeId || "").trim();
 
@@ -82,5 +88,6 @@ module.exports = {
   RESOLUTION_EXECUTOR_ROLES,
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
+  qrPermissionRoles,
   createServerPermissions
 };

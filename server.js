@@ -34,6 +34,7 @@ const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipme
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
+  qrPermissionRoles,
   createServerPermissions
 } = require("./server/permissions");
 let WebSocketServer = null;
@@ -59,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v769-ios-safe-area-1";
+const SERVER_VERSION = "v770-qr-job-role-access-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4494,19 +4495,20 @@ const NODE_CHECKLIST_ROLES = new Set([
 
 function nodeMutationAccessServer(user = {}, catalogItem = {}) {
   const rawRole = String(user.role || "");
-  const role = permissionBaseRoleServer(rawRole);
-  if (!NODE_CHECKLIST_ROLES.has(role)) return false;
-  if (["operator", "shop"].includes(role)) {
+  const roles = qrPermissionRoles(user);
+  if (!roles.some(role => NODE_CHECKLIST_ROLES.has(role))) return false;
+  if (rawRole === "forkliftDriver" || String(user.jobRole || "") === "forkliftDriver") {
+    const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
+    return catalogItem.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(text);
+  }
+  if (roles.some(role => ["mechanic", "engineer", "productionDirector", "editor"].includes(role))) return true;
+  if (roles.some(role => ["operator", "shop"].includes(role))) {
     const accessLabels = [catalogItem.area, catalogItem.name]
       .map(value => String(value || "").trim())
       .filter(value => value && normalizedCatalogNodeName(value) !== "резерв");
     return accessLabels.some(label => userHasAreaServer(user, label));
   }
-  if (rawRole === "forkliftDriver") {
-    const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
-    return catalogItem.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(text);
-  }
-  return true;
+  return false;
 }
 
 const handleAdminUserPermissionsRoute = createAdminUserPermissionsRoute({
