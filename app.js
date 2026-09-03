@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v771-upper-qr-counter-1";
+const APP_VERSION = "v772-parts-current-month-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -8467,7 +8467,7 @@ function aggregateJournalCount(area, equipmentId = 0) {
   return aggregateJournalItems(area, equipmentId).length;
 }
 
-function installedPartJournalRows(equipmentId, month = selectedJournalMonth()) {
+function installedPartJournalRows(equipmentId, month = todayISO().slice(0, 7)) {
   const rows = [];
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
@@ -8495,7 +8495,7 @@ function installedPartJournalHtml(eq, month, printable = false) {
 }
 
 function openInstalledPartJournal(eq) {
-  let month = selectedJournalMonth();
+  let month = todayISO().slice(0, 7);
   const overlay = document.createElement("div");
   overlay.className = "installed-part-journal-overlay";
   const render = () => {

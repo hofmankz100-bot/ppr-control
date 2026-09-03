@@ -21,3 +21,9 @@ test("confirmed resolutions create monthly installed-parts journal entries", () 
   assert.match(server, /remark\.partInstalled = remark\.resolutionPartInstalled === true/);
   assert.match(server, /if \(partInstalled && !partDescription\)/);
 });
+
+test("installed-parts journal always opens on the current month", () => {
+  assert.match(app, /function installedPartJournalRows\(equipmentId, month = todayISO\(\)\.slice\(0, 7\)\)/);
+  assert.match(app, /function openInstalledPartJournal\(eq\) \{\s*let month = todayISO\(\)\.slice\(0, 7\);/);
+  assert.doesNotMatch(app, /function openInstalledPartJournal\(eq\) \{\s*let month = selectedJournalMonth\(\);/);
+});
