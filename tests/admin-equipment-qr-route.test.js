@@ -65,3 +65,27 @@ test("equipment QR route rotates only the selected node and broadcasts its patch
   assert.deepEqual(broadcasts[0], ["node-qr-rotate", "", { catalog: { equipment: { 7: item } } }, true]);
   assert.equal(responses[0].payload.stateVersion, "state-v2");
 });
+
+test("equipment QR route can restore a missing built-in item before rotating it", async () => {
+  const database = { catalog: { equipment: {} } };
+  const responses = [];
+  const handler = createAdminEquipmentQrRoute({
+    broadcastState: () => "state-v3",
+    enqueueStateWrite: async task => task(),
+    ensureCatalogItem: (db, equipmentId) => {
+      if (equipmentId !== 11) return null;
+      const item = { id: 11, name: "Токарный цех", nodes: ["Токарный станок"], qrTokens: {} };
+      db.catalog.equipment[11] = item;
+      return item;
+    },
+    randomBytes: () => Buffer.from("00112233445566778899aabb", "hex"),
+    readBody: async req => req.body,
+    readDb: () => database,
+    sendJson: (_res, status, payload) => responses.push({ status, payload }),
+    writeDb: () => {},
+    now: () => Date.parse("2026-09-04T09:00:00.000Z")
+  });
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 11, nodeIndex: 0 } }, {}, "/api/admin/equipment/node-qr-rotate");
+  assert.equal(responses[0].status, 200);
+  assert.equal(database.catalog.equipment[11].qrTokens[0], "00112233445566778899aabb");
+});

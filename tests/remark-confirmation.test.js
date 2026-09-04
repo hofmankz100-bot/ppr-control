@@ -2081,6 +2081,7 @@ test("turning shop stays standard equipment while a turner opens their own work 
   assert.match(serverSource, /nodes: \["Токарный станок", "Сверлильный станок"\]/);
   assert.match(serverSource, /function restoreTurningShopCatalog/);
   assert.match(serverSource, /restoreTurningShopCatalog\(db\)/);
+  assert.match(serverSource, /function qrWalkCatalogItemServer[\s\S]*restoreTurningShopCatalog\(db\)[\s\S]*db\.catalog\?\.equipment\?\.\["11"\]/);
 });
 
 test("admin can build a QR-linked journal for created equipment without changing factory journals", () => {

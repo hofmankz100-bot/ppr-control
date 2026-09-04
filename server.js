@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v779-persist-turning-shop-catalog-1";
+const SERVER_VERSION = "v780-turning-shop-qr-rotate-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2745,15 +2745,8 @@ function qrWalkCatalogItemServer(db, equipmentId) {
   const saved = db.catalog?.equipment?.[String(equipmentId)];
   if (saved) return saved;
   if (Number(equipmentId) === 11) {
-    return {
-      id: 11,
-      name: "Токарный цех",
-      area: "Токарный цех",
-      nodes: ["Токарный станок", "Сверлильный станок"],
-      qrTokens: {},
-      upperQrTokens: {},
-      qrTokenAliases: {}
-    };
+    restoreTurningShopCatalog(db);
+    return db.catalog?.equipment?.["11"] || null;
   }
   return null;
 }
@@ -4777,6 +4770,11 @@ const handleAdminRatingRoute = createAdminRatingRoute({
 const handleAdminEquipmentQrRoute = createAdminEquipmentQrRoute({
   broadcastState,
   enqueueStateWrite,
+  ensureCatalogItem: (db, equipmentId) => {
+    if (Number(equipmentId) !== 11) return null;
+    restoreTurningShopCatalog(db);
+    return db.catalog?.equipment?.[String(equipmentId)] || null;
+  },
   randomBytes: crypto.randomBytes,
   readBody,
   readDb,
