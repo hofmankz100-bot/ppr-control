@@ -1986,9 +1986,10 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /function canConfirmRemarksAcrossShops[\s\S]*?remarkGlobalConfirm/);
   assert.match(clientSource, /remarkGlobalConfirm","Подтверждение замечаний всех цехов/);
   assert.match(clientSource, /Открыть карточку/);
-  assert.match(clientSource, /Подтверждения всех цехов доступны/);
+  assert.doesNotMatch(clientSource, /Подтверждения всех цехов доступны|Здесь сразу отображаются все ожидающие подтверждения/);
+  assert.match(clientSource, /Устранённые замечания/);
   assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
-  assert.match(clientSource, /ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА/);
+  assert.match(clientSource, /ВСЕ ЦЕХА/);
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
   assert.match(clientSource, /data-personal-remark-close-no-score/);
   assert.match(clientSource, /publishRemarkCollaborationAction\(message\.equipmentId, message\.nodeIndex, message\.date, "close-no-score"/);

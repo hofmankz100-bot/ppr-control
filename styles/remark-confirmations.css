@@ -1,0 +1,109 @@
+#requestsScreen {
+  width: min(920px, 100%);
+  margin-inline: auto;
+}
+
+.role-personal-inbox {
+  overflow: hidden;
+  border: 1px solid #cfdee5;
+  border-radius: 22px;
+  background: #f4f8fa;
+  box-shadow: 0 14px 38px rgba(20, 50, 74, .12);
+}
+
+.role-personal-inbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  background: linear-gradient(135deg, #123b53, #087987);
+  color: #fff;
+}
+
+.role-personal-inbox-head > div { min-width: 0; }
+.role-personal-inbox-head span {
+  display: block;
+  margin-bottom: 4px;
+  color: #c7edf0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.role-personal-inbox-head h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 4vw, 30px);
+  line-height: 1.1;
+}
+
+.role-personal-inbox-head > strong {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  height: 48px;
+  padding-inline: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .18);
+  font-size: 22px;
+}
+
+.role-personal-message-list { display: grid; gap: 12px; padding: 16px; }
+.role-personal-message {
+  overflow: hidden;
+  border: 1px solid #d6e2e7;
+  border-left: 5px solid #d08a18;
+  border-radius: 16px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: 0 5px 18px rgba(20, 50, 74, .07);
+}
+
+.role-personal-message > header,
+.role-personal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.role-personal-message > header > div { display: grid; gap: 3px; }
+.role-personal-warning,
+.role-personal-resolution,
+.role-personal-return-reason {
+  margin-top: 12px;
+  border-radius: 12px;
+  background: #f4f8fa;
+  padding: 12px;
+}
+
+.role-personal-warning p,
+.role-personal-resolution p,
+.role-personal-return-reason p { margin: 6px 0; }
+.role-personal-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.role-personal-empty {
+  display: grid;
+  gap: 5px;
+  padding: 26px 18px;
+  border: 1px dashed #b9cdd6;
+  border-radius: 14px;
+  background: #fff;
+  color: #627784;
+  text-align: center;
+}
+
+.role-personal-empty strong { color: #17384b; font-size: 17px; }
+
+@media (max-width: 620px) {
+  #requestsScreen { padding-inline: 10px; }
+  .role-personal-inbox { border-radius: 18px; }
+  .role-personal-inbox-head { padding: 17px 16px; }
+  .role-personal-inbox-head > strong { min-width: 44px; height: 44px; border-radius: 14px; }
+  .role-personal-message-list { padding: 10px; }
+  .role-personal-message { padding: 13px; }
+  .role-personal-message > header,
+  .role-personal-actions { align-items: stretch; flex-direction: column; }
+  .role-personal-actions button { width: 100%; }
+}

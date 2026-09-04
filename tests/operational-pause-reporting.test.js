@@ -27,7 +27,7 @@ test("resume is automatic because all exclusions use dated pause history", () =>
 
 test("the removed request workflow leaves only the remark confirmation screen", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
-  assert.match(html, /<h1>Подтверждения<\/h1>/);
+  assert.match(source, /Устранённые замечания/);
   assert.doesNotMatch(source, /Заявки — только документы/);
   assert.doesNotMatch(source, /Заявки не требуют подтверждения/);
   assert.match(source, /ui\.subtitle\.textContent = "Подтверждения"/);

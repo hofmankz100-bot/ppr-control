@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v783-remove-orders-1";
+const APP_VERSION = "v784-confirmation-window-style-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -524,7 +524,6 @@ const ui = {
   directorMeta: document.querySelector("#directorMeta"),
   directorPanel: document.querySelector("#directorPanel"),
   directorControlPanel: document.querySelector("#directorControlPanel"),
-  requestsMeta: document.querySelector("#requestsMeta"),
   rolePersonalInbox: document.querySelector("#rolePersonalInbox"),
   resolvedInput: document.querySelector("#resolvedInput")
 };
@@ -11017,7 +11016,6 @@ function renderRequests() {
   renderRolePersonalInbox();
   const list = document.querySelector("#requestList");
   updateRoleBadges();
-  ui.requestsMeta.textContent = "Подтверждение устранённых замечаний";
   list.innerHTML = "";
   applyLanguage();
   queueTranslateVisiblePage();
@@ -12596,12 +12594,11 @@ function renderRolePersonalInbox() {
   ui.rolePersonalInbox.innerHTML = `
     <section class="role-personal-inbox">
       <div class="role-personal-inbox-head">
-        <div><span>${isAdminEngineerBlock ? "ИНЖЕНЕР · ДЛЯ АДМИНИСТРАТОРА" : "ЛИЧНО ВАМ"}</span><h2>${canConfirmRemarksAcrossShops() ? "Ожидают подтверждения" : "Личные сообщения"}</h2></div>
+        <div><span>${isAdminEngineerBlock ? "ВСЕ ЦЕХА" : "ЛИЧНО ВАМ"}</span><h1>${canConfirmRemarksAcrossShops() ? "Устранённые замечания" : "Личные сообщения"}</h1></div>
         <strong>${messages.length}</strong>
       </div>
-      ${canConfirmRemarksAcrossShops() ? `<div class="role-personal-empty"><strong>Подтверждения всех цехов доступны</strong><span>Здесь сразу отображаются все ожидающие подтверждения. Можно открыть карточку, подтвердить устранение или вернуть на доработку.</span></div>` : ""}
       <div class="role-personal-message-list">
-        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>Новых личных сообщений нет</strong><span>Запросы на подтверждение и возвраты появятся здесь.</span></div>`}
+        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>${canConfirmRemarksAcrossShops() ? "Нет замечаний для проверки" : "Новых личных сообщений нет"}</strong><span>${canConfirmRemarksAcrossShops() ? "Все переданные работы уже рассмотрены." : "Запросы и возвраты появятся здесь."}</span></div>`}
       </div>
     </section>
   `;

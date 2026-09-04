@@ -13390,6 +13390,7 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .role-personal-inbox,
   html[data-theme="dark"] .role-personal-message,
   html[data-theme="dark"] .role-personal-empty,
+  html[data-theme="dark"] .role-personal-warning,
   html[data-theme="dark"] .role-personal-resolution,
   html[data-theme="dark"] .role-personal-return-reason {
     border-color: #2a3942;
@@ -13399,7 +13400,7 @@ html[data-theme="dark"] .pull-refresh-indicator {
     box-shadow: none;
   }
 
-  html[data-theme="dark"] .role-personal-inbox-head h2,
+  html[data-theme="dark"] .role-personal-inbox-head h1,
   html[data-theme="dark"] .role-personal-empty strong {
     color: #e9edef;
   }
