@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v778-restore-turning-shop-catalog-1";
+const SERVER_VERSION = "v779-persist-turning-shop-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -269,6 +269,28 @@ function ensureCatalogNodeQrTokens(item) {
     created += 1;
   });
   return created;
+}
+
+function restoreTurningShopCatalog(db) {
+  db.catalog ||= { equipment: {} };
+  db.catalog.equipment ||= {};
+  const equipmentId = "11";
+  if (db.catalog.equipment[equipmentId]) return false;
+  const now = new Date().toISOString();
+  const item = {
+    id: 11,
+    name: "Токарный цех",
+    area: "Токарный цех",
+    nodes: ["Токарный станок", "Сверлильный станок"],
+    qrTokens: {},
+    upperQrTokens: {},
+    qrTokenAliases: {},
+    qrUpdatedAt: {},
+    updatedAt: now
+  };
+  ensureCatalogNodeQrTokens(item);
+  db.catalog.equipment[equipmentId] = item;
+  return true;
 }
 
 function removeCatalogNodeByHistory(item, name, preferredIndex = -1) {
@@ -681,6 +703,7 @@ function normalizeDb(db) {
   db.journalDueSince ||= {};
   db.auditHistory ||= [];
   repairCatalogNodeHistory(db);
+  restoreTurningShopCatalog(db);
   restoreKnownPhysicalQrAliases(db);
   restoreGasQrCatalog(db);
   restorePress2400Catalog(db);
