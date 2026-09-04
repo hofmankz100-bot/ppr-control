@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v777-turning-shop-save-fix-1";
+const SERVER_VERSION = "v778-restore-turning-shop-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2717,6 +2717,23 @@ const DEFAULT_EQUIPMENT_REFERENCE_SERVER = Object.freeze(Object.fromEntries(
     nodes: []
   }])
 ));
+
+function qrWalkCatalogItemServer(db, equipmentId) {
+  const saved = db.catalog?.equipment?.[String(equipmentId)];
+  if (saved) return saved;
+  if (Number(equipmentId) === 11) {
+    return {
+      id: 11,
+      name: "Токарный цех",
+      area: "Токарный цех",
+      nodes: ["Токарный станок", "Сверлильный станок"],
+      qrTokens: {},
+      upperQrTokens: {},
+      qrTokenAliases: {}
+    };
+  }
+  return null;
+}
 
 function remarkEquipmentAreaServer(db, recordKey, requestedArea = "") {
   const equipmentId = String(recordKey || "").split(":")[0];
@@ -5393,7 +5410,7 @@ async function handleApi(req, res, pathname, url) {
     }
     await stateWriteQueue.catch(() => {});
     const db = readDb();
-    const qrCatalogItem = db.catalog?.equipment?.[String(equipmentId)];
+    const qrCatalogItem = qrWalkCatalogItemServer(db, equipmentId);
     if (!qrCatalogItem || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
       sendJson(res, 403, { ok: false, error: "qr_walk_access_denied" });
       return true;
@@ -5550,7 +5567,7 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: "qr_walk_invalid" });
       return true;
     }
-    const qrCatalogItem = readDb().catalog?.equipment?.[String(equipmentId)];
+    const qrCatalogItem = qrWalkCatalogItemServer(readDb(), equipmentId);
     const requestedQrToken = String(body.qrToken || "").trim();
     let qrKind = body.qrKind === "upper" ? "upper" : "lower";
     if (qrCatalogItem && requestedQrToken) {

@@ -2077,6 +2077,8 @@ test("turning shop stays standard equipment while a turner opens their own work 
   assert.match(clientSource, /routeTurnerQrToOwnWork\(equipmentById\(parsed\.equipmentId\)\)/);
   assert.match(clientSource, /current\.productionTab = "turning"/);
   assert.doesNotMatch(serverSource, /isTurningShop/);
+  assert.match(serverSource, /function qrWalkCatalogItemServer/);
+  assert.match(serverSource, /nodes: \["Токарный станок", "Сверлильный станок"\]/);
 });
 
 test("admin can build a QR-linked journal for created equipment without changing factory journals", () => {
