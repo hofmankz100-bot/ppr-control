@@ -2017,27 +2017,13 @@ test("director private messaging is removed while admin employee approval remain
   assert.doesNotMatch(serverSource, /directorMessages:\s*db\.directorMessages|mergeArrayById\(db\.directorMessages/);
 });
 
-test("order journal is separate, permission controlled, and scores every selected performer", () => {
+test("removed order journal stays absent from client, server, and permissions", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const htmlSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  assert.match(htmlSource, /id="ordersButton"/);
-  assert.match(htmlSource, /id="ordersScreen"/);
-  assert.match(clientSource, /function renderOrders\(\)/);
-  assert.match(clientSource, /type: "order"/);
-  assert.match(serverSource, /pathname === "\/api\/orders\/action"/);
-  assert.match(serverSource, /ADMIN_PERMISSION_KEYS[\s\S]*?orderJournalManage/);
-  assert.match(clientSource, /function canViewOrderJournal[\s\S]*?\["mechanic", "electrician", "forkliftDriver", "operator"\]/);
-  assert.match(clientSource, /\["engineer", "shop"\]\.includes\(role\)[\s\S]*?orderJournalManage/);
-  assert.match(clientSource, /ui\.ordersButton\.hidden = !canViewOrderJournal\(\)/);
-  assert.match(serverSource, /\["engineer", "shop"\]\.includes\(engineerPermissionRoleServer\(registeredActor\)\)/);
-  assert.match(serverSource, /pointsPerPerformer = order\.withScore \? 15 : 0/);
-  assert.match(serverSource, /Array\.isArray\(body\.performerKeys\)/);
-  assert.match(clientSource, /function printOrderJournal\(orders = \[\]\)/);
-  assert.match(clientSource, /data-print-order/);
-  assert.match(clientSource, /data-print-all-orders/);
-  assert.match(clientSource, /@page\{size:A4 landscape/);
-  assert.doesNotMatch(clientSource, /window\.open\("", "_blank", "noopener,noreferrer"\)/);
+  assert.doesNotMatch(htmlSource, /ordersButton|ordersScreen|ordersPanel/);
+  assert.doesNotMatch(clientSource, /renderOrders|orderJournalManage|\/api\/orders\/action|state\.orders/);
+  assert.doesNotMatch(serverSource, /orderJournalManage|\/api\/orders\/action|db\.orders/);
 });
 
 test("aggregate journal corrections reassign the scorer while no-score warnings are deleted", () => {

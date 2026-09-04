@@ -9,7 +9,6 @@ async function main() {
   const store = createPostgresStore();
   const patch = {
     checks: db.checks || {},
-    orders: db.orders || {},
     catalog: db.catalog || { equipment: {} },
     downtimes: db.downtimes || [],
     qrWalkJournal: db.qrWalkJournal || [],

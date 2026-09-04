@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v782-repair-empty-turning-catalog-1";
+const SERVER_VERSION = "v783-remove-orders-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -222,7 +222,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, orders: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function normalizedCatalogNodeName(value = "") {
@@ -663,7 +663,6 @@ function removeAugust19TestInstalledPartRecords(db) {
 function normalizeDb(db) {
   db ||= emptyDb();
   db.checks ||= {};
-  db.orders ||= {};
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
   delete db.codexTasks;
@@ -2361,7 +2360,6 @@ function purgeRemovedEquipmentData(db) {
 function publicState(db = readDb()) {
   return {
     checks: db.checks,
-    orders: db.orders,
     catalog: db.catalog,
     adminConfig: {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
@@ -4031,7 +4029,7 @@ function changedRecordPatch(before = {}, after = {}) {
 
 function changedStatePatch(before = {}, after = {}) {
   const patch = {};
-  for (const key of ["checks", "orders", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
+  for (const key of ["checks", "compressorJournal", "gasJournal", "pprSheets", "annualPpr", "journalDueSince"]) {
     const records = changedRecordPatch(before?.[key], after?.[key]);
     if (Object.keys(records).length) patch[key] = records;
   }
@@ -6530,73 +6528,6 @@ async function handleApi(req, res, pathname, url) {
       });
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, downtime: result.downtime });
-    return true;
-  }
-
-  if (pathname === "/api/orders/action" && req.method === "POST") {
-    const body = await readBody(req);
-    const action = String(body.action || "");
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      const registeredActor = (db.users || []).find(user => String(user.id || "") === String(req.authUser?.id || "")) || req.authUser;
-      if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true) return { error: "order_actor_invalid" };
-      const actor = sanitizeResolutionParticipant(registeredActor);
-      const canManage = permissionBaseRoleServer(registeredActor.role) === "editor"
-        || (["engineer", "shop"].includes(engineerPermissionRoleServer(registeredActor)) && activeUserPermission(registeredActor, "orderJournalManage"));
-      db.orders ||= {};
-      const now = new Date().toISOString();
-      let order;
-      let notifyParticipants = [];
-      let pushTitle = "Распоряжение обновлено";
-      let pushBody = "Откройте журнал распоряжений";
-      if (action === "create") {
-        if (!canManage) return { error: "order_forbidden" };
-        const text = String(body.text || "").trim().slice(0, 4000);
-        const keys = [...new Set((Array.isArray(body.assigneeKeys) ? body.assigneeKeys : []).map(String))];
-        const assignees = keys.map(key => (db.users || []).find(user => resolutionUserKeyServer(user) === key && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRoleServer(user.role))).filter(Boolean).map(sanitizeResolutionParticipant);
-        if (!text || !assignees.length) return { error: "order_invalid" };
-        const id = `order:${Date.now()}:${crypto.randomBytes(4).toString("hex")}`;
-        order = { id, number: String(Object.keys(db.orders).length + 1).padStart(4, "0"), text, authorKey: actor.key, authorName: actor.name, authorRole: actor.role, assignees, performers: [], status: "open", createdAt: now, updatedAt: now, events: [{ action: "created", at: now, actorKey: actor.key, name: actor.name }] };
-        db.orders[id] = order;
-        notifyParticipants = assignees;
-        pushTitle = `Новое распоряжение № ${order.number}`;
-        pushBody = text.slice(0, 140);
-      } else {
-        order = db.orders[String(body.orderId || "")];
-        if (!order) return { error: "order_not_found" };
-        const assigned = (order.assignees || []).some(user => user.key === actor.key);
-        if (action === "complete") {
-          if (!assigned || !["open", "returned"].includes(order.status)) return { error: "order_forbidden" };
-          const comment = String(body.comment || "").trim().slice(0, 4000);
-          const keys = [...new Set((Array.isArray(body.performerKeys) ? body.performerKeys : []).map(String))];
-          const performers = (order.assignees || []).filter(user => keys.includes(user.key));
-          if (!comment || !performers.length) return { error: "order_invalid" };
-          order.performers = performers; order.completionComment = comment; order.completedAt = now; order.status = "pending"; order.returnReason = "";
-          const authorUser = (db.users || []).find(user => resolutionUserKeyServer(user) === order.authorKey);
-          notifyParticipants = authorUser ? [sanitizeResolutionParticipant(authorUser)] : [];
-          pushTitle = `Распоряжение № ${order.number} выполнено`;
-          pushBody = comment.slice(0, 140);
-        } else if (["confirm-score", "confirm-no-score", "return"].includes(action)) {
-          if (!canManage || (permissionBaseRoleServer(actor.role) !== "editor" && order.authorKey !== actor.key) || order.status !== "pending") return { error: "order_forbidden" };
-          if (action === "return") { const reason = String(body.reason || "").trim().slice(0, 2000); if (!reason) return { error: "order_invalid" }; order.status = "returned"; order.returnReason = reason; notifyParticipants = order.assignees || []; pushTitle = `Распоряжение № ${order.number} возвращено`; pushBody = reason.slice(0, 140); }
-          else { order.status = "closed"; order.withScore = action === "confirm-score"; order.pointsPerPerformer = order.withScore ? 15 : 0; order.confirmedAt = now; order.confirmedByName = actor.name; notifyParticipants = order.performers || []; pushTitle = `Распоряжение № ${order.number} принято`; pushBody = order.withScore ? "Начислено по 15 баллов каждому исполнителю" : "Закрыто без начисления баллов"; }
-        } else return { error: "order_invalid" };
-        order.updatedAt = now;
-        order.events ||= [];
-        order.events.push({ action, at: now, actorKey: actor.key, name: actor.name });
-      }
-      const actionId = String(body.actionId || "");
-      writeDb(db, { action: `order_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, orderId: order.id });
-      return { order, actionId, origin: body.clientId || "api", patch: { orders: { [order.id]: order } }, notifyParticipants, pushTitle, pushBody };
-    });
-    if (result.error) { sendJson(res, result.error === "order_not_found" ? 404 : result.error === "order_forbidden" ? 403 : 400, { ok: false, error: result.error }); return true; }
-    const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
-    if (result.notifyParticipants.length) {
-      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, "/?view=orders", result.order.id).catch(error => {
-        console.error(`Order push notification failed: ${error?.message || error}`);
-      });
-    }
-    sendJson(res, 200, { ok: true, order: result.order, state: result.patch, stateVersion });
     return true;
   }
 

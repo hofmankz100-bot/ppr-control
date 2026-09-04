@@ -66,7 +66,6 @@ const html = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;
   const [downtimeYear, downtimeMonth] = month.split('-').map(Number);
   await page.evaluate(({ year, monthIndex }) => { eval(`current.downtimeYear=${year}; current.downtimeMonth=${monthIndex}`); }, { year: downtimeYear, monthIndex: downtimeMonth - 1 });
   for (const area of downtimeAreas) await printPopup(`printDowntimeJournal(${JSON.stringify(area)})`, `Журнал простоев - ${safe(area)} - ${month}.pdf`);
-  await printPopup(`printOrderJournal(Object.values(state.orders||{}).filter(x=>String(x.createdAt||'').slice(0,7)===${JSON.stringify(month)}))`, `Журнал распоряжений - ${month}.pdf`);
   const pprSheets = archiveState.pprSheets || {};
   const pprDates = [...new Set(Object.entries(pprSheets).map(([key, value]) => String(value?.date || key).slice(0, 10)).filter(x => x.startsWith(month)))].sort();
   for (const date of pprDates) {

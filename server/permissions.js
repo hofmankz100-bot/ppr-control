@@ -31,8 +31,7 @@ const ADMIN_PERMISSION_KEYS = new Set([
   "remarkMultiClose",
   "remarkDefer",
   "aggregateJournalCorrect",
-  "remarkGlobalConfirm",
-  "orderJournalManage"
+  "remarkGlobalConfirm"
 ]);
 
 function activeUserPermission(user = {}, key = "", now = Date.now()) {

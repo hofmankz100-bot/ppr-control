@@ -6907,12 +6907,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
   font-weight: 800;
 }
 
-.orders-shell{display:grid;gap:16px}.orders-head,.order-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.orders-head{padding:20px;border-radius:20px;background:linear-gradient(135deg,#14324a,#1e6075);color:#fff}.orders-head h1{margin:3px 0}.orders-head p{margin:0;opacity:.85}.orders-head>strong{display:grid;place-items:center;min-width:44px;height:44px;border-radius:50%;background:#fff;color:#14324a}.order-create-form,.order-card{display:grid;gap:12px;padding:18px;border:1px solid #d5e0e6;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(20,50,74,.08)}.order-create-form textarea,.order-complete-form textarea{width:100%;margin-top:6px}.order-create-form fieldset,.order-complete-form fieldset{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;border:1px solid #d5e0e6;border-radius:12px;padding:12px}.orders-list{display:grid;gap:12px}.order-card.pending{border-color:#d99a24}.order-card.returned{border-color:#c94a4a}.order-card.closed{opacity:.78}.order-card header span{padding:6px 10px;border-radius:999px;background:#eef5f7;font-size:12px}.order-text{font-size:17px;line-height:1.45}.order-result,.order-return,.order-closed{padding:12px;border-radius:12px;background:#f2f7f8}.order-return{background:#fff1f1;color:#8c2929}.order-complete-form{display:grid;gap:10px}.order-actions{display:flex;gap:8px;flex-wrap:wrap}.order-closed{display:flex;justify-content:space-between;gap:8px}.quick-nav #ordersButton.request-alert{border-color:#d58b19;background:#fff8e8}
-@media(max-width:680px){.orders-head,.order-card header,.order-closed{display:grid}.order-create-form,.order-card{padding:14px}.order-actions button{width:100%}}
-.order-filters{display:flex;gap:8px;flex-wrap:wrap}.order-filters button{background:#eef5f7;color:#14324a}.order-filters button.active{background:#14324a;color:#fff}.order-history{border-top:1px solid #e1e9ed;padding-top:10px}.order-history summary{cursor:pointer;font-weight:700}.order-history>div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed #e1e9ed}.order-history small{color:#607681;text-align:right}
-.order-filters .order-print-all{margin-left:auto;background:#1e6075;color:#fff}.order-card-tools{display:flex;justify-content:flex-end}.order-card-tools button{padding:7px 11px;font-size:12px}
-@media(max-width:680px){.order-filters button{flex:1}.order-history>div{display:grid}.order-history small{text-align:left}}
-
 /* Unified aggregate-journal frame for both SHGRP sections. */
 .gas-official-head{display:flex;justify-content:space-between;gap:12px;border:2px solid #111;border-bottom:0;padding:9px 11px;font-size:12px;letter-spacing:.04em}.gas-a4-sheet .aggregate-sheet-head{border:2px solid #111!important;border-bottom:0!important;margin:0!important;padding:10px 11px!important;background:#f3f5f6!important}.gas-a4-sheet .gas-a4-wrap{border:0}.gas-a4-sheet .gas-sheet-table{border-collapse:collapse!important}.gas-sheet-signatures{display:flex;justify-content:space-between;gap:20px;border:2px solid #111;border-top:0;padding:11px;font-size:12px;font-weight:700}.journal-date-navigation .gas-print-both{margin-left:auto;background:#1e6075;color:#fff}
 @media(max-width:680px){.gas-official-head,.gas-sheet-signatures{display:grid}.journal-date-navigation .gas-print-both{width:100%;margin-left:0}}
@@ -13169,38 +13163,11 @@ html[data-theme="dark"] .pull-refresh-indicator {
     color: #e9edef;
   }
 
-  html[data-theme="dark"] .director-users,
-  html[data-theme="dark"] .order-create-form,
-  html[data-theme="dark"] .order-card,
-  html[data-theme="dark"] .order-result,
-  html[data-theme="dark"] .order-return,
-  html[data-theme="dark"] .order-closed,
-  html[data-theme="dark"] .order-create-form fieldset,
-  html[data-theme="dark"] .order-complete-form fieldset {
+  html[data-theme="dark"] .director-users {
     border-color: #2a3942;
     background: #111b21;
     color: #e9edef;
     box-shadow: none;
-  }
-
-  html[data-theme="dark"] .order-history small {
-    color: #aebac1;
-  }
-
-  html[data-theme="dark"] .order-card header span,
-  html[data-theme="dark"] .order-filters button,
-  html[data-theme="dark"] .order-create-form textarea,
-  html[data-theme="dark"] .order-complete-form textarea,
-  html[data-theme="dark"] .order-complete-form input,
-  html[data-theme="dark"] .order-complete-form select {
-    border-color: #3b4a54;
-    background: #202c33;
-    color: #e9edef;
-  }
-
-  html[data-theme="dark"] .order-history,
-  html[data-theme="dark"] .order-history > div {
-    border-color: #2a3942;
   }
 
   html[data-theme="dark"] .work-permit-safety-item,
