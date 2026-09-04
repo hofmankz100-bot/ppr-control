@@ -29,7 +29,8 @@ function createAdminEquipmentQrRoute(dependencies = {}) {
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const item = db.catalog?.equipment?.[String(equipmentId)] || ensureCatalogItem?.(db, equipmentId);
+      const recoveredItem = ensureCatalogItem?.(db, equipmentId);
+      const item = recoveredItem || db.catalog?.equipment?.[String(equipmentId)];
       if (!item || !Array.isArray(item.nodes) || !item.nodes[nodeIndex]) return { error: "node_not_found" };
       item.qrTokens = item.qrTokens && typeof item.qrTokens === "object" ? item.qrTokens : {};
       item.qrTokenAliases = item.qrTokenAliases && typeof item.qrTokenAliases === "object" ? item.qrTokenAliases : {};

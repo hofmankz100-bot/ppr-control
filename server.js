@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v781-qr-button-confirm-1";
+const SERVER_VERSION = "v782-repair-empty-turning-catalog-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -275,9 +275,15 @@ function restoreTurningShopCatalog(db) {
   db.catalog ||= { equipment: {} };
   db.catalog.equipment ||= {};
   const equipmentId = "11";
-  if (db.catalog.equipment[equipmentId]) return false;
+  const current = db.catalog.equipment[equipmentId];
+  const currentNodes = Array.isArray(current?.nodes) ? current.nodes.filter(node => String(node || "").trim()) : [];
+  if (currentNodes.length) {
+    ensureCatalogNodeQrTokens(current);
+    return false;
+  }
   const now = new Date().toISOString();
   const item = {
+    ...(current || {}),
     id: 11,
     name: "Токарный цех",
     area: "Токарный цех",

@@ -89,3 +89,26 @@ test("equipment QR route can restore a missing built-in item before rotating it"
   assert.equal(responses[0].status, 200);
   assert.equal(database.catalog.equipment[11].qrTokens[0], "00112233445566778899aabb");
 });
+
+test("equipment QR route repairs an existing built-in item with no nodes before rotating it", async () => {
+  const database = { catalog: { equipment: { 11: { id: 11, name: "Токарный цех", nodes: [] } } } };
+  const responses = [];
+  const handler = createAdminEquipmentQrRoute({
+    broadcastState: () => "state-v4",
+    enqueueStateWrite: async task => task(),
+    ensureCatalogItem: db => {
+      const item = db.catalog.equipment[11];
+      item.nodes = ["Токарный станок", "Сверлильный станок"];
+      item.qrTokens = {};
+      return item;
+    },
+    randomBytes: () => Buffer.from("00112233445566778899aabb", "hex"),
+    readBody: async req => req.body,
+    readDb: () => database,
+    sendJson: (_res, status, payload) => responses.push({ status, payload }),
+    writeDb: () => {}
+  });
+  await handler({ method: "POST", authUser: { role: "editor" }, body: { equipmentId: 11, nodeIndex: 1 } }, {}, "/api/admin/equipment/node-qr-rotate");
+  assert.equal(responses[0].status, 200);
+  assert.equal(database.catalog.equipment[11].qrTokens[1], "00112233445566778899aabb");
+});
