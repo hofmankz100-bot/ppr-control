@@ -686,6 +686,9 @@ test("admin can rotate one node QR without changing other node indexes", () => {
   assert.match(client, /function currentNodeQrMatches\(parsed = \{\}\)/);
   assert.match(client, /api\/admin\/equipment\/node-qr-rotate/);
   assert.match(client, /async function rotateNodeQr\(equipmentId, nodeIndex\)/);
+  assert.match(client, /function confirmNodeQrRotation\(button, nodeName\)/);
+  assert.match(client, /Нажмите ещё раз для подтверждения/);
+  assert.doesNotMatch(client, /window\.confirm\(`Обновить QR узла/);
   assert.doesNotMatch(client, /persistStateLocally\(state\);\s*printNodeQrCode\(/);
   assert.match(client, /QR обновлён\. Для печати нажмите отдельную кнопку/);
   assert.match(equipmentQrRoute, /pathname !== "\/api\/admin\/equipment\/node-qr-rotate"/);

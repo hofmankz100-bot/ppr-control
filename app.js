@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v780-turning-shop-qr-rotate-1";
+const APP_VERSION = "v781-qr-button-confirm-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -4967,11 +4967,30 @@ function qrPopupMobileCss() {
   return `.qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border:0;border-radius:50%;background:#14324a;color:#fff;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:20}@media(max-width:700px){body{padding-top:72px!important}.actions{display:none!important}.qr-back{display:block}}@media print{.qr-back{display:none!important}}`;
 }
 
+function confirmNodeQrRotation(button, nodeName) {
+  if (!button) return false;
+  const now = Date.now();
+  const confirmationUntil = Number(button.dataset.qrConfirmUntil || 0);
+  if (confirmationUntil > now) {
+    delete button.dataset.qrConfirmUntil;
+    return true;
+  }
+  button.dataset.qrConfirmUntil = String(now + 8000);
+  button.textContent = "Нажмите ещё раз для подтверждения";
+  showAppToast(`Повторно нажмите кнопку, чтобы обновить QR узла «${nodeName}».`);
+  window.setTimeout(() => {
+    if (!button.isConnected || Number(button.dataset.qrConfirmUntil || 0) <= Date.now()) {
+      delete button.dataset.qrConfirmUntil;
+      if (button.isConnected && !button.disabled) button.textContent = "Обновить QR";
+    }
+  }, 8100);
+  return false;
+}
+
 async function rotateNodeQr(equipmentId, nodeIndex) {
   const eq = equipmentById(Number(equipmentId));
   const nodeName = eq?.nodes?.[Number(nodeIndex)] || "";
   if (!eq || !nodeName || !isEditorSession()) return;
-  if (!window.confirm(`Обновить QR узла «${nodeName}»? Старый QR этого узла перестанет работать. Остальные QR не изменятся.`)) return;
   const result = await apiJson("/api/admin/equipment/node-qr-rotate", {
     method: "POST",
     body: JSON.stringify({ equipmentId: Number(equipmentId), nodeIndex: Number(nodeIndex) })
@@ -10501,10 +10520,13 @@ function renderNodeWalkthrough(eq) {
         const input = row.querySelector("[data-node-name-list]");
         if (input) input.value = nodeName;
       });
-      row.querySelector("[data-rotate-node-qr]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
+      row.querySelector("[data-rotate-node-qr]")?.addEventListener("click", event => {
+        if (!confirmNodeQrRotation(event.currentTarget, nodeName)) return;
+        runButtonOperation(event.currentTarget, async () => {
         await rotateNodeQr(eq.id, index);
         renderNodeWalkthrough(equipmentById(eq.id));
-      }, "Обновляем..."));
+        }, "Обновляем...");
+      });
       row.querySelector("[data-print-node-qr]")?.addEventListener("click", () => printNodeQrCode(eq, index));
       row.querySelector("[data-delete-node]")?.addEventListener("click", async event => {
         if (!canManageCatalogStructure(eq)) return;
