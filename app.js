@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v775-turning-shop-qr-access-1";
+const APP_VERSION = "v776-turning-shop-standard-qr-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3792,6 +3792,17 @@ function areaAllowed(area) {
   return userHasArea(profile, area);
 }
 
+function isTurningShopEquipment(eq = {}) {
+  return [eq.area, eq.name].some(value => String(value || "").trim().toLocaleLowerCase("ru-RU") === "токарный цех");
+}
+
+function routeTurnerQrToOwnWork(eq = {}) {
+  if (!isTurnerUser() || !isTurningShopEquipment(eq)) return false;
+  current.productionTab = "turning";
+  show("welding", false);
+  return true;
+}
+
 function visibleEquipment() {
   const mode = roleAccess().equipment;
   if (mode === "none") return [];
@@ -4705,6 +4716,10 @@ async function handleIncomingNodeQrFromUrl() {
     window.alert("Этот QR-код заменён. Отсканируйте новый код данного узла.");
     clearIncomingNodeQrFromUrl();
     return false;
+  }
+  if (routeTurnerQrToOwnWork(eq)) {
+    clearIncomingNodeQrFromUrl();
+    return true;
   }
   if (profile?.jobRole === "forkliftDriver" && String(eq.name || "").trim().toLocaleLowerCase("ru-RU") !== "вилочные погрузчики") {
     window.alert("Карщику доступен только журнал «Вилочные погрузчики».");
@@ -16008,6 +16023,7 @@ ui.qrWalkButton?.addEventListener("click", async () => {
     while (true) {
       const parsed = await scanNodeQrCode(null, null, null);
       if (!parsed) break;
+      if (routeTurnerQrToOwnWork(equipmentById(parsed.equipmentId))) break;
       const shift = currentWalkShift();
       await refreshQrWalkStatusFromServer(parsed.equipmentId, shift);
       if (isNodeShiftChecked(getRecord(parsed.equipmentId, parsed.nodeIndex, shift.date), shift.key)) {
