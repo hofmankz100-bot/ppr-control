@@ -2072,7 +2072,9 @@ test("production work section is named welder and turner", () => {
 test("turner QR in the turning shop opens turning work instead of recording a walk", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(clientSource, /isTurnerUser\(\) && isTurningShopEquipment\(eq\)/);
+  assert.match(clientSource, /function routeTurnerQrToOwnWork/);
+  assert.match(clientSource, /routeTurnerQrToOwnWork\(eq\)/);
+  assert.match(clientSource, /routeTurnerQrToOwnWork\(equipmentById\(parsed\.equipmentId\)\)/);
   assert.match(clientSource, /current\.productionTab = "turning"/);
   assert.match(clientSource, /QR-обход выполняют электромеханики и инженеры/);
   assert.match(serverSource, /isTurningShop[\s\S]*?\["turner", "welder", "forkliftDriver"\]/);
