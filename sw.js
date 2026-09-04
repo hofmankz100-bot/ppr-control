@@ -1,16 +1,16 @@
-const CACHE_NAME = "ppr-v772-parts-current-month-1";
+const CACHE_NAME = "ppr-v773-turning-shop-qr-routing-1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.min.css?v=v772-parts-current-month-1",
+  "./styles.min.css?v=v773-turning-shop-qr-routing-1",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
   "./modules/comments.js?v=288-print-request-pages",
   "./modules/director.js?v=288-print-request-pages",
-  "./modules/print-assets.js?v=v772-parts-current-month-1",
-  "./app.min.js?v=v772-parts-current-month-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v772-parts-current-month-1",
+  "./modules/print-assets.js?v=v773-turning-shop-qr-routing-1",
+  "./app.min.js?v=v773-turning-shop-qr-routing-1",
+  "./node_modules/jsqr/dist/jsQR.js?v=v773-turning-shop-qr-routing-1",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",

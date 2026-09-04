@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v772-parts-current-month-1";
+const SERVER_VERSION = "v773-turning-shop-qr-routing-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4497,6 +4497,14 @@ function nodeMutationAccessServer(user = {}, catalogItem = {}) {
   const rawRole = String(user.role || "");
   const roles = qrPermissionRoles(user);
   if (!roles.some(role => NODE_CHECKLIST_ROLES.has(role))) return false;
+  const isTurningShop = [catalogItem.area, catalogItem.name].some(value => (
+    String(value || "").trim().toLocaleLowerCase("ru-RU") === "токарный цех"
+  ));
+  if (isTurningShop) {
+    const assignedTrades = new Set([String(user.role || ""), String(user.jobRole || "")]);
+    if (["turner", "welder", "forkliftDriver"].some(role => assignedTrades.has(role))) return false;
+    return roles.some(role => ["mechanic", "engineer", "editor"].includes(role));
+  }
   if (rawRole === "forkliftDriver" || String(user.jobRole || "") === "forkliftDriver") {
     const text = `${catalogItem.equipmentKind || ""} ${catalogItem.name || ""}`;
     return catalogItem.equipmentKind === "forklift" || /вилоч|погрузчик/i.test(text);

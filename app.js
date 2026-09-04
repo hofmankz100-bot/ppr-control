@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v772-parts-current-month-1";
+const APP_VERSION = "v773-turning-shop-qr-routing-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3792,6 +3792,10 @@ function areaAllowed(area) {
   return userHasArea(profile, area);
 }
 
+function isTurningShopEquipment(eq = {}) {
+  return [eq.area, eq.name].some(value => String(value || "").trim().toLocaleLowerCase("ru-RU") === "токарный цех");
+}
+
 function visibleEquipment() {
   const mode = roleAccess().equipment;
   if (mode === "none") return [];
@@ -4705,6 +4709,13 @@ async function handleIncomingNodeQrFromUrl() {
     window.alert("Этот QR-код заменён. Отсканируйте новый код данного узла.");
     clearIncomingNodeQrFromUrl();
     return false;
+  }
+  if (isTurnerUser() && isTurningShopEquipment(eq)) {
+    clearIncomingNodeQrFromUrl();
+    current.productionTab = "turning";
+    show("welding", false);
+    showAppToast("Открыт раздел токарных работ. QR-обход выполняют электромеханики и инженеры.");
+    return true;
   }
   if (profile?.jobRole === "forkliftDriver" && String(eq.name || "").trim().toLocaleLowerCase("ru-RU") !== "вилочные погрузчики") {
     window.alert("Карщику доступен только журнал «Вилочные погрузчики».");
