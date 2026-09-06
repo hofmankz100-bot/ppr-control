@@ -97,7 +97,9 @@ async function checkDialog(page, panel, lastControl, { mustScroll = false } = {}
 }
 
 async function home(page, app) {
-  await page.goto(app.baseURL);
+  // Exercise the application's return control. Reloading here cancels unrelated
+  // polling requests and makes WebKit report navigation diagnostics as pageerrors.
+  await page.locator('#backButton:visible, [data-mobile-view="home"]:visible').first().click();
   await expect(page.locator("#loginOverlay")).toBeHidden();
   await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
 }
