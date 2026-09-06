@@ -27,6 +27,8 @@ async function fillCompletion(card, trade) {
     await card.locator('[name="welderStamp"]').fill("ТЕСТ");
     await card.locator('[name="welderCertificate"]').fill("ТЕСТ-123");
   } else await card.locator('[name="operations"]').fill("Тестовая обработка");
+  await expect(card.locator('[name="material"]')).toHaveValue("Сталь для теста");
+  await expect(card.locator(`[name="${trade === "welding" ? "consumables" : "operations"}"]`)).toHaveValue(trade === "welding" ? "Проволока для теста" : "Тестовая обработка");
 }
 async function failStateWrites(page) {
   const control = { blocked: true, failures: 0, forbidden: 0 };
@@ -61,6 +63,27 @@ for (const [trade, role, seeded] of [["welding", "welder", welding], ["turning",
     await expect.poll(async () => (await serverJournal(page, app, trade))[seeded.id].status).toBe("awaitingAcceptance");
     expect((await serverJournal(page, app, trade))[seeded.id].material).toBe("Сталь для теста");
     expect(network.forbidden).toBe(0);
+  });
+
+  test(`${trade}: acceptance does not redirect typing from the field the worker chose`, async ({ page, app }) => {
+    await page.clock.install();
+    await loginProduction(page, app, app.users[role]);
+    await page.locator(`[data-production-tab="${trade}"]`).click();
+    // Hold delayed UI effects until the worker has already begun the next field.
+    await page.clock.pauseAt(new Date(Date.now() + 60000));
+    const card = page.locator(`[data-${trade}-id="${seeded.id}"]`);
+    await card.locator(`[data-${trade}-accept]`).click();
+    await expect(card).toHaveClass(/status-accepted/);
+    await expect(page.locator(".app-toast").filter({ hasText: "Заявка принята в работу." })).toHaveCount(1);
+    await card.locator('[name="material"]').fill("Сталь для теста");
+    const chosenField = card.locator(`[name="${trade === "welding" ? "consumables" : "operations"}"]`);
+    await chosenField.fill("Начало ");
+    await page.clock.runFor(200);
+    // Keyboard input deliberately follows the actual focus, without refocusing the locator.
+    await page.keyboard.type("продолжение");
+    await expect(chosenField).toHaveValue("Начало продолжение");
+    await expect(chosenField).toBeFocused();
+    await expect(card.locator('[name="material"]')).toHaveValue("Сталь для теста");
   });
 }
 

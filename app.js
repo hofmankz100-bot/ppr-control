@@ -8152,11 +8152,6 @@ async function acceptWeldingRequest(item) { return productionTransition(item, "w
   const saved = await saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate, participants: [productionParticipant(actor)] });
   if (!saved) return;
   productionSaveNotice(saved, "Заявка принята в работу.");
-  window.setTimeout(() => {
-    const card = ui.weldingPanel?.querySelector(`[data-welding-id="${CSS.escape(item.id)}"]`);
-    card?.scrollIntoView({ behavior: "smooth", block: "start" });
-    card?.querySelector("textarea[name='material']")?.focus({ preventScroll: true });
-  }, 80);
 }); }
 
 async function completeWeldingRequest(item, form) {
@@ -8322,7 +8317,6 @@ async function acceptTurningRequest(item) { return productionTransition(item, "t
   const saved = await saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role, participants:[productionParticipant(actor)] });
   if (!saved) return;
   productionSaveNotice(saved, "Заявка принята в работу.");
-  window.setTimeout(()=>{ const card=ui.weldingPanel?.querySelector(`[data-turning-id="${CSS.escape(item.id)}"]`); card?.scrollIntoView({behavior:"smooth",block:"start"}); card?.querySelector("textarea[name='material']")?.focus({preventScroll:true}); },80);
 }); }
 
 async function completeTurningRequest(item, form) {
