@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v786-reliable-daily-work-1";
+const APP_VERSION = "v786-reliable-daily-work-2";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3990,8 +3990,10 @@ function renderProfile() {
     return;
   }
   const area = profile.area ? ` · ${profile.area}` : "";
-  const phone = profile.phone ? ` · ${profile.phone}` : "";
-  const employeeId = profile.employeeId ? ` · Таб. № ${profile.employeeId}` : "";
+  const normalizeIdentifier = value => String(value || "").replace(/[\s()+-]/g, "");
+  const sharedIdentifier = normalizeIdentifier(profile.phone) && normalizeIdentifier(profile.phone) === normalizeIdentifier(profile.employeeId);
+  const phone = profile.phone && !sharedIdentifier ? ` · ${profile.phone}` : "";
+  const employeeId = profile.employeeId ? ` · ${sharedIdentifier ? "Таб. № / тел." : "Таб. №"} ${profile.employeeId}` : "";
   const editorRoleSwitcher = isEditorSession() ? `
     <label class="editor-role-switcher">
       <span>${escapeHtml(t("changeRole"))}</span>
@@ -10020,13 +10022,15 @@ function renderEquipment() {
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
       const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
       const shiftSummary = equipmentDaySummary(eq, activeShift.date, activeWalkGroup);
+      const normalizeLabel = value => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+      const areaCaption = normalizeLabel(eq.area) === normalizeLabel(eq.name) ? "" : ` · ${escapeHtml(eq.area)}`;
       searchableRows.push({ row: tr, text: [eq.name, eq.area, ...eq.nodes].join(" "), attention: Boolean(alert || equipmentDowntimeOpen || compressorJournalMissingToday || gasJournalMissingToday || (!equipmentOperationalPause && !shiftSummary.complete && shiftSummary.activeTotal > 0)) });
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" data-aggregate-equipment="${eq.id}" class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
               <strong>${escapeHtml(eq.name)}</strong>
-              <span>Узлов: ${ordinaryNodeIndexes(eq).length} · ${escapeHtml(eq.area)}</span>
+              <span>Узлов: ${ordinaryNodeIndexes(eq).length}${areaCaption}</span>
               <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `Записей: ${aggregateJournalCount(eq.area, eq.id)}`}</small>
             </button>
             <div class="equipment-secondary-tools">
