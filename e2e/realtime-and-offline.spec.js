@@ -193,10 +193,14 @@ test.describe("session authority during server failures", () => {
     const at = new Date().toISOString();
     snapshot.pprSheets = { ...snapshot.pprSheets, [date]: { id: `sheet:${date}`, date, updatedAt: at, plannedByName: app.users.engineer.name,
       rows: [{ id: "e2e-device-ppr-row", equipmentId: app.equipmentId, equipment: "Тестовый пресс", node: app.nodeName, area: "Тестовый цех", work: text, workUpdatedAt: at }] } };
+    // Stop the previous app before seeding its storage: its deferred 180ms
+    // IndexedDB write can otherwise overwrite the fixture between put and goto.
+    // The static JSON document retains the app origin without running app.js.
+    await page.goto(`${app.baseURL}/manifest.json`);
     await context.setOffline(true);
     // Model a durable unsent snapshot from the previous app run. Operational
     // PPR data intentionally exists only in IndexedDB, not the lightweight cache.
-    await page.evaluate(async ({ snapshot, user }) => {
+    const seeded = await page.evaluate(async ({ snapshot, user, date }) => {
       const db = await new Promise((resolve, reject) => {
         const request = indexedDB.open("ppr-control-device-v3", 1);
         request.onupgradeneeded = () => request.result.createObjectStore("state");
@@ -209,12 +213,18 @@ test.describe("session authority during server failures", () => {
         transaction.oncomplete = resolve;
         transaction.onerror = () => reject(transaction.error);
       });
+      const stored = await new Promise((resolve, reject) => {
+        const request = db.transaction("state", "readonly").objectStore("state").get("full-state");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
       db.close();
       localStorage.setItem("ppr-pwa-state-v3-pending", "1");
       localStorage.setItem("ppr-pwa-state-v3-pending-owner-v1", JSON.stringify({ ownerId: user.id, ownerEmployeeId: user.employeeId, ownerName: user.name }));
       if (JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").pprSheets) throw new Error("PPR must be absent from the lightweight cache in this test");
-    }, { snapshot, user: app.users.engineer });
-    await page.goto("about:blank");
+      return stored?.pprSheets?.[date]?.rows?.find(row => row.id === "e2e-device-ppr-row")?.work;
+    }, { snapshot, date, user: { id: app.users.engineer.id, employeeId: app.users.engineer.employeeId, name: app.users.engineer.name } });
+    expect(seeded, "The durable PPR fixture must exist before restarting the app").toBe(text);
     await context.setOffline(false);
     await page.goto(app.baseURL);
     await expect(page.locator("#loginOverlay")).toBeHidden();
