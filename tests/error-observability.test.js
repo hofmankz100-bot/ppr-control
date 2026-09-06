@@ -34,7 +34,7 @@ test("server monitoring retains bounded diagnostic details for administrators", 
   assert.match(server, /scope:\s*String\(body\.source/);
   assert.match(server, /message:\s*String\(body\.message/);
   assert.match(server, /runtimeMonitor\.clientErrors\s*=\s*runtimeMonitor\.clientErrors\.filter/);
-  assert.match(server, /warnServerDiagnostic\("websocket\.message", error\)/);
+  assert.match(server, /onError: error => warnServerDiagnostic\("websocket\.connection", error\)/);
   assert.match(server, /warnServerDiagnostic\("websocket\.ping", error\)/);
 });
 

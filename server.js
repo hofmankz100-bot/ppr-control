@@ -10,6 +10,9 @@ const { compressBackupPayload, decodeBackupPayload } = require("./server/backup-
 const { buildHealthPayload } = require("./server/health");
 const { createStaticHandler } = require("./server/static-files");
 const { loadEnvFile } = require("./server/env");
+const { createStateTransactions } = require("./server/state-transactions");
+const { createPostgresStateStore } = require("./server/postgres-state-store");
+const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
@@ -60,7 +63,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v785-confirmation-window-style-2";
+const SERVER_VERSION = "v786-reliable-daily-work-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -138,15 +141,46 @@ const loginAttempts = new Map();
 const contractorAttendanceAttempts = new Map();
 let postgresPool = null;
 let postgresState = null;
-let postgresWriteQueue = Promise.resolve();
-let postgresPendingState = null;
-let postgresWriterActive = false;
+let postgresStateStore = null;
 let lastPostgresBackupDate = "";
+let dailyPostgresBackup = null;
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
 let postgresClusterStatus = { active: "", nodes: [] };
 let postgresRecoveryTimer = null;
+let postgresRefreshTimer = null;
+let postgresRefreshActive = false;
+const stateTransactions = createStateTransactions({
+  async begin() {
+    if (postgresStateStore) {
+      try { return await postgresStateStore.begin(); }
+      catch (error) { error.statusCode = 503; throw error; }
+    }
+    return {
+      state: readDbFile(),
+      async commit(state) { if (state) writeDbFile(state); },
+      async rollback() {}
+    };
+  },
+  committed: () => postgresState || readDbFile(),
+  snapshot: () => postgresStateStore ? postgresStateStore.snapshot() : readDbFile(),
+  publish(state, { changed }) {
+    if (changed) publicStateResponseCache = { version: "", data: null, gzip: null };
+    if (postgresStateStore) {
+      postgresState = state;
+      scheduleLocalBackup(state);
+      storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
+      if (changed) saveDailyPostgresBackup(state).catch(error => warnServerDiagnostic("postgres.daily-backup", error));
+    }
+  },
+  onTransactionError(error) {
+    if (postgresStateStore && error.statusCode === 503) storageStatus = {
+      ...storageStatus, mode: "postgres-degraded", error: "Authoritative database write was not confirmed", retrying: false
+    };
+  },
+  onEffectError: error => warnServerDiagnostic("state.after-commit", error)
+});
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -829,14 +863,18 @@ function readDbFile() {
 }
 
 function readDb() {
-  return postgresState || readDbFile();
+  return stateTransactions.read();
 }
 
 function writeDbFile(db) {
   ensureDb();
   backupDbOncePerDay();
   const tmp = `${dbFile}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(normalizeDb(db), null, 2));
+  const descriptor = fs.openSync(tmp, "w");
+  try {
+    fs.writeFileSync(descriptor, JSON.stringify(normalizeDb(db), null, 2));
+    fs.fsyncSync(descriptor);
+  } finally { fs.closeSync(descriptor); }
   fs.renameSync(tmp, dbFile);
 }
 
@@ -990,7 +1028,7 @@ async function compressLegacyBackupTables(queryable) {
 
 async function recoverPostgresReplicas() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2) return;
-  const sourceIndex = postgresPool.activeIndex;
+  const sourceIndex = 0;
   const source = postgresPool.nodes[sourceIndex];
   if (!source) return;
   for (let index = 0; index < postgresPool.nodes.length; index += 1) {
@@ -999,18 +1037,19 @@ async function recoverPostgresReplicas() {
     const wasHealthy = Boolean(target.healthy);
     try {
       await target.pool.query("SELECT 1");
+      if (!wasHealthy) await postgresStateStore.prepareMirror(target);
       target.healthy = true;
       target.error = "";
       target.lastSuccessAt = new Date().toISOString();
       if (!wasHealthy) {
         await compressLegacyBackupTables(target.pool);
-        const current = await source.pool.query("SELECT payload,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+        const current = await source.pool.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
         if (current.rows[0]?.payload) {
           await target.pool.query(
-            `INSERT INTO ppr_settings(setting_key,payload,updated_at) VALUES('full_state',$1::jsonb,$2)
-             ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
-             WHERE ppr_settings.updated_at < EXCLUDED.updated_at`,
-            [JSON.stringify(current.rows[0].payload), current.rows[0].updated_at]
+            `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
+             ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
+             WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
+            [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
           );
         }
         const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos");
@@ -1083,9 +1122,9 @@ async function initializeStorage() {
         node.lastErrorAt = new Date().toISOString();
       }
     }));
-    if (!nodes.some(node => node.healthy)) {
+    if (!nodes[0].healthy) {
       await Promise.allSettled(nodes.map(node => node.pool.end()));
-      throw new Error("All configured PostgreSQL databases are unavailable");
+      throw new Error("Authoritative PostgreSQL database is unavailable; automatic state failover is disabled");
     }
     const pool = new MultiPostgres(nodes, {
       onStatus: status => { postgresClusterStatus = status; },
@@ -1143,69 +1182,38 @@ async function initializeStorage() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    let freshest = null;
-    for (let index = 0; index < nodes.length; index += 1) {
-      try {
-        const candidate = await nodes[index].pool.query(
-          "SELECT payload, updated_at FROM ppr_settings WHERE setting_key = 'full_state' LIMIT 1"
-        );
-        const row = candidate.rows[0];
-        if (row?.payload && (!freshest || new Date(row.updated_at).getTime() > freshest.updatedAt)) {
-          freshest = { index, payload: row.payload, updatedAt: new Date(row.updated_at).getTime() };
-        }
-      } catch (error) {
-        nodes[index].healthy = false;
-        nodes[index].error = String(error.message || error);
-      }
-    }
-    if (freshest) pool.activeIndex = freshest.index;
-    if (freshest) await seedEmptyPostgresReplicas(nodes, freshest.index);
+    await pool.flushMirrors();
+    pool.activeIndex = 0;
+    const stateStore = createPostgresStateStore(pool, {
+      normalize: normalizeDb,
+      legacySkipUnavailable: String(process.env.PPR_STATE_LEGACY_SKIP_UNAVAILABLE || "").split(",").map(name => name.trim()).filter(Boolean),
+      onExternalState(state) {
+        postgresState = structuredClone(state);
+        publicStateResponseCache = { version: "", data: null, gzip: null };
+        broadcastState("postgres-instance", "", publicState(state));
+      },
+      onMirrorError: (error, name) => warnServerDiagnostic(`postgres.mirror.${name}`, error)
+    });
+    postgresState = await stateStore.initialize(() => readDbFile(), state => {
+      archiveAndRemoveCraneBeamData(state);
+      removeDuplicateProductionRequests(state);
+      removeObsoletePressNoMaterialNodes(state);
+      removeKnownFalseDowntimes(state);
+      purgeRemovedEquipmentData(state);
+      reconcilePendingRemarkDowntimes(state);
+      reconcileMissingShgrpQrChecksServer(state);
+      return state;
+    });
+    postgresStateStore = stateStore;
+    writeDbFile(postgresState);
+    await seedEmptyPostgresReplicas(nodes, 0);
     postgresClusterStatus = pool.status();
-    const result = freshest ? { rows: [{ payload: freshest.payload }] } : { rows: [] };
-    if (result.rows[0]?.payload) {
-      postgresState = normalizeDb(result.rows[0].payload);
-      archiveAndRemoveCraneBeamData(postgresState);
-      removeDuplicateProductionRequests(postgresState);
-      removeObsoletePressNoMaterialNodes(postgresState);
-      removeKnownFalseDowntimes(postgresState);
-      purgeRemovedEquipmentData(postgresState);
-      reconcilePendingRemarkDowntimes(postgresState);
-      reconcileMissingShgrpQrChecksServer(postgresState);
-      await pool.query(
-        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
-         VALUES ('full_state', $1::jsonb, now())
-         ON CONFLICT(setting_key) DO UPDATE
-         SET payload = EXCLUDED.payload, updated_at = now()`,
-        [JSON.stringify(postgresState)]
-      );
-      writeDbFile(postgresState);
-    } else {
-      postgresState = readDbFile();
-      archiveAndRemoveCraneBeamData(postgresState);
-      removeDuplicateProductionRequests(postgresState);
-      removeObsoletePressNoMaterialNodes(postgresState);
-      removeKnownFalseDowntimes(postgresState);
-      purgeRemovedEquipmentData(postgresState);
-      reconcilePendingRemarkDowntimes(postgresState);
-      reconcileMissingShgrpQrChecksServer(postgresState);
-      await pool.query(
-        `INSERT INTO ppr_settings(setting_key, payload, updated_at)
-         VALUES ('full_state', $1::jsonb, now())
-         ON CONFLICT(setting_key) DO UPDATE
-         SET payload = EXCLUDED.payload, updated_at = now()`,
-        [JSON.stringify(postgresState)]
-      );
-    }
     postgresPool = pool;
     storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", cluster: postgresClusterStatus };
     return storageStatus;
   } catch (error) {
-    console.error(`PostgreSQL cluster unavailable, JSON fallback enabled: ${error.message}`);
-    if (process.env.REQUIRE_POSTGRES === "true") throw error;
-    postgresPool = null;
-    postgresState = null;
-    storageStatus = { mode: "json-fallback", error: error.message };
-    return storageStatus;
+    console.error(`Authoritative PostgreSQL startup failed: ${error.message}`);
+    throw error;
   }
 }
 
@@ -1892,7 +1900,7 @@ async function applyAdminBackupRetention() {
 }
 
 async function createAdminBackup(label = "manual", actorName = "Администратор", sourceDb = null) {
-  await stateWriteQueue.catch(() => {});
+  await stateTransactions.idle();
   const payload = normalizeDb(structuredClone(sourceDb || readDb()));
   let id = `backup-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const cleanLabel = String(label || "Ручная копия").trim().slice(0, 200) || "Ручная копия";
@@ -2163,70 +2171,27 @@ function scheduleLocalBackup(db) {
   }, 250);
 }
 
-function schedulePostgresWrite(db) {
-  if (!postgresPool) return;
-  postgresPendingState = db;
-  if (postgresWriterActive) return;
-  postgresWriterActive = true;
-  postgresWriteQueue = (async () => {
-    while (postgresPendingState) {
-      const latest = postgresPendingState;
-      postgresPendingState = null;
-      try {
-        await postgresPool.query(
-          `INSERT INTO ppr_settings(setting_key, payload, updated_at)
-           VALUES ('full_state', $1::jsonb, now())
-           ON CONFLICT(setting_key) DO UPDATE
-           SET payload = EXCLUDED.payload, updated_at = now()`,
-          [JSON.stringify(latest)]
-        );
-        const backupDate = todayStamp();
-        if (lastPostgresBackupDate !== backupDate) {
-          await postgresPool.query(
-            `INSERT INTO ppr_state_backups(backup_date, payload, payload_gzip)
-             VALUES (current_date, NULL, $1)
-             ON CONFLICT(backup_date) DO NOTHING`,
-            [compressBackupPayload(latest)]
-          );
-          // Full administrator backups already keep the longer daily/weekly/monthly
-          // history. This lightweight recovery table only needs one rolling week;
-          // retaining another full month duplicated the largest state payloads.
-          await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '7 days'");
-          lastPostgresBackupDate = backupDate;
-        }
-        storageStatus = {
-          mode: "postgres-cluster",
-          table: "ppr_settings",
-          key: "full_state",
-          lastWriteAt: new Date().toISOString(),
-          cluster: postgresClusterStatus
-        };
-      } catch (error) {
-        console.error(`PostgreSQL write failed; retry scheduled and JSON backup preserved: ${error.message}`);
-        storageStatus = {
-          mode: "postgres-degraded",
-          table: "ppr_settings",
-          key: "full_state",
-          error: error.message,
-          retrying: true
-        };
-        postgresPendingState = latest;
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      }
-    }
-  })().finally(() => {
-    postgresWriterActive = false;
-    if (postgresPendingState) schedulePostgresWrite(postgresPendingState);
-  });
+async function flushPostgresWrites() {
+  await stateTransactions.idle();
+  await postgresStateStore?.flushMirrors();
+  await dailyPostgresBackup;
 }
 
-async function flushPostgresWrites() {
-  while (postgresWriterActive || postgresPendingState) {
-    if (!postgresWriterActive && postgresPendingState) schedulePostgresWrite(postgresPendingState);
-    const activeWrite = postgresWriteQueue;
-    await activeWrite;
-    if (activeWrite === postgresWriteQueue && !postgresWriterActive && !postgresPendingState) break;
-  }
+async function saveDailyPostgresBackup(state) {
+  const backupDate = todayStamp();
+  if (!postgresPool || lastPostgresBackupDate === backupDate) return;
+  if (dailyPostgresBackup) return dailyPostgresBackup;
+  dailyPostgresBackup = (async () => {
+    await postgresPool.query(
+      `INSERT INTO ppr_state_backups(backup_date,payload,payload_gzip)
+       VALUES (current_date,NULL,$1) ON CONFLICT(backup_date) DO NOTHING`,
+      [compressBackupPayload(state)]
+    );
+    await postgresPool.query("DELETE FROM ppr_state_backups WHERE backup_date < current_date - interval '7 days'");
+    await postgresPool.flushMirrors?.();
+    lastPostgresBackupDate = backupDate;
+  })().finally(() => { dailyPostgresBackup = null; });
+  return dailyPostgresBackup;
 }
 
 function writeDb(db, action = {}) {
@@ -2253,12 +2218,8 @@ function writeDb(db, action = {}) {
   purgeRemovedEquipmentData(normalized);
   // A data URL is the durable fallback when PostgreSQL photo storage is unavailable.
   // Do not replace it with an ephemeral Render filesystem URL during a state write.
-  if (postgresPool) {
-    postgresState = normalized;
-    scheduleLocalBackup(normalized);
-    schedulePostgresWrite(normalized);
-  } else writeDbFile(normalized);
-  appendActionLog(action);
+  stateTransactions.stage(normalized);
+  stateTransactions.defer(() => appendActionLog(action));
 }
 
 function removeObsoletePressNoMaterialNodes(db) {
@@ -2446,16 +2407,30 @@ function ensurePushConfig(db) {
   return false;
 }
 
+async function pushDbSnapshot() {
+  return enqueueStateWrite(async () => {
+    const db = readDb();
+    if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
+    return structuredClone(db);
+  });
+}
+
+async function removeExpiredPushSubscriptions(expired) {
+  await enqueueStateWrite(async () => {
+    const db = readDb();
+    db.pushNotifications.subscriptions = (db.pushNotifications?.subscriptions || [])
+      .filter(item => !expired.has(item.subscription?.endpoint));
+    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+  });
+}
+
 async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
+  if (stateTransactions.defer(() => sendRemarkPushNotifications(...arguments))) return;
   if (!added) return;
-  const db = readDb();
-  const configChanged = ensurePushConfig(db);
+  const db = await pushDbSnapshot();
   const subscriptions = db.pushNotifications.subscriptions || [];
   const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(db, item, remark)));
-  if (!subscriptions.length) {
-    if (configChanged) writeDb(db, { action: "push_config_created" });
-    return;
-  }
+  if (!subscriptions.length) return;
   webPush.setVapidDetails(
     "https://ppr-control-ramazan.onrender.com",
     db.pushNotifications.vapid.publicKey,
@@ -2481,13 +2456,13 @@ async function sendRemarkPushNotifications(added, total, origin = "", url = "/?v
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(item => !expired.has(item.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
-  } else if (configChanged) {
-    writeDb(db, { action: "push_config_created" });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
 async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
+  if (stateTransactions.defer(() => sendPprApprovalPushNotifications(...arguments))) return;
+  db = await pushDbSnapshot();
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
   const targets = subscriptions.filter(entry =>
@@ -2523,11 +2498,13 @@ async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
 async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
+  if (stateTransactions.defer(() => clearPprApprovalPushNotifications(...arguments))) return;
+  db = await pushDbSnapshot();
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
   const targets = subscriptions.filter(entry =>
@@ -2557,7 +2534,7 @@ async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
@@ -2992,6 +2969,8 @@ function syncPushProfilesForUser(db, user = {}) {
 
 
 async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
+  if (stateTransactions.defer(() => sendResolutionPushNotifications(...arguments))) return;
+  db = await pushDbSnapshot();
   const targetParticipants = Array.isArray(participants) ? participants : [];
   if (!targetParticipants.length) return;
   ensurePushConfig(db);
@@ -3019,11 +2998,13 @@ async function sendResolutionPushNotifications(db, participants, origin, title, 
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
 async function clearRemarkPushNotifications(db, participants, origin, entityId = "general") {
+  if (stateTransactions.defer(() => clearRemarkPushNotifications(...arguments))) return;
+  db = await pushDbSnapshot();
   const targetParticipants = Array.isArray(participants) ? participants : [];
   if (!targetParticipants.length) return;
   ensurePushConfig(db);
@@ -3054,11 +3035,13 @@ async function clearRemarkPushNotifications(db, participants, origin, entityId =
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
 async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
+  if (stateTransactions.defer(() => sendDowntimePushNotifications(...arguments))) return;
+  db = await pushDbSnapshot();
   ensurePushConfig(db);
   const subscriptions = db.pushNotifications.subscriptions || [];
   const requested = Array.isArray(participants) ? participants : null;
@@ -3112,7 +3095,7 @@ async function sendDowntimePushNotifications(db, title, body, origin = "", parti
   }));
   if (expired.size) {
     db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    writeDb(db, { action: "push_subscriptions_cleaned", count: expired.size });
+    await removeExpiredPushSubscriptions(expired);
   }
 }
 
@@ -3167,6 +3150,16 @@ function securityHeaders(req = null) {
 }
 
 function sendJson(res, status, value, extraHeaders = {}) {
+  const transaction = stateTransactions.current();
+  if (transaction && !transaction.readOnly) {
+    transaction.responseStatus = status;
+    stateTransactions.defer(() => {
+      if (value?.stateVersion) value = { ...value, stateVersion: transaction.realtimeVersion || realtimeStateVersion() };
+      if (transaction.superseded && value?.state) value = { ...value, state: publicState(postgresState) };
+      sendJson(res, status, value, extraHeaders);
+    }, { critical: true });
+    return;
+  }
   const data = Buffer.from(JSON.stringify(value));
   const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(res.req?.headers?.["accept-encoding"] || ""));
   if (acceptsGzip && data.length >= 1024) {
@@ -3197,6 +3190,9 @@ function sendJson(res, status, value, extraHeaders = {}) {
 let publicStateResponseCache = { version: "", data: null, gzip: null };
 
 function sendPublicState(res, db) {
+  // Bind the version and payload to the same committed cache synchronously.
+  // A readonly handler may have retained an older snapshot across an await.
+  db = postgresState || readDbFile();
   const version = realtimeStateVersion();
   if (publicStateResponseCache.version !== version || !publicStateResponseCache.data) {
     const data = Buffer.from(JSON.stringify({ ...publicState(db), stateVersion: version }));
@@ -3347,7 +3343,11 @@ async function translateTexts(texts, target) {
     const cacheKey = translationCacheKey(lang, normalized);
     result[original] = db.translationCache[cacheKey]?.translated || original;
   }
-  if (changed) writeDb(db, { action: "translate_cache", target: lang, count: unique.length });
+  if (changed) await enqueueStateWrite(async () => {
+    const current = readDb();
+    current.translationCache = { ...(current.translationCache || {}), ...db.translationCache };
+    writeDb(current, { action: "translate_cache", target: lang, count: unique.length });
+  });
   return result;
 }
 
@@ -3639,8 +3639,10 @@ function attendanceSessionPublic(item = {}) {
   };
 }
 
+const requestBodies = new WeakMap();
 function readBody(req) {
-  return new Promise((resolve, reject) => {
+  if (requestBodies.has(req)) return requestBodies.get(req);
+  const result = new Promise((resolve, reject) => {
     let body = "";
     req.on("data", chunk => {
       body += chunk;
@@ -3654,7 +3656,10 @@ function readBody(req) {
       catch { reject(new Error("Bad JSON")); }
     });
     req.on("error", reject);
+    req.on("aborted", () => reject(new Error("Request aborted")));
   });
+  requestBodies.set(req, result);
+  return result;
 }
 
 function mergeObjectRecords(current = {}, incoming = {}) {
@@ -3954,7 +3959,7 @@ function mergeUsers(current = [], incoming = []) {
 
 let stateWriteQueue = Promise.resolve();
 function enqueueStateWrite(task) {
-  const next = stateWriteQueue.then(task, task);
+  const next = stateTransactions.run(task);
   stateWriteQueue = next.catch(() => {});
   return next;
 }
@@ -3974,7 +3979,11 @@ function rejectRepeatedAdminMutation(req, res, pathname) {
     sendJson(res, 200, { ok: true, duplicate: true, message: "Повторное действие остановлено сервером." }, { "Cache-Control": "no-store" });
     return true;
   }
-  activeAdminMutationKeys.set(key, now + 10 * 60 * 1000);
+  const transaction = stateTransactions.current();
+  const remember = () => {
+    if (!transaction || (transaction.responseStatus || 200) < 400) activeAdminMutationKeys.set(key, now + 10 * 60 * 1000);
+  };
+  if (!stateTransactions.defer(remember)) remember();
   return false;
 }
 
@@ -3999,22 +4008,28 @@ function sendSse(res, payload) {
 }
 
 function broadcastState(origin = "server", actionId = "", state = publicState(), partial = false) {
+  const transaction = stateTransactions.current();
+  const counter = transaction
+    ? (transaction.realtimeCounter = (transaction.realtimeCounter || realtimeStateCounter) + 1)
+    : realtimeStateCounter + 1;
+  const payload = { type: "state", origin, actionId, stateVersion: `${realtimeInstanceId}:${counter}`, partial, state: structuredClone(state) };
+  const publish = () => {
   realtimeStateCounter += 1;
-  const payload = { type: "state", origin, actionId, stateVersion: realtimeStateVersion(), partial, state };
+  payload.stateVersion = realtimeStateVersion();
+  if (transaction) transaction.realtimeVersion = payload.stateVersion;
+  if (transaction?.superseded) { payload.state = publicState(postgresState); payload.partial = false; }
   realtimePatchHistory.push({ counter: realtimeStateCounter, payload });
   if (realtimePatchHistory.length > REALTIME_PATCH_HISTORY_LIMIT) {
     realtimePatchHistory.splice(0, realtimePatchHistory.length - REALTIME_PATCH_HISTORY_LIMIT);
   }
-  if (wss) {
-    const message = JSON.stringify(payload);
-    for (const client of wss.clients) {
-      if (client.readyState === 1) client.send(message);
-    }
-  }
+  const message = JSON.stringify(payload);
+  broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error));
   const sseMessage = `data: ${JSON.stringify(payload)}\n\n`;
   for (const client of sseClients) {
     sendSse(client, sseMessage);
   }
+  };
+  if (!stateTransactions.defer(publish)) publish();
   return payload.stateVersion;
 }
 
@@ -4746,7 +4761,7 @@ const handleAdminStorageRoute = createAdminStorageRoute({
   readDb,
   sendJson,
   unusedPublicAssetCandidates,
-  waitForStateWrites: () => stateWriteQueue.catch(() => {})
+  waitForStateWrites: () => stateTransactions.idle()
 });
 
 const handleAdminQrRoute = createAdminQrRoute({
@@ -4823,6 +4838,16 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
 });
 
 async function handleApi(req, res, pathname, url) {
+  if (pathname === "/api/health") return handleApiTransaction(req, res, pathname, url);
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method) || pathname === "/api/translate") {
+    return stateTransactions.view(() => handleApiTransaction(req, res, pathname, url));
+  }
+  // Network uploads must finish before holding the shared PostgreSQL state lock.
+  await readBody(req).catch(() => {});
+  return enqueueStateWrite(() => handleApiTransaction(req, res, pathname, url));
+}
+
+async function handleApiTransaction(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"
     || pathname === "/api/auth/session"
     || pathname === "/api/qr"
@@ -5192,8 +5217,7 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/push/public-key" && req.method === "GET") {
-    const db = readDb();
-    if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
+    const db = await pushDbSnapshot();
     sendJson(res, 200, { ok: true, publicKey: db.pushNotifications.vapid.publicKey });
     return true;
   }
@@ -5331,14 +5355,14 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
-    sendJson(res, 200, buildHealthPayload({
+    sendJson(res, storageStatus.mode === "postgres-degraded" ? 503 : 200, buildHealthPayload({
       compatibleClient,
       clientVersion,
       serverVersion: SERVER_VERSION,
       clientProtocol: CLIENT_PROTOCOL_VERSION,
       storage: storageStatus,
       websocket: Boolean(wss),
-      websocketClients: wss ? wss.clients.size : 0,
+      websocketClients: wsServers.reduce((sum, instance) => sum + instance.clients.size, 0),
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
       productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
@@ -5433,7 +5457,7 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 400, { ok: false, error: "qr_walk_status_invalid" });
       return true;
     }
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     const db = readDb();
     const qrCatalogItem = qrWalkCatalogItemServer(db, equipmentId);
     if (!qrCatalogItem || !nodeMutationAccessServer(req.authUser, qrCatalogItem)) {
@@ -5874,7 +5898,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/export/month" && req.method === "GET") {
     const month = monthKeyFromUrl(url);
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     createManualBackup(`export_${month}`);
     sendDownload(res, `ppr_export_${month}.json`, monthlyExport(readDb(), month));
     return true;
@@ -5882,7 +5906,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/export/month.csv" && req.method === "GET") {
     const month = monthKeyFromUrl(url);
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     createManualBackup(`export_csv_${month}`);
     sendCsvDownload(res, `ppr_export_${month}.csv`, monthlyCsvRows(readDb(), month));
     return true;
@@ -5890,7 +5914,7 @@ async function handleApi(req, res, pathname, url) {
 
   if (pathname === "/api/export/month.xls" && req.method === "GET") {
     const month = monthKeyFromUrl(url);
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     createManualBackup(`export_excel_${month}`);
     sendExcelDownload(res, `PPR_otchet_${month}.xls`, monthlyCsvRows(readDb(), month));
     return true;
@@ -5901,7 +5925,7 @@ async function handleApi(req, res, pathname, url) {
       sendJson(res, 403, { ok: false, error: "admin_required" });
       return true;
     }
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     createManualBackup("export_all");
     const db = readDb();
     const { authSessions: ignoredAuthSessions, ...exportedDb } = db;
@@ -6075,7 +6099,7 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/state" && req.method === "GET") {
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     const db = readDb();
     sendPublicState(res, db);
     return true;
@@ -6152,17 +6176,22 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/state" && req.method === "PUT") {
-    const body = await readBody(req);
-    if (Object.prototype.hasOwnProperty.call(body, "annualPpr")) {
-      const annualPprAllowed = req.authUser?.role === "editor"
-        || (req.authUser?.role === "engineer" && activeUserPermission(req.authUser, "annualPprEdit"));
-      if (!annualPprAllowed) {
-        sendJson(res, 403, { error: "annual_ppr_permission_denied" });
-        return true;
-      }
-    }
+    const incomingState = await readBody(req);
     const result = await enqueueStateWrite(async () => {
-      const db = readDb();
+      // Validation operates on a detached snapshot, including in PostgreSQL mode.
+      // A rejected section must not partly mutate the shared in-memory state.
+      const db = structuredClone(readDb());
+      let policy;
+      try {
+        policy = require("./server/state-mutation-policy").sanitizeStateMutation({
+          previous: db, incoming: incomingState, user: req.authUser,
+          canAccessEquipment: nodeMutationAccessServer, hasArea: userHasAreaServer
+        });
+      } catch (error) {
+        if (error.code !== "state_mutation_forbidden") throw error;
+        return { actionId: String(incomingState.actionId || ""), error: error.code, section: error.section };
+      }
+      const body = policy.body;
       const beforeState = JSON.stringify(publicState(db));
       const beforeRemarkKeys = openRemarkKeysServer(db);
       const authenticatedRole = String(req.authUser?.role || "");
@@ -6315,7 +6344,7 @@ async function handleApi(req, res, pathname, url) {
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
         db.systemBroadcasts = mergeArrayById(db.systemBroadcasts, body.systemBroadcasts);
       }
-      db.operationalResetAt = db.operationalResetAt || String(body.operationalResetAt || "");
+      db.operationalResetAt = db.operationalResetAt || "";
       db.walkShiftCleanupVersion = body.walkShiftCleanupVersion || db.walkShiftCleanupVersion || "";
       purgeRemovedEquipmentData(db);
       const actionId = String(body.actionId || "");
@@ -6331,14 +6360,15 @@ async function handleApi(req, res, pathname, url) {
         }
       });
       const changed = beforeState !== JSON.stringify(afterState);
-      if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: body.user || null });
-      return { actionId, changed, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
+      if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: req.authUser });
+      return { actionId, changed, ignoredSections: policy.ignoredSections, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
     });
     if (result.error) {
-      const status = result.error === "admin_required" ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;
+      const status = ["admin_required", "state_mutation_forbidden"].includes(result.error) ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;
       sendJson(res, status, {
         ok: false,
         error: result.error,
+        section: result.section,
         actionId: result.actionId,
         operationalResetAt: result.operationalResetAt || ""
       });
@@ -6352,7 +6382,40 @@ async function handleApi(req, res, pathname, url) {
         console.error(`Push delivery failed: ${error?.message || error}`);
       });
     }
-    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion });
+    sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, ignoredSections: result.ignoredSections });
+    return true;
+  }
+
+  if (pathname === "/api/ppr-sheet/generate" && req.method === "POST") {
+    const body = await readBody(req);
+    const date = String(body.date || "").trim();
+    const force = body.force === true;
+    if (force && !["engineer", "editor"].includes(permissionBaseRoleServer(String(req.authUser?.role || "")))) {
+      sendJson(res, 403, { ok: false, error: "ppr_action_forbidden" });
+      return true;
+    }
+    const { generatePprSheet, validDate } = require("./server/ppr-autofill");
+    if (!validDate(date)) {
+      sendJson(res, 400, { ok: false, error: "ppr_date_invalid" });
+      return true;
+    }
+    // An approved employee may open the calendar and trigger the deterministic
+    // plan. Only the server catalogue and date define its rows and signer.
+    // Replacing existing unapproved work requires the planner's explicit action.
+    const result = await enqueueStateWrite(async () => {
+      const db = readDb();
+      const generated = generatePprSheet({ catalog: db.catalog, previous: db.pprSheets?.[date], date, force });
+      if (generated.changed) {
+        db.pprSheets ||= {};
+        db.pprSheets[date] = generated.sheet;
+        writeDb(db, { action: "ppr_sheet_generated", actionId: String(body.actionId || ""), clientId: String(body.clientId || ""), user: req.authUser, date });
+      }
+      return generated;
+    });
+    const stateVersion = result.changed
+      ? broadcastState(String(body.clientId || "api"), String(body.actionId || ""), { pprSheets: { [date]: result.sheet } }, true)
+      : realtimeStateVersion();
+    sendJson(res, 200, { ok: true, changed: result.changed, sheet: result.sheet, stateVersion });
     return true;
   }
 
@@ -7507,7 +7570,7 @@ async function handleApi(req, res, pathname, url) {
   }
 
   if (pathname === "/api/users" && req.method === "GET") {
-    await stateWriteQueue.catch(() => {});
+    await stateTransactions.idle();
     if (req.authUser?.approved === false || req.authUser?.pendingApproval === true || !req.authUser?.role) {
       sendJson(res, 200, [userPublic(req.authUser)]);
       return true;
@@ -7532,7 +7595,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
     serveStatic(req, res, url.pathname);
   } catch (error) {
-    sendJson(res, 500, { ok: false, error: error.message });
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.statusCode === 503 ? "Изменения не сохранены. Повторите попытку." : error.message });
   }
 });
 
@@ -7543,7 +7606,7 @@ const qrServer = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
     serveStatic(req, res, url.pathname);
   } catch (error) {
-    sendJson(res, 500, { ok: false, error: error.message });
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.statusCode === 503 ? "Изменения не сохранены. Повторите попытку." : error.message });
   }
 });
 
@@ -7572,7 +7635,7 @@ function createHttpsServer() {
         if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
         serveStatic(req, res, url.pathname);
       } catch (error) {
-        sendJson(res, 500, { ok: false, error: error.message });
+        sendJson(res, error.statusCode || 500, { ok: false, error: error.statusCode === 503 ? "Изменения не сохранены. Повторите попытку." : error.message });
       }
     });
   } catch (error) {
@@ -7583,74 +7646,20 @@ function createHttpsServer() {
 
 const httpsServer = createHttpsServer();
 
+async function websocketAuthenticated(req) {
+  try { return Boolean(await stateTransactions.view(() => authenticatedUser(req))); }
+  catch (error) { warnServerDiagnostic("websocket.authentication", error); return false; }
+}
+
 if (WebSocketServer) {
-  wss = new WebSocketServer({
-    server,
-    path: "/ws",
-    perMessageDeflate: { threshold: 1024 }
-  });
-  wsServers.push(wss);
-  wss.on("connection", (ws, req) => {
-    if (!authenticatedUser(req)) {
-      ws.close(1008, "authentication_required");
-      return;
-    }
-    ws.isAlive = true;
-    ws.on("pong", () => { ws.isAlive = true; });
-    ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
-    ws.on("message", raw => {
-      try {
-        const msg = JSON.parse(String(raw || "{}"));
-        if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-      } catch (error) {
-        warnServerDiagnostic("websocket.message", error);
-      }
-    });
-  });
-  const qrWss = new WebSocketServer({
-    server: qrServer,
-    path: "/ws",
-    perMessageDeflate: { threshold: 1024 }
-  });
-  wsServers.push(qrWss);
-  qrWss.on("connection", ws => {
-    ws.isAlive = true;
-    ws.on("pong", () => { ws.isAlive = true; });
-    ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
-    ws.on("message", raw => {
-      try {
-        const msg = JSON.parse(String(raw || "{}"));
-        if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-      } catch (error) {
-        warnServerDiagnostic("qr-websocket.message", error);
-      }
-    });
-  });
-  if (httpsServer) {
-    const httpsWss = new WebSocketServer({
-      server: httpsServer,
-      path: "/ws",
-      perMessageDeflate: { threshold: 1024 }
-    });
-    wsServers.push(httpsWss);
-    httpsWss.on("connection", (ws, req) => {
-      if (!authenticatedUser(req)) {
-        ws.close(1008, "authentication_required");
-        return;
-      }
-      ws.isAlive = true;
-      ws.on("pong", () => { ws.isAlive = true; });
-      ws.send(JSON.stringify({ type: "ready", origin: "server", stateVersion: realtimeStateVersion() }));
-      ws.on("message", raw => {
-        try {
-          const msg = JSON.parse(String(raw || "{}"));
-          if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
-        } catch (error) {
-          warnServerDiagnostic("https-websocket.message", error);
-        }
-      });
-    });
+  for (const endpoint of [server, qrServer, httpsServer].filter(Boolean)) {
+    wsServers.push(attachWebSocketServer(WebSocketServer, endpoint, {
+      authenticate: websocketAuthenticated,
+      stateVersion: realtimeStateVersion,
+      onError: error => warnServerDiagnostic("websocket.connection", error)
+    }));
   }
+  wss = wsServers[0];
 }
 
 const heartbeatTimer = setInterval(() => {
@@ -7682,6 +7691,7 @@ async function shutdown() {
   clearInterval(systemMonitorTimer);
   clearInterval(automaticBackupTimer);
   if (postgresRecoveryTimer) clearInterval(postgresRecoveryTimer);
+  if (postgresRefreshTimer) clearInterval(postgresRefreshTimer);
   try {
     flushLocalBackup();
     await flushPostgresWrites();
@@ -7699,8 +7709,23 @@ process.on("SIGINT", shutdown);
 
 initializeStorage()
   .then(async storage => {
-    await restoreOrdinaryNodesAfterCraneRemoval().catch(error => console.warn(`Ordinary node recovery failed: ${error.message}`));
+    await enqueueStateWrite(restoreOrdinaryNodesAfterCraneRemoval).catch(error => console.warn(`Ordinary node recovery failed: ${error.message}`));
     startPostgresRecoveryMonitor();
+    if (postgresStateStore) {
+      postgresRefreshTimer = setInterval(async () => {
+        if (postgresRefreshActive) return;
+        postgresRefreshActive = true;
+        try {
+          await postgresStateStore.refresh();
+          if (storageStatus.mode === "postgres-degraded") storageStatus = { ...storageStatus, mode: "postgres-cluster", error: "", retrying: false };
+        }
+        catch (error) {
+          storageStatus = { ...storageStatus, mode: "postgres-degraded", error: "Authoritative database is unavailable" };
+          warnServerDiagnostic("postgres.state-refresh", error);
+        } finally { postgresRefreshActive = false; }
+      }, 5000);
+      postgresRefreshTimer.unref?.();
+    }
     refreshSystemMonitoring().catch(error => console.warn(`Initial monitoring failed: ${error.message}`));
     if (process.env.NODE_ENV !== "test") runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Initial automatic backup failed: ${error.message}`));
     server.listen(port, "0.0.0.0", () => {
