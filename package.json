@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "esbuild app.js --minify --charset=utf8 --outfile=app.min.js && esbuild styles.css --minify --charset=utf8 --loader:.css=css --outfile=styles.min.css",
+    "build": "node tools/build-mammoth.js && esbuild app.js --minify --charset=utf8 --outfile=app.min.js && esbuild styles.css --minify --charset=utf8 --loader:.css=css --outfile=styles.min.css",
     "check": "npm run build && npm test",
     "dev": "node server.js",
     "start": "node server.js",
@@ -22,6 +22,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.8.15"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
