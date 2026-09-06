@@ -61,7 +61,7 @@ test("operator sees the assigned workshop and can use home controls on a phone",
 
   await page.locator("#globalReminderButton").click();
   await expect(page.locator("#globalReminderOverlay")).toBeVisible();
-  await expect(page.locator("#globalReminderTitle")).toHaveText("Напоминания и календарь ППР");
+  await expect(page.locator("#globalReminderTitle")).toHaveText("График ППР");
   await page.locator("#globalReminderClose").click();
   await expect(page.locator("#globalReminderOverlay")).toBeHidden();
 

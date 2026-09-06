@@ -133,8 +133,8 @@ const I18N = {
     requests: "Заявки",
     downtime: "Простои",
     profile: "Профиль",
-    reminders: "Напоминания и календарь ППР",
-    todayControl: "Контроль на сегодня",
+    reminders: "График ППР",
+    todayControl: "Плановое обслуживание",
     close: "Закрыть",
     back: "Назад",
     loginTitle: "Вход сотрудника",
@@ -175,8 +175,8 @@ const I18N = {
     requests: "Өтінімдер",
     downtime: "Тоқтап тұру",
     profile: "Профиль",
-    reminders: "ППР еске салғыштары мен күнтізбесі",
-    todayControl: "Бүгінгі бақылау",
+    reminders: "ППР кестесі",
+    todayControl: "Жоспарлы қызмет көрсету",
     close: "Жабу",
     back: "Артқа",
     loginTitle: "Қызметкер кіруі",
@@ -217,8 +217,8 @@ const I18N = {
     requests: "Arizalar",
     downtime: "To‘xtashlar",
     profile: "Profil",
-    reminders: "PPR eslatmalari va taqvimi",
-    todayControl: "Bugungi nazorat",
+    reminders: "PPR jadvali",
+    todayControl: "Rejali xizmat ko‘rsatish",
     close: "Yopish",
     back: "Orqaga",
     loginTitle: "Xodim kirishi",
@@ -6606,7 +6606,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           ${canConfirm
             ? `<div class="resolution-empty">Подтверждение доступно в «Личных сообщениях» на кнопке вашей роли.</div>`
             : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
-          ${canCloseWithoutScore ? `<button type="button" class="danger no-print" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
+          ${canCloseWithoutScore ? `<button type="button" class="danger no-print" data-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
         </section>
       ` : `
         ${returnedToRework ? `
@@ -6666,7 +6666,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             <div class="node-walk-actions">
               <button type="button" class="secondary" data-remark-work-update ${canWriteResolution ? "" : "disabled"}>Добавить запись о работе</button>
               <button type="button" data-remark-resolve>Устранено</button>
-              ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
+              ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
             </div>
           </div>
           ${resolutionEvents.length ? `
@@ -7467,7 +7467,7 @@ function downtimeCloseBlockedMessage() {
 function downtimeCloseButtonLabel(liveStop) {
   if (attendanceRequired() && !attendanceAllowsEditing()) return "Сначала отсканируйте QR";
   if (!roleAccess().checklist) return "Нет доступа";
-  return liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+  return liveStop?.type === "production" ? "Возобновить производство" : "Подтвердить пуск";
 }
 
 function showDowntimeCloseBlockedDialog(message) {
@@ -7503,7 +7503,7 @@ function askDowntimeCloseDetails(liveStop) {
     document.querySelector(".downtime-close-overlay")?.remove();
     const overlay = document.createElement("div");
     overlay.className = "downtime-type-overlay downtime-close-overlay";
-    const actionTitle = liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+    const actionTitle = liveStop?.type === "production" ? "Возобновить производство" : "Подтвердить пуск";
     const commentLabel = liveStop?.type === "production"
       ? "Причина возобновления производства"
       : "Что выполнено для устранения поломки?";
@@ -7617,7 +7617,7 @@ function updateRoleBadges() {
     const canEnter = canOpenRequestRole(role);
     button.hidden = quickButton ? !canSeeRequestRoleIndicator(role) : !canEnter;
     const waiting = role === profile?.role || (isEditorSession() && role === "engineer") ? personalCount : 0;
-    button.innerHTML = `<span>${requestRoleLabel(role)}${waiting ? `<small class="role-personal-count">Личные: ${waiting}</small>` : ""}</span><strong>${waiting}</strong>`;
+    button.innerHTML = `<span>${requestRoleLabel(role)}${waiting ? `<small class="role-personal-count">Личные сообщения</small>` : ""}</span><strong>${waiting}</strong>`;
     button.classList.toggle("indicator-only", quickButton && !canEnter);
     button.classList.toggle("request-alert", waiting > 0);
     button.classList.toggle("has-count", waiting > 0);
@@ -7740,7 +7740,7 @@ function openAllRemarkCards() {
   overlay.innerHTML = `
     <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true" aria-labelledby="openRemarksTitle">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong id="openRemarksTitle">${escapeHtml(remarksSectionLabel())}</strong><span>Учитывается: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · с причиной неустранения: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
+        <div><small class="warnings-hall-kicker">${["operator", "shop"].includes(profile?.role) ? "Ваши участки" : "Доступные участки"}</small><strong id="openRemarksTitle">${escapeHtml(remarksSectionLabel())}</strong><span>Открыто: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · отложено: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
         <button type="button" data-close-open-remarks aria-label="Закрыть окно предупреждений">Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
@@ -7763,7 +7763,7 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Удалить без начисления баллов</button>` : ""}
                 ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
                 ${canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
                 <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
@@ -7802,7 +7802,7 @@ function openAllRemarkCards() {
     close();
     showAppToast("Предупреждение удалено без начисления баллов.", "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
-  }, "Закрываем...")));
+  }, "Удаляем...")));
   overlay.querySelectorAll("[data-close-remark-with-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     if (!canCloseRemarksForEmployees()) return;
     const decision = await askAdminRemarkClose(true);
@@ -7858,13 +7858,13 @@ function askAdminRemarkClose(withScore = false) {
     };
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
-        <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
+        <strong>${withScore ? "Закрыть предупреждение с баллами" : "Удалить предупреждение без начисления баллов"}</strong>
         <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Предупреждение будет полностью удалено без начисления баллов. В журнале действий останется только причина удаления."}</p>
         ${withScore ? `<fieldset class="admin-close-performers"><legend>Кому начислить баллы</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>` : ""}
-        <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
+        <label><span>${withScore ? "Что выполнено" : "Причина удаления"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
         <div class="downtime-type-error" data-admin-close-error></div>
         <div class="send-kind-actions">
-          <button type="button" data-admin-close-submit>${withScore ? "Закрыть и начислить баллы" : "Закрыть без баллов"}</button>
+          <button type="button" data-admin-close-submit>${withScore ? "Закрыть и начислить баллы" : "Удалить без начисления баллов"}</button>
           <button type="button" class="secondary" data-admin-close-cancel>Отмена</button>
         </div>
       </div>
@@ -7879,7 +7879,7 @@ function askAdminRemarkClose(withScore = false) {
         return;
       }
       if (!reason) {
-        if (error) error.textContent = withScore ? "Напишите, что было выполнено." : "Укажите причину закрытия.";
+        if (error) error.textContent = withScore ? "Напишите, что было выполнено." : "Укажите причину удаления.";
         overlay.querySelector("[data-admin-close-reason]")?.focus();
         return;
       }
@@ -10025,10 +10025,9 @@ function renderEquipment() {
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" data-aggregate-equipment="${eq.id}" class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
-              <span class="journal-button-title">Журнал</span>
               <strong>${escapeHtml(eq.name)}</strong>
-              <span>${ordinaryNodeIndexes(eq).length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <span>Узлов: ${ordinaryNodeIndexes(eq).length} · ${escapeHtml(eq.area)}</span>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `Записей: ${aggregateJournalCount(eq.area, eq.id)}`}</small>
             </button>
             <div class="equipment-secondary-tools">
               <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
@@ -10093,7 +10092,7 @@ function renderEquipment() {
           td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
         const shiftLabel = operationalPause ? "Пауза" : summary.complete ? "Выполнен" : "Открыть обход";
-        td.innerHTML = `<button type="button" class="equipment-shift-action" aria-label="${escapeHtml(`${shiftLabel}: ${eq.name}. Выполнено ${summary.done} из ${summary.total}`)}" ${canOpenEquipmentDate(date) ? "" : "disabled"}><strong>${operationalPause ? "Пауза" : summary.complete ? "✓" : `${summary.done}/${summary.total}`}</strong><span>${shiftLabel}</span></button>`;
+        td.innerHTML = `<button type="button" class="equipment-shift-action" aria-label="${escapeHtml(`${shiftLabel}: ${eq.name}. Выполнено ${summary.done} из ${summary.total}`)}" ${canOpenEquipmentDate(date) ? "" : "disabled"}><strong>${operationalPause ? "—" : summary.complete ? "✓" : `${summary.done}/${summary.total}`}</strong><span>${shiftLabel}</span></button>`;
         const pausedHint = summary.pausedTotal ? ` · на паузе ${summary.pausedTotal}` : "";
         td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий${pausedHint}` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}${pausedHint}`;
         td.addEventListener("click", () => {
@@ -10897,8 +10896,8 @@ function renderNodeWalkthrough(eq) {
         });
         if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
         else renderNodeWalkthrough(equipmentById(eq.id));
-        showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
-      }, "Закрываем..."));
+        showAppToast("Предупреждение удалено без начисления баллов.", "ok");
+      }, "Удаляем..."));
       card.querySelector("[data-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "confirm", { remarkId });
@@ -11974,10 +11973,10 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" aria-label="Работа ${index + 1}" placeholder="${canPlan ? "Опишите работу" : "—"}" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
       <td class="ppr-sheet-resolution">
-        <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" placeholder="Что выполнено или почему не требуется" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
+        <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" aria-label="Результат работы ${index + 1}" placeholder="${canMark ? "Результат или причина" : "—"}" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
         ${row.markedByName ? `<small><strong>${escapeHtml(row.markedByName)}</strong> · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")} · ${dateTimeHuman(row.markedAt)}</small>` : ""}
       </td>
       <td class="ppr-sheet-mark">
@@ -12000,11 +11999,11 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
       ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
-      <div class="ppr-sheet-table-wrap">
+      <div class="ppr-sheet-table-wrap"><p class="no-print">✓ — выполнено · − — не требуется</p>
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th rowspan="2">Исполнитель и комментарий об устранении</th><th>План обслуживания</th></tr>
-            <tr><th>A</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th rowspan="2"><span class="no-print">Исполнитель и результат работы</span><span class="ppr-sheet-print-mark" style="font-size:inherit">Исполнитель и комментарий об устранении</span></th><th><span class="no-print">Выполнение</span><span class="ppr-sheet-print-mark" style="font-size:inherit">План обслуживания</span></th></tr>
+            <tr><th><span class="no-print">✓ / −</span><span class="ppr-sheet-print-mark" style="font-size:inherit">A</span></th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
         </table>
@@ -12587,7 +12586,7 @@ function rolePersonalMessageHtml(message) {
         </div>
         <div class="role-personal-actions">
           <button type="button" class="secondary" data-personal-remark-open-node>Открыть карточку</button>
-          ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-personal-remark-close-no-score>Закрыть без баллов</button>` : ""}
+          ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-personal-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
           <button type="button" class="secondary" data-personal-remark-return>Вернуть с комментарием</button>
           <button type="button" data-personal-remark-confirm>Подтвердить устранение</button>
         </div>
@@ -12650,8 +12649,8 @@ function bindRolePersonalInbox(messages) {
       });
       markPersonalRemarkMessagesRead([message]);
       refreshPersonalRemarkSurfaces();
-      showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
-    }));
+      showAppToast("Предупреждение удалено без начисления баллов.", "ok");
+    }, "Удаляем..."));
     card.querySelector("[data-personal-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
       const reason = window.prompt("Укажите, что нужно доработать:");
       if (!String(reason || "").trim()) {
@@ -12685,11 +12684,11 @@ function renderRolePersonalInbox() {
   ui.rolePersonalInbox.innerHTML = `
     <section class="role-personal-inbox">
       <div class="role-personal-inbox-head">
-        <div><span>${isAdminEngineerBlock ? "ВСЕ ЦЕХА" : "ЛИЧНО ВАМ"}</span><h1>${canConfirmRemarksAcrossShops() ? "Устранённые замечания" : "Личные сообщения"}</h1></div>
+        <div><span>${isAdminEngineerBlock ? "ВСЕ ЦЕХА" : "ЛИЧНО ВАМ"}</span><h1>${canConfirmRemarksAcrossShops() ? "На проверку" : "Личные сообщения"}</h1></div>
         <strong>${messages.length}</strong>
       </div>
       <div class="role-personal-message-list">
-        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>${canConfirmRemarksAcrossShops() ? "Нет замечаний для проверки" : "Новых личных сообщений нет"}</strong><span>${canConfirmRemarksAcrossShops() ? "Все переданные работы уже рассмотрены." : "Запросы и возвраты появятся здесь."}</span></div>`}
+        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>${canConfirmRemarksAcrossShops() ? "Нет работ для проверки" : "Новых личных сообщений нет"}</strong><span>${canConfirmRemarksAcrossShops() ? "Выполненные работы и листы ППР появятся здесь." : "Запросы и возвраты появятся здесь."}</span></div>`}
       </div>
     </section>
   `;
@@ -12719,6 +12718,7 @@ function globalReminderItems(equipment = globalControlEquipment()) {
       items.push({
         level: plan.daysUntil === 0 ? "red" : "yellow",
         icon: "⏰",
+        dueDate: plan.dueDate,
         title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
         text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
       });
@@ -12736,17 +12736,18 @@ function renderGlobalReminderPanel() {
   ui.globalReminderButton.hidden = false;
   const equipment = globalControlEquipment();
   const reminders = globalReminderItems(equipment);
+  const upcomingReminders = reminders.filter(item => item.pprApprovalDate || item.dueDate !== todayISO());
   const calendar = directorCalendarItems(equipment);
   const monthCalendar = renderPprMonthCalendar(allEquipment());
   updateGlobalReminderBadge(reminders);
   const calendarRows = calendar.map(item => `
-    <div class="director-calendar-row ${item.color}">
+    <div class="director-calendar-row ${item.color}" data-open-ppr-date="${todayISO()}" role="button" tabindex="0" title="Открыть план на сегодня">
       <span class="director-calendar-icon">${item.icon}</span>
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
   `).join("");
-  const reminderRows = reminders.map(item => `
-    <div class="director-reminder-row ${item.level}" ${item.pprApprovalDate ? `data-open-ppr-approval="${escapeHtml(item.pprApprovalDate)}" role="button" tabindex="0"` : ""}>
+  const reminderRows = upcomingReminders.map(item => `
+    <div class="director-reminder-row ${item.level}" data-open-ppr-date="${escapeHtml(item.pprApprovalDate || item.dueDate)}" role="button" tabindex="0" title="Открыть план на эту дату">
       <span>${item.icon}</span>
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
@@ -12755,24 +12756,24 @@ function renderGlobalReminderPanel() {
     <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
     <div class="global-control-grid">
       <section>
-        <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
-        <div class="director-reminder-list">${reminderRows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Всё выполнено, срочных напоминаний нет</strong></div>`}</div>
-      </section>
-      <section>
-        <div class="director-section-head"><div><span>📅</span><h2>Календарь ППР</h2></div><small>Сегодня</small></div>
+        <div class="director-section-head"><div><span>📅</span><h2>Работы сегодня</h2></div></div>
         <div class="director-calendar-list">${calendarRows || `<div class="director-empty-ok"><strong>На сегодня работ нет</strong></div>`}</div>
-        <p class="director-safe-note">✅ Заполнение соответствующего агрегатного журнала автоматически подтверждает выполнение ТО.</p>
+        <p class="director-safe-note">Выполнение ТО отмечается по журналу. Лист ППР принимает инженер.</p>
       </section>
+      ${upcomingReminders.length ? `<section>
+        <div class="director-section-head"><div><span>🔔</span><h2>Ближайшие сроки и приёмка</h2></div><strong>${upcomingReminders.length}</strong></div>
+        <div class="director-reminder-list">${reminderRows}</div>
+      </section>` : ""}
     </div>
     <section class="global-ppr-month-card">
-      <div class="director-section-head"><div><span>🗓️</span><h2>Общий график ППР завода</h2></div><small>Доступен всем</small></div>
+      <div class="director-section-head"><div><span>🗓️</span><h2>План на месяц</h2></div><small>Все участки</small></div>
       ${monthCalendar}
     </section>
   `;
   bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
-  ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
+  ui.globalReminderContent.querySelectorAll("[data-open-ppr-date]").forEach(row => {
     const openDate = () => {
-      const date = row.dataset.openPprApproval;
+      const date = row.dataset.openPprDate;
       current.pprCalendarYear = Number(date.slice(0, 4));
       current.pprCalendarMonth = Number(date.slice(5, 7)) - 1;
       current.pprCalendarSelectedDate = date;
@@ -15839,7 +15840,7 @@ function renderSystemBroadcastNotice() {
   const notice = document.createElement("aside");
   notice.id = "systemBroadcastNotice";
   notice.className = `system-broadcast-notice ${escapeHtml(item.priority || "normal")}`;
-  notice.innerHTML = `<div><strong>${escapeHtml(item.title || "Объявление администратора")}</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span>${item.expiresAt ? `<small>Действует до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small>` : ""}</div><div>${item.type === "print-archive" ? `<button type="button" data-print-broadcast-report>Распечатать отчёт</button>` : ""}<button type="button" class="secondary" data-read-system-broadcast>Прочитал и ознакомился</button></div>`;
+  notice.innerHTML = `<div><strong>${escapeHtml(item.title || "Объявление администратора")}</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span>${item.expiresAt ? `<small>Действует до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small>` : ""}</div><div>${item.type === "print-archive" ? `<button type="button" data-print-broadcast-report>Распечатать отчёт</button>` : ""}<button type="button" class="secondary" data-read-system-broadcast>Ознакомился</button></div>`;
   document.body.append(notice);
   notice.querySelector("[data-print-broadcast-report]")?.addEventListener("click", printSystemArchiveReport);
   notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", async event => {

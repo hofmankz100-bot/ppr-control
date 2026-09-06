@@ -577,7 +577,7 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.doesNotMatch(html, /id="personalInboxButton"/);
   assert.match(source, /const personalCount = personalRemarkMessages\(\)\.length/);
   assert.match(source, /isEditorSession\(\) && role === "engineer"/);
-  assert.match(source, /role-personal-count">Личные:/);
+  assert.match(source, /role-personal-count">Личные сообщения<\/small>/);
   assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(isEditorSession\(\)\) return role === "engineer"[\s\S]*?return role === profile\?\.role/);
   assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
   assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
@@ -1988,7 +1988,7 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /remarkGlobalConfirm","Подтверждение замечаний всех цехов/);
   assert.match(clientSource, /Открыть карточку/);
   assert.doesNotMatch(clientSource, /Подтверждения всех цехов доступны|Здесь сразу отображаются все ожидающие подтверждения/);
-  assert.match(clientSource, /Устранённые замечания/);
+  assert.match(clientSource, /canConfirmRemarksAcrossShops\(\) \? "На проверку"/);
   assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
   assert.match(clientSource, /ВСЕ ЦЕХА/);
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
