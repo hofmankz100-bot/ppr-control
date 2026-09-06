@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Pool } = require("pg");
+const { createPostgresTestPool } = require("../tools/testing/postgres-test-pool");
 const { createPostgresSandbox } = require("../tools/testing/postgres-sandbox");
 const { createPostgresStateStore } = require("../server/postgres-state-store");
 
@@ -17,8 +17,8 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
     password: () => decodeURIComponent(connection.password), ssl: false,
     connectionTimeoutMillis: 5000, max: 8, options: "-c search_path=public"
   };
-  const firstPool = new Pool(config);
-  const secondPool = new Pool(config);
+  const { pool: firstPool, close: closeFirstPool } = createPostgresTestPool(config);
+  const { pool: secondPool, close: closeSecondPool } = createPostgresTestPool(config);
   try {
     await firstPool.query("CREATE TABLE ppr_settings(setting_key text PRIMARY KEY,payload jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now())");
     const first = createPostgresStateStore(firstPool);
@@ -51,13 +51,13 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
     });
 
     await t.test("another instance reads committed work after reopening its connection", async () => {
-      const reopenedPool = new Pool(config);
+      const { pool: reopenedPool, close: closeReopenedPool } = createPostgresTestPool(config);
       try {
         const reopened = createPostgresStateStore(reopenedPool);
         const session = await reopened.begin();
         try { assert.equal(session.state.work.length, 16); await session.commit(null); }
         finally { session.release(); }
-      } finally { await reopenedPool.end(); }
+      } finally { await closeReopenedPool(); }
     });
 
     await t.test("rollback releases the lock and never persists staged work", async () => {
@@ -101,23 +101,28 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal((await firstPool.query("SELECT 1 FROM ppr_settings WHERE setting_key='full_state'")).rowCount, 0);
     });
   } finally {
-    await Promise.allSettled([firstPool.end(), secondPool.end()]);
-    await sandbox.dispose();
+    const cleanup = await Promise.allSettled([closeFirstPool(), closeSecondPool()]);
+    cleanup.push(...await Promise.allSettled([sandbox.dispose()]));
+    const errors = cleanup.filter(result => result.status === "rejected").map(result => result.reason);
+    if (errors.length) throw new AggregateError(errors, "Disposable PostgreSQL test cleanup failed");
   }
 });
 
 test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !process.env.PPR_E2E_POSTGRES_URL, timeout: 60000 }, async t => {
   const sandboxes = [];
   const pools = [];
+  const poolClosers = [];
   let releaseDelayed = () => {};
   try {
     for (let index = 0; index < 2; index += 1) {
       const sandbox = await createPostgresSandbox(process.env.PPR_E2E_POSTGRES_URL);
       sandboxes.push(sandbox);
       const url = new URL(sandbox.databaseUrl);
-      pools.push(new Pool({ host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port),
+      const tracked = createPostgresTestPool({ host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port),
         database: url.pathname.slice(1), user: "ppr_e2e", password: () => decodeURIComponent(url.password),
-        ssl: false, connectionTimeoutMillis: 5000, max: 4, options: "-c search_path=public" }));
+        ssl: false, connectionTimeoutMillis: 5000, max: 4, options: "-c search_path=public" });
+      pools.push(tracked.pool);
+      poolClosers.push(tracked.close);
       await pools[index].query("CREATE TABLE ppr_settings(setting_key text PRIMARY KEY,payload jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now())");
     }
     const [primary, replica] = pools;
@@ -235,8 +240,8 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     });
   } finally {
     releaseDelayed();
-    await Promise.allSettled(pools.map(pool => pool.end()));
-    const cleanup = await Promise.allSettled(sandboxes.map(sandbox => sandbox.dispose()));
+    const cleanup = await Promise.allSettled(poolClosers.map(close => close()));
+    cleanup.push(...await Promise.allSettled(sandboxes.map(sandbox => sandbox.dispose())));
     const errors = cleanup.filter(result => result.status === "rejected").map(result => result.reason);
     if (errors.length) throw new AggregateError(errors, "Disposable PostgreSQL test cleanup failed");
   }
