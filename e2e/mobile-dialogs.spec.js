@@ -311,6 +311,11 @@ test("annual PPR schedule and embedded sheets stay reachable on a short wide scr
   await checkDialog(page, progress, progress.locator("[data-open-annual-sheet]").last());
   await progress.locator("[data-open-annual-sheet]").last().click();
   const sheet = page.locator(".annual-ppr-sheet-dialog");
+  // Server autofill replaces this entire dialog. Measure and swipe the completed
+  // sheet, so an in-flight replacement cannot detach it or reset the gesture.
+  const readySheet = sheet.locator('[data-ppr-sheet-date][data-ppr-autofill-needed="false"]');
+  await expect(readySheet).toBeVisible();
+  await expect(readySheet.locator("[data-ppr-work-input]").first()).toHaveValue(/\S/);
   await checkDialog(page, sheet, sheet.locator(".annual-ppr-sheet-dialog-body").locator("button").last(), { mustScroll: true });
   await sheet.locator("[data-sheet-list-back]").click();
   await progress.locator("[data-progress-back]").click();
