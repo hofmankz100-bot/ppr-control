@@ -8,7 +8,7 @@ function buildHealthPayload(options = {}) {
     ? String(options.clientVersion)
     : serverVersion;
   return {
-    ok: true,
+    ok: !["postgres-degraded", "json-fallback"].includes(options.storage?.mode),
     version: reportedClientVersion,
     latestVersion: serverVersion,
     clientProtocol: String(options.clientProtocol || ""),

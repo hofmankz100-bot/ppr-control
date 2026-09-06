@@ -22,7 +22,10 @@ test("employee access follows current equipment areas and refreshes without logo
   assert.match(server, /function userHasAreaServer\(user = \{\}, area = ""\)/);
   assert.match(server, /target\.areas = areas/);
   assert.match(server, /userHasAreaServer\(req\.authUser, equipmentArea\)/);
-  assert.match(app, /async function refreshAuthenticatedProfile\(\)[\s\S]*?\/api\/auth\/session[\s\S]*?previousAccess !== nextAccess[\s\S]*?resetCurrentForProfile\(\)/);
+  const refresh = app.slice(app.indexOf("function refreshAuthenticatedProfile()"), app.indexOf("async function finishAuthOnCurrentPage"));
+  assert.match(refresh, /await restoreServerSession\(\)/);
+  assert.match(refresh, /previousAccess !== JSON\.stringify\(authenticatedProfile\)[\s\S]*?resetCurrentForProfile\(\)/);
+  assert.match(app, /async function restoreServerSession\(\)[\s\S]*?\/api\/auth\/session/);
 
   const roleEndpoint = server.slice(server.indexOf('pathname === "/api/users/role"'), server.indexOf('pathname === "/api/users/password"'));
   assert.doesNotMatch(roleEndpoint, /db\.authSessions\s*=\s*\(db\.authSessions/);

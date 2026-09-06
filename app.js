@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v785-confirmation-window-style-2";
+const APP_VERSION = "v786-reliable-daily-work-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -133,8 +133,8 @@ const I18N = {
     requests: "Заявки",
     downtime: "Простои",
     profile: "Профиль",
-    reminders: "Напоминания и календарь ППР",
-    todayControl: "Контроль на сегодня",
+    reminders: "График ППР",
+    todayControl: "Плановое обслуживание",
     close: "Закрыть",
     back: "Назад",
     loginTitle: "Вход сотрудника",
@@ -175,8 +175,8 @@ const I18N = {
     requests: "Өтінімдер",
     downtime: "Тоқтап тұру",
     profile: "Профиль",
-    reminders: "ППР еске салғыштары мен күнтізбесі",
-    todayControl: "Бүгінгі бақылау",
+    reminders: "ППР кестесі",
+    todayControl: "Жоспарлы қызмет көрсету",
     close: "Жабу",
     back: "Артқа",
     loginTitle: "Қызметкер кіруі",
@@ -217,8 +217,8 @@ const I18N = {
     requests: "Arizalar",
     downtime: "To‘xtashlar",
     profile: "Profil",
-    reminders: "PPR eslatmalari va taqvimi",
-    todayControl: "Bugungi nazorat",
+    reminders: "PPR jadvali",
+    todayControl: "Rejali xizmat ko‘rsatish",
     close: "Yopish",
     back: "Orqaga",
     loginTitle: "Xodim kirishi",
@@ -377,11 +377,18 @@ function sameWorkerRole(left, right) {
 function visibleRoleEntries() {
   return Object.entries(ROLE_ACCESS).filter(([role]) => role !== "electrician");
 }
+let pendingDeviceRestoreRequired = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
+let pendingDeviceRestorePromise = null;
 const state = loadState();
 applyRoleLabelOverrides(state.adminConfig);
 let stateDataVersion = 0;
 let authenticatedProfile = loadProfile();
 let profile = activeProfileFromSession(authenticatedProfile);
+const pendingStateOwner = window.PprDeviceCachePolicy.createPendingStateOwner(localStorage, STORE_KEY);
+let sessionValidationState = "pending";
+let sessionRefreshPromise = null;
+let networkResumePromise = null;
+let sessionRetryTimer = null;
 let attendanceStatus = null;
 let attendanceRefreshTimer = null;
 applyWorkCleanFromUrl();
@@ -809,11 +816,11 @@ function loadState() {
 }
 
 function persistStateLocally(snapshot = state) {
-  scheduleDeviceStatePersist(snapshot);
+  if (!pendingDeviceRestoreRequired) scheduleDeviceStatePersist(snapshot);
   const lightweight = {
-    checks: Object.fromEntries(Object.entries(snapshot?.checks || {}).slice(-500)),
+    checks: window.PprDeviceCachePolicy.selectChecks(snapshot?.checks),
     catalog: snapshot?.catalog || { equipment: {} },
-    downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : [],
+    downtimes: window.PprDeviceCachePolicy.selectDowntimes(snapshot?.downtimes),
     journalDueSince: snapshot?.journalDueSince || {},
     operationalResetAt: snapshot?.operationalResetAt || "",
     walkShiftCleanupVersion: snapshot?.walkShiftCleanupVersion || ""
@@ -827,6 +834,7 @@ function persistStateLocally(snapshot = state) {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         checks: lightweight.checks || {},
         catalog: lightweight.catalog || { equipment: {} },
+        downtimes: lightweight.downtimes || [],
         operationalResetAt: lightweight.operationalResetAt || "",
         walkShiftCleanupVersion: lightweight.walkShiftCleanupVersion || ""
       }));
@@ -842,14 +850,12 @@ let devicePersistTimer = null;
 let pendingDeviceSnapshot = null;
 
 function scheduleDeviceStatePersist(snapshot = state) {
-  const checks = Object.entries(snapshot?.checks || {});
   pendingDeviceSnapshot = {
     ...snapshot,
-    // Offline startup needs recent operational work, not the complete historical
-    // journal. Keeping the bounded tail prevents structured-clone pauses on phones.
-    checks: Object.fromEntries(checks.slice(-500)),
-    auditHistory: Array.isArray(snapshot?.auditHistory) ? snapshot.auditHistory.slice(-200) : [],
-    downtimes: Array.isArray(snapshot?.downtimes) ? snapshot.downtimes.slice(-200) : []
+    // Keep unresolved work regardless of age; bound only completed history.
+    checks: window.PprDeviceCachePolicy.selectChecks(snapshot?.checks),
+    auditHistory: window.PprDeviceCachePolicy.selectAudit(snapshot?.auditHistory),
+    downtimes: window.PprDeviceCachePolicy.selectDowntimes(snapshot?.downtimes)
   };
   clearTimeout(devicePersistTimer);
   devicePersistTimer = window.setTimeout(() => {
@@ -934,6 +940,8 @@ async function refreshStaleAssetCache() {
   }
 }
 
+function markPendingState(user = authenticatedProfile) { pendingStateOwner.mark(user); if (remoteSaveInFlight) remoteSavePending = true; }
+
 function saveState(options = {}) {
   stateDataVersion += 1;
   state.checks = compactCheckRecords(state.checks);
@@ -943,7 +951,8 @@ function saveState(options = {}) {
     window.queueMicrotask(syncAppIconBadge);
     return;
   }
-  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  markPendingState();
+  window.queueMicrotask(updateConnectionStatus);
   if (remoteSaveInFlight || !localStorage.getItem(PENDING_ACTION_ID_KEY)) {
     localStorage.setItem(PENDING_ACTION_ID_KEY, nextActionId());
   }
@@ -1205,7 +1214,7 @@ function syncNotificationSetupPrompt() {
     <button type="button" data-notification-enable ${denied || install ? "hidden" : ""}>Включить</button>
     <button type="button" class="notification-prompt-close" data-notification-dismiss aria-label="Больше не показывать">×</button>
   `;
-  if (!existing) document.body.append(prompt);
+  if (!existing) document.querySelector("#equipmentScreen")?.append(prompt);
   prompt.querySelector("[data-notification-enable]")?.addEventListener("click", event => requestAppNotificationPermission(event.currentTarget), { once: true });
   prompt.querySelector("[data-notification-dismiss]")?.addEventListener("click", dismissNotificationSetupPrompt, { once: true });
 }
@@ -1441,7 +1450,7 @@ async function clearRecordedDataEverywhere() {
   state.gasJournal = {};
   state.pprSheets = {};
   persistStateLocally(state);
-  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  markPendingState();
   localStorage.setItem(`${STORE_KEY}-clear-recorded`, "1");
   localStorage.setItem(`${STORE_KEY}-clear-confirm`, "ОЧИСТИТЬ");
   await publishStateNow();
@@ -1471,11 +1480,12 @@ const apiMutationRequests = new Map();
 
 function apiMutationSignature(url, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD" || options.allowDuplicate === true) return "";
+  if (method === "GET" || method === "HEAD" || options.allowDuplicate === true || String(url).startsWith("/api/auth/")) return "";
   return `${method}:${url}:${String(options.body || "")}`;
 }
 
 async function apiJsonRequest(url, options = {}, idempotencyKey = "") {
+  if (!navigator.onLine) throw Object.assign(new Error("Нет связи с сервером"), { status: 503, data: { offline: true } });
   const controller = new AbortController();
   const timeout = Number(options.timeout || 15000);
   const timer = window.setTimeout(() => controller.abort(), timeout);
@@ -2198,7 +2208,7 @@ function mergeRemoteState(remote = {}, options = {}) {
     state.auditHistory = [];
     state.systemBroadcasts = [];
     state.operationalResetAt = remoteResetAt;
-    localStorage.removeItem(`${STORE_KEY}-pending`);
+    pendingStateOwner.clear();
   }
   if (remote.walkShiftCleanupVersion !== WALK_SHIFT_CLEANUP_VERSION) clearLegacyWalkCompletions(remote);
   const preferRemote = options.preferRemote === true && localStorage.getItem(`${STORE_KEY}-pending`) !== "1";
@@ -2309,6 +2319,7 @@ function handleRealtimeMessage(data) {
       return;
     }
     if (msg.type !== "state") return;
+    if (pendingDeviceRestoreRequired) { loadRemoteState(); return; }
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else {
@@ -2371,6 +2382,7 @@ async function pollRealtimeStateVersion(force = false) {
 }
 
 function connectRealtimeEvents() {
+  if (!navigator.onLine || sessionValidationState !== "verified" || !isProfileReady() || pendingDeviceRestoreRequired) return false;
   if (!("EventSource" in window)) return false;
   if (realtimeEventSource && realtimeEventSource.readyState !== EventSource.CLOSED) return true;
   realtimeEventSource = new EventSource("/api/events");
@@ -2390,6 +2402,7 @@ function connectRealtimeEvents() {
 }
 
 function connectRealtimeSocket() {
+  if (!navigator.onLine || sessionValidationState !== "verified" || !isProfileReady() || pendingDeviceRestoreRequired) return false;
   if (!("WebSocket" in window)) return false;
   if (realtimeSocket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(realtimeSocket.readyState)) return true;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -2447,7 +2460,7 @@ function resumeRealtimeQuietly(awayMs = 0) {
 function startRealtimePoll() {
   clearInterval(realtimePollTimer);
   realtimePollTimer = window.setInterval(() => {
-    if (document.visibilityState === "hidden") return;
+    if (document.visibilityState === "hidden" || !navigator.onLine || sessionValidationState !== "verified" || !isProfileReady()) return;
     pollRemoteUsers();
     const socketAlive = realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN;
     const eventsAlive = realtimeEventSource && realtimeEventSource.readyState === EventSource.OPEN;
@@ -2467,10 +2480,24 @@ function startRealtimePoll() {
   }, 5000);
 }
 
+async function hydrateOwnedPendingState() {
+  if (!pendingDeviceRestoreRequired) return true;
+  if (sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile)) return false;
+  pendingDeviceRestorePromise ||= (async () => {
+    const cached = await loadStateFromDevice();
+    if (!cached || typeof cached !== "object") { scheduleRemoteRetry(); return false; }
+    pendingDeviceRestoreRequired = false;
+    mergeRemoteState(cached);
+    return true;
+  })().finally(() => { pendingDeviceRestorePromise = null; });
+  return pendingDeviceRestorePromise;
+}
+
 async function loadRemoteState() {
   if (remoteStateLoadPromise) return remoteStateLoadPromise;
   remoteStateLoadPromise = (async () => {
     try {
+      if (!await hydrateOwnedPendingState()) return false;
       const remote = await apiJson("/api/state");
       const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
       if (remote?.stateVersion) setRealtimeStateVersion(remote.stateVersion);
@@ -2507,6 +2534,7 @@ async function loadRemoteState() {
 }
 
 async function publishRecoveredChecksNow(checks, operationalResetAt) {
+  if (sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile)) return false;
   try {
     const result = await apiJson("/api/state", {
       method: "PUT",
@@ -2524,18 +2552,21 @@ async function publishRecoveredChecksNow(checks, operationalResetAt) {
         checks
       })
     });
+    await refreshIgnoredStateSections(result);
     remoteSectionFingerprints.set("checks", remoteSectionFingerprint("checks", state.checks || {}));
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     persistStateLocally(state);
     return true;
   } catch {
-    localStorage.setItem(`${STORE_KEY}-pending`, "1");
+    markPendingState();
     scheduleRemoteRetry();
     return false;
   }
 }
 
 async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
+  const author = authenticatedProfile;
+  if (sessionValidationState !== "verified") { markPendingState(author); return false; }
   const recordKey = key(equipmentId, nodeIndex, date);
   const localRecord = state.checks[recordKey];
   if (!localRecord) return false;
@@ -2563,7 +2594,7 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
     persistStateLocally(state);
     return true;
   } catch {
-    localStorage.setItem(`${STORE_KEY}-pending`, "1");
+    markPendingState(author);
     scheduleRemoteRetry();
     return false;
   }
@@ -2614,6 +2645,7 @@ function pollRemoteUsers(force = false) {
 }
 
 function flushPendingWork() {
+  if (!navigator.onLine || sessionValidationState !== "verified" || !isProfileReady()) return;
   connectRealtime();
   startRealtimePoll();
   flushQrWalkQueue();
@@ -2674,7 +2706,30 @@ function changedRemoteStateSections() {
   return { payload, fingerprints };
 }
 
+async function refreshIgnoredStateSections(result, fingerprints = null) {
+  const fields = (result?.ignoredSections || []).filter(field => REMOTE_STATE_FIELDS.includes(field));
+  if (!fields.length) return;
+  const remote = await apiJson("/api/state");
+  fields.forEach(field => {
+    if (!Object.prototype.hasOwnProperty.call(remote, field)) return;
+    if (fingerprints?.has(field) && fingerprints.get(field) !== remoteSectionFingerprint(field, state[field])) { remoteSavePending = true; return; }
+    // Policy may accept part of a section. Server timestamps are authoritative,
+    // including when a rejected local edit carries a later device timestamp.
+    state[field] = remote[field];
+    remoteSectionFingerprints.set(field, remoteSectionFingerprint(field, remote[field]));
+    fingerprints?.set(field, remoteSectionFingerprint(field, remote[field]));
+  });
+  stateDataVersion += 1;
+  persistStateLocally(state);
+  scheduleRender();
+  if (remote.stateVersion) setRealtimeStateVersion(remote.stateVersion);
+  if (!refreshIgnoredStateSections.notified) showAppToast("Состояние обновлено с сервера.");
+  refreshIgnoredStateSections.notified = true;
+}
+
 async function saveRemoteState() {
+  if (!navigator.onLine || sessionValidationState !== "verified" || !isProfileReady() || !pendingStateOwner.owns(authenticatedProfile)) return false;
+  if (pendingDeviceRestoreRequired && !await loadRemoteState()) return false;
   if (remoteSaveInFlight) {
     remoteSavePending = true;
     return remoteSavePromise;
@@ -2709,10 +2764,11 @@ async function saveRemoteState() {
         ...changedSections.payload
       })
     });
+    await refreshIgnoredStateSections(result, changedSections.fingerprints);
     rememberRemoteStateBaseline({}, changedSections.fingerprints);
     const hasNewLocalChanges = remoteSavePending;
     if (!hasNewLocalChanges) {
-      localStorage.removeItem(`${STORE_KEY}-pending`);
+      pendingStateOwner.clear();
       localStorage.removeItem(PENDING_ACTION_ID_KEY);
     }
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
@@ -2724,10 +2780,12 @@ async function saveRemoteState() {
       if (current.view === "requests") renderRequests();
     }
   } catch (error) {
-    if (error?.data?.error === "state_reset_mismatch") {
+    if (Number(error?.status) === 401) {
+      rejectServerSession();
+    } else if (error?.data?.error === "state_reset_mismatch") {
       // A reset made this local snapshot obsolete. Reload instead of retrying
       // forever or pretending that the rejected operation was saved.
-      localStorage.removeItem(`${STORE_KEY}-pending`);
+      pendingStateOwner.clear();
       localStorage.removeItem(PENDING_ACTION_ID_KEY);
       localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
       localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
@@ -2740,6 +2798,7 @@ async function saveRemoteState() {
     }
   } finally {
     remoteSaveInFlight = false;
+    updateConnectionStatus();
     if (remoteSavePending) queueRemoteStateSave();
   }
   })();
@@ -3196,15 +3255,63 @@ async function registerEmployee(data) {
   return pendingProfile;
 }
 
+async function requirePendingStateAuthor(user, stored = loadProfile()) {
+  if (pendingStateOwner.reconcile(user, stored)) return;
+  await apiJson("/api/auth/logout", { method: "POST" }).catch(() => {});
+  const name = pendingStateOwner.owner()?.ownerName || "с неизвестным профилем";
+  throw Object.assign(new Error(`На устройстве остались неотправленные изменения сотрудника ${name}. Войдите под его профилем, чтобы завершить отправку.`), { pendingOwnerConflict: true });
+}
+
 async function loginEmployee(identifier, password) {
   const result = await apiJson("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ identifier, password })
   });
+  await requirePendingStateAuthor(result.user);
   if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
   remoteStateHydrated = false;
   localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
+  sessionValidationState = "verified";
   return result.user;
+}
+
+function updateConnectionStatus() {
+  let notice = document.querySelector("#connectionStatus");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "connectionStatus";
+    notice.className = "empty-state";
+    notice.setAttribute("role", "status");
+    ui.profileBar?.before(notice);
+  }
+  const pending = pendingQrWalkMarks().length + Number(localStorage.getItem(`${STORE_KEY}-pending`) === "1");
+  const other = pendingQrWalkMarks().filter(item => !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)).length;
+  notice.hidden = !isProfileReady() || (navigator.onLine && sessionValidationState === "verified" && !pending);
+  notice.textContent = !navigator.onLine ? "Нет связи. Данные сохранены на устройстве; отправим после подключения."
+    : sessionValidationState !== "verified" ? "Профиль сохранён на устройстве. Ожидаем проверку сессии сервером."
+    : `Данные сохранены на устройстве. Ожидают отправки: ${pending}.`;
+  if (other) notice.textContent += ` Отметки другого сотрудника или без подтверждённого автора: ${other}. Они сохранены и автоматически не отправляются.`;
+}
+
+function rejectServerSession() {
+  pendingStateOwner.captureLegacy(loadProfile());
+  sessionValidationState = "signed-out";
+  authenticatedProfile = profile = attendanceStatus = null;
+  appBootstrapComplete = false;
+  clearTimeout(remoteRetryTimer);
+  clearTimeout(sessionRetryTimer); sessionRetryTimer = null;
+  clearTimeout(remoteSaveTimer);
+  clearInterval(realtimePollTimer);
+  realtimeEventSource?.close();
+  realtimeSocket?.close();
+  localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
+  localStorage.removeItem(EDITOR_PREVIEW_AREA_KEY);
+  if (ui.loginOverlay) ui.loginOverlay.hidden = false;
+  if (ui.loginForm) ui.loginForm.hidden = false;
+  if (ui.loginError) ui.loginError.textContent = "Сессия завершена. Войдите снова.";
+  updateConnectionStatus();
+  setupPublicAttendanceEntry({ force: true });
 }
 
 async function restoreServerSession() {
@@ -3212,43 +3319,49 @@ async function restoreServerSession() {
   if (!stored) return false;
   try {
     const result = await apiJson("/api/auth/session", { timeout: 8000 });
-    if (!result?.user) throw new Error("authentication_required");
+    if (!result?.user) throw Object.assign(new Error("authentication_required"), { status: 401 });
+    await requirePendingStateAuthor(result.user, stored);
     authenticatedProfile = result.user;
     localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
     profile = activeProfileFromSession(authenticatedProfile);
+    sessionValidationState = "verified";
     return true;
-  } catch {
-    authenticatedProfile = null;
-    profile = null;
-    localStorage.removeItem(PROFILE_KEY);
-    localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
-    if (ui.loginOverlay) ui.loginOverlay.hidden = false;
-    if (ui.loginForm) ui.loginForm.hidden = false;
-    if (ui.loginError) ui.loginError.textContent = "Сессия завершена. Войдите снова.";
-    setupPublicAttendanceEntry({ force: true });
+  } catch (error) {
+    if (!error.pendingOwnerConflict && !window.PprDeviceCachePolicy.isSessionRejected(error) && window.PprDeviceCachePolicy.canRestoreCachedProfile(stored) && ROLE_ACCESS[stored.role]) {
+      authenticatedProfile = stored;
+      profile = activeProfileFromSession(stored);
+      sessionValidationState = "cached";
+      return true;
+    }
+    rejectServerSession();
+    if (error.pendingOwnerConflict) ui.loginError.textContent = error.message;
     return false;
+  } finally {
+    updateConnectionStatus();
+    if (sessionValidationState === "cached" && navigator.onLine && !sessionRetryTimer) {
+      sessionRetryTimer = window.setTimeout(() => {
+        sessionRetryTimer = null;
+        resumeAfterNetworkChange()?.catch(error => reportCaughtClientError("sync.session-retry", error));
+      }, 1500);
+    }
   }
 }
 
-async function refreshAuthenticatedProfile() {
-  if (!authenticatedProfile) return false;
-  try {
-    const result = await apiJson("/api/auth/session", { timeout: 8000 });
-    if (!result?.user) return false;
-    const previousAccess = `${authenticatedProfile.role || ""}|${userAreas(authenticatedProfile).join("|")}`;
-    const nextAccess = `${result.user.role || ""}|${userAreas(result.user).join("|")}`;
-    authenticatedProfile = result.user;
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
-    profile = activeProfileFromSession(authenticatedProfile);
-    if (previousAccess !== nextAccess) {
+function refreshAuthenticatedProfile() {
+  if (!authenticatedProfile || !navigator.onLine) return Promise.resolve(false);
+  if (sessionRefreshPromise) return sessionRefreshPromise;
+  sessionRefreshPromise = (async () => {
+    const previousAccess = JSON.stringify(authenticatedProfile);
+    const restored = await restoreServerSession();
+    if (restored && previousAccess !== JSON.stringify(authenticatedProfile)) {
       resetCurrentForProfile();
       renderProfile();
       show(current.view, false);
     }
-    return true;
-  } catch {
-    return false;
-  }
+    if (restored && sessionValidationState === "verified") flushPendingWork();
+    return restored && sessionValidationState === "verified";
+  })().finally(() => { sessionRefreshPromise = null; });
+  return sessionRefreshPromise;
 }
 
 async function finishAuthOnCurrentPage() {
@@ -3274,6 +3387,7 @@ async function finishAuthOnCurrentPage() {
   show(current.view, false);
   appBootstrapComplete = true;
   flushPendingWork();
+  updateConnectionStatus();
   loadRemoteUsers();
   Promise.allSettled([
     loadRemoteState(),
@@ -3911,8 +4025,8 @@ function renderProfile() {
     <label class="profile-theme-switcher">
       <span>Тема</span>
       <select data-theme-mode aria-label="Тема оформления">
-        <option value="light">Светлая</option>
-        <option value="dark">Тёмная</option>
+        <option value="light" ${document.documentElement.dataset.theme === "light" ? "selected" : ""}>Светлая</option>
+        <option value="dark" ${document.documentElement.dataset.theme === "dark" ? "selected" : ""}>Тёмная</option>
       </select>
     </label>
   `;
@@ -3951,6 +4065,7 @@ function renderProfile() {
     if (!window.confirm("Точно выйти из профиля?")) return;
     await removePushSubscriptionForLogout();
     await apiJson("/api/auth/logout", { method: "POST", timeout: 5000 }).catch(() => {});
+    pendingStateOwner.captureLegacy(loadProfile());
     localStorage.removeItem(PROFILE_KEY);
     localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
     location.reload();
@@ -4396,13 +4511,14 @@ function pendingQrWalkMarks() {
 }
 
 function savePendingQrWalkMarks(items) {
-  const bounded = Array.isArray(items) ? items.slice(-200) : [];
+  const bounded = Array.isArray(items) ? items : [];
   if (bounded.length) localStorage.setItem(QR_PENDING_MARKS_KEY, JSON.stringify(bounded));
   else localStorage.removeItem(QR_PENDING_MARKS_KEY);
+  updateConnectionStatus();
 }
 
 function qrWalkMarkIdentity(payload) {
-  return [payload.equipmentId, payload.qrToken, payload.date, payload.shift, payload.group, payload.qrKind].join("|");
+  return [payload.ownerId || payload.ownerEmployeeId || "legacy", payload.equipmentId, payload.qrToken, payload.date, payload.shift, payload.group, payload.qrKind].join("|");
 }
 
 function enqueuePendingQrWalkMark(payload) {
@@ -4429,25 +4545,22 @@ async function sendQrWalkPayload(payload) {
   return result;
 }
 
-let qrWalkQueueFlushPromise = null;
+let qrWalkQueueFlusher = null;
 function flushQrWalkQueue() {
-  if (qrWalkQueueFlushPromise || !navigator.onLine) return qrWalkQueueFlushPromise;
-  qrWalkQueueFlushPromise = (async () => {
-    const pending = pendingQrWalkMarks();
-    while (pending.length && navigator.onLine) {
-      try {
-        await sendQrWalkPayload(pending[0]);
-        pending.shift();
-        savePendingQrWalkMarks(pending);
-      } catch (error) {
-        if (!isPermanentQrWalkError(error)) break;
-        console.warn("Discarding rejected QR queue item", error);
-        pending.shift();
-        savePendingQrWalkMarks(pending);
-      }
-    }
-  })().finally(() => { qrWalkQueueFlushPromise = null; });
-  return qrWalkQueueFlushPromise;
+  qrWalkQueueFlusher ||= window.PprDeviceCachePolicy.createQueueFlusher({
+    read: pendingQrWalkMarks, write: savePendingQrWalkMarks, send: sendQrWalkPayload,
+    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady(),
+    canSendItem: item => window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile),
+    identity: item => item.actionId || qrWalkMarkIdentity(item),
+    discard: error => {
+      if (Number(error?.status) === 401) { rejectServerSession(); return false; }
+      if (!isPermanentQrWalkError(error)) return false;
+      showAppToast("Сервер отклонил QR-отметку. Проверьте доступ и действующий QR-код.", "error");
+      return true;
+    },
+    settled: updateConnectionStatus
+  });
+  return qrWalkQueueFlusher();
 }
 
 async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
@@ -4461,6 +4574,8 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
     equipmentId,
     nodeIndex,
     qrToken,
+    ownerId: authenticatedProfile?.id || "",
+    ownerEmployeeId: authenticatedProfile?.employeeId || "",
     date,
     shift: shiftInfo?.key || "",
     qrKind,
@@ -4473,7 +4588,7 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
     range: shiftInfo?.range || "",
     customJournal: customJournal || localMark?.customJournal || null
   };
-  if (!navigator.onLine) {
+  if (!navigator.onLine || sessionValidationState !== "verified") {
     enqueuePendingQrWalkMark(payload);
     showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
     return "queued";
@@ -6491,7 +6606,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           ${canConfirm
             ? `<div class="resolution-empty">Подтверждение доступно в «Личных сообщениях» на кнопке вашей роли.</div>`
             : `<div class="resolution-empty">Ожидается решение ответственного сотрудника</div>`}
-          ${canCloseWithoutScore ? `<button type="button" class="danger no-print" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
+          ${canCloseWithoutScore ? `<button type="button" class="danger no-print" data-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
         </section>
       ` : `
         ${returnedToRework ? `
@@ -6551,7 +6666,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
             <div class="node-walk-actions">
               <button type="button" class="secondary" data-remark-work-update ${canWriteResolution ? "" : "disabled"}>Добавить запись о работе</button>
               <button type="button" data-remark-resolve>Устранено</button>
-              ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Закрыть без баллов</button>` : ""}
+              ${canCloseWithoutScore ? `<button type="button" class="danger" data-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
             </div>
           </div>
           ${resolutionEvents.length ? `
@@ -7352,7 +7467,7 @@ function downtimeCloseBlockedMessage() {
 function downtimeCloseButtonLabel(liveStop) {
   if (attendanceRequired() && !attendanceAllowsEditing()) return "Сначала отсканируйте QR";
   if (!roleAccess().checklist) return "Нет доступа";
-  return liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+  return liveStop?.type === "production" ? "Возобновить производство" : "Подтвердить пуск";
 }
 
 function showDowntimeCloseBlockedDialog(message) {
@@ -7388,7 +7503,7 @@ function askDowntimeCloseDetails(liveStop) {
     document.querySelector(".downtime-close-overlay")?.remove();
     const overlay = document.createElement("div");
     overlay.className = "downtime-type-overlay downtime-close-overlay";
-    const actionTitle = liveStop?.type === "production" ? "Возобновить производство" : "Завершить простой / Пуск";
+    const actionTitle = liveStop?.type === "production" ? "Возобновить производство" : "Подтвердить пуск";
     const commentLabel = liveStop?.type === "production"
       ? "Причина возобновления производства"
       : "Что выполнено для устранения поломки?";
@@ -7502,7 +7617,7 @@ function updateRoleBadges() {
     const canEnter = canOpenRequestRole(role);
     button.hidden = quickButton ? !canSeeRequestRoleIndicator(role) : !canEnter;
     const waiting = role === profile?.role || (isEditorSession() && role === "engineer") ? personalCount : 0;
-    button.innerHTML = `<span>${requestRoleLabel(role)}${waiting ? `<small class="role-personal-count">Личные: ${waiting}</small>` : ""}</span><strong>${waiting}</strong>`;
+    button.innerHTML = `<span>${requestRoleLabel(role)}${waiting ? `<small class="role-personal-count">Личные сообщения</small>` : ""}</span><strong>${waiting}</strong>`;
     button.classList.toggle("indicator-only", quickButton && !canEnter);
     button.classList.toggle("request-alert", waiting > 0);
     button.classList.toggle("has-count", waiting > 0);
@@ -7625,7 +7740,7 @@ function openAllRemarkCards() {
   overlay.innerHTML = `
     <section class="request-archive-dialog open-remarks-dialog" role="dialog" aria-modal="true" aria-labelledby="openRemarksTitle">
       <header>
-        <div><small class="warnings-hall-kicker">ОБЩИЙ ЗАЛ</small><strong id="openRemarksTitle">${escapeHtml(remarksSectionLabel())}</strong><span>Учитывается: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · с причиной неустранения: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
+        <div><small class="warnings-hall-kicker">${["operator", "shop"].includes(profile?.role) ? "Ваши участки" : "Доступные участки"}</small><strong id="openRemarksTitle">${escapeHtml(remarksSectionLabel())}</strong><span>Открыто: ${targets.filter(target => !target.deferred).length}${targets.some(target => target.deferred) ? ` · отложено: ${targets.filter(target => target.deferred).length}` : ""}</span></div>
         <button type="button" data-close-open-remarks aria-label="Закрыть окно предупреждений">Закрыть</button>
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
@@ -7648,7 +7763,7 @@ function openAllRemarkCards() {
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
-              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть без баллов</button>` : ""}
+              ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-close-remark-no-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Удалить без начисления баллов</button>` : ""}
                 ${canCloseRemarksForEmployees() ? `<button type="button" data-close-remark-with-score data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">Закрыть с баллами</button>` : ""}
                 ${canDeferRemarks() ? `<button type="button" class="secondary" data-defer-open-remark data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.deferred ? "Изменить причину неустранения" : "Причина неустранения"}</button>` : ""}
                 <button type="button" data-open-remark-card data-remark-id="${escapeHtml(target.remarkId)}" data-equipment-id="${target.equipmentId}" data-node-index="${target.nodeIndex}" data-date="${escapeHtml(target.date)}">${target.pendingConfirmation ? (target.canConfirm ? "Проверить и подтвердить" : "Открыть карточку") : "Перейти в узел и устранить"}</button>
@@ -7687,7 +7802,7 @@ function openAllRemarkCards() {
     close();
     showAppToast("Предупреждение удалено без начисления баллов.", "ok");
     window.setTimeout(() => openAllRemarkCards(), 50);
-  }, "Закрываем...")));
+  }, "Удаляем...")));
   overlay.querySelectorAll("[data-close-remark-with-score]").forEach(button => button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
     if (!canCloseRemarksForEmployees()) return;
     const decision = await askAdminRemarkClose(true);
@@ -7743,13 +7858,13 @@ function askAdminRemarkClose(withScore = false) {
     };
     overlay.innerHTML = `
       <div class="send-kind-dialog" role="dialog" aria-modal="true">
-        <strong>${withScore ? "Закрыть предупреждение с баллами" : "Закрыть предупреждение без баллов"}</strong>
+        <strong>${withScore ? "Закрыть предупреждение с баллами" : "Удалить предупреждение без начисления баллов"}</strong>
         <p>${withScore ? "Выберите одного или нескольких фактических исполнителей. Баллы будут начислены каждому выбранному сотруднику." : "Предупреждение будет полностью удалено без начисления баллов. В журнале действий останется только причина удаления."}</p>
         ${withScore ? `<fieldset class="admin-close-performers"><legend>Кому начислить баллы</legend>${workers.map(worker => `<label><input type="checkbox" data-admin-close-performer value="${escapeHtml(worker.key)}"><span>${escapeHtml(resolutionParticipantLabel(worker))}</span></label>`).join("")}</fieldset>` : ""}
-        <label><span>${withScore ? "Что выполнено" : "Причина закрытия"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
+        <label><span>${withScore ? "Что выполнено" : "Причина удаления"}</span><textarea rows="3" data-admin-close-reason placeholder="${withScore ? "Опишите выполненную работу" : "Например: тестовая или ошибочная запись"}"></textarea></label>
         <div class="downtime-type-error" data-admin-close-error></div>
         <div class="send-kind-actions">
-          <button type="button" data-admin-close-submit>${withScore ? "Закрыть и начислить баллы" : "Закрыть без баллов"}</button>
+          <button type="button" data-admin-close-submit>${withScore ? "Закрыть и начислить баллы" : "Удалить без начисления баллов"}</button>
           <button type="button" class="secondary" data-admin-close-cancel>Отмена</button>
         </div>
       </div>
@@ -7764,7 +7879,7 @@ function askAdminRemarkClose(withScore = false) {
         return;
       }
       if (!reason) {
-        if (error) error.textContent = withScore ? "Напишите, что было выполнено." : "Укажите причину закрытия.";
+        if (error) error.textContent = withScore ? "Напишите, что было выполнено." : "Укажите причину удаления.";
         overlay.querySelector("[data-admin-close-reason]")?.focus();
         return;
       }
@@ -9791,7 +9906,12 @@ function openCustomJournalEditor(eq) {
   }, "Сохраняется..."));
 }
 
+let equipmentSearchController = null;
+let equipmentSearchProfileKey = "";
+
 function renderEquipment() {
+  const searchContainer = document.querySelector("#equipmentSearch");
+  if (searchContainer) searchContainer.hidden = true;
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
     ui.subtitle.textContent = "Сварщик и токарь";
@@ -9821,11 +9941,19 @@ function renderEquipment() {
     ui.equipmentList.innerHTML = `<div class="empty-state">Для вашей роли список оборудования закрыт. Откройте раздел заявок.</div>`;
     return;
   }
+  if (searchContainer && window.PPRModules?.createEquipmentSearch) {
+    equipmentSearchController ||= window.PPRModules.createEquipmentSearch(searchContainer);
+    const profileKey = `${profile?.id || profile?.employeeId || ""}:${profile?.role || ""}:${profile?.area || ""}`;
+    if (profileKey !== equipmentSearchProfileKey) equipmentSearchController.reset();
+    equipmentSearchProfileKey = profileKey;
+    searchContainer.hidden = false;
+  }
+  const searchableRows = [];
   const monthBar = document.createElement("div");
   monthBar.className = "equipment-month-bar";
   monthBar.innerHTML = `
     <div>
-      <strong>График оборудования</strong>
+      <strong>Оборудование</strong>
       <span>${editorSchedule ? "Нажмите день напротив оборудования" : `Текущая смена: ${dateHuman(activeShift.date)} · ${activeShift.label}`}</span>
     </div>
     <div class="segmented">
@@ -9869,7 +9997,7 @@ function renderEquipment() {
     <thead>
       <tr>
         <th class="node-head equipment-head">Агрегатный журнал</th>
-        ${days.map(day => `<th>${day}</th>`).join("")}
+        ${days.map(day => `<th>${editorSchedule ? day : "Обход смены"}</th>`).join("")}
       </tr>
     </thead>
     <tbody></tbody>
@@ -9891,14 +10019,15 @@ function renderEquipment() {
       const compressorJournalMissingToday = compressorJournalOverdueDays > 0;
       const gasJournalMissingToday = gasJournalOverdueDays > 0;
       const equipmentOperationalPause = activeOperationalPause(eq, null, todayISO());
+      const shiftSummary = equipmentDaySummary(eq, activeShift.date, activeWalkGroup);
+      searchableRows.push({ row: tr, text: [eq.name, eq.area, ...eq.nodes].join(" "), attention: Boolean(alert || equipmentDowntimeOpen || compressorJournalMissingToday || gasJournalMissingToday || (!equipmentOperationalPause && !shiftSummary.complete && shiftSummary.activeTotal > 0)) });
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
             <button type="button" data-aggregate-equipment="${eq.id}" class="equipment-journal-button ${equipmentOperationalPause ? "equipment-operational-paused" : ""} ${(compressorJournalMissingToday || gasJournalMissingToday) ? "compressor-journal-alert" : ""}">
-              <span class="journal-button-title">Журнал</span>
               <strong>${escapeHtml(eq.name)}</strong>
-              <span>${ordinaryNodeIndexes(eq).length} узлов · ${escapeHtml(eq.area)}</span>
-              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `${aggregateJournalCount(eq.area, eq.id)} записей`}</small>
+              <span>Узлов: ${ordinaryNodeIndexes(eq).length} · ${escapeHtml(eq.area)}</span>
+              <small>${equipmentOperationalPause ? `Временно не работает${equipmentOperationalPause.reason ? ` · ${escapeHtml(equipmentOperationalPause.reason)}` : ""}` : eq.area === GAS_JOURNAL_AREA ? gasJournalButtonStatus() : eq.area === COMPRESSOR_JOURNAL_AREA ? compressorJournalButtonStatus(eq.area) : `Записей: ${aggregateJournalCount(eq.area, eq.id)}`}</small>
             </button>
             <div class="equipment-secondary-tools">
               <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
@@ -9962,7 +10091,8 @@ function renderEquipment() {
         const baseClass = operationalPause ? "operational-paused-day" : summary.complete ? "completed-day" : "to";
           td.className = `${baseClass} ${summary.overdue ? "planned-overdue" : ""} ${summary.blinkToday ? "overdue-line-blink" : ""} ${summary.open || equipmentDowntimeBlink ? "blink-cell" : ""} ${summary.open ? "open-comment" : ""} ${signalClass} ${date === activeShift.date ? "today-cell" : ""}`;
         if (!canOpenEquipmentDate(date)) td.classList.add("date-locked");
-        td.innerHTML = operationalPause ? "Пауза" : summary.complete ? "✓" : `${summary.done}/${summary.total}`;
+        const shiftLabel = operationalPause ? "Пауза" : summary.complete ? "Выполнен" : "Открыть обход";
+        td.innerHTML = `<button type="button" class="equipment-shift-action" aria-label="${escapeHtml(`${shiftLabel}: ${eq.name}. Выполнено ${summary.done} из ${summary.total}`)}" ${canOpenEquipmentDate(date) ? "" : "disabled"}><strong>${operationalPause ? "—" : summary.complete ? "✓" : `${summary.done}/${summary.total}`}</strong><span>${shiftLabel}</span></button>`;
         const pausedHint = summary.pausedTotal ? ` · на паузе ${summary.pausedTotal}` : "";
         td.title = operationalPause ? `${eq.name} · временно не работает${operationalPause.reason ? `: ${operationalPause.reason}` : ""}` : downtimeOpen ? `${eq.name} · идет простой` : summary.open ? `${eq.name} · есть комментарий${pausedHint}` : `${eq.name} · ${dateHuman(date)} · выполнено ${summary.done} из ${summary.total}${pausedHint}`;
         td.addEventListener("click", () => {
@@ -10011,6 +10141,12 @@ function renderEquipment() {
     });
   wrap.append(table);
   ui.equipmentList.append(wrap);
+  const emptyMessage = document.createElement("div");
+  emptyMessage.className = "empty-state equipment-search-empty";
+  emptyMessage.hidden = true;
+  emptyMessage.textContent = "По выбранным условиям оборудования нет. Измените поиск или выберите «Все».";
+  ui.equipmentList.append(emptyMessage);
+  equipmentSearchController?.update(searchableRows, emptyMessage);
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
@@ -10760,8 +10896,8 @@ function renderNodeWalkthrough(eq) {
         });
         if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
         else renderNodeWalkthrough(equipmentById(eq.id));
-        showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
-      }, "Закрываем..."));
+        showAppToast("Предупреждение удалено без начисления баллов.", "ok");
+      }, "Удаляем..."));
       card.querySelector("[data-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "confirm", { remarkId });
@@ -11200,7 +11336,7 @@ function annualPprWorkDocumentDialog(year, work, kind, rerender) {
   work.documents ||= {};
   work.documents[kind] = { kind, title: labels[kind], number, comment, fixedAt: new Date().toISOString(), fixedByName: profile?.name || "" };
   const record = annualPprYearRecord(year, true); record.updatedAt = new Date().toISOString();
-  persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry); rerender();
+  persistStateLocally(state); markPendingState(); publishStateNow().catch(scheduleRemoteRetry); rerender();
 }
 
 function openAnnualPprMonthJournal(year, row, month) {
@@ -11213,8 +11349,8 @@ function openAnnualPprMonthJournal(year, row, month) {
       <form data-work-form><label>Дата<input required type="date" name="date" min="${year}-${String(month).padStart(2,"0")}-01" max="${year}-${String(month).padStart(2,"0")}-${String(new Date(year, month, 0).getDate()).padStart(2,"0")}" value="${year}-${String(month).padStart(2,"0")}-01"></label><label>Вид<select name="type"><option>ТО</option><option>ТР</option><option>АР</option></select></label><label class="wide">Перечень работ<textarea required name="description" rows="3" placeholder="Что необходимо выполнить"></textarea></label><label>Статус<select name="status"><option>Запланировано</option><option>В работе</option><option>Выполнено</option><option>Перенесено</option></select></label><label>Исполнитель<input name="performer" placeholder="Ф.И.О."></label><label class="wide">Результат / комментарий<textarea name="result" rows="2"></textarea></label><button type="submit">Добавить работу</button></form>
       <div class="annual-ppr-work-list">${works.length ? works.map(item => `<article class="${item.fixed ? "fixed" : ""}"><div class="work-main"><b>${escapeHtml(item.type)} · ${escapeHtml(dateHuman(item.date))}</b><strong>${escapeHtml(item.description)}</strong><span>${escapeHtml(item.status || "Запланировано")}${item.performer ? ` · ${escapeHtml(item.performer)}` : ""}</span><small>${escapeHtml(item.result || "Результат ещё не указан")}</small>${item.source ? `<em>Автоматически из ${item.source === "remark" ? "замечания" : "аварийного простоя"}</em>` : ""}</div><div class="work-actions">${!item.source && !item.fixed ? `<button data-work-fix="${escapeHtml(item.id)}">Зафиксировать</button>` : ""}<button data-work-doc="ZM" data-work-id="${escapeHtml(item.id)}">ЗМ${item.documents?.ZM ? " ✓" : ""}</button><button data-work-doc="MV" data-work-id="${escapeHtml(item.id)}">МВ${item.documents?.MV ? " ✓" : ""}</button><button data-work-doc="ACT" data-work-id="${escapeHtml(item.id)}">Акты${item.documents?.ACT ? " ✓" : ""}</button></div></article>`).join("") : `<div class="empty-state">В этом месяце работ пока нет.</div>`}</div></section>`;
     overlay.querySelector("[data-work-back]")?.addEventListener("click", () => overlay.remove());
-    overlay.querySelector("[data-work-form]")?.addEventListener("submit", event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget).entries()); record.works.push({ ...values, id: `annual-work:${Date.now()}`, nodeKey: row.nodeKey, equipmentId: row.eq.id, equipmentName: row.eq.name, area: row.eq.area, node: row.node, createdAt: new Date().toISOString(), createdByName: profile?.name || "", fixed: false, documents: {} }); record.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry); render(); });
-    overlay.querySelectorAll("[data-work-fix]").forEach(button => button.addEventListener("click", () => { const work = record.works.find(item => item.id === button.dataset.workFix); if (!work || work.fixed) return; work.fixed = true; work.fixedAt = new Date().toISOString(); work.fixedByName = profile?.name || ""; record.updatedAt = work.fixedAt; persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry); render(); }));
+    overlay.querySelector("[data-work-form]")?.addEventListener("submit", event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget).entries()); record.works.push({ ...values, id: `annual-work:${Date.now()}`, nodeKey: row.nodeKey, equipmentId: row.eq.id, equipmentName: row.eq.name, area: row.eq.area, node: row.node, createdAt: new Date().toISOString(), createdByName: profile?.name || "", fixed: false, documents: {} }); record.updatedAt = new Date().toISOString(); persistStateLocally(state); markPendingState(); publishStateNow().catch(scheduleRemoteRetry); render(); });
+    overlay.querySelectorAll("[data-work-fix]").forEach(button => button.addEventListener("click", () => { const work = record.works.find(item => item.id === button.dataset.workFix); if (!work || work.fixed) return; work.fixed = true; work.fixedAt = new Date().toISOString(); work.fixedByName = profile?.name || ""; record.updatedAt = work.fixedAt; persistStateLocally(state); markPendingState(); publishStateNow().catch(scheduleRemoteRetry); render(); }));
     overlay.querySelectorAll("[data-work-doc]").forEach(button => button.addEventListener("click", () => { let work = record.works.find(item => item.id === button.dataset.workId); if (!work) { const source = annualPprMonthWorks(year, row, month).find(item => item.id === button.dataset.workId); if (!source) return; work = { ...source, id: `annual-work:${Date.now()}`, sourceId: source.id, nodeKey: row.nodeKey, equipmentId: row.eq.id, equipmentName: row.eq.name, area: row.eq.area, node: row.node, createdAt: new Date().toISOString(), createdByName: profile?.name || "", documents: {} }; record.works.push(work); } annualPprWorkDocumentDialog(year, work, button.dataset.workDoc, render); }));
   };
   document.body.append(overlay); render();
@@ -11374,7 +11510,7 @@ function openAnnualPprActs(year, scheduleOverlay) {
     const saved = record.overrides[nodeKey] ||= { months: {} };
     saved.months[Number(String(values.date).slice(5, 7))] = values.type;
     record.updatedAt = savedEvent.createdAt;
-    persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
+    persistStateLocally(state); markPendingState(); publishStateNow().catch(scheduleRemoteRetry);
     overlay.querySelector("[data-act-print-defect]").disabled = false;
     overlay.querySelector("[data-act-print-commission]").disabled = false;
     renderHistory();
@@ -11477,7 +11613,7 @@ function saveAnnualPprNodeMonth(row, year, month, value) {
   saved.updatedAt = new Date().toISOString();
   record.updatedAt = saved.updatedAt;
   persistStateLocally(state);
-  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  markPendingState();
   publishStateNow().catch(scheduleRemoteRetry);
 }
 
@@ -11534,7 +11670,7 @@ function saveAnnualPprRow(rowElement, year) {
   saved.updatedAt = new Date().toISOString();
   record.updatedAt = saved.updatedAt;
   persistStateLocally(state);
-  localStorage.setItem(`${STORE_KEY}-pending`, "1");
+  markPendingState();
   publishStateNow().catch(scheduleRemoteRetry);
 }
 
@@ -11657,7 +11793,7 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
     if (Number.isSafeInteger(equipmentId)) openAnnualPprEquipmentMonth(year, equipmentId, Number(cell.dataset.openPprMonth));
   }));
   overlay.querySelectorAll("[data-annual-ppr-meta]").forEach(input => input.addEventListener("change", () => {
-    const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); localStorage.setItem(`${STORE_KEY}-pending`, "1"); publishStateNow().catch(scheduleRemoteRetry);
+    const live = annualPprYearRecord(year, true); live[input.dataset.annualPprMeta] = input.value.trim(); live.updatedAt = new Date().toISOString(); persistStateLocally(state); markPendingState(); publishStateNow().catch(scheduleRemoteRetry);
   }));
 }
 
@@ -11727,82 +11863,26 @@ function pprSheetRecord(date, create = false) {
   };
 }
 
-function pprSheetAutofillRows(date, scheduledItems = []) {
-  const generated = [];
-  scheduledItems.forEach((scheduled, scheduledIndex) => {
-    const works = nodeReminderItems(scheduled?.node || "", scheduled?.equipment || "");
-    works.forEach((work, workIndex) => {
-      const clean = String(work || "").trim();
-      if (!clean || generated.some(row => row.work === clean)) return;
-      generated.push({
-        id: `${date}-auto-${scheduledIndex + 1}-${workIndex + 1}`,
-        work: clean,
-        mark: "",
-        equipmentId: scheduled?.equipmentId || "",
-        equipment: scheduled?.equipment || "",
-        node: scheduled?.node || "",
-        area: scheduled?.area || "",
-        autoFilled: true
-      });
-    });
-  });
-  return generated;
-}
+const pprSheetGenerationRequests = new Map();
+const pprSheetGenerationAttempts = new Map();
 
-function pprAutofillEngineer() {
-  const engineer = loadUsers().find(user =>
-    String(user?.name || "").toLocaleLowerCase("ru-RU").includes("ербол")
-    && permissionBaseRole(user?.role) === "engineer"
-  );
-  return {
-    name: engineer?.name || "Ербол",
-    role: "engineer"
-  };
-}
-
-function ensurePprSheetAutofill(date, scheduledItems = [], force = false) {
-  if (!scheduledItems.length) return pprSheetRecord(date);
-  const sheet = pprSheetRecord(date, true);
-  const hasManualOrSavedWork = (sheet.rows || []).some(row => String(row?.work || "").trim());
-  if (!force && (sheet.autofillInitialized || hasManualOrSavedWork)) {
-    if (sheet.autofillMode === "template" && !sheet.plannedAutomatically) {
-      const autofillEngineer = pprAutofillEngineer();
-      sheet.plannedByName = autofillEngineer.name;
-      sheet.plannedByRole = autofillEngineer.role;
-      sheet.plannedAt ||= sheet.autofilledAt || new Date().toISOString();
-      sheet.plannedAutomatically = true;
-      touchPprSheet(sheet);
+async function ensurePprSheetAutofill(date, force = false) {
+  if (pprSheetGenerationRequests.has(date)) return pprSheetGenerationRequests.get(date);
+  const operation = apiJson("/api/ppr-sheet/generate", {
+    method: "POST", timeout: 15000,
+    body: JSON.stringify({ date, force, clientId: CLIENT_ID, actionId: nextActionId() })
+  }).then(result => {
+    if (result?.sheet) {
+      state.pprSheets ||= {};
+      state.pprSheets[date] = result.sheet;
+      persistStateLocally(state);
     }
-    if (!sheet.autofillInitialized && hasManualOrSavedWork) {
-      sheet.autofillInitialized = true;
-      sheet.autofillMode = "existing";
-      touchPprSheet(sheet);
-    }
-    return sheet;
-  }
-  const generated = pprSheetAutofillRows(date, scheduledItems);
-  sheet.rows = generated.length ? generated : pprSheetDefaultRows(date);
-  while (sheet.rows.length < PPR_SHEET_DEFAULT_ROWS) {
-    sheet.rows.push({ id: `${date}-work-${sheet.rows.length + 1}`, work: "", mark: "" });
-  }
-  sheet.autofillInitialized = true;
-  sheet.autofillMode = "template";
-  sheet.autofilledAt = new Date().toISOString();
-  const autofillEngineer = pprAutofillEngineer();
-  sheet.plannedByName = autofillEngineer.name;
-  sheet.plannedByRole = autofillEngineer.role;
-  sheet.plannedAt = sheet.autofilledAt;
-  sheet.plannedAutomatically = true;
-  sheet.autofilledFor = scheduledItems.map(item => ({
-    equipmentId: item?.equipmentId || "",
-    equipment: item?.equipment || "",
-    node: item?.node || "",
-    area: item?.area || ""
-  }));
-  touchPprSheet(sheet);
-  return sheet;
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+    return result;
+  }).finally(() => pprSheetGenerationRequests.delete(date));
+  pprSheetGenerationRequests.set(date, operation);
+  return operation;
 }
-
 function pprSheetCompletion(date) {
   const sheet = pprSheetRecord(date);
   const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
@@ -11863,7 +11943,7 @@ async function publishPprSheetAction(date, action, details = {}) {
 }
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
-  const sheet = ensurePprSheetAutofill(date, scheduledItems);
+  const sheet = pprSheetRecord(date);
   const savedRows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
   const rows = [...savedRows];
   while (rows.length < scheduledItems.length) {
@@ -11882,7 +11962,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       ? "Все работы отмечены · ожидается обход и приёмка инженером"
     : completion.active
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
-      : "Инженер должен заполнить перечень работ";
+      : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   const rowHtml = rows.map((row, index) => {
     const scheduled = scheduledItems[index] || (scheduledItems.length === 1 ? scheduledItems[0] : null);
     const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
@@ -11893,10 +11973,10 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" placeholder="Инженер записывает работу" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" aria-label="Работа ${index + 1}" placeholder="${canPlan ? "Опишите работу" : "—"}" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
       </td>
       <td class="ppr-sheet-resolution">
-        <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" placeholder="Что выполнено или почему не требуется" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
+        <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" aria-label="Результат работы ${index + 1}" placeholder="${canMark ? "Результат или причина" : "—"}" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
         ${row.markedByName ? `<small><strong>${escapeHtml(row.markedByName)}</strong> · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")} · ${dateTimeHuman(row.markedAt)}</small>` : ""}
       </td>
       <td class="ppr-sheet-mark">
@@ -11910,7 +11990,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   `;
   }).join("");
   return `
-    <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}">
+    <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}" data-ppr-autofill-needed="${scheduledItems.length > 0 && !completion.active}">
       <header class="ppr-sheet-header">
         <div>
           <span>Лист планового обслуживания</span>
@@ -11919,11 +11999,11 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
       ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
-      <div class="ppr-sheet-table-wrap">
+      <div class="ppr-sheet-table-wrap"><p class="no-print">✓ — выполнено · − — не требуется</p>
         <table class="ppr-sheet-table">
           <thead>
-            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th rowspan="2">Исполнитель и комментарий об устранении</th><th>План обслуживания</th></tr>
-            <tr><th>A</th></tr>
+            <tr><th rowspan="2">№</th><th rowspan="2">Перечень работ</th><th rowspan="2"><span class="no-print">Исполнитель и результат работы</span><span class="ppr-sheet-print-mark" style="font-size:inherit">Исполнитель и комментарий об устранении</span></th><th><span class="no-print">Выполнение</span><span class="ppr-sheet-print-mark" style="font-size:inherit">План обслуживания</span></th></tr>
+            <tr><th><span class="no-print">✓ / −</span><span class="ppr-sheet-print-mark" style="font-size:inherit">A</span></th></tr>
           </thead>
           <tbody>${rowHtml}</tbody>
         </table>
@@ -11931,9 +12011,9 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       <footer class="ppr-sheet-footer">
         <div class="ppr-sheet-state ${completion.complete ? "done" : completion.partial ? "partial" : "empty"}">
           <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
-          <span>${escapeHtml(statusText)}</span>
+          <span data-ppr-sheet-status>${escapeHtml(statusText)}</span>
         </div>
-        ${sheet.plannedByName || sheet.updatedByName ? `<small>${sheet.plannedAutomatically ? "Автовыбор" : "План составил"}: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)} · ${escapeHtml(requestRoleLabel(sheet.plannedByRole) || sheet.plannedByRole || "")}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
+        ${sheet.plannedByName || sheet.updatedByName ? `<small>${sheet.plannedAutomatically ? "Автоплан" : "План составил"}: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedByRole === "system" ? "" : ` · ${escapeHtml(requestRoleLabel(sheet.plannedByRole) || sheet.plannedByRole || "")}`}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
         ${canPlan ? `<button type="button" class="secondary no-print" data-autofill-ppr-sheet="${date}">Автозаполнить перечень работ</button>` : ""}
@@ -12116,6 +12196,17 @@ function shiftPprCalendar(monthDelta) {
 }
 
 function bindPprCalendarControls(container, rerender) {
+  container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
+    const date = element.dataset.pprSheetDate;
+    const sheet = pprSheetRecord(date);
+    if (!navigator.onLine || sessionValidationState !== "verified" || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
+    if (Date.now() - (pprSheetGenerationAttempts.get(date) || 0) < 30000) return;
+    pprSheetGenerationAttempts.set(date, Date.now());
+    ensurePprSheetAutofill(date).then(result => { if (result?.sheet && container.isConnected) rerender(); }).catch(() => {
+      const status = element.querySelector("[data-ppr-sheet-status]");
+      if (status) status.textContent = "Не удалось загрузить план. Проверьте связь и откройте день повторно.";
+    });
+  });
   container?.querySelectorAll("[data-ppr-calendar-shift]").forEach(button => {
     button.addEventListener("click", () => {
       shiftPprCalendar(button.dataset.pprCalendarShift);
@@ -12274,9 +12365,8 @@ function bindPprCalendarControls(container, rerender) {
       const date = button.dataset.autofillPprSheet;
       const selectedItems = pprCalendarMonthData(allEquipment()).itemsByDate[date] || [];
       if (!selectedItems.length) return;
-      if (!window.confirm("Заменить перечень работ типовыми работами для оборудования и узлов по текущему графику? После заполнения каждую строку можно редактировать.")) return;
-      ensurePprSheetAutofill(date, selectedItems, true);
-      rerender();
+      if (!window.confirm("Заменить перечень работ шаблоном по текущему графику? Внесённые отметки и комментарии этого листа будут очищены.")) return;
+      runButtonOperation(button, async () => { await ensurePprSheetAutofill(date, true); rerender(); }, "Загружается…");
     });
   });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
@@ -12496,7 +12586,7 @@ function rolePersonalMessageHtml(message) {
         </div>
         <div class="role-personal-actions">
           <button type="button" class="secondary" data-personal-remark-open-node>Открыть карточку</button>
-          ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-personal-remark-close-no-score>Закрыть без баллов</button>` : ""}
+          ${canCloseRemarksForEmployees() ? `<button type="button" class="danger" data-personal-remark-close-no-score>Удалить без начисления баллов</button>` : ""}
           <button type="button" class="secondary" data-personal-remark-return>Вернуть с комментарием</button>
           <button type="button" data-personal-remark-confirm>Подтвердить устранение</button>
         </div>
@@ -12559,8 +12649,8 @@ function bindRolePersonalInbox(messages) {
       });
       markPersonalRemarkMessagesRead([message]);
       refreshPersonalRemarkSurfaces();
-      showAppToast("Предупреждение закрыто без начисления баллов.", "ok");
-    }));
+      showAppToast("Предупреждение удалено без начисления баллов.", "ok");
+    }, "Удаляем..."));
     card.querySelector("[data-personal-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
       const reason = window.prompt("Укажите, что нужно доработать:");
       if (!String(reason || "").trim()) {
@@ -12594,11 +12684,11 @@ function renderRolePersonalInbox() {
   ui.rolePersonalInbox.innerHTML = `
     <section class="role-personal-inbox">
       <div class="role-personal-inbox-head">
-        <div><span>${isAdminEngineerBlock ? "ВСЕ ЦЕХА" : "ЛИЧНО ВАМ"}</span><h1>${canConfirmRemarksAcrossShops() ? "Устранённые замечания" : "Личные сообщения"}</h1></div>
+        <div><span>${isAdminEngineerBlock ? "ВСЕ ЦЕХА" : "ЛИЧНО ВАМ"}</span><h1>${canConfirmRemarksAcrossShops() ? "На проверку" : "Личные сообщения"}</h1></div>
         <strong>${messages.length}</strong>
       </div>
       <div class="role-personal-message-list">
-        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>${canConfirmRemarksAcrossShops() ? "Нет замечаний для проверки" : "Новых личных сообщений нет"}</strong><span>${canConfirmRemarksAcrossShops() ? "Все переданные работы уже рассмотрены." : "Запросы и возвраты появятся здесь."}</span></div>`}
+        ${messages.length ? messages.map(rolePersonalMessageHtml).join("") : `<div class="role-personal-empty"><strong>${canConfirmRemarksAcrossShops() ? "Нет работ для проверки" : "Новых личных сообщений нет"}</strong><span>${canConfirmRemarksAcrossShops() ? "Выполненные работы и листы ППР появятся здесь." : "Запросы и возвраты появятся здесь."}</span></div>`}
       </div>
     </section>
   `;
@@ -12628,6 +12718,7 @@ function globalReminderItems(equipment = globalControlEquipment()) {
       items.push({
         level: plan.daysUntil === 0 ? "red" : "yellow",
         icon: "⏰",
+        dueDate: plan.dueDate,
         title: plan.daysUntil === 0 ? `Сегодня ТО: ${plan.node}` : `Подходит срок ТО: ${plan.node}`,
         text: `${eq.name} · ${plan.daysUntil === 0 ? "сегодня" : dateHuman(plan.dueDate)}`
       });
@@ -12645,17 +12736,18 @@ function renderGlobalReminderPanel() {
   ui.globalReminderButton.hidden = false;
   const equipment = globalControlEquipment();
   const reminders = globalReminderItems(equipment);
+  const upcomingReminders = reminders.filter(item => item.pprApprovalDate || item.dueDate !== todayISO());
   const calendar = directorCalendarItems(equipment);
   const monthCalendar = renderPprMonthCalendar(allEquipment());
   updateGlobalReminderBadge(reminders);
   const calendarRows = calendar.map(item => `
-    <div class="director-calendar-row ${item.color}">
+    <div class="director-calendar-row ${item.color}" data-open-ppr-date="${todayISO()}" role="button" tabindex="0" title="Открыть план на сегодня">
       <span class="director-calendar-icon">${item.icon}</span>
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
   `).join("");
-  const reminderRows = reminders.map(item => `
-    <div class="director-reminder-row ${item.level}" ${item.pprApprovalDate ? `data-open-ppr-approval="${escapeHtml(item.pprApprovalDate)}" role="button" tabindex="0"` : ""}>
+  const reminderRows = upcomingReminders.map(item => `
+    <div class="director-reminder-row ${item.level}" data-open-ppr-date="${escapeHtml(item.pprApprovalDate || item.dueDate)}" role="button" tabindex="0" title="Открыть план на эту дату">
       <span>${item.icon}</span>
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div>
     </div>
@@ -12664,24 +12756,24 @@ function renderGlobalReminderPanel() {
     <div class="global-control-date">Сегодня · ${dateHuman(todayISO())}</div>
     <div class="global-control-grid">
       <section>
-        <div class="director-section-head"><div><span>🔔</span><h2>Напоминания</h2></div><strong>${reminders.length}</strong></div>
-        <div class="director-reminder-list">${reminderRows || `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Всё выполнено, срочных напоминаний нет</strong></div>`}</div>
-      </section>
-      <section>
-        <div class="director-section-head"><div><span>📅</span><h2>Календарь ППР</h2></div><small>Сегодня</small></div>
+        <div class="director-section-head"><div><span>📅</span><h2>Работы сегодня</h2></div></div>
         <div class="director-calendar-list">${calendarRows || `<div class="director-empty-ok"><strong>На сегодня работ нет</strong></div>`}</div>
-        <p class="director-safe-note">✅ Заполнение соответствующего агрегатного журнала автоматически подтверждает выполнение ТО.</p>
+        <p class="director-safe-note">Выполнение ТО отмечается по журналу. Лист ППР принимает инженер.</p>
       </section>
+      ${upcomingReminders.length ? `<section>
+        <div class="director-section-head"><div><span>🔔</span><h2>Ближайшие сроки и приёмка</h2></div><strong>${upcomingReminders.length}</strong></div>
+        <div class="director-reminder-list">${reminderRows}</div>
+      </section>` : ""}
     </div>
     <section class="global-ppr-month-card">
-      <div class="director-section-head"><div><span>🗓️</span><h2>Общий график ППР завода</h2></div><small>Доступен всем</small></div>
+      <div class="director-section-head"><div><span>🗓️</span><h2>План на месяц</h2></div><small>Все участки</small></div>
       ${monthCalendar}
     </section>
   `;
   bindPprCalendarControls(ui.globalReminderContent, renderGlobalReminderPanel);
-  ui.globalReminderContent.querySelectorAll("[data-open-ppr-approval]").forEach(row => {
+  ui.globalReminderContent.querySelectorAll("[data-open-ppr-date]").forEach(row => {
     const openDate = () => {
-      const date = row.dataset.openPprApproval;
+      const date = row.dataset.openPprDate;
       current.pprCalendarYear = Number(date.slice(0, 4));
       current.pprCalendarMonth = Number(date.slice(5, 7)) - 1;
       current.pprCalendarSelectedDate = date;
@@ -15748,7 +15840,7 @@ function renderSystemBroadcastNotice() {
   const notice = document.createElement("aside");
   notice.id = "systemBroadcastNotice";
   notice.className = `system-broadcast-notice ${escapeHtml(item.priority || "normal")}`;
-  notice.innerHTML = `<div><strong>${escapeHtml(item.title || "Объявление администратора")}</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span>${item.expiresAt ? `<small>Действует до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small>` : ""}</div><div>${item.type === "print-archive" ? `<button type="button" data-print-broadcast-report>Распечатать отчёт</button>` : ""}<button type="button" class="secondary" data-read-system-broadcast>Прочитал и ознакомился</button></div>`;
+  notice.innerHTML = `<div><strong>${escapeHtml(item.title || "Объявление администратора")}</strong><span>${escapeHtml(item.text || "Распечатайте или сохраните архивный отчёт ППР.")}</span>${item.expiresAt ? `<small>Действует до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small>` : ""}</div><div>${item.type === "print-archive" ? `<button type="button" data-print-broadcast-report>Распечатать отчёт</button>` : ""}<button type="button" class="secondary" data-read-system-broadcast>Ознакомился</button></div>`;
   document.body.append(notice);
   notice.querySelector("[data-print-broadcast-report]")?.addEventListener("click", printSystemArchiveReport);
   notice.querySelector("[data-read-system-broadcast]")?.addEventListener("click", async event => {
@@ -16098,14 +16190,19 @@ document.querySelectorAll("[data-open-role]").forEach(button => {
   });
 });
 
-window.addEventListener("online", () => {
-  if (appBootstrapComplete) {
+function resumeAfterNetworkChange() {
+  if (networkResumePromise || !appBootstrapComplete || !navigator.onLine) return networkResumePromise;
+  networkResumePromise = (async () => {
+    if (!await refreshAuthenticatedProfile()) return;
     flushPendingWork();
     flushPendingClientErrors();
-    syncRemoteChanges();
+    await syncRemoteChanges();
     pollRemoteUsers(true);
-  }
-});
+  })().finally(() => { networkResumePromise = null; updateConnectionStatus(); });
+  return networkResumePromise;
+}
+window.addEventListener("online", () => { resumeAfterNetworkChange()?.catch(error => reportCaughtClientError("sync.online", error)); });
+window.addEventListener("offline", updateConnectionStatus);
 
 function reportClientError(message, source = "", line = 0, column = 0) {
   const payload = {
@@ -16246,6 +16343,8 @@ function handleAppResume() {
   const awayMs = appHiddenAt ? Math.max(0, now - appHiddenAt) : 0;
   appHiddenAt = 0;
   resetAppNotificationsForOpen();
+  if (!appBootstrapComplete) return;
+  if (sessionValidationState !== "verified") { resumeAfterNetworkChange()?.catch(error => reportCaughtClientError("sync.resume", error)); return; }
   const hasPendingWork = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
   if (hasPendingWork) flushPendingWork();
   resumeRealtimeQuietly(awayMs);
@@ -16301,11 +16400,12 @@ resetAppNotificationsForOpen();
   if (!loadProfile()) return;
   if (!await restoreServerSession()) return;
   appBootstrapComplete = true;
+  if (isProfileReady()) ui.loginOverlay.hidden = true;
   if (isProfileReady()) show(current.view, false);
   else render();
   startAttendanceRefresh();
   const deviceStatePromise = loadStateFromDevice();
-  const remoteLoaded = await loadRemoteState();
+  const remoteLoaded = navigator.onLine && await loadRemoteState();
   if (!remoteLoaded) {
     const deviceState = await deviceStatePromise;
     if (deviceState && typeof deviceState === "object") mergeRemoteState(deviceState);
@@ -16318,5 +16418,6 @@ resetAppNotificationsForOpen();
   loadRemoteUsers();
   connectRealtime();
   startRealtimePoll();
+  updateConnectionStatus();
 })();
 

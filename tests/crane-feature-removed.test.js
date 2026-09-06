@@ -20,7 +20,7 @@ test("startup cleanup permanently removes crane collections and stale node mappi
   assert.match(server, /remove-crane-beams-completely-v2/);
   assert.match(server, /delete db\.craneBeams/);
   assert.match(server, /delete db\.retiredCraneBeamArchive/);
-  assert.match(server, /archiveAndRemoveCraneBeamData\(postgresState\)/);
+  assert.match(server, /archiveAndRemoveCraneBeamData\(state\)/);
   assert.match(server, /function remapCatalogNodeIndexedFields/);
   assert.match(server, /"qrTokens", "upperQrTokens", "qrTokenAliases", "qrUpdatedAt"/);
   assert.match(server, /remapCatalogNodeIndexedFields\(card, kept\)/);
@@ -28,10 +28,10 @@ test("startup cleanup permanently removes crane collections and stale node mappi
 
 test("online startup never renders the stale device snapshot", () => {
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(client, /const remoteLoaded = await loadRemoteState\(\)/);
+  assert.match(client, /const remoteLoaded = navigator\.onLine && await loadRemoteState\(\)/);
   assert.match(client, /if \(!remoteLoaded\) \{[\s\S]*?const deviceState = await deviceStatePromise/);
   assert.match(client, /const DEVICE_DB_NAME = "ppr-control-device-v3"/);
-  assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
+  assert.match(client, /checks: window\.PprDeviceCachePolicy\.selectChecks\(snapshot\?\.checks\)/);
 });
 
 test("mobile startup cannot wait indefinitely for IndexedDB", () => {
@@ -54,5 +54,5 @@ test("ordinary nodes removed by the broad cleanup are recovered with history", (
   assert.match(server, /nodes: \[\], deleted: true/);
   assert.match(server, /const mergedNodes = placeholderCard \? \[\.\.\.sourceNodes\]/);
   assert.match(server, /remapCatalogNodeIndexedFields\(item, kept\)/);
-  assert.match(server, /await restoreOrdinaryNodesAfterCraneRemoval\(\)/);
+  assert.match(server, /await enqueueStateWrite\(restoreOrdinaryNodesAfterCraneRemoval\)/);
 });

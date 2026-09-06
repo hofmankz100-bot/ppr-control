@@ -16,6 +16,7 @@ test("legacy administrator and daily backups migrate from JSONB to gzip", () => 
 });
 
 test("new daily recovery snapshots are stored compressed", () => {
-  assert.match(source, /INSERT INTO ppr_state_backups\(backup_date, payload, payload_gzip\)/);
-  assert.match(source, /\[compressBackupPayload\(latest\)\]/);
+  const dailyBackup = source.slice(source.indexOf("async function saveDailyPostgresBackup"), source.indexOf("function writeDb(db"));
+  assert.match(dailyBackup, /INSERT INTO ppr_state_backups\(backup_date,\s*payload,\s*payload_gzip\)/);
+  assert.match(dailyBackup, /\[compressBackupPayload\(state\)\]/);
 });

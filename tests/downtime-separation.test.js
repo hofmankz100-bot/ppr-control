@@ -21,7 +21,7 @@ test("press journal cards use distinct calm colors instead of the alert red", ()
 test("active downtimes are visible as actionable cards above the monthly chart", () => {
   assert.match(appSource, /id="downtimeActiveList"/);
   assert.match(appSource, /class="downtime-active-summary-card"/);
-  assert.match(appSource, /Завершить простой \/ Пуск/);
+  assert.match(appSource, /liveStop\?\.type === "production" \? "Возобновить производство" : "Подтвердить пуск"/);
   assert.match(appSource, /data-finish-active-downtime/);
   assert.match(appSource, /function closeDowntimeWithConfirmation\(liveStop, button\)/);
   assert.match(appSource, /function askDowntimeCloseDetails\(liveStop\)/);

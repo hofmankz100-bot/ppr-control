@@ -4,6 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { buildHealthPayload } = require("../server/health");
 
+test("health cannot report success when authoritative writes are not confirmed", () => {
+  assert.equal(buildHealthPayload({ storage: { mode: "postgres-degraded" } }).ok, false);
+  assert.equal(buildHealthPayload({ storage: { mode: "json-fallback" } }).ok, false);
+});
+
 test("health payload preserves the public API contract", () => {
   const payload = buildHealthPayload({
     compatibleClient: true,

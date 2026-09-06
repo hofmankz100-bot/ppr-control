@@ -85,5 +85,5 @@ test("startup hides only exact production request duplicates created within two 
   assert.match(server, /itemMs - previousMs > 120000/);
   assert.match(server, /item\.duplicateOf = keeper\.id/);
   assert.match(server, /Системная проверка: повторная отправка одной заявки/);
-  assert.match(server, /removeDuplicateProductionRequests\(postgresState\)/);
+  assert.match(server, /removeDuplicateProductionRequests\(state\)/);
 });

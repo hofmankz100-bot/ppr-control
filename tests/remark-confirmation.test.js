@@ -5,6 +5,7 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 
 const root = path.resolve(__dirname, "..");
 let serverProcess;
@@ -245,15 +246,12 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
   serverProcess = spawn(process.execPath, [path.join(root, "server.js")], {
     cwd: root,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      QR_PORT: String(qrPort),
+    env: createIsolatedServerEnv({
+      PORT: port,
+      QR_PORT: qrPort,
       DATA_DIR: dataDir,
-      DATABASE_URL: "",
-      REQUIRE_POSTGRES: "false",
       NODE_ENV: "test"
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"]
   });
   serverProcess.stdout.on("data", chunk => { serverOutput += String(chunk); });
@@ -579,7 +577,7 @@ test("confirmation is handled in the personal role inbox instead of the PPR node
   assert.doesNotMatch(html, /id="personalInboxButton"/);
   assert.match(source, /const personalCount = personalRemarkMessages\(\)\.length/);
   assert.match(source, /isEditorSession\(\) && role === "engineer"/);
-  assert.match(source, /role-personal-count">Личные:/);
+  assert.match(source, /role-personal-count">Личные сообщения<\/small>/);
   assert.match(source, /function canSeeRequestRoleIndicator[\s\S]*?if \(isEditorSession\(\)\) return role === "engineer"[\s\S]*?return role === profile\?\.role/);
   assert.match(source, /if \(profile\?\.role === "editor"\) return role === "all" \|\| Boolean\(ROLE_ACCESS\[role\]\)/);
   assert.doesNotMatch(styles, /\.quick-nav \[data-open-role\]:not\(\[data-open-role="warehouse"\]\)/);
@@ -751,15 +749,15 @@ test("idle synchronization avoids repeated user loads and oversized local storag
   const realtimeHandler = client.slice(client.indexOf("function handleRealtimeMessage"), client.indexOf("async function syncRemoteChanges"));
   assert.doesNotMatch(realtimeHandler, /loadRemoteUsers\(\)/);
   assert.match(client, /now - lastRemoteUsersPollAt < 30000/);
-  assert.match(client, /if \(appBootstrapComplete\) \{[\s\S]*?syncRemoteChanges\(\)/);
-  assert.match(client, /const remoteLoaded = await loadRemoteState\(\);[\s\S]*?if \(!remoteLoaded\) \{[\s\S]*?const deviceState = await deviceStatePromise/);
+  assert.match(client, /function resumeAfterNetworkChange\(\)[\s\S]*?!appBootstrapComplete[\s\S]*?refreshAuthenticatedProfile\(\)[\s\S]*?syncRemoteChanges\(\)/);
+  assert.match(client, /const remoteLoaded = navigator\.onLine && await loadRemoteState\(\);[\s\S]*?if \(!remoteLoaded\) \{[\s\S]*?const deviceState = await deviceStatePromise/);
   const localLoad = client.slice(client.indexOf("function loadState()"), client.indexOf("function persistStateLocally"));
   const remoteMerge = client.slice(client.indexOf("function mergeRemoteState"), client.indexOf("function mergeRealtimePatch"));
   assert.doesNotMatch(localLoad, /remoteMigrationChanged[\s\S]*?STORE_KEY.*pending/);
   assert.doesNotMatch(remoteMerge, /journalCleanup\.changed[\s\S]*?STORE_KEY.*pending/);
   const dueStart = client.slice(client.indexOf("function journalDueStart"), client.indexOf("function incompleteJournalDays"));
   assert.doesNotMatch(dueStart, /pending|queueRemoteStateSave/);
-  assert.match(client, /checks: Object\.fromEntries\(checks\.slice\(-500\)\)/);
+  assert.match(client, /checks: window\.PprDeviceCachePolicy\.selectChecks\(snapshot\?\.checks\)/);
   assert.doesNotMatch(client.slice(client.indexOf("function persistStateLocally"), client.indexOf("let devicePersistTimer")), /\.\.\.snapshot/);
   assert.match(client, /function remoteSectionFingerprint\(field, value\)/);
   assert.match(client, /field !== "checks"/);
@@ -858,18 +856,18 @@ test("maintenance work can be auto-filled from renamed equipment and node names,
 
 test("the planned maintenance sheet auto-fills its work rows and keeps every row editable", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
-  assert.match(source, /function pprSheetAutofillRows\(date, scheduledItems = \[\]\)/);
-  assert.match(source, /function ensurePprSheetAutofill\(date, scheduledItems = \[\], force = false\)/);
-  assert.match(source, /const sheet = ensurePprSheetAutofill\(date, scheduledItems\)/);
+  const { generatePprSheet } = require("../server/ppr-autofill");
+  assert.match(source, /async function ensurePprSheetAutofill\(/);
+  assert.match(source, /\/api\/ppr-sheet\/generate/);
+  assert.match(source, /function renderPprMaintenanceSheet\([\s\S]*?const sheet = pprSheetRecord\(date\)/);
   assert.match(source, /data-autofill-ppr-sheet/);
-  assert.match(source, /После заполнения каждую строку можно редактировать/);
   assert.match(source, /textarea data-ppr-work-input=/);
   assert.match(source, /input\.addEventListener\("input"/);
-  assert.match(source, /nodeReminderItems\(scheduled\?\.node \|\| "", scheduled\?\.equipment \|\| ""\)/);
-  assert.match(source, /function pprAutofillEngineer\(\)/);
-  assert.match(source, /includes\("ербол"\)/);
-  assert.match(source, /sheet\.plannedAutomatically = true/);
-  assert.match(source, /sheet\.plannedAutomatically \? "Автовыбор" : "План составил"/);
+  assert.doesNotMatch(source, /function pprAutofillEngineer\(/);
+  const generated = generatePprSheet({ catalog: {}, date: "2026-09-07" });
+  assert.equal(generated.sheet.plannedAutomatically, true);
+  assert.equal(generated.sheet.plannedByName, "Система");
+  assert.ok(generated.sheet.rows.some(row => row.work && row.autoFilled));
 });
 
 test("PPR schedules only weekdays and moves weekend work to Monday", () => {
@@ -952,7 +950,7 @@ test("admin and engineers can audit every rating point in a mobile-friendly ledg
 
 test("obsolete no-material nodes are removed from both fixed press catalogs", () => {
   const source = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(source, /removeObsoletePressNoMaterialNodes\(postgresState\)/);
+  assert.match(source, /removeObsoletePressNoMaterialNodes\(state\)/);
   assert.match(source, /=== "нет сырья"/);
   assert.match(source, /for \(const equipmentId of \["1", "2"\]\)/);
 });
@@ -1851,12 +1849,15 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
 
 test("only admin or an explicitly permitted engineer can edit annual PPR", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const { sanitizeStateMutation } = require("../server/state-mutation-policy");
   assert.match(appSource, /function canEditAnnualPpr\(\)/);
   assert.match(appSource, /profile\?\.role === "engineer" && activeUserPermission\([\s\S]*"annualPprEdit"\)/);
   assert.match(appSource, /Редактирование годового графика ППР/);
-  assert.match(serverSource, /req\.authUser\?\.role === "editor"[\s\S]*req\.authUser\?\.role === "engineer" && activeUserPermission\(req\.authUser, "annualPprEdit"\)/);
-  assert.match(serverSource, /annual_ppr_permission_denied/);
+  const attempt = user => sanitizeStateMutation({ previous: {}, incoming: { annualPpr: { "2026": { year: 2026 } } }, user });
+  for (const role of ["operator", "mechanic", "shop", "director", "engineer"]) assert.throws(() => attempt({ role }), { code: "state_mutation_forbidden" });
+  for (const role of ["editor", "engineer", "energyEngineer"]) {
+    assert.equal(attempt({ role, permissionOverrides: { annualPprEdit: { enabled: true } } }).body.annualPpr["2026"].year, 2026);
+  }
 });
 
 test("administration keeps four primary tabs and only useful technical tools", () => {
@@ -1987,7 +1988,7 @@ test("selected engineers and the administrator can confirm remarks from every sh
   assert.match(clientSource, /remarkGlobalConfirm","Подтверждение замечаний всех цехов/);
   assert.match(clientSource, /Открыть карточку/);
   assert.doesNotMatch(clientSource, /Подтверждения всех цехов доступны|Здесь сразу отображаются все ожидающие подтверждения/);
-  assert.match(clientSource, /Устранённые замечания/);
+  assert.match(clientSource, /canConfirmRemarksAcrossShops\(\) \? "На проверку"/);
   assert.match(clientSource, /isAdminEngineerBlock[\s\S]*?current\.requestRole === "engineer"/);
   assert.match(clientSource, /ВСЕ ЦЕХА/);
   assert.match(clientSource, /if \(isEditorSession\(\)\) return role === "engineer"/);
