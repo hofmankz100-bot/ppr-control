@@ -1,7 +1,6 @@
 const { test: base, expect } = require("@playwright/test");
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
-const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -54,21 +53,6 @@ function createSeed() {
   return { db, users };
 }
 
-async function reservePorts() {
-  const holders = [net.createServer(), net.createServer()];
-  try {
-    for (const holder of holders) {
-      await new Promise((resolve, reject) => {
-        holder.once("error", reject);
-        holder.listen(0, "127.0.0.1", resolve);
-      });
-    }
-    return holders.map(holder => holder.address().port);
-  } finally {
-    await Promise.all(holders.filter(holder => holder.listening).map(holder => new Promise(resolve => holder.close(resolve))));
-  }
-}
-
 async function stopServer(child) {
   if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise(resolve => child.once("exit", resolve));
@@ -95,9 +79,7 @@ const test = base.extend({
       // Explicit test-only top-level section overrides; production data is never read.
       if (appSeed) Object.assign(db, appSeed);
       await fs.writeFile(path.join(dataDir, "db.json"), JSON.stringify(db));
-      const [port, qrPort] = await reservePorts();
-      const internalURL = `http://127.0.0.1:${port}`;
-      const env = createIsolatedServerEnv({ DATA_DIR: dataDir, PORT: port, QR_PORT: qrPort, NODE_ENV: "production" });
+      const env = createIsolatedServerEnv({ DATA_DIR: dataDir, PORT: 0, QR_PORT: 0, NODE_ENV: "production" });
       env.TZ = "Asia/Qyzylorda";
       // A separate, explicitly opted-in localhost sandbox. Never inherit application DB URLs.
       if (process.env.PPR_E2E_POSTGRES_URL) {
@@ -108,16 +90,28 @@ const test = base.extend({
         env.PGSSL = "disable";
         env.PGSSLMODE = "disable";
       }
-      child = spawn(process.execPath, [path.join(root, "server.js")], {
-        cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"]
+      child = spawn(process.execPath, [path.join(root, "tools/testing/browser-server-entry.js")], {
+        cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe", "ipc"]
       });
       child.stdout.on("data", chunk => { output += chunk; });
       child.stderr.on("data", chunk => { output += chunk; });
       let spawnError;
+      const listeners = new Map();
+      let internalURL;
       child.on("error", error => { spawnError = error; });
+      child.on("message", message => {
+        if (message?.type !== "ppr-test-listening") return;
+        if (![0, 1].includes(message.index) || !Number.isInteger(message.port) || message.port < 1 || message.port > 65535) {
+          spawnError = new Error("Unexpected browser test HTTP listener");
+          return;
+        }
+        listeners.set(message.index, message.port);
+      });
       await expect.poll(async () => {
         if (spawnError) throw spawnError;
         if (child.exitCode !== null) throw new Error(`Isolated server stopped: ${output}`);
+        if (listeners.size !== 2) return false;
+        internalURL = `http://127.0.0.1:${listeners.get(0)}`;
         try {
           const response = await fetch(`${internalURL}/api/health`, { signal: AbortSignal.timeout(1500) });
           const health = await response.json();
@@ -126,7 +120,7 @@ const test = base.extend({
       }, { timeout: 20000, message: "Isolated application storage must be ready" }).toBe(true);
       const unauthenticated = await fetch(`${internalURL}/api/state`, { headers: { "x-client-protocol": "1" } });
       expect(unauthenticated.status, "Browser tests must use real authentication").toBe(401);
-      gateway = await createHttpsGateway(port);
+      gateway = await createHttpsGateway(listeners.get(0));
       await use({ baseURL: gateway.baseURL, users, equipmentId: 90, otherEquipmentId: 91, nodeName: "Тестовый узел", qrPayload: "PPRQR|NODE|90|0|e2e-node-token", storage: postgres ? "postgres" : "json" });
     } finally {
       const cleanupErrors = [];

@@ -22,6 +22,10 @@ test("production requests fit the phone, swipe between cards and retain position
     await expect(page.locator(".production-request-details")).not.toHaveAttribute("open");
     if (testInfo.project.use.isMobile) {
       const first = list.locator("article").first();
+      // The counter changes at the midpoint of a smooth scroll. Wait for the
+      // card to reach its snap position before starting the next input method.
+      const settledAt = index => expect.poll(() => list.evaluate((element, index) =>
+        Math.abs(element.children[index].getBoundingClientRect().left - element.getBoundingClientRect().left), index)).toBeLessThan(2);
       await first.scrollIntoViewIfNeeded();
       const geometry = await first.evaluate(card => ({ height: card.clientHeight, content: card.scrollHeight, pageWidth: document.documentElement.scrollWidth, screenWidth: innerWidth, screenHeight: innerHeight }));
       expect(geometry.height).toBeLessThanOrEqual(geometry.screenHeight * 0.73);
@@ -46,15 +50,19 @@ test("production requests fit the phone, swipe between cards and retain position
         await list.evaluate(element => element.scrollBy({ left: element.clientWidth, behavior: "smooth" }));
       }
       await expect(page.locator(".production-card-navigation span")).toHaveText("Заявка 2 из 4");
+      await settledAt(1);
       await page.getByRole("button", { name: "Следующая заявка", exact: true }).click();
       await expect(page.locator(".production-card-navigation span")).toHaveText("Заявка 3 из 4");
+      await settledAt(2);
       await list.focus();
       await list.press("ArrowLeft");
       await expect(page.locator(".production-card-navigation span")).toHaveText("Заявка 2 из 4");
+      await settledAt(1);
       await list.locator("article").nth(1).evaluate(card => { card.scrollTop = card.scrollHeight; });
       await expect.poll(() => list.locator("article").nth(1).evaluate(card => card.scrollTop)).toBeGreaterThan(0);
       await page.locator(`[data-${trade}-month]`).fill("2026-08");
       await expect(page.locator(".production-card-navigation span")).toHaveText("Заявка 2 из 4");
+      await settledAt(1);
       await expect.poll(() => list.locator("article").nth(1).evaluate(card => card.scrollTop)).toBeGreaterThan(0);
     } else {
       await expect(page.locator(".production-card-navigation")).toBeHidden();

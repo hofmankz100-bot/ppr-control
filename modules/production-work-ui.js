@@ -152,6 +152,24 @@
         const card = cards[Math.max(0, Math.min(cards.length - 1, indexAtScroll() + direction))];
         list.scrollTo({ left: leftInList(card, list), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       };
+      // Some mobile browsers can finish a touch scroll between snap points.
+      // Finish alignment only once scrolling and the user's gesture have ended.
+      let snapTimer;
+      let touching = false;
+      const queueSnap = () => {
+        clearTimeout(snapTimer);
+        if (touching) return;
+        snapTimer = setTimeout(() => {
+          if (!list.isConnected || list.scrollWidth <= list.clientWidth) return;
+          const left = leftInList(cards[indexAtScroll()], list);
+          if (Math.abs(left - list.scrollLeft) > 1) list.scrollTo({ left, behavior: "instant" });
+          update();
+        }, 150);
+      };
+      list.addEventListener("touchstart", () => { touching = true; clearTimeout(snapTimer); }, { passive: true });
+      const endTouch = () => { touching = false; queueSnap(); };
+      list.addEventListener("touchend", endTouch, { passive: true });
+      list.addEventListener("touchcancel", endTouch, { passive: true });
       nav.querySelector("[data-production-prev]").addEventListener("click", () => move(-1));
       nav.querySelector("[data-production-next]").addEventListener("click", () => move(1));
       list.addEventListener("keydown", event => {
@@ -159,10 +177,10 @@
         event.preventDefault();
         move(event.key === "ArrowRight" ? 1 : -1);
       });
-      list.addEventListener("scroll", update, { passive: true });
+      list.addEventListener("scroll", () => { update(); queueSnap(); }, { passive: true });
       const resize = new ResizeObserver(update);
       resize.observe(list);
-      disposeCarousel = () => resize.disconnect();
+      disposeCarousel = () => { resize.disconnect(); clearTimeout(snapTimer); };
       const selected = cards.find(card => (card.dataset.weldingId || card.dataset.turningId) === view?.cardId);
       if (selected) list.scrollLeft = leftInList(selected, list);
       update();
