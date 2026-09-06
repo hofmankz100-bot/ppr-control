@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v786-reliable-daily-work-2";
+const APP_VERSION = "v787-simple-home-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3286,10 +3286,9 @@ function updateConnectionStatus() {
   }
   const pending = pendingQrWalkMarks().length + Number(localStorage.getItem(`${STORE_KEY}-pending`) === "1");
   const other = pendingQrWalkMarks().filter(item => !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)).length;
-  notice.hidden = !isProfileReady() || (navigator.onLine && sessionValidationState === "verified" && !pending);
+  notice.hidden = !isProfileReady() || (navigator.onLine && !pending);
   notice.textContent = !navigator.onLine ? "Нет связи. Данные сохранены на устройстве; отправим после подключения."
-    : sessionValidationState !== "verified" ? "Профиль сохранён на устройстве. Ожидаем проверку сессии сервером."
-    : `Данные сохранены на устройстве. Ожидают отправки: ${pending}.`;
+    : pending ? `Данные сохранены на устройстве. Ожидают отправки: ${pending}.` : "";
   if (other) notice.textContent += ` Отметки другого сотрудника или без подтверждённого автора: ${other}. Они сохранены и автоматически не отправляются.`;
 }
 
@@ -9908,12 +9907,7 @@ function openCustomJournalEditor(eq) {
   }, "Сохраняется..."));
 }
 
-let equipmentSearchController = null;
-let equipmentSearchProfileKey = "";
-
 function renderEquipment() {
-  const searchContainer = document.querySelector("#equipmentSearch");
-  if (searchContainer) searchContainer.hidden = true;
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
     ui.subtitle.textContent = "Сварщик и токарь";
@@ -9943,14 +9937,6 @@ function renderEquipment() {
     ui.equipmentList.innerHTML = `<div class="empty-state">Для вашей роли список оборудования закрыт. Откройте раздел заявок.</div>`;
     return;
   }
-  if (searchContainer && window.PPRModules?.createEquipmentSearch) {
-    equipmentSearchController ||= window.PPRModules.createEquipmentSearch(searchContainer);
-    const profileKey = `${profile?.id || profile?.employeeId || ""}:${profile?.role || ""}:${profile?.area || ""}`;
-    if (profileKey !== equipmentSearchProfileKey) equipmentSearchController.reset();
-    equipmentSearchProfileKey = profileKey;
-    searchContainer.hidden = false;
-  }
-  const searchableRows = [];
   const monthBar = document.createElement("div");
   monthBar.className = "equipment-month-bar";
   monthBar.innerHTML = `
@@ -10024,7 +10010,6 @@ function renderEquipment() {
       const shiftSummary = equipmentDaySummary(eq, activeShift.date, activeWalkGroup);
       const normalizeLabel = value => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
       const areaCaption = normalizeLabel(eq.area) === normalizeLabel(eq.name) ? "" : ` · ${escapeHtml(eq.area)}`;
-      searchableRows.push({ row: tr, text: [eq.name, eq.area, ...eq.nodes].join(" "), attention: Boolean(alert || equipmentDowntimeOpen || compressorJournalMissingToday || gasJournalMissingToday || (!equipmentOperationalPause && !shiftSummary.complete && shiftSummary.activeTotal > 0)) });
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
@@ -10145,12 +10130,6 @@ function renderEquipment() {
     });
   wrap.append(table);
   ui.equipmentList.append(wrap);
-  const emptyMessage = document.createElement("div");
-  emptyMessage.className = "empty-state equipment-search-empty";
-  emptyMessage.hidden = true;
-  emptyMessage.textContent = "По выбранным условиям оборудования нет. Измените поиск или выберите «Все».";
-  ui.equipmentList.append(emptyMessage);
-  equipmentSearchController?.update(searchableRows, emptyMessage);
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {

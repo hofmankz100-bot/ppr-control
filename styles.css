@@ -3822,42 +3822,11 @@ body.editor-profile .director-card.request-alert{
   background: #f8fbfd;
 }
 
-.equipment-search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px;
-  margin: 0 0 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--ink);
-}
-.equipment-search[hidden], .equipment-search-hidden,
-.equipment-search-empty[hidden], .equipment-search button[hidden] { display: none !important; }
-.equipment-search-field { display: grid; flex: 1 1 280px; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; }
-.equipment-search-field > div { position: relative; }
-.equipment-search-field input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 44px 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font-size: 16px; }
-.equipment-search-field input::-webkit-search-cancel-button { display: none; }
-.equipment-search-field button { position: absolute; right: 0; top: 0; width: 44px; min-height: 44px; padding: 0; background: transparent; color: var(--ink); font-size: 24px; }
-.equipment-search-filters { display: flex; flex-wrap: wrap; gap: 6px; }
-.equipment-search-filters button { min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
-.equipment-search-filters button[aria-pressed="true"] { border-color: var(--ui-accent); background: var(--ui-accent); color: #fff; }
-.equipment-search-filters span { margin-left: 4px; font-weight: 800; }
-.equipment-search-count { align-self: center; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .equipment-shift-action { display: grid; place-content: center; gap: 7px; width: 100%; min-height: 64px; padding: 8px 5px; border: 0; border-radius: 6px; background: transparent; color: inherit; }
 .equipment-shift-action strong { font-size: 20px; }
 .equipment-shift-action span { font-size: 11px; font-weight: 700; white-space: normal; line-height: 1.25; }
 .equipment-shift-action:hover { background: rgba(255,255,255,.25); }
-.equipment-search :focus-visible, .equipment-shift-action:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
-@media (max-width: 680px) {
-  .equipment-search { gap: 10px; padding: 12px; }
-  .equipment-search-field { flex-basis: 100%; }
-  .equipment-search-filters { flex: 1 1 auto; }
-  .equipment-search-filters button { padding: 9px 10px; font-size: 12px; }
-  .equipment-search-count { flex-basis: 100%; }
-}
+.equipment-shift-action:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
 
 .equipment-month-bar {
   display: flex;
@@ -13506,7 +13475,6 @@ html[data-theme="dark"] .send-kind-dialog > strong,
   html[data-theme="light"] .equipment-schedule-table .area-color-cell .equipment-installed-parts-button :is(span, strong) { color: #27475b !important; }
 }
 @media screen and (max-width: 760px), screen and (pointer: coarse) {
-  #equipmentScreen .equipment-search button,
   #factoryStatusButton,
   #notificationSetupPrompt button,
   #profileBar #changeUserButton,
