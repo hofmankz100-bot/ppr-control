@@ -24,12 +24,15 @@ function createSeed() {
   const users = {
     operator: makeUser("operator", "Оператор Тест", "Тестовый цех"),
     engineer: makeUser("engineer", "Инженер Тест"),
-    editor: makeUser("editor", "Администратор Тест")
+    editor: makeUser("editor", "Администратор Тест"),
+    welder: makeUser("welder", "Сварщик Тест", "Тестовый цех"),
+    turner: makeUser("turner", "Токарь Тест", "Тестовый цех")
   };
   const at = new Date().toISOString();
   const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Qyzylorda" });
   const db = {
     users: Object.values(users).map(({ password, ...user }) => user),
+    attendanceSessions: [users.welder, users.turner].map(user => ({ userKey: user.id, startedAt: at, expiresAt: new Date(Date.now() + 86400000).toISOString() })),
     catalog: { equipment: {
       "90": { id: 90, created: true, name: "Тестовый пресс", area: "Тестовый цех", nodes: ["Тестовый узел"], qrTokens: { "0": "e2e-node-token" }, updatedAt: at },
       "91": { id: 91, created: true, name: "Чужой пресс", area: "Другой цех", nodes: ["Чужой узел"], qrTokens: { "0": "e2e-other-token" }, updatedAt: at }
@@ -80,7 +83,8 @@ async function stopServer(child) {
 }
 
 const test = base.extend({
-  app: async ({}, use, testInfo) => {
+  appSeed: [null, { option: true }],
+  app: async ({ appSeed }, use, testInfo) => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ppr-browser-test-"));
     let child;
     let postgres;
@@ -88,6 +92,8 @@ const test = base.extend({
     let output = "";
     try {
       const { db, users } = createSeed();
+      // Explicit test-only top-level section overrides; production data is never read.
+      if (appSeed) Object.assign(db, appSeed);
       await fs.writeFile(path.join(dataDir, "db.json"), JSON.stringify(db));
       const [port, qrPort] = await reservePorts();
       const internalURL = `http://127.0.0.1:${port}`;

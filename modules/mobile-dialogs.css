@@ -1,0 +1,143 @@
+/* Only application dialogs. Page journals and printed documents keep their own layout. */
+@media screen {
+  /* These dialogs had hard-coded white surfaces while their text already
+     followed the dark theme. Reuse the application's existing theme tokens. */
+  html[data-theme="dark"] .downtime-type-dialog {
+    color: var(--ink);
+    background: var(--panel);
+  }
+  html[data-theme="dark"] .downtime-type-dialog button:last-child,
+  html[data-theme="dark"] .downtime-close-confirm {
+    color: var(--ink);
+    background: var(--nav-soft);
+    border-color: var(--line);
+  }
+  html[data-theme="dark"] .downtime-type-error {
+    color: var(--ui-danger);
+  }
+
+  .qr-scan-panel,
+  .qr-result-panel,
+  .downtime-type-dialog,
+  .required-update-card,
+  .attendance-scan-card {
+    box-sizing: border-box;
+    min-width: 0;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-block: 12px;
+  }
+}
+
+@media screen and (max-width: 900px), screen and (max-height: 600px) {
+  .qr-scan-overlay,
+  .qr-result-overlay,
+  .downtime-type-overlay,
+  .required-update-overlay,
+  .attendance-modal,
+  .attendance-scan-confirmation,
+  .public-attendance-entry,
+  .send-kind-overlay,
+  .global-reminder-overlay,
+  .push-diagnostics-modal,
+  .worker-rating-ledger-modal,
+  .annual-ppr-overlay,
+  .annual-ppr-work-overlay,
+  .annual-ppr-act-overlay {
+    --dialog-top: max(8px, env(safe-area-inset-top, 0px));
+    --dialog-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    min-height: 0;
+    padding: var(--dialog-top) max(8px, env(safe-area-inset-right, 0px)) var(--dialog-bottom) max(8px, env(safe-area-inset-left, 0px));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .qr-scan-overlay > .qr-scan-panel,
+  .qr-result-overlay > .qr-result-panel,
+  .downtime-type-overlay > .downtime-type-dialog,
+  .required-update-overlay > .required-update-card,
+  .attendance-modal > .attendance-panel,
+  .attendance-scan-confirmation > .attendance-scan-card,
+  .public-attendance-entry > .public-attendance-card,
+  .send-kind-overlay > .send-kind-dialog,
+  .global-reminder-overlay > .global-reminder-panel,
+  .push-diagnostics-modal > section,
+  .worker-rating-ledger-modal > section,
+  .annual-ppr-overlay > .annual-ppr-dialog,
+  .annual-ppr-work-overlay > .annual-ppr-work-dialog,
+  .annual-ppr-act-overlay > .annual-ppr-act-dialog {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: calc(100vh - var(--dialog-top) - var(--dialog-bottom));
+    max-height: calc(100dvh - var(--dialog-top) - var(--dialog-bottom));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-block: 12px;
+  }
+
+  /* The ledger's fixed minimum list height previously pushed its footer below
+     the clipped flex panel on a short screen. One vertical scroller includes it. */
+  .worker-rating-ledger-modal > section > header,
+  .worker-rating-ledger-summary,
+  .worker-rating-ledger-modal > section > footer {
+    flex: 0 0 auto;
+  }
+  .worker-rating-ledger-list {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow-y: visible;
+  }
+
+  .annual-ppr-dialog > header,
+  .annual-ppr-dialog > header > div,
+  .annual-ppr-work-dialog > header,
+  .annual-ppr-act-dialog > header {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .annual-ppr-work-dialog > header > div,
+  .annual-ppr-act-dialog > header > div,
+  .custom-journal-head-copy {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Its outer overlay already owns vertical scrolling; journal cards retain
+     their existing horizontal swipe and print layout. */
+  .installed-part-journal-overlay {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .annual-ppr-act-grid,
+  .annual-ppr-act-columns,
+  .annual-ppr-work-dialog form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .annual-ppr-act-history article {
+    flex-wrap: wrap;
+  }
+}
+
+@media screen and (max-height: 480px) {
+  /* On landscape screens or with the keyboard open, tall sticky chrome must
+     not cover the form. The same scroller still reaches both ends. */
+  .custom-journal-head,
+  .custom-journal-footer,
+  .global-reminder-head,
+  .annual-ppr-dialog > header,
+  .annual-ppr-work-dialog > header,
+  .annual-ppr-act-dialog > header {
+    position: static;
+  }
+}
