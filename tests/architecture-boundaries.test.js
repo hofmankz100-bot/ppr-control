@@ -39,3 +39,9 @@ test("environment loader preserves existing values and parses quoted values", ()
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+test("new dialog styles are public without exposing arbitrary module files", () => {
+  const { isPublicStaticPath } = require("../server/static-files");
+  for (const file of ["modules/production-work-ui.css", "modules/mobile-dialogs.css"]) assert.equal(isPublicStaticPath(file), true);
+  for (const file of ["modules/private.css", "modules/private.json", "modules/../data/db.json", "server/static-files.js", ".env"]) assert.equal(isPublicStaticPath(file), false);
+});

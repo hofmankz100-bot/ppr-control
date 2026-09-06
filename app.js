@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v787-simple-home-1";
+const APP_VERSION = "v788-mobile-panels-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -7978,6 +7978,12 @@ function updateWeldingBadge() {
   ui.weldingHomeButton?.classList.toggle("has-pending", (isProductionWorkerProfile() || isProductionEngineer()) && count > 0);
 }
 
+const productionWorkUi = window.PprProductionWorkUi.create(ui.weldingPanel);
+
+function productionDraftOwner() {
+  return `${weldingActor().id}:${profile?.role || ""}:${profile?.editorPreviewRole || ""}`;
+}
+
 function productionTabs(active) {
   return `<div class="production-work-tabs" role="tablist" aria-label="Вид производственных работ"><button type="button" data-production-tab="welding" class="${active === "welding" ? "active" : ""}">Сварочные работы <b>${weldingPendingCount()}</b></button><button type="button" data-production-tab="turning" class="${active === "turning" ? "active" : ""}">Токарные работы <b>${turningPendingCount()}</b></button></div>`;
 }
@@ -8044,7 +8050,7 @@ function isProductionParticipant(item, trade, actor = weldingActor()) {
   return productionParticipants(item, trade).some(person => person.id === actor.id);
 }
 
-function joinProductionWork(item, trade) {
+async function joinProductionWork(item, trade) { return productionTransition(item, trade, async item => {
   const actor = weldingActor();
   const allowed = trade === "welding" ? isWelderUser() : isTurnerUser();
   if (!allowed) return window.alert(trade === "welding" ? "Присоединиться может только сварщик." : "Присоединиться может только токарь.");
@@ -8052,30 +8058,55 @@ function joinProductionWork(item, trade) {
   const participants = productionParticipants(item, trade);
   if (participants.some(person => person.id === actor.id)) return;
   const next = { ...item, participants: [...participants, productionParticipant(actor)] };
-  if (trade === "welding") saveWeldingRecord(next);
-  else saveTurningRecord(next);
-  showAppToast("Вы присоединились к совместной работе.");
-}
+  productionSaveNotice(await saveProductionRecord(next, trade), "Вы присоединились к совместной работе.");
+}); }
 
 function productionPhotosHtml(item = {}) {
   const photos = [item.requestPhoto, item.resultPhoto].filter(Boolean);
   return photos.length ? `<div class="production-work-photos">${photos.map((photo, index) => `<figure><img src="${photo}" alt="${index ? "Фото результата" : "Фото к заявке"}"><figcaption>${index ? "Результат" : "К заявке"}</figcaption></figure>`).join("")}</div>` : "";
 }
 
-function saveWeldingRecord(record) {
-  state.weldingJournal ||= {};
-  state.weldingJournal[record.id] = { ...record, updatedAt: new Date().toISOString() };
-  saveState();
-  updateWeldingBadge();
-  renderWeldingJournal();
+const productionSubmissions = new Set();
+async function productionTransition(item, trade, action) {
+  const key = `${trade}:${item.id}`, actorId = weldingActor().id;
+  if (productionSubmissions.has(key)) return;
+  productionSubmissions.add(key);
+  try {
+    if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") await publishStateNow();
+    if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") return showAppToast("Предыдущий шаг ещё не сохранён на сервере. Повторите после восстановления связи.", "error");
+    if (weldingActor().id !== actorId) return; const latest = state[`${trade}Journal`]?.[item.id];
+    if (!latest || latest.status !== item.status) return showAppToast("Заявка изменилась. Проверьте её текущий статус и повторите действие.", "error");
+    return await action(latest);
+  } catch (error) { showAppToast(error?.message || "Не удалось сохранить действие. Заполненные поля сохранены.", "error"); }
+  finally { productionSubmissions.delete(key); }
 }
-
+async function saveProductionRecord(record, trade, form) {
+  if (form && !productionWorkUi.isSubmissionCurrent(form, productionDraftOwner())) return null; const section = `${trade}Journal`;
+  state[section] ||= {};
+  state[section][record.id] = { ...record, updatedAt: new Date().toISOString() };
+  saveState();
+  await publishStateNow();
+  const latest = state[section]?.[record.id];
+  const fields = ["status", "description", "requestType", "drawingNumber", "requestPhoto", "quantity", "dueDate", "material", "consumables", "jointPosition", "workComment", "resultPhoto", "blankSize", "machine", "operations", "madeQty", "goodQty", "rejectQty", "measurements", "rejectReason", "returnReason"];
+  const retained = latest && fields.every(key => !Object.hasOwn(record, key) || String(latest[key] || "") === String(record[key] || "")) && (!productionParticipants(record, trade).some(person => person.id === weldingActor().id) || isProductionParticipant(latest, trade));
+  if (!retained) { showAppToast("Сервер не применил изменение: заявка уже изменилась. Заполненные поля сохранены.", "error"); return null; }
+  if (form) productionWorkUi.resetForm(form);
+  updateWeldingBadge();
+  if (current.view === "welding") renderWeldingJournal();
+  return { queued: localStorage.getItem(`${STORE_KEY}-pending`) === "1" };
+}
+function productionSaveNotice(result, message) { if (result) showAppToast(result.queued ? "Сохранено на этом устройстве. Отправим после восстановления связи." : message); }
+async function saveWeldingRecord(record, form) { return saveProductionRecord(record, "welding", form); }
 function lockProductionRequestForm(form) {
   if (!form || form.dataset.submitting === "1") return null;
+  const key = `form:${weldingActor().id}:${form.id || form.closest('[data-welding-id], [data-turning-id]')?.dataset.weldingId || form.closest('[data-turning-id]')?.dataset.turningId}`;
+  if (productionSubmissions.has(key)) return null;
+  productionSubmissions.add(key); productionWorkUi.beginSubmission(form);
   form.dataset.submitting = "1";
   const button = form.querySelector('button[type="submit"]');
   if (button) setButtonBusy(button, true, "Отправляем...");
   return () => {
+    productionSubmissions.delete(key);
     delete form.dataset.submitting;
     if (button?.isConnected) setButtonBusy(button, false);
   };
@@ -8093,7 +8124,7 @@ async function createWeldingRequest(form) {
     const id = `welding:${Date.now()}:${Math.random().toString(16).slice(2, 8)}`;
     const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
     const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-    saveWeldingRecord({
+    const saved = await saveWeldingRecord({
       id,
       status: "new",
       requestType: String(data.get("requestType") || "order"),
@@ -8105,8 +8136,8 @@ async function createWeldingRequest(form) {
       createdByRole: actor.role,
       createdByPosition: actor.position,
       requestPhoto
-    });
-    showAppToast("Заявка на сварочные работы отправлена.");
+    }, form);
+    productionSaveNotice(saved, "Заявка на сварочные работы отправлена.");
   } catch {
     window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
   } finally {
@@ -8114,22 +8145,22 @@ async function createWeldingRequest(form) {
   }
 }
 
-function acceptWeldingRequest(item) {
+async function acceptWeldingRequest(item) { return productionTransition(item, "welding", async item => {
   if (!isWelderUser()) return window.alert("Принять заявку может только сотрудник с ролью или должностью сварщика.");
   if (item.status !== "new") return window.alert("Эта заявка уже принята другим сварщиком.");
   const actor = weldingActor();
-  saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate, participants: [productionParticipant(actor)] });
-  window.setTimeout(() => {
-    const card = ui.weldingPanel?.querySelector(`[data-welding-id="${CSS.escape(item.id)}"]`);
-    card?.scrollIntoView({ behavior: "smooth", block: "start" });
-    card?.querySelector("textarea[name='material']")?.focus({ preventScroll: true });
-  }, 80);
-}
+  const saved = await saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate, participants: [productionParticipant(actor)] });
+  if (!saved) return;
+  productionSaveNotice(saved, "Заявка принята в работу.");
+}); }
 
 async function completeWeldingRequest(item, form) {
+  const unlock = lockProductionRequestForm(form);
+  if (!unlock) return;
+  try { return await productionTransition(item, "welding", async item => {
   const actor = weldingActor();
-  if (!isWelderUser() || (item.welderId && item.welderId !== actor.id && profile?.role !== "editor")) {
-    return window.alert("Завершить работу может принявший её сварщик или администратор.");
+  if (!(isWelderUser() && isProductionParticipant(item, "welding", actor)) && profile?.role !== "editor") {
+    return window.alert("Завершить работу может участник сварочной работы или администратор.");
   }
   const data = new FormData(form);
   const material = String(data.get("material") || "").trim();
@@ -8144,7 +8175,7 @@ async function completeWeldingRequest(item, form) {
   const participants = productionParticipants(item, "welding").map(person => person.id === actor.id
     ? { ...person, stamp: welderStamp, certificate: welderCertificate }
     : person);
-  saveWeldingRecord({
+  const saved = await saveWeldingRecord({
     ...item,
     status: "awaitingAcceptance",
     material: material.slice(0, 1000),
@@ -8159,26 +8190,26 @@ async function completeWeldingRequest(item, form) {
     welderCertificate: item.welderId === actor.id ? welderCertificate : (item.welderCertificate || actor.certificate),
     participants,
     resultPhoto
-  });
-  showAppToast(productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
+  }, form);
+  productionSaveNotice(saved, productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
+  }); } finally { unlock(); }
 }
 
-function acceptCompletedWeldingWork(item) {
+async function acceptCompletedWeldingWork(item) { return productionTransition(item, "welding", async item => {
   const actor = weldingActor();
   if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку подтверждает инженер." : "Принять работу может только её заявитель.");
   const engineerApproval = productionWorkWasSelfRequested(item, "welding");
-  saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: engineerApproval ? "" : new Date().toISOString(), acceptedByRequesterId: engineerApproval ? "" : actor.id, acceptedByRequesterName: engineerApproval ? "" : actor.name, acceptedByEngineerAt: engineerApproval ? new Date().toISOString() : "", acceptedByEngineerId: engineerApproval ? actor.id : "", acceptedByEngineerName: engineerApproval ? actor.name : "" });
-  showAppToast("Работа принята и внесена в журнал.");
-}
+  const saved = await saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: engineerApproval ? "" : new Date().toISOString(), acceptedByRequesterId: engineerApproval ? "" : actor.id, acceptedByRequesterName: engineerApproval ? "" : actor.name, acceptedByEngineerAt: engineerApproval ? new Date().toISOString() : "", acceptedByEngineerId: engineerApproval ? actor.id : "", acceptedByEngineerName: engineerApproval ? actor.name : "" });
+  productionSaveNotice(saved, "Работа принята и внесена в журнал.");
+}); }
 
-function returnWeldingWork(item) {
+async function returnWeldingWork(item) { return productionTransition(item, "welding", async item => {
   const actor = weldingActor();
   if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку может вернуть инженер." : "Вернуть работу может только её заявитель.");
   const reason = window.prompt("Укажите, что необходимо исправить:")?.trim();
   if (!reason) return;
-  saveWeldingRecord({ ...item, status: "returned", returnedAt: new Date().toISOString(), returnedById: actor.id, returnedByName: actor.name, returnReason: reason.slice(0, 1000), completedAt: "" });
-  showAppToast("Работа возвращена сварщику на доработку.");
-}
+  productionSaveNotice(await saveWeldingRecord({ ...item, status: "returned", returnedAt: new Date().toISOString(), returnedById: actor.id, returnedByName: actor.name, returnReason: reason.slice(0, 1000), completedAt: "" }), "Работа возвращена сварщику на доработку.");
+}); }
 
 function weldingRecordCard(item) {
   const canAccept = item.status === "new" && isWelderUser();
@@ -8216,13 +8247,14 @@ function renderWeldingJournal() {
   if (current.productionTab === "turning") return renderTurningJournal();
   updateWeldingBadge();
   if (!ui.weldingPanel) return;
+  productionWorkUi.beforeRender(productionDraftOwner());
   const month = current.weldingMonth || todayISO().slice(0, 7);
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
   ui.subtitle.textContent = "Сварочные работы";
   ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварщик и токарь</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
-    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Заполните три коротких поля — дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
+    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
       <label><span><b>1</b> Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
       <label><span><b>2</b> Номер заказа или чертежа</span><input name="drawingNumber" inputmode="text" placeholder="Если номера нет — оставьте пустым"></label>
       <label class="wide"><span><b>3</b> Что нужно изготовить или отремонтировать</span><textarea name="description" required inputmode="text" placeholder="Например: изготовить кронштейн по чертежу № 15"></textarea></label>
@@ -8243,6 +8275,7 @@ function renderWeldingJournal() {
     card.querySelector("[data-welding-requester-return]")?.addEventListener("click", () => returnWeldingWork(item));
     card.querySelector(".welding-complete-form")?.addEventListener("submit", event => { event.preventDefault(); completeWeldingRequest(item, event.currentTarget); });
   });
+  productionWorkUi.afterRender("welding");
 }
 
 function printWeldingJournal(month = todayISO().slice(0, 7)) {
@@ -8255,11 +8288,7 @@ function printWeldingJournal(month = todayISO().slice(0, 7)) {
   finalizeJournalPopup(win);
 }
 
-function saveTurningRecord(record) {
-  state.turningJournal ||= {};
-  state.turningJournal[record.id] = { ...record, updatedAt: new Date().toISOString() };
-  saveState(); updateWeldingBadge(); renderTurningJournal();
-}
+async function saveTurningRecord(record, form) { return saveProductionRecord(record, "turning", form); }
 
 async function createTurningRequest(form) {
   const data = new FormData(form), actor = weldingActor(), now = new Date().toISOString();
@@ -8270,8 +8299,8 @@ async function createTurningRequest(form) {
   try {
     const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
     const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-    saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto });
-    showAppToast("Заявка на токарные работы отправлена.");
+    const saved = await saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto }, form);
+    productionSaveNotice(saved, "Заявка на токарные работы отправлена.");
   } catch {
     window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
   } finally {
@@ -8281,27 +8310,32 @@ async function createTurningRequest(form) {
 
 function turningTypeLabel(value) { return ({ manufacture:"Изготовление", restore:"Восстановление", drawing:"По чертежу", emergency:"Аварийный ремонт" })[value] || value || "—"; }
 
-function acceptTurningRequest(item) {
+async function acceptTurningRequest(item) { return productionTransition(item, "turning", async item => {
   if (!isTurnerUser()) return window.alert("Принять заявку может только сотрудник с ролью или должностью токаря.");
   if (item.status !== "new") return window.alert("Эта заявка уже принята другим токарем.");
   const actor=weldingActor();
-  saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role, participants:[productionParticipant(actor)] });
-  window.setTimeout(()=>{ const card=ui.weldingPanel?.querySelector(`[data-turning-id="${CSS.escape(item.id)}"]`); card?.scrollIntoView({behavior:"smooth",block:"start"}); card?.querySelector("textarea[name='material']")?.focus({preventScroll:true}); },80);
-}
+  const saved = await saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role, participants:[productionParticipant(actor)] });
+  if (!saved) return;
+  productionSaveNotice(saved, "Заявка принята в работу.");
+}); }
 
 async function completeTurningRequest(item, form) {
+  const unlock = lockProductionRequestForm(form);
+  if (!unlock) return;
+  try { return await productionTransition(item, "turning", async item => {
   const actor=weldingActor();
   if (!isProductionParticipant(item, "turning", actor) && profile?.role !== "editor") return window.alert("Завершить работу может участник токарной работы или администратор.");
   const d=new FormData(form); const material=String(d.get("material")||"").trim(); const operations=String(d.get("operations")||"").trim();
   if (!material || !operations) return window.alert("Заполните материал и выполненные операции.");
   const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
   const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
-  saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name, participants:productionParticipants(item,"turning"), resultPhoto });
-  showAppToast(productionWorkWasSelfRequested(item,"turning")?"Работа отправлена инженерам на подтверждение.":"Работа отправлена заявителю на приёмку.");
+  const saved = await saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name, participants:productionParticipants(item,"turning"), resultPhoto }, form);
+  productionSaveNotice(saved, productionWorkWasSelfRequested(item,"turning")?"Работа отправлена инженерам на подтверждение.":"Работа отправлена заявителю на приёмку.");
+  }); } finally { unlock(); }
 }
 
-function acceptTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку подтверждает инженер.":"Принять работу может только её заявитель."); const engineerApproval=productionWorkWasSelfRequested(item,"turning"), now=new Date().toISOString(); saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:engineerApproval?"":now,acceptedByRequesterId:engineerApproval?"":actor.id,acceptedByRequesterName:engineerApproval?"":actor.name,acceptedByEngineerAt:engineerApproval?now:"",acceptedByEngineerId:engineerApproval?actor.id:"",acceptedByEngineerName:engineerApproval?actor.name:""}); showAppToast("Токарная работа принята и внесена в журнал."); }
-function returnTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку может вернуть инженер.":"Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}); showAppToast("Работа возвращена токарю на доработку."); }
+async function acceptTurningWork(item) { return productionTransition(item,"turning",async item=>{ const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку подтверждает инженер.":"Принять работу может только её заявитель."); const engineerApproval=productionWorkWasSelfRequested(item,"turning"), now=new Date().toISOString(); const saved=await saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:engineerApproval?"":now,acceptedByRequesterId:engineerApproval?"":actor.id,acceptedByRequesterName:engineerApproval?"":actor.name,acceptedByEngineerAt:engineerApproval?now:"",acceptedByEngineerId:engineerApproval?actor.id:"",acceptedByEngineerName:engineerApproval?actor.name:""}); productionSaveNotice(saved,"Токарная работа принята и внесена в журнал."); }); }
+async function returnTurningWork(item) { return productionTransition(item,"turning",async item=>{ const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку может вернуть инженер.":"Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; productionSaveNotice(await saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}),"Работа возвращена токарю на доработку."); }); }
 
 function turningCard(item) {
   const actor=weldingActor();
@@ -8324,10 +8358,13 @@ function turningCard(item) {
 }
 
 function renderTurningJournal() {
+  if (!ui.weldingPanel) return;
+  productionWorkUi.beforeRender(productionDraftOwner());
   updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||todayISO().slice(0,7); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
   ui.subtitle.textContent="Токарные работы";
   ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку или присоединитесь к совместной работе.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label><label class="wide"><span><b>6</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x=>x.status==="completed").length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
   bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||todayISO().slice(0,7);renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
+  productionWorkUi.afterRender("turning");
 }
 
 function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
@@ -15997,7 +16034,7 @@ ui.globalReminderOverlay?.addEventListener("click", event => {
 document.querySelectorAll("[data-mobile-view]").forEach(button => {
   button.addEventListener("click", () => {
     const target = button.dataset.mobileView;
-    if (!canShowMobileView(target)) return;
+    if (!canShowMobileView(target) || target === "attendance") return;
     if (target === "home") {
       document.body.classList.remove("mobile-profile-focus");
       if (current.view !== homeViewForProfile(profile?.role)) goBack();

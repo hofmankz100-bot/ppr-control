@@ -1,0 +1,26 @@
+@media screen {
+  .production-request-details { margin-bottom: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+  .production-request-details > summary { padding: 16px; min-height: 52px; box-sizing: border-box; color: var(--ink); cursor: pointer; font-weight: 800; }
+  .production-request-details > .welding-request-form { margin: 0; border: 0; box-shadow: none; }
+  .production-card-navigation { display: none; }
+  .welding-screen .welding-send-button, .welding-screen .welding-mobile-submit button { appearance: none; -webkit-appearance: none; border: 1px solid #087987; background: #087987; color: #fff; }
+  .production-card-navigation button { appearance: none; -webkit-appearance: none; border: 1px solid var(--line); background: var(--nav-soft); color: var(--ink); }
+  .production-card-navigation button:disabled { opacity: .45; }
+  .welding-list, .welding-card, .welding-card-head > div, .welding-complete-form, .welding-form-grid > label { min-width: 0; }
+  .welding-card { overflow-wrap: anywhere; }
+  .production-work-tabs [role="tab"]:focus-visible, .production-request-details > summary:focus-visible, .production-card-navigation button:focus-visible, .welding-list:focus-visible, .welding-card:focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 2px; }
+}
+@media screen and (max-width: 760px) {
+  .production-work-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-work-tabs button { padding: 10px 6px; font-size: 14px; }
+  .production-card-navigation { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 8px; margin: 12px 0 6px; }
+  .production-card-navigation button { width: 48px; min-height: 48px; padding: 0; font-size: 28px; }
+  .production-card-navigation span { text-align: center; font-size: 14px; color: var(--ink); }
+  .welding-list:has(> article) { position: relative; display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 4px 0 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+  .welding-list > .welding-card { flex: 0 0 100%; width: 100%; box-sizing: border-box; margin: 0; max-height: 72vh; max-height: 72dvh; overflow-y: auto; scroll-snap-align: start; scroll-snap-stop: always; scroll-padding-block: 12px 80px; -webkit-overflow-scrolling: touch; }
+  .welding-card .welding-mobile-submit { bottom: 0; margin: 4px -6px -6px; }
+  .welding-request-form .welding-send-button { position: static; margin-top: 14px; }
+  .welding-complete-form input, .welding-complete-form select, .welding-complete-form textarea { min-height: 48px; font-size: 16px; }
+  .turning-qty-grid { grid-template-columns: 1fr; }
+  .production-request-details > .welding-request-form { max-height: 72vh; max-height: 72dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+}
