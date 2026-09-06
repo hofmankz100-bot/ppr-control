@@ -11,6 +11,7 @@ const { buildHealthPayload } = require("./server/health");
 const { createStaticHandler } = require("./server/static-files");
 const { loadEnvFile } = require("./server/env");
 const { createStateTransactions } = require("./server/state-transactions");
+const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
@@ -63,12 +64,12 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-reliable-daily-work-2";
+const SERVER_VERSION = "v786-restored-recovery-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
-  // Keep the two immediately preceding PWA versions valid while installed
-  // phones replace their service-worker cache in the background.
+  "v786-reliable-daily-work-2",
+  "v789-server-recovery-1",
   "v697-stable-catalog-1",
   "v698-startup-performance-1",
   "v699-stable-qr-token-1",
@@ -1112,6 +1113,12 @@ async function initializeStorage() {
         idleTimeoutMillis: 30000
       })
     }));
+    const pool = new MultiPostgres(nodes, {
+      onStatus: status => { postgresClusterStatus = status; if (storageStatus.cluster) storageStatus.cluster = status; },
+      onPoolError: (error, nodeName) => {
+        console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`);
+      }
+    });
     await Promise.allSettled(nodes.map(async node => {
       try {
         await node.pool.query("SELECT now()");
@@ -1124,17 +1131,9 @@ async function initializeStorage() {
     }));
     if (!nodes[0].healthy) {
       await Promise.allSettled(nodes.map(node => node.pool.end()));
-      const primaryError = String(nodes[0].error || "Unknown connection error")
-        .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[redacted database URL]")
-        .replace(/\b(password|passwd|pwd)\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]");
+      const primaryError = String(nodes[0].error || "Unknown connection error").replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[redacted database URL]").replace(/\b(password|passwd|pwd)\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]");
       throw new Error(`Authoritative PostgreSQL database is unavailable; automatic state failover is disabled: ${primaryError}`);
     }
-    const pool = new MultiPostgres(nodes, {
-      onStatus: status => { postgresClusterStatus = status; },
-      onPoolError: (error, nodeName) => {
-        console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`);
-      }
-    });
     postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (
@@ -4840,15 +4839,14 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
   writeDb
 });
 
-async function handleApi(req, res, pathname, url) {
-  if (pathname === "/api/health") return handleApiTransaction(req, res, pathname, url);
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method) || pathname === "/api/translate") {
-    return stateTransactions.view(() => handleApiTransaction(req, res, pathname, url));
-  }
-  // Network uploads must finish before holding the shared PostgreSQL state lock.
-  await readBody(req).catch(() => {});
-  return enqueueStateWrite(() => handleApiTransaction(req, res, pathname, url));
-}
+const handleApi = createApiDispatcher({
+  stateTransactions,
+  handleApiTransaction,
+  readBody,
+  enqueueStateWrite,
+  getPostgresStateStore: () => postgresStateStore,
+  readDbFile
+});
 
 async function handleApiTransaction(req, res, pathname, url) {
   const versionExempt = pathname === "/api/health"

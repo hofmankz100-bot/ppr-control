@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Pool } = require("pg");
+const { createPostgresTestPool } = require("../tools/testing/postgres-test-pool");
 const { createPostgresSandbox } = require("../tools/testing/postgres-sandbox");
 const { createPostgresStateStore } = require("../server/postgres-state-store");
 
@@ -17,8 +17,8 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
     password: () => decodeURIComponent(connection.password), ssl: false,
     connectionTimeoutMillis: 5000, max: 8, options: "-c search_path=public"
   };
-  const firstPool = new Pool(config);
-  const secondPool = new Pool(config);
+  const { pool: firstPool, close: closeFirstPool } = createPostgresTestPool(config);
+  const { pool: secondPool, close: closeSecondPool } = createPostgresTestPool(config);
   try {
     await firstPool.query("CREATE TABLE ppr_settings(setting_key text PRIMARY KEY,payload jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now())");
     const first = createPostgresStateStore(firstPool);
@@ -39,6 +39,30 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal(stored.payload.migrated, true);
     });
 
+    await t.test("photo auth projection reads current sessions/users without returning full working state", async () => {
+      const user = { id: "photo-worker", role: "welder", approved: true };
+      const authSession = { userId: user.id, tokenHash: "test-token-hash", expiresAt: "2099-01-01T00:00:00Z" };
+      await mutate(first, next => {
+        next.users = [user];
+        next.authSessions = [authSession];
+        next.unrelatedLargeWork = "x".repeat(2 * 1024 * 1024);
+      });
+      const queries = [];
+      const photoStore = createPostgresStateStore({ async query(sql, params) {
+        queries.push(sql);
+        return secondPool.query(sql, params);
+      } }, {
+        normalize() { throw new Error("Auth reads must not load/normalize complete working state"); },
+        onExternalState() { throw new Error("Auth projection must not replace the full state cache"); }
+      });
+      assert.deepEqual(await photoStore.authSnapshot(), { users: [user], authSessions: [authSession] });
+      await mutate(first, next => { next.authSessions = []; next.users[0].approved = false; });
+      assert.deepEqual(await photoStore.authSnapshot(), { users: [{ ...user, approved: false }], authSessions: [] });
+      assert.equal(queries.length, 2);
+      assert.ok(queries.every(sql => sql.startsWith("SELECT payload->'users' AS users,payload->'authSessions' AS auth_sessions")));
+      await mutate(first, next => { delete next.unrelatedLargeWork; });
+    });
+
     await t.test("two independent pools preserve all competing mutations", async () => {
       await Promise.all(Array.from({ length: 16 }, (_, index) => mutate(index % 2 ? first : second, next => {
         next.work.push(`work-${index}`);
@@ -51,13 +75,13 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
     });
 
     await t.test("another instance reads committed work after reopening its connection", async () => {
-      const reopenedPool = new Pool(config);
+      const { pool: reopenedPool, close: closeReopenedPool } = createPostgresTestPool(config);
       try {
         const reopened = createPostgresStateStore(reopenedPool);
         const session = await reopened.begin();
         try { assert.equal(session.state.work.length, 16); await session.commit(null); }
         finally { session.release(); }
-      } finally { await reopenedPool.end(); }
+      } finally { await closeReopenedPool(); }
     });
 
     await t.test("rollback releases the lock and never persists staged work", async () => {
@@ -83,11 +107,30 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal((await read()).payload.afterCommitFailure, true);
     });
 
+    await t.test("terminating a held transaction connection rejects its write and a new connection recovers", async () => {
+      const before = await read();
+      let heldClient;
+      firstPool.once("acquire", client => { heldClient = client; });
+      const session = await first.begin();
+      const ended = new Promise(resolve => heldClient.once("end", resolve));
+      try {
+        // The PID comes from this session in this disposable database only.
+        const killed = await secondPool.query("SELECT pg_terminate_backend($1) AS terminated", [heldClient.processID]);
+        assert.equal(killed.rows[0].terminated, true);
+        await ended;
+        await assert.rejects(session.commit({ ...session.state, disconnectedWrite: true }), error => error.statusCode === 503);
+        await session.rollback();
+      } finally { session.release(); }
+      assert.deepEqual(await read(), before);
+      await mutate(first, next => { next.afterDisconnect = true; });
+      assert.equal((await read()).payload.afterDisconnect, true);
+    });
+
     await t.test("an unavailable authoritative database cannot silently promote a stale mirror", async () => {
       let mirrorUsed = false;
       const offline = createPostgresStateStore({ nodes: [
-        { pool: { connect: async () => { throw new Error("primary unavailable"); } } },
-        { healthy: true, pool: { connect: async () => { mirrorUsed = true; } } }
+        { pool: { connect: callback => callback(new Error("primary unavailable")) } },
+        { healthy: true, pool: { connect() { mirrorUsed = true; } } }
       ] });
       await assert.rejects(offline.begin(), /primary unavailable/);
       assert.equal(mirrorUsed, false);
@@ -101,23 +144,28 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal((await firstPool.query("SELECT 1 FROM ppr_settings WHERE setting_key='full_state'")).rowCount, 0);
     });
   } finally {
-    await Promise.allSettled([firstPool.end(), secondPool.end()]);
-    await sandbox.dispose();
+    const cleanup = await Promise.allSettled([closeFirstPool(), closeSecondPool()]);
+    cleanup.push(...await Promise.allSettled([sandbox.dispose()]));
+    const errors = cleanup.filter(result => result.status === "rejected").map(result => result.reason);
+    if (errors.length) throw new AggregateError(errors, "Disposable PostgreSQL test cleanup failed");
   }
 });
 
 test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !process.env.PPR_E2E_POSTGRES_URL, timeout: 60000 }, async t => {
   const sandboxes = [];
   const pools = [];
+  const poolClosers = [];
   let releaseDelayed = () => {};
   try {
     for (let index = 0; index < 2; index += 1) {
       const sandbox = await createPostgresSandbox(process.env.PPR_E2E_POSTGRES_URL);
       sandboxes.push(sandbox);
       const url = new URL(sandbox.databaseUrl);
-      pools.push(new Pool({ host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port),
+      const tracked = createPostgresTestPool({ host: url.hostname.replace(/^\[|\]$/g, ""), port: Number(url.port),
         database: url.pathname.slice(1), user: "ppr_e2e", password: () => decodeURIComponent(url.password),
-        ssl: false, connectionTimeoutMillis: 5000, max: 4, options: "-c search_path=public" }));
+        ssl: false, connectionTimeoutMillis: 5000, max: 4, options: "-c search_path=public" });
+      pools.push(tracked.pool);
+      poolClosers.push(tracked.close);
       await pools[index].query("CREATE TABLE ppr_settings(setting_key text PRIMARY KEY,payload jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now())");
     }
     const [primary, replica] = pools;
@@ -126,7 +174,7 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     let mirroredNewest;
     const newest = new Promise(resolve => { mirroredNewest = resolve; });
     const replicaNode = { name: "supabase", healthy: true, pool: {
-      connect: () => replica.connect(),
+      connect: (...args) => replica.connect(...args),
       async query(sql, params) {
         if (String(params?.[1]) === delayRevision && delayRevision) await delayed;
         const result = await replica.query(sql, params);
@@ -191,7 +239,7 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     await t.test("unavailable legacy node requires explicit named exception recorded at cutover", async () => {
       await seedLegacy();
       const unavailable = { name: "neon", healthy: false, pool: {
-        async connect() { throw new Error("deliberate quota unavailable"); },
+        connect(callback) { callback(new Error("deliberate quota unavailable")); },
         async query() { throw new Error("deliberate quota unavailable"); }
       } };
       const degradedCluster = { nodes: [...cluster.nodes, unavailable] };
@@ -216,15 +264,19 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
       await seedLegacy();
       const readableButUnfenced = { name: "supabase", healthy: true, pool: {
         query: (sql, params) => replica.query(sql, params),
-        async connect() {
-          const client = await replica.connect();
-          return {
-            async query(sql, params) {
-              if (sql.startsWith("CREATE OR REPLACE FUNCTION")) throw new Error("deliberate fence DDL rejection");
-              return client.query(sql, params);
-            },
-            release: () => client.release()
-          };
+        connect(callback) {
+          replica.connect((error, client) => {
+            if (error) return callback(error);
+            callback(null, {
+              on: (...args) => client.on(...args),
+              removeListener: (...args) => client.removeListener(...args),
+              async query(sql, params) {
+                if (sql.startsWith("CREATE OR REPLACE FUNCTION")) throw new Error("deliberate fence DDL rejection");
+                return client.query(sql, params);
+              },
+              release: error => client.release(error)
+            });
+          });
         }
       } };
       const unsafe = createPostgresStateStore({ nodes: [cluster.nodes[0], readableButUnfenced] }, { legacySkipUnavailable: ["supabase"] });
@@ -235,8 +287,8 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     });
   } finally {
     releaseDelayed();
-    await Promise.allSettled(pools.map(pool => pool.end()));
-    const cleanup = await Promise.allSettled(sandboxes.map(sandbox => sandbox.dispose()));
+    const cleanup = await Promise.allSettled(poolClosers.map(close => close()));
+    cleanup.push(...await Promise.allSettled(sandboxes.map(sandbox => sandbox.dispose())));
     const errors = cleanup.filter(result => result.status === "rejected").map(result => result.reason);
     if (errors.length) throw new AggregateError(errors, "Disposable PostgreSQL test cleanup failed");
   }

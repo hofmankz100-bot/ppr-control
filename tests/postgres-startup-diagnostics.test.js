@@ -9,7 +9,7 @@ const vm = require("node:vm");
 test("startup reports the primary connection failure without database credentials", async () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   const start = source.indexOf("    if (!nodes[0].healthy) {");
-  const end = source.indexOf("    const pool = new MultiPostgres", start);
+  const end = source.indexOf("    postgresClusterStatus = pool.status();", start);
   const guard = source.slice(start, end);
   let closed = 0;
   const error = "connect ECONNREFUSED postgres://test-user:test-secret@db.invalid:5432/ppr password='second-secret' pwd=third-secret";
