@@ -54,24 +54,40 @@ async function checkDialog(page, panel, lastControl, { mustScroll = false } = {}
   if (mustScroll) expect(geometry.scrollable, "The fixture exercises a genuinely long dialog").toBe(true);
   if (geometry.scrollable) {
     expect(geometry.overflow).toMatch(/^(auto|scroll)$/);
-    await panel.evaluate(element => { element.scrollTop = 0; });
-    const box = await panel.boundingBox();
+    await page.bringToFront();
+    await panel.evaluate(async element => {
+      element.scrollTop = 0;
+      // Native input uses the rendered scroll tree. Commit the reset before
+      // dispatching another gesture into a newly opened/replaced dialog.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const input = await panel.evaluate(element => {
+      // A border box can include a classic scrollbar. Keep native input inside
+      // the client area, using fresh geometry after resetting the scroll.
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + element.clientLeft + element.clientWidth - 7;
+      const top = rect.top + element.clientTop;
+      const height = element.clientHeight;
+      const hit = document.elementFromPoint(x, top + height / 2);
+      return { x, top, height, inside: Boolean(hit && element.contains(hit)), hit: hit?.className };
+    });
     const project = test.info().project;
     if (project.name.includes("webkit")) {
       await panel.evaluate(element => element.scrollBy({ top: 600, behavior: "instant" }));
     } else if (project.use.isMobile) {
       const cdp = await page.context().newCDPSession(page);
       try {
-        const x = box.x + box.width - 7;
-        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: box.y + box.height * .8 }] });
+        const x = input.x;
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: input.top + input.height * .8 }] });
         for (let step = 1; step <= 12; step += 1) {
-          await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: box.y + box.height * (.8 - .6 * step / 12) }] });
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: input.top + input.height * (.8 - .6 * step / 12) }] });
           await page.evaluate(() => new Promise(requestAnimationFrame));
         }
         await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       } finally { await cdp.detach(); }
     } else {
-      await page.mouse.move(box.x + box.width - 7, box.y + box.height / 2);
+      expect(input.inside, `Wheel hits the dialog client area: ${JSON.stringify(input)}`).toBe(true);
+      await page.mouse.move(input.x, input.top + input.height / 2);
       await page.mouse.wheel(0, 600);
     }
     await expect.poll(() => panel.evaluate(element => element.scrollTop), { message: "The dialog scrolls vertically" }).toBeGreaterThan(0);

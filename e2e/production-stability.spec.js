@@ -69,9 +69,13 @@ for (const [trade, role, seeded] of [["welding", "welder", welding], ["turning",
     await page.clock.install();
     await loginProduction(page, app, app.users[role]);
     await page.locator(`[data-production-tab="${trade}"]`).click();
-    // Hold delayed UI effects until the worker has already begun the next field.
-    await page.clock.pauseAt(new Date(Date.now() + 60000));
     const card = page.locator(`[data-${trade}-id="${seeded.id}"]`);
+    // Let initial server hydration and the card's layout finish with running timers.
+    await expect(card.locator(`[data-${trade}-accept]`)).toBeVisible();
+    // Freeze at the current browser time: jumping ahead also expires unrelated API requests.
+    const frozenNow = await page.evaluate(() => Date.now());
+    await page.clock.setFixedTime(frozenNow);
+    await page.clock.pauseAt(frozenNow);
     await card.locator(`[data-${trade}-accept]`).click();
     await expect(card).toHaveClass(/status-accepted/);
     await expect(page.locator(".app-toast").filter({ hasText: "Заявка принята в работу." })).toHaveCount(1);
