@@ -13501,6 +13501,8 @@ html[data-theme="dark"] .send-kind-dialog > strong,
 
 @media screen {
   #profileBar select { min-height: 44px; max-width: 100%; padding: 8px 12px; font-size: 16px; }
+  html[data-theme="light"] .equipment-schedule-table .equipment-head { background: var(--panel); color: var(--ink); }
+  html[data-theme="light"] .equipment-schedule-table .area-color-cell .equipment-installed-parts-button :is(span, strong) { color: #27475b !important; }
 }
 @media screen and (max-width: 760px), screen and (pointer: coarse) {
   #equipmentScreen .equipment-search button,
