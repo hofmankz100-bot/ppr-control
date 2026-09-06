@@ -42,7 +42,7 @@ test("a remark created on one device appears on another without reloading", asyn
   }
 });
 
-test("a QR mark queued during network loss is delivered once after reconnection", async ({ page, context, app, browserName, runtimeErrors }) => {
+test("a QR mark queued during network loss is delivered once after reconnection", async ({ page, context, app }) => {
   await login(page, app);
   await openQr(page, app);
   expect(await serverMarks(page, app)).toHaveLength(0);
@@ -60,19 +60,10 @@ test("a QR mark queued during network loss is delivered once after reconnection"
   await expect(page.locator("#loginOverlay")).toBeHidden();
   await expect(page.locator("[data-qr-good]")).toHaveCount(0);
   expect(await serverMarks(page, app)).toHaveLength(1);
-  const accessError = `/localhost:${new URL(app.baseURL).port}/api/state due to access control checks.`;
-  if (process.platform === "win32" && browserName === "webkit" && runtimeErrors.length === 1 && runtimeErrors[0] === accessError) {
-    // The data assertions above succeeded, but this exact runtime error was
-    // observed on Windows WebKit. Report it as an unresolved defect, never as
-    // a passing scenario; any other/additional error remains a hard failure.
-    const observed = runtimeErrors.shift();
-    test.fail(true, "BROWSER-002: Windows WebKit reports an access-control error during network recovery");
-    expect(observed, "BROWSER-002: reconnect must not produce an unhandled fetch error").toBeUndefined();
-  }
 });
 
-test("offline reopening preserves an authenticated worker session @known-issue", async ({ page, context, app, browserName }) => {
-  test.skip(process.platform === "win32" && browserName === "webkit", "Windows WebKit offline reload fails even in the standalone SW repro; run on Linux or a physical iPhone");
+test("offline reopening preserves the cached shell and authenticated worker session", async ({ page, context, app, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit offline navigation reports an engine internal error on Windows and Linux CI; session outage/revalidation is covered separately on WebKit");
   await login(page, app);
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -82,14 +73,155 @@ test("offline reopening preserves an authenticated worker session @known-issue",
   });
   await expect.poll(() => page.evaluate(async () => Boolean(await caches.match("./index.html")))).toBe(true);
   await context.setOffline(true);
-  const failedSession = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 503);
-  await Promise.all([page.reload({ waitUntil: "domcontentloaded" }), failedSession]);
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveTitle("ППР Контроль");
-  // Wait for the actual session response to be processed, rather than asserting
-  // against the transient authenticated screen shown before startup finishes.
-  await expect(page.locator("#loginError")).toContainText("Сессия завершена");
-  // Keep the actual desired behavior executable. An unexpected pass forces this
-  // annotation to be removed when session restoration is fixed (BROWSER-001).
-  test.fail(true, "BROWSER-001: a network error in restoreServerSession clears the saved profile");
-  await expect(page.locator("#loginOverlay"), "BROWSER-001: cached login must survive an offline reopen").toBeHidden({ timeout: 3000 });
+  await expect(page.locator("#connectionStatus")).toContainText("Нет связи");
+  await expect(page.locator("#loginOverlay")).toBeHidden();
+  await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-profile-v1")).name)).toBe(app.users.operator.name);
+  const revalidated = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 200);
+  await context.setOffline(false);
+  await revalidated;
+  await expect(page.locator("#connectionStatus")).toBeHidden();
+});
+
+test.describe("session authority during server failures", () => {
+  // Route the actual session HTTP response; shell/SW navigation is exercised by
+  // the separate real-offline scenario. This also runs on WebKit without its
+  // offline-navigation engine limitation.
+  test.use({ serviceWorkers: "block" });
+
+  test("503 on reopen preserves the confirmed profile and reconnect revalidates it", async ({ page, context, app }) => {
+    await login(page, app);
+    await page.route("**/api/auth/session", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test outage" }) }));
+    await page.reload();
+    await expect(page.locator("#connectionStatus")).toContainText("Ожидаем проверку сессии");
+    await expect(page.locator("#loginOverlay")).toBeHidden();
+    await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
+    await expect(page.locator(`[data-aggregate-equipment="${app.otherEquipmentId}"]`)).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-profile-v1")).name)).toBe(app.users.operator.name);
+    await page.unroute("**/api/auth/session");
+    await context.setOffline(true);
+    const revalidated = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 200);
+    await context.setOffline(false);
+    await revalidated;
+    await expect(page.locator("#connectionStatus")).toBeHidden();
+    await expect(page.locator("#loginOverlay")).toBeHidden();
+  });
+
+  test("a real 401 on reconnect ends the session without discarding or sending queued work", async ({ page, context, app }) => {
+    await login(page, app);
+    await openQr(page, app);
+    await context.setOffline(true);
+    await page.locator("[data-qr-good]").click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-state-v3-qr-pending-marks-v1") || "[]").length)).toBe(1);
+    await context.clearCookies();
+    let markRequests = 0;
+    page.on("request", request => { if (new URL(request.url()).pathname === "/api/qr-walk/mark") markRequests += 1; });
+    const rejected = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 401);
+    await context.setOffline(false);
+    await rejected;
+    await expect(page.locator("#loginOverlay")).toBeVisible();
+    await expect(page.locator("#loginError")).toContainText("Сессия завершена");
+    expect(await page.evaluate(() => localStorage.getItem("ppr-pwa-profile-v1"))).toBeNull();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-state-v3-qr-pending-marks-v1") || "[]").length)).toBe(1);
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").checks || {}).length)).toBeGreaterThan(0);
+    expect(markRequests).toBe(0);
+    await login(page, app, app.users.engineer);
+    await expect(page.locator("#connectionStatus")).toContainText("Отметки другого сотрудника");
+    expect(await serverMarks(page, app)).toHaveLength(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-state-v3-qr-pending-marks-v1") || "[]").length)).toBe(1);
+    expect(markRequests).toBe(0);
+  });
+
+  test("an explicit 403 session response clears cached identity but keeps local records", async ({ page, app }) => {
+    await login(page, app);
+    await page.route("**/api/auth/session", route => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Session access revoked" }) }));
+    await page.reload();
+    await expect(page.locator("#loginOverlay")).toBeVisible();
+    await expect(page.locator("#loginError")).toContainText("Сессия завершена");
+    expect(await page.evaluate(() => localStorage.getItem("ppr-pwa-profile-v1"))).toBeNull();
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").checks || {}).length)).toBeGreaterThan(0);
+  });
+
+  test("pending remarks survive 401, reject another author and sync after the original employee signs in", async ({ page, context, app }) => {
+    await login(page, app);
+    await page.locator('tr').filter({ has: page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`) }).locator("td.today-cell").click();
+    await page.locator('[data-open-node-detail="0"]').click();
+    const text = `Неотправленное замечание — ${Date.now()}`;
+    await context.setOffline(true);
+    await page.locator('[data-node-comment="0"]').fill(text);
+    await page.locator('[data-node-submit-comment="0"]').click();
+    await page.locator('[data-send-without-stop]').click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("ppr-pwa-state-v3-pending"))).toBe("1");
+    const localRemark = () => page.evaluate(value => Object.values(JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").checks || {}).flatMap(record => record.to?.commentLog || []).find(entry => entry.text === value), text);
+    expect((await localRemark()).name).toBe(app.users.operator.name);
+    await context.clearCookies();
+    const rejected = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 401);
+    await context.setOffline(false);
+    await rejected;
+    await expect(page.locator("#loginOverlay")).toBeVisible();
+    let writes = 0;
+    page.on("request", request => { if (new URL(request.url()).pathname === "/api/state" && request.method() === "PUT") writes += 1; });
+    await page.locator("#loginEmployeeId").fill(app.users.engineer.employeeId);
+    await page.locator("#loginPassword").fill(app.users.engineer.password);
+    await page.locator("#authSubmitButton").click();
+    await expect(page.locator("#loginError")).toContainText(`неотправленные изменения сотрудника ${app.users.operator.name}`);
+    await expect(page.locator("#loginOverlay")).toBeVisible();
+    expect(writes).toBe(0);
+    expect((await localRemark()).name).toBe(app.users.operator.name);
+    expect(await page.evaluate(() => localStorage.getItem("ppr-pwa-state-v3-pending"))).toBe("1");
+    await page.locator("#loginEmployeeId").fill(app.users.operator.employeeId);
+    await page.locator("#loginPassword").fill(app.users.operator.password);
+    await page.locator("#authSubmitButton").click();
+    await expect(page.locator("#loginOverlay")).toBeHidden();
+    await expect.poll(async () => {
+      const response = await page.request.get(`${app.baseURL}/api/state`, { headers: { "x-client-protocol": "1" } });
+      expect(response.ok()).toBeTruthy();
+      const state = await response.json();
+      return Object.values(state.checks || {}).flatMap(record => record.to?.commentLog || []).filter(entry => entry.text === text);
+    }).toMatchObject([{ name: app.users.operator.name, role: "operator" }]);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("ppr-pwa-state-v3-pending"))).toBeNull();
+  });
+
+  test("online reopening restores an owned PPR snapshot from IndexedDB before sending it", async ({ page, context, app }) => {
+    await login(page, app, app.users.engineer);
+    const response = await page.request.get(`${app.baseURL}/api/state`, { headers: { "x-client-protocol": "1" } });
+    expect(response.ok()).toBeTruthy();
+    const snapshot = await response.json();
+    const date = "2026-09-08", text = "Проверка плана из сохранённой памяти телефона";
+    const at = new Date().toISOString();
+    snapshot.pprSheets = { ...snapshot.pprSheets, [date]: { id: `sheet:${date}`, date, updatedAt: at, plannedByName: app.users.engineer.name,
+      rows: [{ id: "e2e-device-ppr-row", equipmentId: app.equipmentId, equipment: "Тестовый пресс", node: app.nodeName, area: "Тестовый цех", work: text, workUpdatedAt: at }] } };
+    await context.setOffline(true);
+    // Model a durable unsent snapshot from the previous app run. Operational
+    // PPR data intentionally exists only in IndexedDB, not the lightweight cache.
+    await page.evaluate(async ({ snapshot, user }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("ppr-control-device-v3", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("state");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction("state", "readwrite");
+        transaction.objectStore("state").put(snapshot, "full-state");
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+      localStorage.setItem("ppr-pwa-state-v3-pending", "1");
+      localStorage.setItem("ppr-pwa-state-v3-pending-owner-v1", JSON.stringify({ ownerId: user.id, ownerEmployeeId: user.employeeId, ownerName: user.name }));
+      if (JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").pprSheets) throw new Error("PPR must be absent from the lightweight cache in this test");
+    }, { snapshot, user: app.users.engineer });
+    await page.goto("about:blank");
+    await context.setOffline(false);
+    await page.goto(app.baseURL);
+    await expect(page.locator("#loginOverlay")).toBeHidden();
+    await expect.poll(async () => {
+      const response = await page.request.get(`${app.baseURL}/api/state`, { headers: { "x-client-protocol": "1" } });
+      return (await response.json()).pprSheets?.[date]?.rows?.find(row => row.id === "e2e-device-ppr-row")?.work;
+    }).toBe(text);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("ppr-pwa-state-v3-pending"))).toBeNull();
+  });
 });
