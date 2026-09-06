@@ -94,8 +94,10 @@ test.describe("session authority during server failures", () => {
   test("503 on reopen preserves the confirmed profile and reconnect revalidates it", async ({ page, context, app }) => {
     await login(page, app);
     await page.route("**/api/auth/session", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test outage" }) }));
+    const unavailable = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 503);
     await page.reload();
-    await expect(page.locator("#connectionStatus")).toContainText("Ожидаем проверку сессии");
+    await unavailable;
+    await expect(page.locator("#connectionStatus")).toBeHidden();
     await expect(page.locator("#loginOverlay")).toBeHidden();
     await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
     await expect(page.locator(`[data-aggregate-equipment="${app.otherEquipmentId}"]`)).toHaveCount(0);
