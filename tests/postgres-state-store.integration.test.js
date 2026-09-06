@@ -39,6 +39,30 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal(stored.payload.migrated, true);
     });
 
+    await t.test("photo auth projection reads current sessions/users without returning full working state", async () => {
+      const user = { id: "photo-worker", role: "welder", approved: true };
+      const authSession = { userId: user.id, tokenHash: "test-token-hash", expiresAt: "2099-01-01T00:00:00Z" };
+      await mutate(first, next => {
+        next.users = [user];
+        next.authSessions = [authSession];
+        next.unrelatedLargeWork = "x".repeat(2 * 1024 * 1024);
+      });
+      const queries = [];
+      const photoStore = createPostgresStateStore({ async query(sql, params) {
+        queries.push(sql);
+        return secondPool.query(sql, params);
+      } }, {
+        normalize() { throw new Error("Auth reads must not load/normalize complete working state"); },
+        onExternalState() { throw new Error("Auth projection must not replace the full state cache"); }
+      });
+      assert.deepEqual(await photoStore.authSnapshot(), { users: [user], authSessions: [authSession] });
+      await mutate(first, next => { next.authSessions = []; next.users[0].approved = false; });
+      assert.deepEqual(await photoStore.authSnapshot(), { users: [{ ...user, approved: false }], authSessions: [] });
+      assert.equal(queries.length, 2);
+      assert.ok(queries.every(sql => sql.startsWith("SELECT payload->'users' AS users,payload->'authSessions' AS auth_sessions")));
+      await mutate(first, next => { delete next.unrelatedLargeWork; });
+    });
+
     await t.test("two independent pools preserve all competing mutations", async () => {
       await Promise.all(Array.from({ length: 16 }, (_, index) => mutate(index % 2 ? first : second, next => {
         next.work.push(`work-${index}`);
@@ -83,11 +107,30 @@ test("PostgreSQL durable state and concurrent instances", { skip: !process.env.P
       assert.equal((await read()).payload.afterCommitFailure, true);
     });
 
+    await t.test("terminating a held transaction connection rejects its write and a new connection recovers", async () => {
+      const before = await read();
+      let heldClient;
+      firstPool.once("acquire", client => { heldClient = client; });
+      const session = await first.begin();
+      const ended = new Promise(resolve => heldClient.once("end", resolve));
+      try {
+        // The PID comes from this session in this disposable database only.
+        const killed = await secondPool.query("SELECT pg_terminate_backend($1) AS terminated", [heldClient.processID]);
+        assert.equal(killed.rows[0].terminated, true);
+        await ended;
+        await assert.rejects(session.commit({ ...session.state, disconnectedWrite: true }), error => error.statusCode === 503);
+        await session.rollback();
+      } finally { session.release(); }
+      assert.deepEqual(await read(), before);
+      await mutate(first, next => { next.afterDisconnect = true; });
+      assert.equal((await read()).payload.afterDisconnect, true);
+    });
+
     await t.test("an unavailable authoritative database cannot silently promote a stale mirror", async () => {
       let mirrorUsed = false;
       const offline = createPostgresStateStore({ nodes: [
-        { pool: { connect: async () => { throw new Error("primary unavailable"); } } },
-        { healthy: true, pool: { connect: async () => { mirrorUsed = true; } } }
+        { pool: { connect: callback => callback(new Error("primary unavailable")) } },
+        { healthy: true, pool: { connect() { mirrorUsed = true; } } }
       ] });
       await assert.rejects(offline.begin(), /primary unavailable/);
       assert.equal(mirrorUsed, false);
@@ -131,7 +174,7 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     let mirroredNewest;
     const newest = new Promise(resolve => { mirroredNewest = resolve; });
     const replicaNode = { name: "supabase", healthy: true, pool: {
-      connect: () => replica.connect(),
+      connect: (...args) => replica.connect(...args),
       async query(sql, params) {
         if (String(params?.[1]) === delayRevision && delayRevision) await delayed;
         const result = await replica.query(sql, params);
@@ -196,7 +239,7 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     await t.test("unavailable legacy node requires explicit named exception recorded at cutover", async () => {
       await seedLegacy();
       const unavailable = { name: "neon", healthy: false, pool: {
-        async connect() { throw new Error("deliberate quota unavailable"); },
+        connect(callback) { callback(new Error("deliberate quota unavailable")); },
         async query() { throw new Error("deliberate quota unavailable"); }
       } };
       const degradedCluster = { nodes: [...cluster.nodes, unavailable] };
@@ -221,15 +264,19 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
       await seedLegacy();
       const readableButUnfenced = { name: "supabase", healthy: true, pool: {
         query: (sql, params) => replica.query(sql, params),
-        async connect() {
-          const client = await replica.connect();
-          return {
-            async query(sql, params) {
-              if (sql.startsWith("CREATE OR REPLACE FUNCTION")) throw new Error("deliberate fence DDL rejection");
-              return client.query(sql, params);
-            },
-            release: () => client.release()
-          };
+        connect(callback) {
+          replica.connect((error, client) => {
+            if (error) return callback(error);
+            callback(null, {
+              on: (...args) => client.on(...args),
+              removeListener: (...args) => client.removeListener(...args),
+              async query(sql, params) {
+                if (sql.startsWith("CREATE OR REPLACE FUNCTION")) throw new Error("deliberate fence DDL rejection");
+                return client.query(sql, params);
+              },
+              release: error => client.release(error)
+            });
+          });
         }
       } };
       const unsafe = createPostgresStateStore({ nodes: [cluster.nodes[0], readableButUnfenced] }, { legacySkipUnavailable: ["supabase"] });

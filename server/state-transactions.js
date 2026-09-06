@@ -47,10 +47,10 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
 
   return {
     run,
-    async view(task) {
+    async view(task, { snapshot: readSnapshot = snapshot } = {}) {
       if (current()) return task();
       let state;
-      try { state = await snapshot(); } catch (error) { onTransactionError(error); throw error; }
+      try { state = await readSnapshot(); } catch (error) { onTransactionError(error); throw error; }
       const view = { state: structuredClone(state), open: true, readOnly: true };
       try { return await context.run(view, task); }
       finally { view.open = false; }

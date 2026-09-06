@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v788-mobile-panels-1";
+const APP_VERSION = "v789-server-recovery-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -8063,7 +8063,7 @@ async function joinProductionWork(item, trade) { return productionTransition(ite
 
 function productionPhotosHtml(item = {}) {
   const photos = [item.requestPhoto, item.resultPhoto].filter(Boolean);
-  return photos.length ? `<div class="production-work-photos">${photos.map((photo, index) => `<figure><img src="${photo}" alt="${index ? "Фото результата" : "Фото к заявке"}"><figcaption>${index ? "Результат" : "К заявке"}</figcaption></figure>`).join("")}</div>` : "";
+  return photos.length ? `<div class="production-work-photos">${photos.map((photo, index) => `<figure><img src="${photo}" loading="lazy" decoding="async" alt="${index ? "Фото результата" : "Фото к заявке"}"><figcaption>${index ? "Результат" : "К заявке"}</figcaption></figure>`).join("")}</div>` : "";
 }
 
 const productionSubmissions = new Set();

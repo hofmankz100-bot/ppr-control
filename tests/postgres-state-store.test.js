@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
 const { createPostgresStateStore } = require("../server/postgres-state-store");
 const { createStateTransactions } = require("../server/state-transactions");
 
@@ -17,7 +18,7 @@ test("a delayed COMMIT response cannot publish over a newer committed snapshot f
   let persisted = { payload: { count: 0 }, state_revision: "1" };
   let staged;
   let releases = 0;
-  const client = {
+  const client = Object.assign(new EventEmitter(), {
     async query(sql, params) {
       if (sql.includes("FOR UPDATE")) return { rows: [structuredClone(persisted)] };
       if (sql.startsWith("UPDATE ppr_settings")) {
@@ -32,9 +33,9 @@ test("a delayed COMMIT response cannot publish over a newer committed snapshot f
       return { rows: [] };
     },
     release() { releases += 1; }
-  };
+  });
   const pool = {
-    async connect() { return client; },
+    connect(callback) { callback(null, client); },
     async query() { return { rows: [structuredClone(persisted)] }; }
   };
   let cache = { count: 0 };
