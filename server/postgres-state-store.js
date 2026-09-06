@@ -12,7 +12,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   let knownState = null;
 
   function observe(state, revision, external = false) {
-    if (revision <= knownRevision) return;
+    if (knownState && revision <= knownRevision) return;
     knownRevision = revision;
     knownState = structuredClone(state);
     if (external) onExternalState(structuredClone(state));
@@ -177,6 +177,14 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     prepareMirror,
     async snapshot() {
       try {
+        // Validate freshness on the authoritative database for every read. Most
+        // requests can avoid transferring the large JSONB value when it has not
+        // changed; failures must never authorize a request from a stale cache.
+        const current = await primary.query("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
+        if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+        if (knownState && BigInt(current.rows[0].state_revision) === knownRevision) {
+          return structuredClone(knownState);
+        }
         const result = await primary.query("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'");
         if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
         const state = normalize(result.rows[0].payload);

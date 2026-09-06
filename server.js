@@ -1124,7 +1124,10 @@ async function initializeStorage() {
     }));
     if (!nodes[0].healthy) {
       await Promise.allSettled(nodes.map(node => node.pool.end()));
-      throw new Error("Authoritative PostgreSQL database is unavailable; automatic state failover is disabled");
+      const primaryError = String(nodes[0].error || "Unknown connection error")
+        .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[redacted database URL]")
+        .replace(/\b(password|passwd|pwd)\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]");
+      throw new Error(`Authoritative PostgreSQL database is unavailable; automatic state failover is disabled: ${primaryError}`);
     }
     const pool = new MultiPostgres(nodes, {
       onStatus: status => { postgresClusterStatus = status; },
@@ -5355,6 +5358,7 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
+    const committedState = postgresState || readDbFile();
     sendJson(res, storageStatus.mode === "postgres-degraded" ? 503 : 200, buildHealthPayload({
       compatibleClient,
       clientVersion,
@@ -5365,9 +5369,9 @@ async function handleApiTransaction(req, res, pathname, url) {
       websocketClients: wsServers.reduce((sum, instance) => sum + instance.clients.size, 0),
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
-      productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
-      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
-      gasQrNodeCount: readDb().catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
+      productionRequestDuplicatesRemoved: committedState.targetedCleanupVersions?.productionRequestDedup20260820?.removed,
+      testInstalledPartRecordsRemoved: committedState.targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
+      gasQrNodeCount: committedState.catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
     }));
     return true;
   }
