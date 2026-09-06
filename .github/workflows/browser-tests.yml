@@ -1,0 +1,61 @@
+name: Browser tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  browser-tests:
+    name: Browser tests (${{ matrix.storage }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        storage: [json, postgres]
+    services:
+      postgres:
+        image: ${{ matrix.storage == 'postgres' && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: ppr_e2e
+          POSTGRES_PASSWORD: ppr-e2e-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ppr_e2e -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run browser tests with JSON storage
+        if: matrix.storage == 'json'
+        run: npm run test:e2e
+      - name: Run browser tests with disposable PostgreSQL storage
+        if: matrix.storage == 'postgres'
+        env:
+          PPR_E2E_POSTGRES_URL: postgres://ppr_e2e:ppr-e2e-only@127.0.0.1:5432/postgres
+        run: npm run test:e2e
+      - name: Upload browser reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-tests-${{ matrix.storage }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: warn

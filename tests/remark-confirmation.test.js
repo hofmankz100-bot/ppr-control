@@ -5,6 +5,7 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 
 const root = path.resolve(__dirname, "..");
 let serverProcess;
@@ -245,15 +246,12 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
   serverProcess = spawn(process.execPath, [path.join(root, "server.js")], {
     cwd: root,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      QR_PORT: String(qrPort),
+    env: createIsolatedServerEnv({
+      PORT: port,
+      QR_PORT: qrPort,
       DATA_DIR: dataDir,
-      DATABASE_URL: "",
-      REQUIRE_POSTGRES: "false",
       NODE_ENV: "test"
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"]
   });
   serverProcess.stdout.on("data", chunk => { serverOutput += String(chunk); });

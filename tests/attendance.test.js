@@ -6,6 +6,7 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 
 const root = path.resolve(__dirname, "..");
 const APP_VERSION = "v530-forklift-clean-form";
@@ -77,15 +78,12 @@ test("permanent attendance QR unlocks a worker for one shift and admin can close
   let output = "";
   const serverProcess = spawn(process.execPath, [path.join(root, "server.js")], {
     cwd: root,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      QR_PORT: String(qrPort),
+    env: createIsolatedServerEnv({
+      PORT: port,
+      QR_PORT: qrPort,
       DATA_DIR: dataDir,
-      DATABASE_URL: "",
-      REQUIRE_POSTGRES: "false",
       NODE_ENV: "production"
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"]
   });
   serverProcess.stdout.on("data", chunk => { output += String(chunk); });
