@@ -53,7 +53,6 @@ try {
 } catch {
   WebSocketServer = null;
 }
-
 const root = __dirname;
 
 loadEnvFile(root);
@@ -70,7 +69,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v790-stability-attendance-1";
+const SERVER_VERSION = "v791-memory-stability-2";
+const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -178,7 +178,7 @@ const stateTransactions = createStateTransactions({
     if (changed) publicStateResponseCache = { version: "", data: null, gzip: null };
     if (postgresStateStore) {
       postgresState = state;
-      scheduleLocalBackup(state);
+      if (changed && LOCAL_STATE_MIRROR_ENABLED) scheduleLocalBackup(state);
       storageStatus = { ...storageStatus, mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
       if (changed) saveDailyPostgresBackup(state).catch(error => warnServerDiagnostic("postgres.daily-backup", error));
     }
@@ -1008,6 +1008,7 @@ async function recoverPostgresReplicas() {
   for (let index = 0; index < postgresPool.nodes.length; index += 1) {
     if (index === sourceIndex) continue;
     const target = postgresPool.nodes[index];
+    if (!target.healthy && Date.parse(target.nextRecoveryAt || "") > Date.now()) continue;
     const wasHealthy = Boolean(target.healthy);
     try {
       await target.pool.query("SELECT 1");
@@ -1015,6 +1016,7 @@ async function recoverPostgresReplicas() {
       target.healthy = true;
       target.error = "";
       target.lastSuccessAt = new Date().toISOString();
+      target.recoveryFailures = 0; target.nextRecoveryAt = "";
       if (!wasHealthy) {
         await compressLegacyBackupTables(target.pool);
         const current = await source.pool.query("SELECT payload::text AS payload_text,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
@@ -1035,6 +1037,8 @@ async function recoverPostgresReplicas() {
       target.healthy = false;
       target.error = String(error.message || error);
       target.lastErrorAt = new Date().toISOString();
+      target.recoveryFailures = Number(target.recoveryFailures || 0) + 1;
+      target.nextRecoveryAt = new Date(Date.now() + Math.min(30 * 60 * 1000, Math.max(30000, Number(process.env.PG_RECOVERY_INTERVAL_MS || 30000)) * (2 ** Math.min(6, target.recoveryFailures - 1)))).toISOString();
     }
   }
   postgresClusterStatus = postgresPool.status();
@@ -1077,7 +1081,7 @@ async function initializeStorage() {
       MultiPostgres,
       allowFailover: automaticFailoverEnabled,
       useSsl,
-      poolSize: Number(process.env.PG_POOL_SIZE || 5),
+      poolSize: Number(process.env.PG_POOL_SIZE || 2),
       connectTimeoutMs: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
       onStatus: status => { postgresClusterStatus = status; if (storageStatus.cluster) storageStatus.cluster = status; },
       onPoolError: (error, nodeName) => console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`)
@@ -1157,7 +1161,7 @@ async function initializeStorage() {
       return state;
     });
     postgresStateStore = stateStore;
-    writeDbFile(postgresState);
+    if (LOCAL_STATE_MIRROR_ENABLED) writeDbFile(postgresState);
     await seedEmptyPostgresReplicas(nodes, 0);
     postgresClusterStatus = pool.status();
     postgresPool = pool;
