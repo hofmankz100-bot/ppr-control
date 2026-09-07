@@ -76,12 +76,15 @@ function timestampsWithin(left, right, limitMs = 120000) {
 
 function areTechnicalDuplicates(left = {}, right = {}, sameRecord = true) {
   if (authorIdentity(left) !== authorIdentity(right)) return false;
-  if (normalizeValue(left.type || "remark") !== normalizeValue(right.type || "remark")) return false;
   if (normalizeValue(left.text) !== normalizeValue(right.text) || !normalizeValue(left.text)) return false;
-  if (String(left.photo || "") !== String(right.photo || "")) return false;
   if (!timestampsWithin(left.at, right.at)) return false;
+  const exactCreationTime = String(left.at || "") === String(right.at || "");
   const leftResolution = normalizeValue(left.resolvedComment || left.resolutionSubmittedComment);
   const rightResolution = normalizeValue(right.resolvedComment || right.resolutionSubmittedComment);
+  const matchingResolution = Boolean(leftResolution && leftResolution === rightResolution);
+  if (!sameRecord && exactCreationTime) return true;
+  if (normalizeValue(left.type || "remark") !== normalizeValue(right.type || "remark") && !matchingResolution) return false;
+  if (String(left.photo || "") !== String(right.photo || "") && !matchingResolution) return false;
   if (leftResolution !== rightResolution) return false;
   if (!sameRecord && !leftResolution && String(left.at || "") !== String(right.at || "")) return false;
   const leftResolutionAt = left.resolvedAt || left.resolutionSubmittedAt || "";
@@ -192,17 +195,19 @@ function dedupeDatabase(db = {}, options = {}) {
     const kept = [];
     for (const entry of withinRecord) {
       if (!entry || isDowntimeEntry(entry)) { kept.push(entry); continue; }
-      const signature = [equipmentId, date, authorIdentity(entry), entry.type || "remark",
-        normalizeValue(entry.text), normalizeValue(entry.resolvedComment || entry.resolutionSubmittedComment)]
+      const signature = [equipmentId, date, authorIdentity(entry), normalizeValue(entry.text)]
         .map(normalizeValue).join("\u0001");
       const candidates = keepersBySignature.get(signature) || [];
       const duplicateOf = candidates.find(candidate => areTechnicalDuplicates(candidate.entry, entry, false));
       if (!duplicateOf) {
-        candidates.push({ recordKey, entry });
+        candidates.push({ recordKey, entry, item });
         keepersBySignature.set(signature, candidates);
         kept.push(entry);
         continue;
       }
+      Object.assign(duplicateOf.entry, mergeDuplicateRemarks(duplicateOf.entry, entry, resolutionUserKey));
+      syncItemSummary(duplicateOf.item);
+      affectedRecordKeys.add(duplicateOf.recordKey);
       const remarkId = String(entry.id || stableRemarkId(entry));
       const archiveKey = `${recordKey}|${remarkId}`;
       if (!archivedKeys.has(archiveKey)) {

@@ -45,6 +45,7 @@ async function waitForHealth(timeoutMs = 15000) {
 function resolvedRemark(id, at, resolvedAt) {
   return {
     id,
+    type: "failure",
     name: "Worker One",
     role: "mechanic",
     authorKey: "id:worker-1",
@@ -72,8 +73,14 @@ test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "ppr-remark-dedupe-test-"));
   const db = {
     checks: {
-      "1:0:2026-09-07": { to: { commentLog: [resolvedRemark("duplicate-a", "2026-09-07T08:00:00.000Z", "2026-09-07T09:00:00.000Z")] } },
-      "1:1:2026-09-07": { to: { commentLog: [resolvedRemark("duplicate-b", "2026-09-07T08:00:30.000Z", "2026-09-07T09:00:30.000Z")] } },
+      "1:0:2026-09-07": { to: { commentLog: [
+        resolvedRemark("duplicate-a", "2026-09-07T08:00:00.000Z", "2026-09-07T09:00:00.000Z"),
+        { ...resolvedRemark("duplicate-same-node", "2026-09-07T08:01:00.000Z", "2026-09-07T09:01:00.000Z"), type: "remark", photo: "data:image/jpeg;base64,copy" }
+      ] } },
+      "1:1:2026-09-07": { to: { commentLog: [{
+        ...resolvedRemark("duplicate-b", "2026-09-07T08:00:00.000Z", "2026-09-07T09:02:00.000Z"),
+        resolvedComment: "Later exact-timestamp repair"
+      }] } },
       "1:2:2026-09-07": { to: { commentLog: [{
         id: "open-remark",
         name: "Worker One",
@@ -122,13 +129,14 @@ test("startup removes exact cross-node copies and repeated resolution history", 
   const state = await (await fetch(`${baseUrl}/api/state`)).json();
   assert.equal(state.checks["1:0:2026-09-07"].to.commentLog.length, 1);
   assert.equal(state.checks["1:0:2026-09-07"].to.commentLog[0].resolutionEvents.length, 1);
+  assert.equal(state.checks["1:0:2026-09-07"].to.commentLog[0].resolvedComment, "Later exact-timestamp repair");
   assert.equal(state.checks["1:1:2026-09-07"].to.commentLog.length, 0);
 
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
   assert.equal(stored.archivedDuplicateRemarks.length, 1);
   assert.equal(stored.archivedDuplicateRemarks[0].recordKey, "1:1:2026-09-07");
   assert.equal(stored.archivedDuplicateRemarks[0].duplicateOfRecordKey, "1:0:2026-09-07");
-  assert.equal(stored.targetedCleanupVersions.remarkDuplicateCleanup20260907.removed, 1);
+  assert.equal(stored.targetedCleanupVersions.remarkDuplicateCleanup20260907.removed, 2);
 });
 
 test("remark collaboration accepts a retried semantic action only once", async () => {
