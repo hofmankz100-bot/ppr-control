@@ -4,10 +4,13 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const { spawn } = require("node:child_process");
 const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 
 const root = path.resolve(__dirname, "..");
+const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+const commentsSource = fs.readFileSync(path.join(root, "modules", "comments.js"), "utf8");
 let serverProcess;
 let baseUrl;
 let dataDir;
@@ -162,4 +165,20 @@ test("remark collaboration accepts a retried semantic action only once", async (
   const remark = repeated.body.state.checks["1:2:2026-09-07"].to.commentLog[0];
   assert.equal(remark.resolutionEvents.filter(event => event.action === "added").length, 1);
   assert.equal(remark.collaborationActionReceipts.length, 1);
+});
+
+test("aggregate journal collapses one remark and downtime row for the same incident", () => {
+  assert.match(commentsSource, /dedupeAggregateJournalItems\(entries = \[\]\)/);
+  assert.match(commentsSource, /candidate\.kind === entry\.kind/);
+  assert.match(appSource, /return PPRModules\.comments\.dedupeAggregateJournalItems\(items\);/);
+  const context = { window: {} };
+  vm.runInNewContext(commentsSource, context);
+  const rows = context.window.PPRModules.comments.dedupeAggregateJournalItems([
+    { kind: "Замечание", equipmentId: 1, at: "2026-08-27T12:49:30Z", authorName: "Арман", text: "Центровка жасау керек", resolvedComment: "Центровка жасалды", resolutionParticipants: [{ name: "Нұрлан" }], confirmedByName: "Инженер" },
+    { kind: "Поломка", equipmentId: 1, at: "2026-08-27T12:50:10Z", authorName: "Арман", text: "Центровка жасау керек", resolvedComment: "Центровка жасалды", resolvedAt: "2026-08-27T13:10:00Z", durationMs: 1200000 }
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, "Поломка");
+  assert.equal(rows[0].resolutionParticipants[0].name, "Нұрлан");
+  assert.equal(rows[0].confirmedByName, "Инженер");
 });

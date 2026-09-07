@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v802-remark-deduplication";
+const APP_VERSION = "v803-remark-deduplication";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -8576,7 +8576,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       durationMs: downtimeDurationMs(item)
     });
   });
-  return items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return PPRModules.comments.dedupeAggregateJournalItems(items);
 }
 
 function aggregateRemarkOptions(area = "") {
