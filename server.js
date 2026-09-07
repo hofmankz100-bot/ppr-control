@@ -41,6 +41,7 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
+const remarkDeduplication = require("./server/remark-deduplication");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -68,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v795-monitor-without-state-clones"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v796-remark-deduplication"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -720,6 +721,7 @@ function normalizeDb(db) {
   db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
   db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
+  db.archivedDuplicateRemarks = Array.isArray(db.archivedDuplicateRemarks) ? db.archivedDuplicateRemarks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
   repairKnownEncodingDamageServer(db);
@@ -1062,6 +1064,7 @@ async function initializeStorage() {
     const db = readDbFile();
     archiveAndRemoveCraneBeamData(db);
     removeDuplicateProductionRequests(db);
+    dedupeDuplicateRemarkEntriesServer(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
     reconcileMissingShgrpQrChecksServer(db);
@@ -1151,6 +1154,7 @@ async function initializeStorage() {
     postgresState = await stateStore.initialize(() => readDbFile(), state => {
       archiveAndRemoveCraneBeamData(state);
       removeDuplicateProductionRequests(state);
+      dedupeDuplicateRemarkEntriesServer(state);
       removeObsoletePressNoMaterialNodes(state);
       removeKnownFalseDowntimes(state);
       purgeRemovedEquipmentData(state);
@@ -2539,23 +2543,9 @@ function resolutionParticipantsServer(item = {}) {
     .filter(participant => participant.key && !seen.has(participant.key) && seen.add(participant.key));
 }
 
-function isDowntimeCommentEntryServer(entry = {}) {
-  const text = String(entry.text || "").trim();
-  return entry.type === "downtime" || text.startsWith("Пуск:") || text.startsWith("Стоп:");
-}
 
-function stableRemarkIdServer(entry = {}) {
-  if (entry.id) return String(entry.id);
-  const source = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo]
-    .map(value => String(value || ""))
-    .join("\u0001");
-  let hash = 2166136261;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `remark:${String(entry.at || "legacy")}:${(hash >>> 0).toString(36)}`;
-}
+const isDowntimeCommentEntryServer = remarkDeduplication.isDowntimeEntry;
+const stableRemarkIdServer = remarkDeduplication.stableRemarkId;
 
 const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
@@ -2567,46 +2557,16 @@ const REMARK_COLLABORATION_FIELDS_SERVER = [
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
   "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
-  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds"
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "collaborationActionReceipts"
 ];
 
+
 function ensureRemarkEntriesServer(item = {}) {
-  const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
-    .filter(entry => entry && !isDowntimeCommentEntryServer(entry) && String(entry.text || entry.photo || "").trim());
-  entries.forEach(entry => {
-    entry.id ||= stableRemarkIdServer(entry);
-    if (typeof entry.resolved !== "boolean") entry.resolved = Boolean(item.resolved);
-  });
-  const legacyTarget = entries.find(entry => !entry.resolved);
-  if (legacyTarget && REMARK_COLLABORATION_FIELDS_SERVER.some(field => item[field] !== undefined)) {
-    REMARK_COLLABORATION_FIELDS_SERVER.forEach(field => {
-      if (legacyTarget[field] === undefined && item[field] !== undefined) legacyTarget[field] = item[field];
-      delete item[field];
-    });
-  }
-  return entries;
+  return remarkDeduplication.ensureRemarkEntries(item, REMARK_COLLABORATION_FIELDS_SERVER);
 }
 
 function syncItemRemarkSummaryServer(item = {}) {
-  const entries = ensureRemarkEntriesServer(item);
-  if (!entries.length) return;
-  const allResolved = entries.every(entry => entry.resolved);
-  item.resolved = allResolved;
-  if (!allResolved) {
-    item.resolvedAt = "";
-    item.confirmedAt = "";
-    return;
-  }
-  const latest = entries.slice().sort((a, b) => String(b.resolvedAt || "").localeCompare(String(a.resolvedAt || "")))[0] || {};
-  item.resolvedAt = latest.resolvedAt || item.resolvedAt || "";
-  item.resolvedByName = latest.resolvedByName || item.resolvedByName || "";
-  item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
-  item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
-  item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
-  item.resolvedDurationMs = Number(latest.resolvedDurationMs || item.resolvedDurationMs || 0);
-  item.confirmedAt = latest.confirmedAt || item.confirmedAt || "";
-  item.confirmedByName = latest.confirmedByName || item.confirmedByName || "";
-  item.confirmedByRole = latest.confirmedByRole || item.confirmedByRole || "";
+  return remarkDeduplication.syncItemSummary(item, REMARK_COLLABORATION_FIELDS_SERVER);
 }
 
 function approvedResolutionUsersServer(db) {
@@ -3527,6 +3487,12 @@ function attendanceRoleAllowed(user = {}) {
   return ATTENDANCE_WORKER_ROLES.has(String(user.role || ""));
 }
 
+function remarkActionFingerprintServer(action, actor = {}, body = {}) {
+  return remarkDeduplication.actionFingerprint(action, actor, body, resolutionUserKeyServer);
+}
+
+const repeatedRemarkActionReceiptServer = remarkDeduplication.repeatedActionReceipt;
+
 function attendanceUserEligible(user = {}) {
   return Boolean(
     attendanceUserKey(user)
@@ -3704,24 +3670,18 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
-function mergeRemarkHistoryItems(current = [], incoming = [], identity = item => String(item?.id || "")) {
-  const map = new Map();
-  for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-    if (!item || typeof item !== "object") continue;
-    const key = identity(item);
-    if (!key) continue;
-    map.set(key, { ...(map.get(key) || {}), ...item });
-  }
-  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
-}
 
-function remarkDecisionTime(entry = {}) {
-  return Math.max(
-    Date.parse(entry.confirmedAt || "") || 0,
-    Date.parse(entry.resolutionReturnedAt || "") || 0,
-    Date.parse(entry.resolutionSubmittedAt || "") || 0,
-    Date.parse(entry.commentEditedAt || "") || 0
-  );
+
+const normalizedRemarkDuplicateValue = remarkDeduplication.normalizeValue; const dedupeRemarkHistoryItemsServer = remarkDeduplication.dedupeHistoryItems;
+const mergeRemarkHistoryItems = remarkDeduplication.mergeHistoryItems;
+const remarkDecisionTime = remarkDeduplication.decisionTime;
+
+function dedupeRemarkListServer(entries = []) {
+  return remarkDeduplication.dedupeRemarkList(entries, { resolutionUserKey: resolutionUserKeyServer });
+}
+function dedupeDuplicateRemarkEntriesServer(db = {}) {
+  return remarkDeduplication.dedupeDatabase(db, { stableRemarkId: stableRemarkIdServer, isDowntimeEntry: isDowntimeCommentEntryServer,
+    resolutionUserKey: resolutionUserKeyServer, syncItemSummary: syncItemRemarkSummaryServer, remarkDeletionKey: remarkDeletionKeyServer });
 }
 
 function mergeCommentLogs(current = [], incoming = []) {
@@ -3750,9 +3710,19 @@ function mergeCommentLogs(current = [], incoming = []) {
       next.resolved = false;
       ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto"].forEach(field => delete next[field]);
     }
-    next.resolutionEvents = mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents);
-    next.resolutionUpdates = mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionEvents = dedupeRemarkHistoryItemsServer(
+      mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents),
+      "event"
+    );
+    next.resolutionUpdates = dedupeRemarkHistoryItemsServer(
+      mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates),
+      "update"
+    );
     next.commentEditHistory = mergeRemarkHistoryItems(previous.commentEditHistory, entry.commentEditHistory);
+    next.collaborationActionReceipts = mergeRemarkHistoryItems(
+      previous.collaborationActionReceipts,
+      entry.collaborationActionReceipts
+    ).slice(-100);
     next.resolutionParticipants = mergeRemarkHistoryItems(
       previous.resolutionParticipants,
       entry.resolutionParticipants,
@@ -3781,7 +3751,8 @@ function mergeCommentLogs(current = [], incoming = []) {
   };
   (Array.isArray(current) ? current : []).forEach(entry => mergeEntry(entry, false));
   (Array.isArray(incoming) ? incoming : []).forEach(entry => mergeEntry(entry, true));
-  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  return dedupeRemarkListServer(Array.from(map.values()))
+    .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
 
 function mergeCheckRecord(current = {}, incoming = {}) {
@@ -6318,6 +6289,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (acceptOperational) {
         db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
         purgeClosedWithoutScoreRemarksServer(db);
+        dedupeDuplicateRemarkEntriesServer(db);
         if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
       }
       db.catalog.equipment = mergedCatalog;
@@ -6607,12 +6579,32 @@ async function handleApiTransaction(req, res, pathname, url) {
       const remarkId = String(body.remarkId || "").trim();
       const remarks = ensureRemarkEntriesServer(item);
       const remark = remarks.find(entry => entry.id === remarkId);
-      if (!remark || (remark.resolved && action !== "admin-edit-resolved")) return { error: "remark_not_open" };
+      if (!remark) return { error: "remark_not_open" };
       const registeredActor = req.authUser || (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
       if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || (!req.authUser && !samePermissionRoleServer(registeredActor.role, requestedActor.role))) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
+      const actionId = String(body.actionId || "").trim().slice(0, 160);
+      const actionFingerprint = remarkActionFingerprintServer(action, actor, body);
+      const repeatedReceipt = repeatedRemarkActionReceiptServer(remark, actionId, actionFingerprint);
+      const repeatedExactAction = actionId && String(repeatedReceipt?.id || "") === actionId;
+      if (repeatedReceipt && (repeatedExactAction || !remark.resolved)) {
+        return {
+          actionId,
+          duplicate: true,
+          changed: false,
+          origin: body.clientId || "api",
+          patch: { checks: { [recordKey]: record } },
+          notifyParticipants: [],
+          clearParticipants: [],
+          pushTitle: "",
+          pushBody: "",
+          remarkId,
+          recordKey
+        };
+      }
+      if (remark.resolved && action !== "admin-edit-resolved") return { error: "remark_not_open" };
       if (
         process.env.NODE_ENV !== "test"
         && action !== "start"
@@ -6630,7 +6622,6 @@ async function handleApiTransaction(req, res, pathname, url) {
         const now = new Date().toISOString();
         item.updatedAt = now;
         record.updatedAt = now;
-        const actionId = String(body.actionId || "");
         writeDb(db, {
           action: "remark_deleted",
           actionId,
@@ -7205,11 +7196,16 @@ async function handleApiTransaction(req, res, pathname, url) {
       } else {
         remark.resolutionParticipants = participants;
       }
+      if (!deleteWithoutScore && actionId) {
+        remark.collaborationActionReceipts = mergeRemarkHistoryItems(
+          remark.collaborationActionReceipts,
+          [{ id: actionId, action, actorKey: actor.key, fingerprint: actionFingerprint, at: now }]
+        ).slice(-100);
+      }
       syncItemRemarkSummaryServer(item);
       item.updatedAt = now;
       record.updatedAt = now;
       const changed = before !== JSON.stringify(record);
-      const actionId = String(body.actionId || "");
       if (changed) writeDb(db, { action: deleteWithoutScore ? "remark_deleted_without_score" : `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey, remarkId, reason: deleteWithoutScore ? String(body.reason || "").trim().slice(0, 2000) : "" });
       const patch = {
         checks: { [recordKey]: record },
@@ -7222,6 +7218,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       };
       return {
         actionId,
+        duplicate: false,
         changed,
         origin: body.clientId || "api",
         patch,
@@ -7254,7 +7251,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         console.error(`Remark clear push delivery failed: ${error?.message || error}`);
       });
     }
-    sendJson(res, 200, { ok: true, actionId: result.actionId, changed: result.changed, stateVersion, state: result.patch });
+    sendJson(res, 200, { ok: true, actionId: result.actionId, duplicate: result.duplicate === true, changed: result.changed, stateVersion, state: result.patch });
     return true;
   }
 
@@ -7279,15 +7276,20 @@ async function handleApiTransaction(req, res, pathname, url) {
       const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
       db.checks ||= {};
       db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
+      const remarkDeduplication = dedupeDuplicateRemarkEntriesServer(db);
       const nodeDowntimes = Array.isArray(body.downtimes)
         ? body.downtimes.filter(item => Number(item?.equipmentId) === equipmentId && Number(item?.nodeIndex) === nodeIndex)
         : [];
       db.downtimes = mergeArrayById(db.downtimes, nodeDowntimes);
+      const affectedCheckKeys = [...new Set([recordKey, ...remarkDeduplication.affectedRecordKeys])];
       const patch = {
-        checks: db.checks[recordKey] ? { [recordKey]: db.checks[recordKey] } : {},
+        checks: Object.fromEntries(affectedCheckKeys.filter(key => db.checks[key]).map(key => [key, db.checks[key]])),
+        ...(remarkDeduplication.affectedRecordKeys.length ? { replaceCheckKeys: affectedCheckKeys } : {}),
         downtimes: db.downtimes || []
       };
-      const changed = before !== JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
+      const changed = before !== JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] })
+        || remarkDeduplication.removed > 0
+        || remarkDeduplication.historyRemoved > 0;
       const actionId = String(body.actionId || "");
       if (changed) {
         writeDb(db, {

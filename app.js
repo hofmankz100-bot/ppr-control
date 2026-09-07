@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v795-monitor-without-state-clones";
+const APP_VERSION = "v796-remark-deduplication";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2097,6 +2097,40 @@ function mergeRemarkHistoryItemsLocal(current = [], incoming = [], identity = it
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
 
+function remarkHistorySignatureLocal(item = {}, kind = "event") {
+  const normalize = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+  const photo = String(item.photo || "");
+  const photoIdentity = photo ? `${photo.length}:${photo.slice(0, 48)}:${photo.slice(-48)}` : "";
+  const fields = kind === "update"
+    ? [item.actorKey, item.name, item.role, item.text, photoIdentity]
+    : [item.action, item.actorKey, item.name, item.role, item.targetKey, item.targetName,
+        (item.targetKeys || []).join(","), item.reason, (item.recipientKeys || []).join(",")];
+  return fields.map(normalize).join("\u0001");
+}
+
+function dedupeRemarkHistoryItemsLocal(items = [], kind = "event") {
+  const result = [];
+  const groups = new Map();
+  for (const item of (Array.isArray(items) ? items : []).filter(value => value && typeof value === "object")
+    .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")))) {
+    const signature = remarkHistorySignatureLocal(item, kind);
+    const candidates = groups.get(signature) || [];
+    const duplicateIndex = candidates.find(index => {
+      const leftMs = Date.parse(result[index]?.at || "");
+      const rightMs = Date.parse(item.at || "");
+      return Number.isFinite(leftMs) && Number.isFinite(rightMs) && Math.abs(leftMs - rightMs) <= 120000;
+    });
+    if (duplicateIndex !== undefined) {
+      result[duplicateIndex] = { ...result[duplicateIndex], ...item, id: result[duplicateIndex].id || item.id };
+      continue;
+    }
+    candidates.push(result.length);
+    groups.set(signature, candidates);
+    result.push(item);
+  }
+  return result;
+}
+
 function remarkDecisionTimeLocal(entry = {}) {
   return Math.max(
     Date.parse(entry.confirmedAt || "") || 0,
@@ -2124,8 +2158,18 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
         if (previous[field] !== undefined) next[field] = previous[field];
       });
     }
-    next.resolutionEvents = mergeRemarkHistoryItemsLocal(previous.resolutionEvents, entry.resolutionEvents);
-    next.resolutionUpdates = mergeRemarkHistoryItemsLocal(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionEvents = dedupeRemarkHistoryItemsLocal(
+      mergeRemarkHistoryItemsLocal(previous.resolutionEvents, entry.resolutionEvents),
+      "event"
+    );
+    next.resolutionUpdates = dedupeRemarkHistoryItemsLocal(
+      mergeRemarkHistoryItemsLocal(previous.resolutionUpdates, entry.resolutionUpdates),
+      "update"
+    );
+    next.collaborationActionReceipts = mergeRemarkHistoryItemsLocal(
+      previous.collaborationActionReceipts,
+      entry.collaborationActionReceipts
+    ).slice(-100);
     next.resolutionParticipants = mergeRemarkHistoryItemsLocal(
       previous.resolutionParticipants,
       entry.resolutionParticipants,
@@ -6202,7 +6246,7 @@ const REMARK_COLLABORATION_FIELDS = [
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
   "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
-  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "closedForParticipants"
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "closedForParticipants", "collaborationActionReceipts"
 ];
 
 function ensureRemarkEntries(item = {}) {
@@ -6274,26 +6318,38 @@ function appendResolutionCompletion(item) {
   item.resolutionCompletedParticipants = resolutionParticipants(item);
 }
 
+const remarkCollaborationRequests = new Map();
+
 async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, action, extra = {}) {
   const recordKey = key(equipmentId, nodeIndex, date);
   const equipmentArea = equipmentById(Number(equipmentId))?.area || "";
-  const result = await apiJson("/api/remark-collaboration", {
-    method: "POST",
-    timeout: 20000,
-    body: JSON.stringify({
-      actionId: nextActionId(),
-      clientId: CLIENT_ID,
-      key: recordKey,
-      action,
-      actor: resolutionActor(),
-      equipmentArea,
-      ...extra
-    })
-  });
-  if (result?.state) mergeRealtimePatch(result.state);
-  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
-  persistStateLocally(state);
-  return result;
+  const requestKey = JSON.stringify([
+    recordKey, action, extra.remarkId || "", extra.participantKey || "",
+    extra.performerKey || "", extra.text || "", extra.reason || "", extra.partDescription || ""
+  ]);
+  if (remarkCollaborationRequests.has(requestKey)) return remarkCollaborationRequests.get(requestKey);
+  const actionId = nextActionId();
+  const request = (async () => {
+    const result = await apiJson("/api/remark-collaboration", {
+      method: "POST",
+      timeout: 20000,
+      body: JSON.stringify({
+        actionId,
+        clientId: CLIENT_ID,
+        key: recordKey,
+        action,
+        actor: resolutionActor(),
+        equipmentArea,
+        ...extra
+      })
+    });
+    if (result?.state) mergeRealtimePatch(result.state);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+    persistStateLocally(state);
+    return result;
+  })().finally(() => remarkCollaborationRequests.delete(requestKey));
+  remarkCollaborationRequests.set(requestKey, request);
+  return request;
 }
 
 async function askInstalledPartDetails() {
