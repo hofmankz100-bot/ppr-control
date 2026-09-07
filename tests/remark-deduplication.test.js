@@ -227,6 +227,11 @@ test("repeat-failure analysis exposes a clickable printable detail journal", () 
   assert.match(repeatFailuresSource, /function printJournal/);
   assert.match(repeatFailuresSource, /function buildAnnualAnalysis/);
   assert.match(appSource, /repeatFailureGroup/);
+  assert.match(appSource, /\.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
+  assert.match(appSource, /repeatFailureGroupingEnabled \? `<span class="repeat-failure-editor no-print">/);
+  assert.doesNotMatch(appSource, /repeatFailureGroupingEnabled && item\.kind === "Поломка"/);
+  assert.match(appSource, /Группа повторов/);
+  assert.match(appSource, /aria-label="Номер группы одинаковой неисправности"/);
   assert.match(appSource, /Группировка повторных поломок/);
 });
 

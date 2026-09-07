@@ -903,8 +903,8 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /page-break-inside: avoid/);
   assert.match(source, /class="print-sheet continuous"/);
   assert.match(source, /allSheets\.slice\(1\)/);
-  assert.match(source, /querySelectorAll\("\.no-print, \.aggregate-sheet-print"\)\.forEach\(node => node\.remove\(\)\)/);
-  assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction \{ display: none !important; \}/);
+  assert.match(source, /querySelectorAll\("\.no-print, \.aggregate-sheet-print, \.repeat-failure-badge"\)\.forEach\(node => node\.remove\(\)\)/);
+  assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction, \.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
   assert.match(source, /standard-aggregate-journal-sheet/);
   assert.match(source, /data-mobile-label="Оборудование и узел"/);
   assert.match(source, /aggregate-mobile-record-carousel/);
