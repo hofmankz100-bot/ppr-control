@@ -11,6 +11,7 @@ const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 const root = path.resolve(__dirname, "..");
 const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const commentsSource = fs.readFileSync(path.join(root, "modules", "comments.js"), "utf8");
+const repeatFailuresSource = fs.readFileSync(path.join(root, "modules", "repeat-failures.js"), "utf8");
 let serverProcess;
 let baseUrl;
 let dataDir;
@@ -97,11 +98,23 @@ test.before(async () => {
       }] } }
     },
     catalog: { equipment: { "1": { id: 1, name: "Equipment", area: "Shop", nodes: ["Correct node", "Copied node", "Open node"] } } },
-    downtimes: [],
+    downtimes: [{
+      id: "repeat-breakdown-1",
+      type: "breakdown",
+      equipmentId: 1,
+      nodeIndex: 0,
+      equipment: "Equipment",
+      node: "Correct node",
+      area: "Shop",
+      comment: "Recurring fault",
+      startedAt: "2026-09-07T11:00:00.000Z",
+      endedAt: "2026-09-07T12:00:00.000Z"
+    }],
     qrWalkJournal: [],
     users: [
       { id: "worker-1", employeeId: "worker-1", name: "Worker One", role: "mechanic", approved: true, pendingApproval: false },
-      { id: "editor-1", employeeId: "editor-1", name: "Administrator", role: "editor", approved: true, pendingApproval: false }
+      { id: "editor-1", employeeId: "editor-1", name: "Administrator", role: "editor", approved: true, pendingApproval: false },
+      { id: "engineer-1", employeeId: "engineer-1", name: "Engineer", role: "engineer", area: "Shop", permissionOverrides: { repeatFailureGroup: { enabled: true } }, approved: true, pendingApproval: false }
     ]
   };
   fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify(db, null, 2));
@@ -181,4 +194,53 @@ test("aggregate journal collapses one remark and downtime row for the same incid
   assert.equal(rows[0].kind, "Поломка");
   assert.equal(rows[0].resolutionParticipants[0].name, "Нұрлан");
   assert.equal(rows[0].confirmedByName, "Инженер");
+});
+
+test("administrator and a specifically permitted employee can assign a repeat-failure group", async () => {
+  const assign = (userId, code) => fetch(`${baseUrl}/api/repeat-failure-group`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-user-id": userId },
+    body: JSON.stringify({
+      actionId: `repeat-group-${userId}-${code}`,
+      clientId: "repeat-group-test",
+      sourceType: "downtime",
+      downtimeId: "repeat-breakdown-1",
+      code
+    })
+  }).then(async response => ({ status: response.status, body: await response.json() }));
+
+  const adminResult = await assign("editor-1", "5");
+  assert.equal(adminResult.status, 200, JSON.stringify(adminResult.body));
+  assert.equal(adminResult.body.state.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "5");
+
+  const deniedResult = await assign("worker-1", "6");
+  assert.equal(deniedResult.status, 403, JSON.stringify(deniedResult.body));
+
+  const permittedResult = await assign("engineer-1", "6");
+  assert.equal(permittedResult.status, 200, JSON.stringify(permittedResult.body));
+  assert.equal(permittedResult.body.state.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "6");
+});
+
+test("repeat-failure analysis exposes a clickable printable detail journal", () => {
+  assert.match(appSource, /data-open-repeat-breakdown/);
+  assert.match(repeatFailuresSource, /function openJournal/);
+  assert.match(repeatFailuresSource, /function printJournal/);
+  assert.match(repeatFailuresSource, /function buildAnnualAnalysis/);
+  assert.match(appSource, /repeatFailureGroup/);
+  assert.match(appSource, /Группировка повторных поломок/);
+});
+
+test("the same manual number combines separate breakdown rows into one printable group", () => {
+  const context = { window: {} };
+  vm.runInNewContext(repeatFailuresSource, context);
+  const analysis = context.window.PPRModules.repeatFailures.buildAnnualAnalysis([
+    { type: "breakdown", equipmentId: 7, area: "Прессовый участок", equipment: "Пресс 2400", node: "Робот", createdAt: "2026-01-10T08:00:00Z", durationMs: 60000, repeatFailureCode: "5", text: "Не запускается" },
+    { type: "breakdown", equipmentId: 7, area: "Прессовый участок", equipment: "Пресс 2400", node: "Печь", createdAt: "2026-08-10T08:00:00Z", durationMs: 120000, repeatFailureCode: "5", text: "Не запускается" }
+  ], 2026, { workers: [] });
+  assert.equal(analysis.repeatedBreakdowns.length, 1);
+  assert.equal(analysis.repeatedBreakdowns[0].manualCode, "5");
+  assert.equal(analysis.repeatedBreakdowns[0].count, 2);
+  assert.equal(analysis.repeatedBreakdowns[0].downtimeMs, 180000);
+  assert.equal(analysis.repeatedBreakdowns[0].node, "Несколько узлов");
+  assert.equal(analysis.repeatedBreakdowns[0].events.length, 2);
 });

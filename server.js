@@ -41,7 +41,7 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
-const remarkDeduplication = require("./server/remark-deduplication");
+const remarkDeduplication = require("./server/remark-deduplication"); const { handleRepeatFailureGroupRoute } = require("./server/repeat-failure-group-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v803-remark-deduplication"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v804-repeat-failure-journal"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -5154,9 +5154,7 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
-  const attendanceMutationExempt = pathname.startsWith("/api/push/")
-    || pathname === "/api/client-error"
-    || pathname === "/api/remark-collaboration";
+  const attendanceMutationExempt = pathname.startsWith("/api/push/") || pathname === "/api/client-error" || pathname === "/api/remark-collaboration" || pathname === "/api/repeat-failure-group";
   if (
     attendanceRoleAllowed(req.authUser)
     && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
@@ -6554,6 +6552,8 @@ async function handleApiTransaction(req, res, pathname, url) {
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, downtime: result.downtime });
     return true;
   }
+
+  if (await handleRepeatFailureGroupRoute(req, res, pathname, { readBody, sendJson, enqueueStateWrite, readDb, activeUserPermission, nodeMutationAccessServer, ensureRemarkEntriesServer, resolutionUserKeyServer, writeDb, broadcastState, realtimeStateVersion })) return true;
 
   if (pathname === "/api/remark-collaboration" && req.method === "POST") {
     const body = await readBody(req);

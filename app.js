@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v803-remark-deduplication";
+const APP_VERSION = "v804-repeat-failure-journal";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -295,6 +295,7 @@ function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {
 function canDeferRemarks(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkDefer"); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canCorrectAggregateJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "aggregateJournalCorrect"); }
+function canManageRepeatFailureGroups(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "repeatFailureGroup"); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -8512,6 +8513,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
+        sourceType: "remark",
         recordKey,
         remarkId: entry.id || stableRemarkId(entry),
         kind: "Замечание",
@@ -8545,6 +8547,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         commentEditedByName: entry.commentEditedByName || "",
         commentEditedByRole: entry.commentEditedByRole || "",
         commentEditHistory: Array.isArray(entry.commentEditHistory) ? entry.commentEditHistory : [],
+        repeatFailureCode: String(entry.repeatFailureCode || ""),
         durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
@@ -8558,6 +8561,8 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     ) return;
     items.push({
       id: item.id,
+      sourceType: "downtime",
+      downtimeId: item.id,
       kind: "Поломка",
       equipmentId: item.equipmentId,
       nodeIndex: item.nodeIndex,
@@ -8573,6 +8578,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       resolvedByName: item.closedByName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedComment: item.closeComment || "",
+      repeatFailureCode: String(item.repeatFailureCode || ""),
       durationMs: downtimeDurationMs(item)
     });
   });
@@ -12994,6 +13000,11 @@ function annualRepairEvents(year = directorAnnualYear()) {
         events.push({
           type: "remark",
           resolutionKey: `remark:${recordKey}:${stableRemarkId(entry)}`,
+          sourceType: "remark",
+          sourceId: `remark:${recordKey}:${stableRemarkId(entry)}`,
+          equipmentId: Number(equipmentIdRaw),
+          recordKey,
+          remarkId: entry.id || stableRemarkId(entry),
           equipment: eq.name || "",
           area: eq.area || "",
           node: eq.nodes[Number(nodeIndexRaw)] || "",
@@ -13010,6 +13021,8 @@ function annualRepairEvents(year = directorAnnualYear()) {
           ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
+          repeatFailureCode: String(entry.repeatFailureCode || ""),
+          resolvedComment: entry.resolvedComment || "",
           text: entry.text || item.comment || ""
         });
       }
@@ -13023,17 +13036,24 @@ function annualRepairEvents(year = directorAnnualYear()) {
     if (created?.year !== year && resolved?.year !== year) return;
     events.push({
       type: "breakdown",
+      sourceType: "downtime",
+      sourceId: `downtime:${item.id || ""}`,
+      equipmentId: Number(item.equipmentId),
+      downtimeId: item.id || "",
       equipment: item.equipment || "",
       area: item.area || "",
       node: item.node || "",
       createdAt: item.startedAt || "",
       resolvedAt: item.endedAt || "",
       authorRole: item.authorRole || "",
+      authorName: item.authorName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedByName: item.closedByName || "",
       ratingParticipants: Array.isArray(item.closedParticipants) ? item.closedParticipants : [],
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
+      repeatFailureCode: String(item.repeatFailureCode || ""),
+      resolvedComment: item.closeComment || "",
       text: item.comment || ""
     });
   });
@@ -13979,49 +13999,8 @@ function monthDisplayName(monthKey = current.engineerReportMonth) {
 
 function engineerAnnualAnalysis(year) {
   const events = annualRepairEvents(year);
-  const repeatedMap = new Map();
-  events
-    .filter(event => ["remark", "breakdown"].includes(event.type))
-    .forEach(event => {
-      const created = dateYearMonth(event.createdAt);
-      if (created?.year !== year) return;
-      const key = `${event.area || ""}|${event.equipment || ""}|${event.node || ""}`;
-      const item = repeatedMap.get(key) || {
-        area: event.area || "",
-        equipment: event.equipment || "",
-        node: event.node || "",
-        count: 0,
-        breakdowns: 0,
-        remarks: 0,
-        downtimeMs: 0,
-        lastAt: "",
-        texts: []
-      };
-      item.count += 1;
-      if (event.type === "breakdown") {
-        item.breakdowns += 1;
-        item.downtimeMs += Number(event.durationMs || 0);
-      } else {
-        item.remarks += 1;
-      }
-      if (String(event.createdAt || "") > String(item.lastAt || "")) item.lastAt = event.createdAt || "";
-      if (event.text && item.texts.length < 3) item.texts.push(event.text);
-      repeatedMap.set(key, item);
-    });
-  const repeatedBreakdowns = [...repeatedMap.values()]
-    .filter(item => item.count >= 2)
-    .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"))
-    .slice(0, 10);
   const annualStats = directorAnnualStats(year);
-  const employeeRating = annualStats.workers
-    .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
-    .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
-    .slice(0, 12);
-  return {
-    year,
-    repeatedBreakdowns,
-    employeeRating
-  };
+  return PPRModules.repeatFailures.buildAnnualAnalysis(events, year, annualStats);
 }
 
 function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
@@ -14299,9 +14278,11 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(item.area || "-")}</td>
         <td>${escapeHtml(item.equipment || "-")}</td>
         <td>${escapeHtml(item.node || "-")}</td>
-        <td>${item.count}</td>
+        <td>${printable
+          ? item.count
+          : `<button type="button" class="repeat-breakdown-count-button" data-open-repeat-breakdown="${escapeHtml(encodeURIComponent(item.groupKey))}" data-repeat-year="${annual.year}" aria-label="Открыть ${item.count} повторных поломок">${item.count}</button>`}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
-        <td>${escapeHtml(item.texts[0] || "Проверить причину повторения")}</td>
+        <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">Группа №${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.texts[0] || "Проверить причину повторения")}</td>
       </tr>
     `
   );
@@ -14405,6 +14386,15 @@ function renderEngineerReport() {
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
+  ui.engineerReportPanel.querySelectorAll("[data-open-repeat-breakdown]").forEach(button => {
+    button.addEventListener("click", () => {
+      const year = Number(button.dataset.repeatYear);
+      const groupKey = decodeURIComponent(button.dataset.openRepeatBreakdown || "");
+      const group = engineerAnnualAnalysis(year).repeatedBreakdowns.find(item => item.groupKey === groupKey);
+      if (!group) return showAppToast("Группа повторных поломок не найдена.", "error");
+      PPRModules.repeatFailures.openJournal(group, year, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup });
+    });
+  });
 }
 
 function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
@@ -15050,7 +15040,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["remarkDefer","Указывать причину неустранения"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["remarkDefer","Указывать причину неустранения"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["repeatFailureGroup","Группировка повторных поломок"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   const linkedHtml = summary.lightweight ? "" : `<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}${linkedHtml}${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
@@ -15529,6 +15519,7 @@ function renderAggregateJournal() {
   const repairMode = profile?.role === "editor"
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
   const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
+  const repeatFailureGroupingEnabled = canManageRepeatFailureGroups();
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -15592,7 +15583,16 @@ function renderAggregateJournal() {
                 <td data-mobile-label="№">${rowNumber}</td>
                 <td data-mobile-label="Оборудование и узел">${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
                 <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
-                <td data-mobile-label="Неисправность">${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
+                <td data-mobile-label="Неисправность">
+                  ${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}
+                  ${item.repeatFailureCode ? `<span class="repeat-failure-badge">Группа повторов №${escapeHtml(item.repeatFailureCode)}</span>` : ""}
+                  ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
+                  ${repeatFailureGroupingEnabled && item.kind === "Поломка" ? `<span class="repeat-failure-editor no-print">
+                    <label>Номер одинаковой поломки<input type="number" inputmode="numeric" min="1" max="999999" step="1" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="например 5"></label>
+                    <button type="button" class="mini-action" data-save-repeat-failure="${escapeHtml(item.id)}">Сохранить</button>
+                    ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" data-clear-repeat-failure="${escapeHtml(item.id)}">Снять</button>` : ""}
+                  </span>` : ""}
+                </td>
                 <td data-mobile-label="Осмотр выполнил">${escapeHtml(author)}</td>
                 <td data-mobile-label="Дата ремонта">${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
                 <td data-mobile-label="Выполненные работы">${escapeHtml(item.closedWithoutScore
@@ -15651,7 +15651,7 @@ function renderAggregateJournal() {
         const card = document.createElement("article");
         card.className = `aggregate-mobile-record-card ${row.classList.contains("open") ? "open" : ""}`;
         [...row.children].forEach(cell => card.append(cell.cloneNode(true)));
-        card.querySelectorAll(".no-print, .aggregate-correction").forEach(node => node.remove());
+        card.querySelectorAll(".no-print:not(.repeat-failure-editor), .aggregate-correction").forEach(node => node.remove());
         carousel.append(card);
       });
       ui.aggregateJournalList.querySelector(".aggregate-journal-sheet")?.before(mobileSection);
@@ -15722,6 +15722,7 @@ function renderAggregateJournal() {
       renderAggregateJournal();
     }, "Сохраняем..."));
   });
+  PPRModules.repeatFailures.bindAggregateEditors(ui.aggregateJournalList, items, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderAggregateJournal });
 }
 
 function printAggregateJournal(area, selectedSheetIndex = null) {
