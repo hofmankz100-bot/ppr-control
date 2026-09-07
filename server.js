@@ -65,10 +65,11 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-3";
+const SERVER_VERSION = "v786-photo-memory-4";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
+  "v786-photo-memory-3",
   "v786-reliable-daily-work-2",
   "v786-restored-recovery-1",
   "v789-server-recovery-1",
@@ -900,7 +901,9 @@ function savePhotoDataUrl(dataUrl = "") {
   const hash = crypto.createHash("sha1").update(bytes).digest("hex");
   const fileName = `${hash}.${ext}`;
   const file = path.join(photosDir, fileName);
-  if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
+  // PostgreSQL is canonical. Populate its cache on GET, after persistence, so
+  // re-uploading an original cannot put a larger copy over an optimized alias.
+  if (!postgresPool && !fs.existsSync(file)) fs.writeFileSync(file, bytes);
   const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
   return { url: `/api/photos/${fileName}`, fileName, mimeType, bytes };
 }
@@ -911,7 +914,8 @@ async function persistPhotoToPostgres(fileName, mimeType, bytes) {
     `INSERT INTO ppr_photos(file_name, mime_type, payload, updated_at)
      VALUES ($1, $2, $3, now())
      ON CONFLICT(file_name) DO UPDATE
-     SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
+     SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()
+     WHERE octet_length(ppr_photos.payload) >= octet_length(EXCLUDED.payload)`,
     [fileName, mimeType, bytes]
   );
   await postgresPool.flushMirrors?.();
@@ -945,7 +949,8 @@ async function readPhotoFromPostgres(fileName) {
       if (index !== postgresPool.activeIndex) {
         await postgresPool.query(
           `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,now())
-           ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=now()`,
+           ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=now()
+           WHERE octet_length(ppr_photos.payload) > octet_length(EXCLUDED.payload)`,
           [fileName, row.mime_type, row.payload]
         );
         await postgresPool.flushMirrors?.();
