@@ -12,9 +12,8 @@ const { createStaticHandler } = require("./server/static-files");
 const { loadEnvFile } = require("./server/env");
 const { createStateTransactions } = require("./server/state-transactions");
 const { initializeWithPrimaryRetry } = require("./server/startup-retry");
-const { createPostgresCluster } = require("./server/postgres-cluster");
-const { compareReplicaVersions } = require("./server/postgres-leader");
-const { createRuntimePostgresFailover } = require("./server/runtime-postgres-failover");
+const { createPostgresCluster } = require("./server/postgres-cluster"); const { compareReplicaVersions } = require("./server/postgres-leader");
+const { createRuntimePostgresFailover } = require("./server/runtime-postgres-failover"); const { isTransientPostgresConnectionError } = require("./server/postgres-errors");
 const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
@@ -70,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-7";
+const SERVER_VERSION = "v786-photo-memory-8";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1081,7 +1080,7 @@ async function initializeStorage() {
     storageStatus = { mode: "json" };
     return storageStatus;
   }
-  try {
+  let openingPool = null; try {
     const { Pool } = require("pg");
     const sslMode = String(process.env.PGSSL || process.env.PGSSLMODE || "").trim().toLowerCase();
     const useSsl = ["1", "true", "require", "verify-ca", "verify-full"].includes(sslMode);
@@ -1096,7 +1095,7 @@ async function initializeStorage() {
       onStatus: status => { postgresClusterStatus = status; if (storageStatus.cluster) storageStatus.cluster = status; },
       onPoolError: (error, nodeName) => console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`)
     });
-    if (leader.failedOver) console.warn(`PostgreSQL automatic state failover selected ${leader.selected.name} at revision ${leader.revision}`);
+    openingPool = pool; if (leader.failedOver) console.warn(`PostgreSQL automatic state failover selected ${leader.selected.name} at revision ${leader.revision}`);
     postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (
@@ -1194,8 +1193,9 @@ async function initializeStorage() {
       },
       onError: error => { storageStatus = { ...storageStatus, retrying: false }; warnServerDiagnostic("postgres.failover", error); }
     });
-    return storageStatus;
+    openingPool = null; return storageStatus;
   } catch (error) {
+    if (openingPool) await openingPool.end().catch(() => {}); if (!error.code && isTransientPostgresConnectionError(error)) error.code = "PPR_PRIMARY_PROBE_UNAVAILABLE";
     console.error(`Authoritative PostgreSQL startup failed: ${error.message}`);
     throw error;
   }

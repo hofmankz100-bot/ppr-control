@@ -154,6 +154,7 @@ test("abortable delay handles abort before or during waiting without a real long
 const serverSource = fs.readFileSync(path.join(__dirname, "../server.js"), "utf8");
 const initializerSource = serverSource.match(/async function initializeStorage\(\) \{[\s\S]*?\n\}/)?.[0];
 const { createPostgresCluster } = require("../server/postgres-cluster");
+const { isTransientPostgresConnectionError } = require("../server/postgres-errors");
 
 function isolatedInitializer({ failProbe, ddlError } = {}) {
   assert.ok(initializerSource, "server storage initializer must be present");
@@ -176,6 +177,7 @@ function isolatedInitializer({ failProbe, ddlError } = {}) {
     process: { env: { DATABASE_URL: "postgres://startup-test.invalid/test" } },
     storageStatus: { mode: "json" }, postgresClusterStatus: null,
     createPostgresCluster,
+    isTransientPostgresConnectionError,
     console: { warn() {}, error() {} },
     require(name) {
       if (name === "pg") return { Pool: FakePool };
@@ -204,6 +206,12 @@ test("schema errors after a successful probe do not receive the startup retry ma
   assert.equal(isolated.queries[0], "SELECT now()");
   assert.match(isolated.queries[1], /state_revision::text/);
   assert.match(isolated.queries[2], /CREATE TABLE/);
+});
+
+test("a connection lost after leader selection closes the pool and retries selection", async () => {
+  const isolated = isolatedInitializer({ ddlError: new Error("Connection terminated unexpectedly") });
+  await assert.rejects(isolated.initialize(), error => error.code === PRIMARY_PROBE_UNAVAILABLE);
+  assert.deepEqual(isolated.pools.map(pool => pool.ends), [1]);
 });
 
 test("automatic monitoring and backup timers remain idle until storage is ready", async () => {
