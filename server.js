@@ -19,7 +19,7 @@ const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
 const { syncPostgresPhotos } = require("./server/replica-photo-sync");
 const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
-const { createRealtimeHistory } = require("./server/realtime-history");
+const { createRealtimeHistory } = require("./server/realtime-history"); const { getLatestMonitoringSnapshot, monitoringAlertsNeedWrite, setLatestMonitoringSnapshot } = require("./server/monitoring-state");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
@@ -68,8 +68,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v793-memory-hot-path";
-const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v794-monitor-without-state-write"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1523,7 +1522,8 @@ function systemReadinessReport(db, monitoring, backups = []) {
 
 async function refreshSystemMonitoring() {
   const snapshot = await systemMonitoringSnapshot();
-  const specs = monitoringAlertSpecs(snapshot);
+  setLatestMonitoringSnapshot(snapshot); const specs = monitoringAlertSpecs(snapshot);
+  if (!monitoringAlertsNeedWrite(readDb(), specs)) return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
   await enqueueStateWrite(async () => {
     const db = readDb();
     const now = snapshot.checkedAt;
@@ -1546,7 +1546,6 @@ async function refreshSystemMonitoring() {
       }
     }
     db.adminAlerts = (db.adminAlerts || []).slice(0, 500);
-    db.systemMonitor = snapshot;
     writeDb(db, { action: "state_sync", user: { id: "system", name: "Система", role: "system" } });
   });
   return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
@@ -4726,6 +4725,7 @@ const handleAdminDashboardRoute = createAdminDashboardRoute({
   dataIntegrityReport,
   getPostgresConnected: () => Boolean(postgresPool),
   getStorageMode: () => storageStatus.mode,
+  getSystemMonitoringSnapshot: getLatestMonitoringSnapshot,
   listAdminArchives,
   listAdminBackups,
   normalizedAdminConfig,
