@@ -11,6 +11,10 @@ const { buildHealthPayload } = require("./server/health");
 const { createStaticHandler } = require("./server/static-files");
 const { loadEnvFile } = require("./server/env");
 const { createStateTransactions } = require("./server/state-transactions");
+const { initializeWithPrimaryRetry } = require("./server/startup-retry");
+const { createPostgresCluster } = require("./server/postgres-cluster");
+const { compareReplicaVersions } = require("./server/postgres-leader");
+const { createRuntimePostgresFailover } = require("./server/runtime-postgres-failover");
 const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
@@ -66,7 +70,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-5";
+const SERVER_VERSION = "v786-photo-memory-7";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -152,11 +156,10 @@ let dailyPostgresBackup = null;
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
-let postgresClusterStatus = { active: "", nodes: [] };
-let postgresRecoveryTimer = null;
-let postgresRecoveryActive = false;
-let postgresRefreshTimer = null;
-let postgresRefreshActive = false;
+let storageReady = false;
+const startupController = new AbortController();
+let postgresClusterStatus = { active: "", nodes: [] }, postgresRecoveryTimer = null, postgresRecoveryActive = false;
+let postgresRefreshTimer = null, postgresRefreshActive = false, postgresFailoverManager = null;
 const stateTransactions = createStateTransactions({
   async begin() {
     if (postgresStateStore) {
@@ -176,14 +179,15 @@ const stateTransactions = createStateTransactions({
     if (postgresStateStore) {
       postgresState = state;
       scheduleLocalBackup(state);
-      storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
+      storageStatus = { ...storageStatus, mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
       if (changed) saveDailyPostgresBackup(state).catch(error => warnServerDiagnostic("postgres.daily-backup", error));
     }
   },
   onTransactionError(error) {
-    if (postgresStateStore && error.statusCode === 503) storageStatus = {
-      ...storageStatus, mode: "postgres-degraded", error: "Authoritative database write was not confirmed", retrying: false
-    };
+    if (postgresStateStore && error.statusCode === 503) {
+      storageStatus = { ...storageStatus, mode: "postgres-degraded", error: "Authoritative database write was not confirmed", retrying: true };
+      postgresFailoverManager?.schedule();
+    }
   },
   onEffectError: error => warnServerDiagnostic("state.after-commit", error)
 });
@@ -998,7 +1002,7 @@ async function compressLegacyBackupTables(queryable) {
 
 async function recoverPostgresReplicas() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2) return;
-  const sourceIndex = 0;
+  const sourceIndex = Math.max(0, postgresPool.nodes.findIndex(node => node.name === storageStatus.authoritative));
   const source = postgresPool.nodes[sourceIndex];
   if (!source) return;
   for (let index = 0; index < postgresPool.nodes.length; index += 1) {
@@ -1013,14 +1017,17 @@ async function recoverPostgresReplicas() {
       target.lastSuccessAt = new Date().toISOString();
       if (!wasHealthy) {
         await compressLegacyBackupTables(target.pool);
-        const current = await source.pool.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+        const current = await source.pool.query("SELECT payload,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
         if (current.rows[0]?.payload) {
-          await target.pool.query(
-            `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
-             ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
-             WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-            [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
-          );
+          const targetState = await target.pool.query("SELECT state_revision::text,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+          if (compareReplicaVersions(current.rows[0], targetState.rows[0]) === "copy") {
+            await target.pool.query(
+              `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
+               ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
+               WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
+              [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
+            );
+          }
         }
         let photoCursor = "";
         while (true) {
@@ -1078,41 +1085,18 @@ async function initializeStorage() {
     const { Pool } = require("pg");
     const sslMode = String(process.env.PGSSL || process.env.PGSSLMODE || "").trim().toLowerCase();
     const useSsl = ["1", "true", "require", "verify-ca", "verify-full"].includes(sslMode);
-    const nodes = configured.map(item => ({
-      ...item,
-      healthy: false,
-      error: "",
-      pool: new Pool({
-        connectionString: item.connectionString,
-        ssl: useSsl || /(?:neon\.tech|supabase\.(?:co|com)|pooler\.supabase\.com)/i.test(item.connectionString)
-          ? { rejectUnauthorized: false }
-          : false,
-        max: Number(process.env.PG_POOL_SIZE || 5),
-        connectionTimeoutMillis: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
-        idleTimeoutMillis: 30000
-      })
-    }));
-    const pool = new MultiPostgres(nodes, {
+    const automaticFailoverEnabled = !["0", "false", "off", "no"].includes(String(process.env.PPR_AUTOMATIC_STATE_FAILOVER || "true").trim().toLowerCase());
+    const { leader, nodes, pool } = await createPostgresCluster(configured, {
+      Pool,
+      MultiPostgres,
+      allowFailover: automaticFailoverEnabled,
+      useSsl,
+      poolSize: Number(process.env.PG_POOL_SIZE || 5),
+      connectTimeoutMs: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
       onStatus: status => { postgresClusterStatus = status; if (storageStatus.cluster) storageStatus.cluster = status; },
-      onPoolError: (error, nodeName) => {
-        console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`);
-      }
+      onPoolError: (error, nodeName) => console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`)
     });
-    await Promise.allSettled(nodes.map(async node => {
-      try {
-        await node.pool.query("SELECT now()");
-        node.healthy = true;
-        node.lastSuccessAt = new Date().toISOString();
-      } catch (error) {
-        node.error = String(error.message || error);
-        node.lastErrorAt = new Date().toISOString();
-      }
-    }));
-    if (!nodes[0].healthy) {
-      await Promise.allSettled(nodes.map(node => node.pool.end()));
-      const primaryError = String(nodes[0].error || "Unknown connection error").replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[redacted database URL]").replace(/\b(password|passwd|pwd)\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[redacted]");
-      throw new Error(`Authoritative PostgreSQL database is unavailable; automatic state failover is disabled: ${primaryError}`);
-    }
+    if (leader.failedOver) console.warn(`PostgreSQL automatic state failover selected ${leader.selected.name} at revision ${leader.revision}`);
     postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (
@@ -1165,7 +1149,7 @@ async function initializeStorage() {
     `);
     await pool.flushMirrors();
     pool.activeIndex = 0;
-    const stateStore = createPostgresStateStore(pool, {
+    const stateStoreOptions = {
       normalize: normalizeDb,
       legacySkipUnavailable: String(process.env.PPR_STATE_LEGACY_SKIP_UNAVAILABLE || "").split(",").map(name => name.trim()).filter(Boolean),
       onExternalState(state) {
@@ -1174,7 +1158,8 @@ async function initializeStorage() {
         broadcastState("postgres-instance", "", publicState(state));
       },
       onMirrorError: (error, name) => warnServerDiagnostic(`postgres.mirror.${name}`, error)
-    });
+    };
+    const stateStore = createPostgresStateStore(pool, stateStoreOptions);
     postgresState = await stateStore.initialize(() => readDbFile(), state => {
       archiveAndRemoveCraneBeamData(state);
       removeDuplicateProductionRequests(state);
@@ -1190,7 +1175,25 @@ async function initializeStorage() {
     await seedEmptyPostgresReplicas(nodes, 0);
     postgresClusterStatus = pool.status();
     postgresPool = pool;
-    storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", cluster: postgresClusterStatus };
+    storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state",
+      authoritative: nodes[0]?.name || "", configuredPrimary: configured[0]?.name || "",
+      automaticFailover: automaticFailoverEnabled, failedOverAtStartup: leader.failedOver,
+      selectedRevision: leader.revision === null ? null : String(leader.revision), cluster: postgresClusterStatus };
+    postgresFailoverManager = createRuntimePostgresFailover({
+      nodes,
+      createStore: createPostgresStateStore,
+      storeOptions: stateStoreOptions,
+      onStatus: status => { postgresClusterStatus = status; storageStatus.cluster = status; },
+      onPromote({ node, revision, state, store }) {
+        postgresStateStore = store; postgresState = normalizeDb(state);
+        pool.activeIndex = Math.max(0, pool.nodes.findIndex(candidate => candidate === node));
+        postgresClusterStatus = pool.status(); storageStatus = { ...storageStatus, mode: "postgres-cluster",
+          authoritative: node.name, selectedRevision: String(revision), failedOverAtRuntime: true,
+          retrying: false, error: "", cluster: postgresClusterStatus };
+        console.warn(`PostgreSQL runtime state failover selected ${node.name} at revision ${revision}`);
+      },
+      onError: error => { storageStatus = { ...storageStatus, retrying: false }; warnServerDiagnostic("postgres.failover", error); }
+    });
     return storageStatus;
   } catch (error) {
     console.error(`Authoritative PostgreSQL startup failed: ${error.message}`);
@@ -7666,15 +7669,19 @@ const heartbeatTimer = setInterval(() => {
   }
 }, 15000);
 const systemMonitorTimer = setInterval(() => {
+  if (!storageReady) return;
   refreshSystemMonitoring().catch(error => console.warn(`System monitoring failed: ${error.message}`));
 }, 5 * 60 * 1000);
 systemMonitorTimer.unref?.();
 const automaticBackupTimer = setInterval(() => {
+  if (!storageReady) return;
   runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Automatic backup failed: ${error.message}`));
 }, 10 * 60 * 1000);
 automaticBackupTimer.unref?.();
 
 async function shutdown() {
+  storageReady = false;
+  startupController.abort();
   clearInterval(heartbeatTimer);
   clearInterval(systemMonitorTimer);
   clearInterval(automaticBackupTimer);
@@ -7695,9 +7702,15 @@ async function shutdown() {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-initializeStorage()
+initializeWithPrimaryRetry(initializeStorage, {
+  signal: startupController.signal,
+  onRetry: ({ attempt, attempts, delayMs }) => console.warn(`No verified PostgreSQL state is ready (startup attempt ${attempt}/${attempts}); retrying in ${delayMs / 1000}s`)
+})
   .then(async storage => {
+    if (startupController.signal.aborted) return;
+    storageReady = true;
     await enqueueStateWrite(restoreOrdinaryNodesAfterCraneRemoval).catch(error => console.warn(`Ordinary node recovery failed: ${error.message}`));
+    if (startupController.signal.aborted) return;
     startPostgresRecoveryMonitor();
     if (postgresStateStore) {
       postgresRefreshTimer = setInterval(async () => {
@@ -7730,6 +7743,7 @@ initializeStorage()
     }
   })
   .catch(error => {
+    if (startupController.signal.aborted) return;
     console.error(`Server startup failed: ${error.stack || error.message}`);
     process.exit(1);
   });
