@@ -76,8 +76,7 @@ function timestampsWithin(left, right, limitMs = 120000) {
 
 function areTechnicalDuplicates(left = {}, right = {}, sameRecord = true) {
   const sameStoredAuthor = authorIdentity(left) === authorIdentity(right);
-  const sameNamedAuthor = Boolean(normalizeValue(left.name) && normalizeValue(left.name) === normalizeValue(right.name)
-    && normalizeValue(left.role) === normalizeValue(right.role));
+  const sameNamedAuthor = Boolean(normalizeValue(left.name) && normalizeValue(left.name) === normalizeValue(right.name));
   if (!sameStoredAuthor && !sameNamedAuthor) return false;
   if (normalizeValue(left.text) !== normalizeValue(right.text) || !normalizeValue(left.text)) return false;
   if (!timestampsWithin(left.at, right.at)) return false;
