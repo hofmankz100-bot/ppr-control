@@ -68,7 +68,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v794-monitor-without-state-write"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v795-monitor-without-state-clones"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1420,10 +1420,9 @@ function latestLocalBackupAt() {
   } catch { return ""; }
 }
 
-async function systemMonitoringSnapshot() {
+async function systemMonitoringSnapshot(adminConfig = normalizedAdminConfig(readDb().adminConfig)) {
   const checkedAt = new Date().toISOString();
   const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
   const memoryLimitMb = Math.max(128, Number(process.env.MEMORY_ALERT_MB || adminConfig.monitoring.memoryAlertMb));
   const databaseLimitMb = Math.max(100, Number(process.env.DATABASE_SIZE_LIMIT_MB || adminConfig.monitoring.databaseSizeLimitMb));
   const snapshot = {
@@ -1477,8 +1476,7 @@ async function systemMonitoringSnapshot() {
   return snapshot;
 }
 
-function monitoringAlertSpecs(snapshot) {
-  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
+function monitoringAlertSpecs(snapshot, adminConfig = normalizedAdminConfig(readDb().adminConfig)) {
   const specs = [];
   if (!snapshot.postgres.connected && postgresPool) specs.push({ type: "postgres_unavailable", severity: "critical", title: "PostgreSQL недоступен", message: snapshot.postgres.error || "Сервер не смог подключиться к базе данных." });
   const usage = Number(snapshot.postgres.usagePercent || 0);
@@ -1521,9 +1519,9 @@ function systemReadinessReport(db, monitoring, backups = []) {
 }
 
 async function refreshSystemMonitoring() {
-  const snapshot = await systemMonitoringSnapshot();
-  setLatestMonitoringSnapshot(snapshot); const specs = monitoringAlertSpecs(snapshot);
-  if (!monitoringAlertsNeedWrite(readDb(), specs)) return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
+  const adminConfig = normalizedAdminConfig(stateTransactions.baseline().adminConfig); const snapshot = await systemMonitoringSnapshot(adminConfig);
+  setLatestMonitoringSnapshot(snapshot); const specs = monitoringAlertSpecs(snapshot, adminConfig); const committed = stateTransactions.baseline();
+  if (!monitoringAlertsNeedWrite(committed, specs)) return { snapshot, alerts: (committed.adminAlerts || []).slice(0, 200) };
   await enqueueStateWrite(async () => {
     const db = readDb();
     const now = snapshot.checkedAt;
@@ -1548,7 +1546,7 @@ async function refreshSystemMonitoring() {
     db.adminAlerts = (db.adminAlerts || []).slice(0, 500);
     writeDb(db, { action: "state_sync", user: { id: "system", name: "Система", role: "system" } });
   });
-  return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
+  return { snapshot, alerts: (stateTransactions.baseline().adminAlerts || []).slice(0, 200) };
 }
 
 function adminDiagnosticWithin(promise, fallback, timeoutMs = 2500) {
