@@ -91,7 +91,7 @@ function areTechnicalDuplicates(left = {}, right = {}, sameRecord = true) {
   if (!sameRecord && !leftResolution && String(left.at || "") !== String(right.at || "")) return false;
   const leftResolutionAt = left.resolvedAt || left.resolutionSubmittedAt || "";
   const rightResolutionAt = right.resolvedAt || right.resolutionSubmittedAt || "";
-  return !(leftResolutionAt && rightResolutionAt && !timestampsWithin(leftResolutionAt, rightResolutionAt));
+  return !(leftResolutionAt && rightResolutionAt && !timestampsWithin(leftResolutionAt, rightResolutionAt, 300000));
 }
 
 function mergeHistoryItems(current = [], incoming = [], identity = item => String(item?.id || "")) {
@@ -122,7 +122,7 @@ function dedupeHistoryItems(items = [], kind = "event") {
     .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")))) {
     const signature = historySignature(item, kind);
     const candidates = groups.get(signature) || [];
-    const duplicateIndex = candidates.find(index => timestampsWithin(result[index]?.at, item.at));
+    const duplicateIndex = candidates.find(index => timestampsWithin(result[index]?.at, item.at, 300000));
     if (duplicateIndex !== undefined) {
       result[duplicateIndex] = { ...result[duplicateIndex], ...item, id: result[duplicateIndex].id || item.id };
       continue;
