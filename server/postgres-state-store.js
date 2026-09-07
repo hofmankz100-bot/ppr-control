@@ -76,8 +76,29 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   function observe(state, revision, external = false) {
     if (knownState && revision <= knownRevision) return;
     knownRevision = revision;
-    knownState = structuredClone(state);
-    if (external) onExternalState(structuredClone(state));
+    // State transaction snapshots are immutable after commit. Reusing that
+    // canonical object avoids retaining a second full copy of the database.
+    knownState = state;
+    if (external) onExternalState(knownState);
+  }
+
+  async function loadSnapshot(shared = false) {
+    try {
+      // Validate freshness on the authoritative database for every read. Most
+      // requests can avoid transferring the large JSONB value when it has not
+      // changed; failures must never authorize a request from a stale cache.
+      const current = await primaryQuery("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
+      if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+      if (knownState && BigInt(current.rows[0].state_revision) === knownRevision) {
+        return shared ? knownState : structuredClone(knownState);
+      }
+      const result = await primaryQuery("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'");
+      if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+      const state = normalize(result.rows[0].payload);
+      const revision = BigInt(result.rows[0].state_revision);
+      observe(state, revision, true);
+      return shared ? knownState : structuredClone(knownState);
+    } catch (error) { error.statusCode = 503; throw error; }
   }
 
   async function installRevisionFence(client) {
@@ -250,28 +271,14 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         };
       } catch (error) { error.statusCode = 503; throw error; }
     },
-    async snapshot() {
-      try {
-        // Validate freshness on the authoritative database for every read. Most
-        // requests can avoid transferring the large JSONB value when it has not
-        // changed; failures must never authorize a request from a stale cache.
-        const current = await primaryQuery("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
-        if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
-        if (knownState && BigInt(current.rows[0].state_revision) === knownRevision) {
-          return structuredClone(knownState);
-        }
-        const result = await primaryQuery("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'");
-        if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
-        const state = normalize(result.rows[0].payload);
-        const revision = BigInt(result.rows[0].state_revision);
-        observe(state, revision, true);
-        return state;
-      } catch (error) { error.statusCode = 503; throw error; }
-    },
+    snapshot: () => loadSnapshot(false),
+    // Server request views clone this object exactly once before exposing it to
+    // handlers. Callers that need mutation isolation should use snapshot().
+    sharedSnapshot: () => loadSnapshot(true),
     async refresh() {
       const result = await primaryQuery("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
       if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
-      if (BigInt(result.rows[0].state_revision) > knownRevision) await this.snapshot();
+      if (BigInt(result.rows[0].state_revision) > knownRevision) await loadSnapshot(true);
     },
     async initialize(seed, migrate = value => value) {
       await primaryQuery("ALTER TABLE ppr_settings ADD COLUMN IF NOT EXISTS state_revision bigint NOT NULL DEFAULT 0");

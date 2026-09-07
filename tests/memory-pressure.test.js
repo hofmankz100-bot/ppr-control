@@ -52,7 +52,7 @@ test("empty replica seeding fetches one photo or backup per query", async () => 
   assert.deepEqual(written, ["a", "b", "a", "b", "a", "b"]);
 });
 
-test("parallel readers load at most two isolated snapshots and release retained contexts", async () => {
+test("parallel readers load one isolated snapshot at a time and release retained contexts", async () => {
   let loaded = 0;
   let peak = 0;
   const contexts = [];
@@ -69,7 +69,7 @@ test("parallel readers load at most two isolated snapshots and release retained 
     await new Promise(resolve => setImmediate(resolve));
     loaded -= 1;
   })));
-  assert.equal(peak, 2);
+  assert.equal(peak, 1);
   assert.equal(contexts.length, 40);
   assert.ok(contexts.every(context => !context.open && context.state === null));
 });

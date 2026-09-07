@@ -6,7 +6,9 @@ const { createReadLimiter } = require("./read-limiter");
 function createStateTransactions({ begin, committed, snapshot = committed, publish, onEffectError = () => {}, onTransactionError = () => {} }) {
   const context = new AsyncLocalStorage();
   let queue = Promise.resolve();
-  const limitReads = createReadLimiter();
+  // A full state clone is large. On a 512 MB Render instance, serializing two
+  // such readers at once can cross the memory ceiling and cause a 502 restart.
+  const limitReads = createReadLimiter(1, 64);
   const limitTranslations = createReadLimiter(1, 8);
 
   function current() {
@@ -23,7 +25,7 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
       const transaction = { state: structuredClone(session.state), dirty: false, open: true, effects: [] };
       try {
         const result = await context.run(transaction, task);
-        const snapshot = structuredClone(transaction.dirty ? transaction.state : session.state);
+        const snapshot = transaction.dirty ? structuredClone(transaction.state) : session.state;
         transaction.open = false;
         const committed = await session.commit(transaction.dirty ? snapshot : null);
         transaction.superseded = Boolean(committed?.superseded);

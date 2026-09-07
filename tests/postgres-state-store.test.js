@@ -51,6 +51,24 @@ test("unchanged authoritative revisions reuse isolated snapshots without reading
   assert.equal(fixture.publications.length, 1);
 });
 
+test("shared snapshots reuse the canonical state while request views stay isolated", async () => {
+  const fixture = snapshotFixture("0");
+  const first = await fixture.store.sharedSnapshot();
+  const second = await fixture.store.sharedSnapshot();
+  assert.equal(first, second);
+  const transactions = createStateTransactions({
+    snapshot: () => fixture.store.sharedSnapshot(),
+    committed: () => first,
+    begin: () => { throw new Error("unexpected write"); }
+  });
+  await transactions.view(() => {
+    transactions.read().checks.retained = false;
+    transactions.read().authSessions.length = 0;
+  });
+  assert.equal(first.checks.retained, true);
+  assert.equal(first.authSessions.length, 1);
+});
+
 test("a committed session revocation and role change invalidate the snapshot before the next authorization", async () => {
   const fixture = snapshotFixture();
   await fixture.store.snapshot();

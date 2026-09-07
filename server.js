@@ -70,7 +70,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-9";
+const SERVER_VERSION = "v790-stability-attendance-1";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -173,7 +173,7 @@ const stateTransactions = createStateTransactions({
     };
   },
   committed: () => postgresState || readDbFile(),
-  snapshot: () => postgresStateStore ? postgresStateStore.snapshot() : readDbFile(),
+  snapshot: () => postgresStateStore ? postgresStateStore.sharedSnapshot() : readDbFile(),
   publish(state, { changed }) {
     if (changed) publicStateResponseCache = { version: "", data: null, gzip: null };
     if (postgresStateStore) {
@@ -1139,7 +1139,7 @@ async function initializeStorage() {
       normalize: normalizeDb,
       legacySkipUnavailable: String(process.env.PPR_STATE_LEGACY_SKIP_UNAVAILABLE || "").split(",").map(name => name.trim()).filter(Boolean),
       onExternalState(state) {
-        postgresState = structuredClone(state);
+        postgresState = state;
         publicStateResponseCache = { version: "", data: null, gzip: null };
         broadcastState("postgres-instance", "", publicState(state));
       },
@@ -3527,6 +3527,15 @@ function attendanceRoleAllowed(user = {}) {
   return ATTENDANCE_WORKER_ROLES.has(String(user.role || ""));
 }
 
+function attendanceUserEligible(user = {}) {
+  return Boolean(
+    attendanceUserKey(user)
+    && String(user.role || "").trim()
+    && user.approved !== false
+    && user.pendingApproval !== true
+  );
+}
+
 function attendanceCanMonitor(user = {}) {
   return String(user.role || "") === "editor" || engineerPermissionRoleServer(user) === "engineer";
 }
@@ -4967,7 +4976,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       : [];
     const people = monitor
       ? [...(db.users || [])
-        .filter(user => attendanceRoleAllowed(user) && user.approved !== false && user.pendingApproval !== true)
+        .filter(attendanceUserEligible)
         .map(user => {
           const session = activeAttendanceSession(db, user, now);
           return {
@@ -5079,8 +5088,8 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/attendance/scan" && req.method === "POST") {
-    if (!attendanceRoleAllowed(req.authUser)) {
-      sendJson(res, 403, { ok: false, error: "attendance_role_not_required" });
+    if (!attendanceUserEligible(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "attendance_user_not_eligible" });
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
@@ -5140,7 +5149,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       }
       if (action === "grant") {
         const user = (db.users || []).find(item => attendanceUserKey(item) === userKey);
-        if (!user || !attendanceRoleAllowed(user)) return { error: "attendance_user_not_found" };
+        if (!user || !attendanceUserEligible(user)) return { error: "attendance_user_not_found" };
         const now = Date.now();
         const existing = activeAttendanceSession(db, user, now);
         if (existing) return { session: attendanceSessionPublic(existing), alreadyActive: true };

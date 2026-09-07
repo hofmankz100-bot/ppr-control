@@ -33,7 +33,9 @@ function createRuntimePostgresFailover({ nodes, createStore, storeOptions, onPro
     if (!selection.failedOver) throw new Error("No verified PostgreSQL replica is ready for runtime failover");
     const cluster = stateCluster(selection.nodes, onStatus);
     const store = createStore(cluster, storeOptions);
-    const state = await store.snapshot();
+    const state = typeof store.sharedSnapshot === "function"
+      ? await store.sharedSnapshot()
+      : await store.snapshot();
     currentNodes = selection.nodes;
     await onPromote({ node: selection.selected, revision: selection.revision, state, store });
     return selection;

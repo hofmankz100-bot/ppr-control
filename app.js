@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v786-photo-memory-3";
+const APP_VERSION = "v790-stability-attendance-1";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1623,10 +1623,6 @@ async function handleIncomingAttendanceQrFromUrl() {
   params.delete("attendance");
   const cleanQuery = params.toString();
   history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
-  if (!attendanceRequired()) {
-    window.alert("Этот QR предназначен для рабочих должностей.");
-    return true;
-  }
   try {
     const result = await apiJson("/api/attendance/scan", {
       method: "POST",
@@ -1883,7 +1879,7 @@ async function openAttendancePanel() {
     return;
   }
   const workerOptions = status.isAdmin
-    ? loadUsers().filter(user => ATTENDANCE_WORKER_ROLES.has(String(user.role || ""))).map(user =>
+    ? loadUsers().filter(user => String(user.role || "").trim() && user.approved !== false && user.pendingApproval !== true).map(user =>
       `<option value="${escapeHtml(String(user.id || user.employeeId || user.phone || ""))}">${escapeHtml(user.name || "Сотрудник")} — ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</option>`
     ).join("")
     : "";
