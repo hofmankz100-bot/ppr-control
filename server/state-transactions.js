@@ -1,10 +1,12 @@
 "use strict";
 
 const { AsyncLocalStorage } = require("node:async_hooks");
+const { createReadLimiter } = require("./read-limiter");
 
 function createStateTransactions({ begin, committed, snapshot = committed, publish, onEffectError = () => {}, onTransactionError = () => {} }) {
   const context = new AsyncLocalStorage();
   let queue = Promise.resolve();
+  const limitReads = createReadLimiter();
 
   function current() {
     const transaction = context.getStore();
@@ -38,6 +40,8 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
         throw error;
       } finally {
         transaction.open = false;
+        transaction.state = null;
+        transaction.effects = [];
         await session.release?.();
       }
     });
@@ -49,11 +53,19 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
     run,
     async view(task, { snapshot: readSnapshot = snapshot } = {}) {
       if (current()) return task();
-      let state;
-      try { state = await readSnapshot(); } catch (error) { onTransactionError(error); throw error; }
-      const view = { state: structuredClone(state), open: true, readOnly: true };
-      try { return await context.run(view, task); }
-      finally { view.open = false; }
+      return limitReads(async () => {
+        let state;
+        try { state = await readSnapshot(); } catch (error) { onTransactionError(error); throw error; }
+        const view = { state: structuredClone(state), open: true, readOnly: true };
+        state = null;
+        try { return await context.run(view, task); }
+        finally {
+          view.open = false;
+          // Socket listeners/timers inherit AsyncLocalStorage; do not let them
+          // retain an obsolete full snapshot after the HTTP handler completes.
+          view.state = null;
+        }
+      });
     },
     current,
     read: () => current()?.state || structuredClone(committed()),

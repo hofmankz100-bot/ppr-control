@@ -13,6 +13,7 @@ const { loadEnvFile } = require("./server/env");
 const { createStateTransactions } = require("./server/state-transactions");
 const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
+const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
 const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
@@ -64,11 +65,12 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-restored-recovery-1";
+const SERVER_VERSION = "v786-memory-recovery-2";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
   "v786-reliable-daily-work-2",
+  "v786-restored-recovery-1",
   "v789-server-recovery-1",
   "v697-stable-catalog-1",
   "v698-startup-performance-1",
@@ -150,6 +152,7 @@ let localBackupTimer = null;
 let storageStatus = { mode: "json" };
 let postgresClusterStatus = { active: "", nodes: [] };
 let postgresRecoveryTimer = null;
+let postgresRecoveryActive = false;
 let postgresRefreshTimer = null;
 let postgresRefreshActive = false;
 const stateTransactions = createStateTransactions({
@@ -955,49 +958,6 @@ async function readPhotoFromPostgres(fileName) {
   return null;
 }
 
-async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
-  const source = nodes[sourceIndex];
-  if (!source) return;
-  const tableSpecs = [
-    {
-      table: "ppr_photos",
-      select: "SELECT file_name, mime_type, payload, updated_at FROM ppr_photos",
-      insert: `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
-        ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
-      values: row => [row.file_name, row.mime_type, row.payload, row.updated_at]
-    },
-    {
-      table: "ppr_admin_backups",
-      select: "SELECT backup_id,label,payload,payload_gzip,checksum,created_by,created_at FROM ppr_admin_backups",
-      insert: `INSERT INTO ppr_admin_backups(backup_id,label,payload,payload_gzip,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7)
-        ON CONFLICT(backup_id) DO NOTHING`,
-      values: row => [row.backup_id, row.label, row.payload ? JSON.stringify(row.payload) : null, row.payload_gzip || null, row.checksum, row.created_by, row.created_at]
-    },
-    {
-      table: "ppr_admin_archives",
-      select: "SELECT archive_id,label,payload,checksum,created_by,created_at FROM ppr_admin_archives",
-      insert: `INSERT INTO ppr_admin_archives(archive_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)
-        ON CONFLICT(archive_id) DO NOTHING`,
-      values: row => [row.archive_id, row.label, JSON.stringify(row.payload), row.checksum, row.created_by, row.created_at]
-    }
-  ];
-  for (const target of nodes) {
-    if (target === source || !target.healthy) continue;
-    for (const spec of tableSpecs) {
-      try {
-        const count = await target.pool.query(`SELECT count(*)::int AS count FROM ${spec.table}`);
-        if (Number(count.rows[0]?.count || 0) > 0) continue;
-        const rows = await source.pool.query(spec.select);
-        for (const row of rows.rows) await target.pool.query(spec.insert, spec.values(row));
-      } catch (error) {
-        target.healthy = false;
-        target.error = String(error.message || error);
-        target.lastErrorAt = new Date().toISOString();
-        break;
-      }
-    }
-  }
-}
 
 async function compressLegacyBackupTables(queryable) {
   if (!queryable?.query) return 0;
@@ -1017,8 +977,11 @@ async function compressLegacyBackupTables(queryable) {
   let converted = 0;
   for (const table of ["ppr_admin_backups", "ppr_state_backups"]) {
     const idColumn = table === "ppr_admin_backups" ? "backup_id" : "backup_date";
-    const legacy = await queryable.query(`SELECT ${idColumn} AS id, payload FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
-    for (const row of legacy.rows) {
+    const legacy = await queryable.query(`SELECT ${idColumn} AS id FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
+    for (const { id } of legacy.rows) {
+      const resultRow = await queryable.query(`SELECT ${idColumn} AS id, payload FROM ${table} WHERE ${idColumn}=$1 AND payload IS NOT NULL AND payload_gzip IS NULL`, [id]);
+      const row = resultRow.rows[0];
+      if (!row) continue;
       const compressed = compressBackupPayload(row.payload);
       const result = await queryable.query(`UPDATE ${table} SET payload_gzip=$1, payload=NULL WHERE ${idColumn}=$2 AND payload IS NOT NULL`, [compressed, row.id]);
       converted += Number(result.rowCount || 0);
@@ -1053,14 +1016,20 @@ async function recoverPostgresReplicas() {
             [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
           );
         }
-        const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos");
-        for (const row of photos.rows) {
+        let photoCursor = "";
+        while (true) {
+          // Keep only one photo in memory even when a replica needs the whole
+          // archive. A bulk SELECT can exceed the 512 MB service limit.
+          const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos WHERE file_name > $1 ORDER BY file_name LIMIT 1", [photoCursor]);
+          const row = photos.rows[0];
+          if (!row) break;
           await target.pool.query(
             `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
              ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
              WHERE ppr_photos.updated_at < EXCLUDED.updated_at`,
             [row.file_name, row.mime_type, row.payload, row.updated_at]
           );
+          photoCursor = row.file_name;
         }
       }
     } catch (error) {
@@ -1076,7 +1045,11 @@ async function recoverPostgresReplicas() {
 function startPostgresRecoveryMonitor() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2 || postgresRecoveryTimer) return;
   postgresRecoveryTimer = setInterval(() => {
-    recoverPostgresReplicas().catch(error => console.warn(`PostgreSQL recovery check failed: ${error.message}`));
+    if (postgresRecoveryActive) return;
+    postgresRecoveryActive = true;
+    recoverPostgresReplicas()
+      .catch(error => console.warn(`PostgreSQL recovery check failed: ${error.message}`))
+      .finally(() => { postgresRecoveryActive = false; });
   }, Math.max(15000, Number(process.env.PG_RECOVERY_INTERVAL_MS || 30000)));
   postgresRecoveryTimer.unref?.();
 }
