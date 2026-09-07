@@ -95,7 +95,7 @@ test.describe("session authority during server failures", () => {
     await login(page, app);
     await page.route("**/api/auth/session", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test outage" }) }));
     await page.reload();
-    await expect(page.locator("#connectionStatus")).toContainText("Ожидаем проверку сессии");
+    await expect(page.locator("#connectionStatus")).toBeHidden();
     await expect(page.locator("#loginOverlay")).toBeHidden();
     await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
     await expect(page.locator(`[data-aggregate-equipment="${app.otherEquipmentId}"]`)).toHaveCount(0);

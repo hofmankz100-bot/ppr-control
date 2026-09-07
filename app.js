@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v791-memory-stability-2";
+const APP_VERSION = "v792-hide-session-notice";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3282,9 +3282,10 @@ function updateConnectionStatus() {
   }
   const pending = pendingQrWalkMarks().length + Number(localStorage.getItem(`${STORE_KEY}-pending`) === "1");
   const other = pendingQrWalkMarks().filter(item => !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)).length;
-  notice.hidden = !isProfileReady() || (navigator.onLine && sessionValidationState === "verified" && !pending);
+  // Session revalidation retries silently. Only surface conditions where the
+  // employee needs useful status: no network or locally queued work.
+  notice.hidden = !isProfileReady() || (navigator.onLine && !pending);
   notice.textContent = !navigator.onLine ? "Нет связи. Данные сохранены на устройстве; отправим после подключения."
-    : sessionValidationState !== "verified" ? "Профиль сохранён на устройстве. Ожидаем проверку сессии сервером."
     : `Данные сохранены на устройстве. Ожидают отправки: ${pending}.`;
   if (other) notice.textContent += ` Отметки другого сотрудника или без подтверждённого автора: ${other}. Они сохранены и автоматически не отправляются.`;
 }
