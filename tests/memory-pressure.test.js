@@ -2,12 +2,10 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
 const { createReadLimiter } = require("../server/read-limiter");
 const { createStateTransactions } = require("../server/state-transactions");
 const { seedEmptyPostgresReplicas } = require("../server/replica-seed");
+const { syncPostgresPhotos } = require("../server/replica-photo-sync");
 const { createApiDispatcher } = require("../server/api-dispatcher");
 
 test("slow translations cannot block QR and ordinary state reads", async () => {
@@ -89,33 +87,51 @@ test("reader overload is bounded and a failed task releases the next slot", asyn
   assert.equal(await limit(() => 42), 42);
 });
 
-test("replica recovery copies photos one at a time and preserves newer target records", async () => {
-  const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const code = source.slice(source.indexOf("async function recoverPostgresReplicas()"), source.indexOf("function startPostgresRecoveryMonitor()"));
-  let reads = 0;
+test("replica recovery reads payloads only for missing or stale photos", async () => {
+  let payloadReads = 0;
   const copied = [];
-  const primary = { pool: { async query(sql, params) {
-    if (sql.includes("FROM ppr_settings")) return { rows: [] };
-    assert.match(sql, /WHERE file_name > \$1 ORDER BY file_name LIMIT 1$/);
-    reads += 1;
-    const index = params[0] ? Number(params[0]) + 1 : 1;
-    return { rows: index <= 100 ? [{ file_name: String(index), payload: Buffer.alloc(1024), mime_type: "image/jpeg", updated_at: "2026-09-01" }] : [] };
-  } } };
-  const replica = { healthy: false, pool: { async query(sql, params) {
-    if (sql === "SELECT 1") return { rows: [] };
+  const rows = [
+    { file_name: "a", updated_at: "2026-09-01" },
+    { file_name: "b", updated_at: "2026-09-02" },
+    { file_name: "c", updated_at: "2026-09-03" }
+  ];
+  const source = { async query(sql, params) {
+    if (sql.includes("file_name >")) return { rows: params[0] ? [] : rows };
+    payloadReads += 1;
+    const row = rows.find(item => item.file_name === params[0]);
+    return { rows: [{ ...row, payload: Buffer.alloc(1024), mime_type: "image/jpeg" }] };
+  } };
+  const target = { async query(sql, params) {
+    if (sql.startsWith("SELECT file_name")) return { rows: [
+      { file_name: "a", updated_at: "2026-09-01" },
+      { file_name: "b", updated_at: "2026-08-01" }
+    ] };
     assert.match(sql, /WHERE ppr_photos.updated_at < EXCLUDED.updated_at/);
     copied.push(params[0]);
     return { rowCount: 1 };
-  } } };
-  const context = {
-    postgresPool: { nodes: [primary, replica], status: () => ({}) },
-    postgresStateStore: { prepareMirror: async () => {} },
-    compressLegacyBackupTables: async () => {}, storageStatus: {}, postgresClusterStatus: {}
-  };
-  vm.createContext(context);
-  vm.runInContext(code, context);
-  await context.recoverPostgresReplicas();
-  assert.equal(replica.error, "");
-  assert.equal(reads, 101);
-  assert.deepEqual(copied, Array.from({ length: 100 }, (_, index) => String(index + 1)));
+  } };
+  const count = await syncPostgresPhotos(source, target, { batchSize: 100 });
+  assert.equal(count, 2);
+  assert.equal(payloadReads, 2);
+  assert.deepEqual(copied, ["b", "c"]);
+});
+
+test("replica recovery does not read binary payloads when photos are current", async () => {
+  const rows = Array.from({ length: 423 }, (_, index) => ({
+    file_name: String(index + 1).padStart(4, "0"), updated_at: "2026-09-01"
+  }));
+  let metadataCalls = 0;
+  const source = { async query(sql, params) {
+    assert.match(sql, /SELECT file_name,updated_at/);
+    metadataCalls += 1;
+    const next = rows.filter(row => row.file_name > params[0]).slice(0, params[1]);
+    return { rows: next };
+  } };
+  const target = { async query(sql, params) {
+    assert.match(sql, /file_name = ANY/);
+    return { rows: params[0].map(file_name => ({ file_name, updated_at: "2026-09-01" })) };
+  } };
+  const count = await syncPostgresPhotos(source, target, { batchSize: 100 });
+  assert.equal(count, 0);
+  assert.equal(metadataCalls, 6);
 });

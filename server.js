@@ -17,6 +17,7 @@ const { createRuntimePostgresFailover } = require("./server/runtime-postgres-fai
 const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
+const { syncPostgresPhotos } = require("./server/replica-photo-sync");
 const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
 const { createRealtimeHistory } = require("./server/realtime-history");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
@@ -69,7 +70,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-8";
+const SERVER_VERSION = "v786-photo-memory-9";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1016,33 +1017,19 @@ async function recoverPostgresReplicas() {
       target.lastSuccessAt = new Date().toISOString();
       if (!wasHealthy) {
         await compressLegacyBackupTables(target.pool);
-        const current = await source.pool.query("SELECT payload,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
-        if (current.rows[0]?.payload) {
+        const current = await source.pool.query("SELECT payload::text AS payload_text,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+        if (current.rows[0]?.payload_text) {
           const targetState = await target.pool.query("SELECT state_revision::text,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
           if (compareReplicaVersions(current.rows[0], targetState.rows[0]) === "copy") {
             await target.pool.query(
               `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
                ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
                WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-              [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
+              [current.rows[0].payload_text, current.rows[0].state_revision, current.rows[0].updated_at]
             );
           }
         }
-        let photoCursor = "";
-        while (true) {
-          // Keep only one photo in memory even when a replica needs the whole
-          // archive. A bulk SELECT can exceed the 512 MB service limit.
-          const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos WHERE file_name > $1 ORDER BY file_name LIMIT 1", [photoCursor]);
-          const row = photos.rows[0];
-          if (!row) break;
-          await target.pool.query(
-            `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
-             ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
-             WHERE ppr_photos.updated_at < EXCLUDED.updated_at`,
-            [row.file_name, row.mime_type, row.payload, row.updated_at]
-          );
-          photoCursor = row.file_name;
-        }
+        await syncPostgresPhotos(source.pool, target.pool);
       }
     } catch (error) {
       target.healthy = false;
