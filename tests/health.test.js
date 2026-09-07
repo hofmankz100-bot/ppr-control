@@ -25,6 +25,7 @@ test("health reads committed counters without cloning a working snapshot", () =>
       storageStatus: { mode: "postgres-degraded" },
       compatibleClient: false, clientVersion: "", SERVER_VERSION: "test", CLIENT_PROTOCOL_VERSION: "1",
       wss: null, wsServers: [], sseClients: new Set(), realtimeStateVersion: () => "state:1", GAS_QR_EQUIPMENT_ID: "gas",
+      realtimePatchHistory: [], realtimeHistory: { bytes: 0 },
       buildHealthPayload,
       sendJson(_res, status, payload) { response = { status, payload }; }
     };
@@ -63,6 +64,8 @@ test("health payload preserves the public API contract", () => {
   });
 
   assert.deepEqual(payload, {
+    memory: payload.memory,
+    realtimeCache: { entries: 0, bytes: 0 },
     ok: true,
     version: "v-compatible",
     latestVersion: "v-current",

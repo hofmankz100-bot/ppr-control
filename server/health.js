@@ -1,9 +1,12 @@
 "use strict";
+const v8 = require("node:v8");
 
 function buildHealthPayload(options = {}) {
   const websocket = Boolean(options.websocket);
   const eventClients = Number(options.eventClients || 0);
   const serverVersion = String(options.serverVersion || "");
+  const memory = options.memoryUsage || process.memoryUsage();
+  const mib = value => Math.round(Number(value || 0) / 1024 / 1024);
   const reportedClientVersion = options.compatibleClient && options.clientVersion
     ? String(options.clientVersion)
     : serverVersion;
@@ -18,7 +21,13 @@ function buildHealthPayload(options = {}) {
       : Math.round(process.uptime()),
     memoryMb: Number.isFinite(options.memoryMb)
       ? Math.round(options.memoryMb)
-      : Math.round(process.memoryUsage().rss / 1024 / 1024),
+      : mib(memory.rss),
+    memory: {
+      heapUsedMb: mib(memory.heapUsed), heapTotalMb: mib(memory.heapTotal),
+      externalMb: mib(memory.external), arrayBuffersMb: mib(memory.arrayBuffers),
+      heapLimitMb: mib(v8.getHeapStatistics().heap_size_limit)
+    },
+    realtimeCache: options.realtimeCache || { entries: 0, bytes: 0 },
     storage: options.storage || { mode: "json" },
     realtime: websocket || eventClients > 0,
     stateVersion: String(options.stateVersion || ""),

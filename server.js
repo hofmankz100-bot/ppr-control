@@ -15,6 +15,7 @@ const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
 const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
+const { createRealtimeHistory } = require("./server/realtime-history");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
@@ -65,7 +66,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v786-photo-memory-4";
+const SERVER_VERSION = "v786-photo-memory-5";
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3972,8 +3973,8 @@ const wsServers = [];
 const sseClients = new Set();
 const realtimeInstanceId = crypto.randomBytes(8).toString("hex");
 let realtimeStateCounter = 0;
-const realtimePatchHistory = [];
-const REALTIME_PATCH_HISTORY_LIMIT = 1000;
+const realtimeHistory = createRealtimeHistory();
+const realtimePatchHistory = realtimeHistory.entries;
 
 function realtimeStateVersion() {
   return `${realtimeInstanceId}:${realtimeStateCounter}`;
@@ -3981,7 +3982,16 @@ function realtimeStateVersion() {
 
 function sendSse(res, payload) {
   try {
-    res.write(typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`);
+    const message = typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`;
+    const queued = Number(res.writableLength || 0);
+    const bytes = Buffer.byteLength(message);
+    if (res.destroyed || res.writableEnded || queued > 8 * 1024 * 1024
+      || queued + bytes > Math.max(8 * 1024 * 1024, 2 * bytes)) {
+      sseClients.delete(res);
+      res.destroy?.();
+      return;
+    }
+    res.write(message);
   } catch {
     sseClients.delete(res);
   }
@@ -3998,13 +4008,10 @@ function broadcastState(origin = "server", actionId = "", state = publicState(),
   payload.stateVersion = realtimeStateVersion();
   if (transaction) transaction.realtimeVersion = payload.stateVersion;
   if (transaction?.superseded) { payload.state = publicState(postgresState); payload.partial = false; }
-  realtimePatchHistory.push({ counter: realtimeStateCounter, payload });
-  if (realtimePatchHistory.length > REALTIME_PATCH_HISTORY_LIMIT) {
-    realtimePatchHistory.splice(0, realtimePatchHistory.length - REALTIME_PATCH_HISTORY_LIMIT);
-  }
   const message = JSON.stringify(payload);
+  realtimeHistory.add(realtimeStateCounter, payload, message);
   broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error));
-  const sseMessage = `data: ${JSON.stringify(payload)}\n\n`;
+  const sseMessage = `data: ${message}\n\n`;
   for (const client of sseClients) {
     sendSse(client, sseMessage);
   }
@@ -5345,6 +5352,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       websocketClients: wsServers.reduce((sum, instance) => sum + instance.clients.size, 0),
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
+      realtimeCache: { entries: realtimePatchHistory.length, bytes: realtimeHistory.bytes },
       productionRequestDuplicatesRemoved: committedState.targetedCleanupVersions?.productionRequestDedup20260820?.removed,
       testInstalledPartRecordsRemoved: committedState.targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
       gasQrNodeCount: committedState.catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
