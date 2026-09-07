@@ -77,7 +77,7 @@ test.before(async () => {
         resolvedRemark("duplicate-a", "2026-09-07T08:00:00.000Z", "2026-09-07T09:00:00.000Z"),
         { ...resolvedRemark("duplicate-same-node", "2026-09-07T08:01:00.000Z", "2026-09-07T09:03:00.000Z"), type: "remark", role: "Оператор", authorKey: "phone:old-worker-1", photo: "data:image/jpeg;base64,copy" }
       ] } },
-      "1:1:2026-09-07": { to: { commentLog: [{
+      "1:1:2026-09-08": { to: { commentLog: [{
         ...resolvedRemark("duplicate-b", "2026-09-07T08:00:00.000Z", "2026-09-07T09:04:00.000Z"),
         resolvedComment: "Later exact-timestamp repair"
       }] } },
@@ -130,11 +130,11 @@ test("startup removes exact cross-node copies and repeated resolution history", 
   assert.equal(state.checks["1:0:2026-09-07"].to.commentLog.length, 1);
   assert.equal(state.checks["1:0:2026-09-07"].to.commentLog[0].resolutionEvents.length, 1);
   assert.equal(state.checks["1:0:2026-09-07"].to.commentLog[0].resolvedComment, "Later exact-timestamp repair");
-  assert.equal(state.checks["1:1:2026-09-07"].to.commentLog.length, 0);
+  assert.equal(state.checks["1:1:2026-09-08"].to.commentLog.length, 0);
 
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
   assert.equal(stored.archivedDuplicateRemarks.length, 1);
-  assert.equal(stored.archivedDuplicateRemarks[0].recordKey, "1:1:2026-09-07");
+  assert.equal(stored.archivedDuplicateRemarks[0].recordKey, "1:1:2026-09-08");
   assert.equal(stored.archivedDuplicateRemarks[0].duplicateOfRecordKey, "1:0:2026-09-07");
   assert.equal(stored.targetedCleanupVersions.remarkDuplicateCleanup20260907.removed, 2);
 });

@@ -193,11 +193,11 @@ function dedupeDatabase(db = {}, options = {}) {
       + (Array.isArray(entry?.resolutionUpdates) ? entry.resolutionUpdates.length : 0), 0);
     const withinRecord = dedupeRemarkList(item.commentLog, { resolutionUserKey });
     removed += Math.max(0, item.commentLog.length - withinRecord.length);
-    const [equipmentId, , date] = recordKey.split(":");
+    const [equipmentId] = recordKey.split(":");
     const kept = [];
     for (const entry of withinRecord) {
       if (!entry || isDowntimeEntry(entry)) { kept.push(entry); continue; }
-      const signature = [equipmentId, date, normalizeValue(entry.text)]
+      const signature = [equipmentId, normalizeValue(entry.text)]
         .map(normalizeValue).join("\u0001");
       const candidates = keepersBySignature.get(signature) || [];
       const duplicateOf = candidates.find(candidate => areTechnicalDuplicates(candidate.entry, entry, false));
