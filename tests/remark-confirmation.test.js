@@ -1229,7 +1229,7 @@ test("uploaded photos are served and production keeps a PostgreSQL fallback", as
   assert.match(source, /const stored = await readPhotoFromPostgres\(fileName\)/);
   assert.match(source, /photo_storage_unavailable/);
   assert.doesNotMatch(source, /externalizePhotosInValue/);
-  assert.match(appSource, /if \(!\/\^image\\\/\/i\.test\(String\(file\.type \|\| ""\)\)\)/);
+  assert.match(appSource, /await window\.PprPhotoCompression\.read\(file\)/);
   assert.match(appSource, /dataset\.photoRetry/);
   assert.match(appSource, /storedPhotoUrls = serialized\.match\(\/\\\/api\\\/photos/);
   assert.match(appSource, /new Set\(storedPhotoUrls\.map/);

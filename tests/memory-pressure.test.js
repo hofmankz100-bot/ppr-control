@@ -8,6 +8,33 @@ const vm = require("node:vm");
 const { createReadLimiter } = require("../server/read-limiter");
 const { createStateTransactions } = require("../server/state-transactions");
 const { seedEmptyPostgresReplicas } = require("../server/replica-seed");
+const { createApiDispatcher } = require("../server/api-dispatcher");
+
+test("slow translations cannot block QR and ordinary state reads", async () => {
+  let unblock;
+  let started;
+  const blocked = new Promise(resolve => { unblock = resolve; });
+  const ready = new Promise(resolve => { started = resolve; });
+  const tx = createStateTransactions({ snapshot: () => ({ users: [] }) });
+  const dispatch = createApiDispatcher({
+    stateTransactions: tx,
+    async handleApiTransaction(req, res, pathname) {
+      if (pathname === "/api/translate") { started(); await blocked; }
+      res.completed = true;
+    }
+  });
+  const translation = dispatch({ method: "POST" }, {}, "/api/translate");
+  await ready;
+  const secondTranslation = dispatch({ method: "POST" }, {}, "/api/translate");
+  try {
+    for (const pathname of ["/api/qr", "/api/state", "/api/attendance/status"]) {
+      const res = {};
+      await dispatch({ method: "GET" }, res, pathname);
+      assert.equal(res.completed, true);
+    }
+  } finally { unblock(); }
+  await Promise.all([translation, secondTranslation]);
+});
 
 test("empty replica seeding fetches one photo or backup per query", async () => {
   const written = [];

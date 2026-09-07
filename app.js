@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v786-reliable-daily-work-2";
+const APP_VERSION = "v786-photo-memory-3";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -6771,46 +6771,11 @@ async function uploadPhotoDataUrl(dataUrl) {
   return result?.url || dataUrl;
 }
 
-function readPhotoFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      resolve("");
-      return;
-    }
-    if (!/^image\//i.test(String(file.type || ""))) {
-      reject(new Error("Выберите файл фотографии."));
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      reject(new Error("Фотография слишком большая. Максимальный исходный размер — 20 МБ."));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => {
-        const dataUrl = String(reader.result || "");
-        if (/^data:image\/(jpeg|jpg|png|webp);/i.test(dataUrl)) {
-          uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
-        } else {
-          reject(new Error("Этот формат фото не удалось прочитать. На iPhone выберите «Наиболее совместимый» или сделайте снимок камерой приложения."));
-        }
-      };
-      img.onload = () => {
-        const maxSide = 1200;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-        uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+async function readPhotoFile(file) {
+  const dataUrl = await window.PprPhotoCompression.read(file);
+  if (!dataUrl) return "";
+  // Offline drafts retain only the compressed image, never the camera original.
+  return uploadPhotoDataUrl(dataUrl).catch(() => dataUrl);
 }
 
 document.addEventListener("error", event => {

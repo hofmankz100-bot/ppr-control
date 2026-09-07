@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>Проверка сжатия фото ППР</title>
+<h1>Проверка сжатия фото ППР</h1><p id="result">Проверка выполняется…</p><img id="preview" alt="Сжатый тестовый снимок" style="max-width:600px">
+<script src="/modules/photo-compression.js"></script>
+<script>
+(async () => {
+  const canvas = document.createElement('canvas'); canvas.width = 4000; canvas.height = 3000;
+  const ctx = canvas.getContext('2d'); const pixels = ctx.createImageData(canvas.width, canvas.height);
+  let seed = 19;
+  for (let i=0;i<pixels.data.length;i+=4) {
+    seed = (Math.imul(seed,1664525)+1013904223)>>>0;
+    pixels.data[i]=seed&255; pixels.data[i+1]=(seed>>>8)&255; pixels.data[i+2]=(seed>>>16)&255; pixels.data[i+3]=255;
+  }
+  ctx.putImageData(pixels,0,0); ctx.fillStyle='white'; ctx.fillRect(150,900,3700,600);
+  ctx.fillStyle='black'; ctx.font='bold 180px sans-serif'; ctx.fillText('ППР · СТАНОК № 12',300,1250);
+  const original = await new Promise(resolve => canvas.toBlob(resolve,'image/jpeg',0.98));
+  canvas.width=canvas.height=1;
+  const data = await PprPhotoCompression.read(new File([original],'test.jpg',{type:'image/jpeg'}));
+  const image = document.getElementById('preview'); image.src=data; await image.decode();
+  const bytes=PprPhotoCompression.dataBytes(data);
+  if(bytes>PprPhotoCompression.MAX_BYTES || Math.max(image.naturalWidth,image.naturalHeight)>1200) throw Error('Размер превышен');
+  document.getElementById('result').textContent=`PASS: исходник ${original.size} байт; результат ${bytes} байт; ${image.naturalWidth}×${image.naturalHeight}; JPEG. Загрузка на сервер не выполнялась.`;
+})().catch(error=>document.getElementById('result').textContent='FAIL: '+error.message);
+</script>

@@ -7,6 +7,7 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
   const context = new AsyncLocalStorage();
   let queue = Promise.resolve();
   const limitReads = createReadLimiter();
+  const limitTranslations = createReadLimiter(1, 8);
 
   function current() {
     const transaction = context.getStore();
@@ -51,9 +52,10 @@ function createStateTransactions({ begin, committed, snapshot = committed, publi
 
   return {
     run,
-    async view(task, { snapshot: readSnapshot = snapshot } = {}) {
+    async view(task, { snapshot: readSnapshot = snapshot, lane = "read" } = {}) {
       if (current()) return task();
-      return limitReads(async () => {
+      const limit = lane === "translation" ? limitTranslations : limitReads;
+      return limit(async () => {
         let state;
         try { state = await readSnapshot(); } catch (error) { onTransactionError(error); throw error; }
         const view = { state: structuredClone(state), open: true, readOnly: true };
