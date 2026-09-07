@@ -3,7 +3,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const zlib = require("zlib");
+const zlib = require("zlib"); const { isDeepStrictEqual } = require("node:util");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
 const { compressBackupPayload, decodeBackupPayload } = require("./server/backup-codec");
@@ -54,7 +54,6 @@ try {
   WebSocketServer = null;
 }
 const root = __dirname;
-
 loadEnvFile(root);
 
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
@@ -69,7 +68,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v792-hide-session-notice";
+const SERVER_VERSION = "v793-memory-hot-path";
 const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
@@ -6171,11 +6170,12 @@ async function handleApiTransaction(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       // Validation operates on a detached snapshot, including in PostgreSQL mode.
       // A rejected section must not partly mutate the shared in-memory state.
-      const db = structuredClone(readDb());
+      const previousDb = stateTransactions.baseline();
+      const db = readDb();
       let policy;
       try {
         policy = require("./server/state-mutation-policy").sanitizeStateMutation({
-          previous: db, incoming: incomingState, user: req.authUser,
+          previous: previousDb, incoming: incomingState, user: req.authUser,
           canAccessEquipment: nodeMutationAccessServer, hasArea: userHasAreaServer
         });
       } catch (error) {
@@ -6183,8 +6183,8 @@ async function handleApiTransaction(req, res, pathname, url) {
         return { actionId: String(incomingState.actionId || ""), error: error.code, section: error.section };
       }
       const body = policy.body;
-      const beforeState = JSON.stringify(publicState(db));
-      const beforeRemarkKeys = openRemarkKeysServer(db);
+      const beforeState = publicState(previousDb);
+      const beforeRemarkKeys = openRemarkKeysServer(previousDb);
       const authenticatedRole = String(req.authUser?.role || "");
       const catalogRole = permissionBaseRoleServer(authenticatedRole);
       const individualEquipmentEdit = activeUserPermission(req.authUser, "equipmentEdit");
@@ -6350,9 +6350,9 @@ async function handleApiTransaction(req, res, pathname, url) {
           if (found) newRemarks.push(found);
         }
       });
-      const changed = beforeState !== JSON.stringify(afterState);
+      const changed = !isDeepStrictEqual(beforeState, afterState);
       if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: req.authUser });
-      return { actionId, changed, ignoredSections: policy.ignoredSections, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
+      return { actionId, changed, ignoredSections: policy.ignoredSections, patch: changedStatePatch(beforeState, afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
     });
     if (result.error) {
       const status = ["admin_required", "state_mutation_forbidden"].includes(result.error) ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;

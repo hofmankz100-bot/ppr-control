@@ -152,7 +152,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     }
   }
 
-  function mirror(state, revision, updatedAt) {
+  function mirror(serializedState, revision, updatedAt) {
     for (const node of (pool.nodes || []).slice(1)) {
       if (!node.healthy) continue;
       const job = Promise.resolve().then(() => node.pool.query(
@@ -161,7 +161,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
          ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,
            state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
          WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-        [JSON.stringify(state), revision, updatedAt]
+        [serializedState, revision, updatedAt]
       )).catch(error => { node.healthy = false; onMirrorError(error, node.name); })
         .finally(() => mirrorJobs.delete(job));
       mirrorJobs.add(job);
@@ -172,7 +172,12 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     const client = await lockedClient(adoptLegacy);
     let finished = false;
     try {
-      let result = await client.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE");
+      // Ordinary writes lock only the small revision column first. The cached
+      // canonical snapshot is already immutable; re-downloading and reparsing
+      // the entire JSONB document for every mutation needlessly multiplies RSS.
+      let result = await client.query(adoptLegacy
+        ? "SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE"
+        : "SELECT state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE");
       if (adoptLegacy && !result.rows.length) {
         const cutover = await client.query("SELECT 1 FROM ppr_settings WHERE setting_key='durable_state_cutover'");
         if (cutover.rows.length) throw new Error("Authoritative PostgreSQL full_state is missing after cutover; explicit recovery is required");
@@ -216,19 +221,30 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         );
       }
       if (!result.rows.length) throw new Error("Authoritative PostgreSQL full_state is missing; explicit recovery is required");
-      const state = normalize(legacyState || result.rows[0].payload);
       const originalRevision = BigInt(result.rows[0].state_revision);
-      if (!adoptLegacy) observe(state, originalRevision, true);
+      let state;
+      if (!adoptLegacy && knownState && originalRevision === knownRevision) {
+        state = knownState;
+      } else if (!adoptLegacy) {
+        const current = await client.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state'");
+        if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+        state = normalize(current.rows[0].payload);
+        observe(state, BigInt(current.rows[0].state_revision), true);
+      } else {
+        state = normalize(legacyState || result.rows[0].payload);
+      }
       return {
         state,
         async commit(nextState) {
           try {
             let saved;
+            let serializedState;
             if (nextState) {
+              serializedState = JSON.stringify(nextState);
               saved = await client.query(
                 `UPDATE ppr_settings SET payload=$1::jsonb,state_revision=state_revision+1,updated_at=clock_timestamp()
                  WHERE setting_key='full_state' RETURNING state_revision,updated_at`,
-                [JSON.stringify(nextState)]
+                [serializedState]
               );
               if (saved.rowCount !== 1) throw new Error("Authoritative PostgreSQL full_state disappeared");
             }
@@ -236,7 +252,9 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
             finished = true;
             const revision = saved ? BigInt(saved.rows[0].state_revision) : originalRevision;
             observe(nextState || state, revision);
-            if (saved) mirror(nextState, saved.rows[0].state_revision, saved.rows[0].updated_at);
+            // Reuse the primary payload for every mirror. Previously each
+            // replica created its own multi-megabyte JSON string concurrently.
+            if (saved) mirror(serializedState, saved.rows[0].state_revision, saved.rows[0].updated_at);
             return { superseded: revision < knownRevision, latestState: revision < knownRevision ? structuredClone(knownState) : null };
           } catch (error) {
             error.statusCode = 503;
@@ -268,6 +286,23 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         return {
           users: Array.isArray(result.rows[0].users) ? result.rows[0].users : [],
           authSessions: Array.isArray(result.rows[0].auth_sessions) ? result.rows[0].auth_sessions : []
+        };
+      } catch (error) { error.statusCode = 503; throw error; }
+    },
+    async attendanceSnapshot() {
+      try {
+        const result = await primaryQuery(`SELECT payload->'users' AS users,
+          payload->'authSessions' AS auth_sessions,
+          payload->'attendanceSessions' AS attendance_sessions,
+          payload->'attendanceConfig' AS attendance_config
+          FROM ppr_settings WHERE setting_key='full_state'`);
+        if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+        return {
+          users: Array.isArray(result.rows[0].users) ? result.rows[0].users : [],
+          authSessions: Array.isArray(result.rows[0].auth_sessions) ? result.rows[0].auth_sessions : [],
+          attendanceSessions: Array.isArray(result.rows[0].attendance_sessions) ? result.rows[0].attendance_sessions : [],
+          attendanceConfig: result.rows[0].attendance_config && typeof result.rows[0].attendance_config === "object"
+            ? result.rows[0].attendance_config : {}
         };
       } catch (error) { error.statusCode = 503; throw error; }
     },
