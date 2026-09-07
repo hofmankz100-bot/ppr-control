@@ -75,7 +75,10 @@ function timestampsWithin(left, right, limitMs = 120000) {
 }
 
 function areTechnicalDuplicates(left = {}, right = {}, sameRecord = true) {
-  if (authorIdentity(left) !== authorIdentity(right)) return false;
+  const sameStoredAuthor = authorIdentity(left) === authorIdentity(right);
+  const sameNamedAuthor = Boolean(normalizeValue(left.name) && normalizeValue(left.name) === normalizeValue(right.name)
+    && normalizeValue(left.role) === normalizeValue(right.role));
+  if (!sameStoredAuthor && !sameNamedAuthor) return false;
   if (normalizeValue(left.text) !== normalizeValue(right.text) || !normalizeValue(left.text)) return false;
   if (!timestampsWithin(left.at, right.at)) return false;
   const exactCreationTime = String(left.at || "") === String(right.at || "");
@@ -195,7 +198,7 @@ function dedupeDatabase(db = {}, options = {}) {
     const kept = [];
     for (const entry of withinRecord) {
       if (!entry || isDowntimeEntry(entry)) { kept.push(entry); continue; }
-      const signature = [equipmentId, date, authorIdentity(entry), normalizeValue(entry.text)]
+      const signature = [equipmentId, date, normalizeValue(entry.text)]
         .map(normalizeValue).join("\u0001");
       const candidates = keepersBySignature.get(signature) || [];
       const duplicateOf = candidates.find(candidate => areTechnicalDuplicates(candidate.entry, entry, false));

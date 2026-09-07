@@ -75,7 +75,7 @@ test.before(async () => {
     checks: {
       "1:0:2026-09-07": { to: { commentLog: [
         resolvedRemark("duplicate-a", "2026-09-07T08:00:00.000Z", "2026-09-07T09:00:00.000Z"),
-        { ...resolvedRemark("duplicate-same-node", "2026-09-07T08:01:00.000Z", "2026-09-07T09:01:00.000Z"), type: "remark", photo: "data:image/jpeg;base64,copy" }
+        { ...resolvedRemark("duplicate-same-node", "2026-09-07T08:01:00.000Z", "2026-09-07T09:01:00.000Z"), type: "remark", authorKey: "phone:old-worker-1", photo: "data:image/jpeg;base64,copy" }
       ] } },
       "1:1:2026-09-07": { to: { commentLog: [{
         ...resolvedRemark("duplicate-b", "2026-09-07T08:00:00.000Z", "2026-09-07T09:02:00.000Z"),
