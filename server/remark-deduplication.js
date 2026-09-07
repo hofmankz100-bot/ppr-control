@@ -3,7 +3,8 @@
 const crypto = require("node:crypto");
 
 function normalizeValue(value) {
-  return String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+  return String(value || "").normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
 }
 
 function isDowntimeEntry(entry = {}) {
