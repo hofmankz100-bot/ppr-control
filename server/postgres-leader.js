@@ -57,19 +57,32 @@ function compareReplicaVersions(source, target) {
   return "current";
 }
 
-async function selectAuthoritativePostgresNode(nodes, { allowFailover = true } = {}) {
+function assertMinimumStateRevision(revision, minimumRevision = 0n) {
+  const minimum = BigInt(minimumRevision);
+  if (minimum < 0n) throw new Error("Minimum PostgreSQL state revision must not be negative");
+  if (BigInt(revision ?? 0) < minimum) {
+    const error = new Error(`Available PostgreSQL revision ${revision ?? 0} is below required revision ${minimum}; automatic failover is blocked`);
+    error.code = "PPR_STATE_REPLICA_STALE";
+    error.statusCode = 503;
+    throw error;
+  }
+}
+
+async function selectAuthoritativePostgresNode(nodes, { allowFailover = true, minimumRevision = 0n } = {}) {
   if (!Array.isArray(nodes) || !nodes.length) throw unavailableError("No PostgreSQL databases are configured");
   const inspected = await Promise.all(nodes.map(inspectNode));
   const candidates = inspected.filter(item => item.reachable && item.hasState);
 
   if (!candidates.length) {
     if (nodes[0]?.healthy) {
+      assertMinimumStateRevision(null, minimumRevision);
       return { nodes, selected: nodes[0], selectedIndex: 0, failedOver: false, revision: null, inspections: inspected };
     }
     throw unavailableError("Authoritative PostgreSQL database is unavailable and no current replica can be verified");
   }
 
   const highestRevision = candidates.reduce((highest, item) => item.revision > highest ? item.revision : highest, candidates[0].revision);
+  assertMinimumStateRevision(highestRevision, minimumRevision);
   const newest = candidates.filter(item => item.revision === highestRevision);
   // Mirrors copy the authoritative commit timestamp with the revision. Comparing
   // this small token avoids materializing the potentially huge JSONB payload
@@ -99,4 +112,4 @@ async function selectAuthoritativePostgresNode(nodes, { allowFailover = true } =
   };
 }
 
-module.exports = { compareReplicaVersions, inspectNode, selectAuthoritativePostgresNode, stateProbeSql };
+module.exports = { assertMinimumStateRevision, compareReplicaVersions, inspectNode, selectAuthoritativePostgresNode, stateProbeSql };

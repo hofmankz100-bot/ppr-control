@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v820-quiet-sync-notice"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v821-storage-qr-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1105,7 +1105,7 @@ async function initializeStorage() {
     const stateStoreOptions = {
       normalize: normalizeDb,
       legacySkipUnavailable: String(process.env.PPR_STATE_LEGACY_SKIP_UNAVAILABLE || "").split(",").map(name => name.trim()).filter(Boolean),
-      onExternalState(state) {
+      onExternalState(state, sourceStore) { if (sourceStore !== postgresStateStore) return;
         postgresState = state;
         publicStateResponseCache = { version: "", data: null, gzip: null };
         broadcastState("postgres-instance", "", publicState(state));
@@ -1135,6 +1135,9 @@ async function initializeStorage() {
       selectedRevision: leader.revision === null ? null : String(leader.revision), cluster: postgresClusterStatus };
     postgresFailoverManager = createRuntimePostgresFailover({
       nodes,
+      allowFailover: automaticFailoverEnabled,
+      getMinimumRevision: () => postgresStateStore.failoverRevision(),
+      canPromote: () => !postgresStateStore.hasActiveTransactions(),
       createStore: createPostgresStateStore,
       storeOptions: stateStoreOptions,
       onStatus: status => { postgresClusterStatus = status; storageStatus.cluster = status; },
@@ -1773,13 +1776,23 @@ function monthlyCsvRows(db, month) {
   return rows;
 }
 
-function createManualBackup(label = "manual") {
-  flushLocalBackup();
-  ensureDb();
+function createManualBackup(label = "manual", sourceDb = null) {
+  // The local mirror may be disabled in PostgreSQL mode. Back up the current
+  // transaction snapshot (or the explicit admin snapshot), never that mirror.
+  const contents = JSON.stringify(sourceDb || readDb());
   fs.mkdirSync(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupFile = path.join(backupDir, `db_backup_${safeFileName(label)}_${stamp}.json`);
-  fs.copyFileSync(dbFile, backupFile);
+  const backupFile = path.join(backupDir, `db_backup_${safeFileName(label)}_${stamp}_${crypto.randomBytes(4).toString("hex")}.json`);
+  const temporary = `${backupFile}.tmp`;
+  try {
+    const descriptor = fs.openSync(temporary, "wx", 0o600);
+    try { fs.writeFileSync(descriptor, contents); fs.fsyncSync(descriptor); }
+    finally { fs.closeSync(descriptor); }
+    fs.renameSync(temporary, backupFile);
+  } catch (error) {
+    try { fs.unlinkSync(temporary); } catch {}
+    throw error;
+  }
   pruneOldBackups(30);
   return backupFile;
 }
@@ -1843,7 +1856,7 @@ async function createAdminBackup(label = "manual", actorName = "Админист
   const cleanLabel = String(label || "Ручная копия").trim().slice(0, 200) || "Ручная копия";
   const automatic = isAutomaticBackupLabel(cleanLabel);
   const checksum = backupChecksum(payload);
-  const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel);
+  const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel, payload);
   if (!postgresPool) id = path.basename(localFile);
   if (postgresPool) {
     const compressed = compressBackupPayload(payload);

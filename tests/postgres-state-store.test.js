@@ -94,6 +94,34 @@ test("a write between the revision check and payload read uses the revision of t
   assert.equal(fixture.payloadReads, 2, "the newer payload revision is cached together with its data");
 });
 
+test("a lost COMMIT response retains the attempted revision as the runtime failover floor", async () => {
+  const row = { payload: { checks: {} }, state_revision: "10" };
+  const client = Object.assign(new EventEmitter(), {
+    async query(sql) {
+      if (sql.includes("FOR UPDATE") || sql.startsWith("SELECT payload")) return { rows: [row] };
+      if (sql.startsWith("UPDATE ppr_settings")) return { rowCount: 1, rows: [{ state_revision: "11", updated_at: new Date() }] };
+      if (sql === "COMMIT") throw new Error("COMMIT response lost");
+      return { rows: [] };
+    }, release() {}
+  });
+  const store = createPostgresStateStore({
+    connect(callback) { callback(null, client); },
+    async query() { return { rows: [row] }; }
+  });
+  const session = await store.begin();
+  try {
+    assert.equal(store.hasActiveTransactions(), true);
+    assert.equal(store.failoverRevision(), 10n);
+    await assert.rejects(session.commit({ checks: { saved: true } }), /COMMIT response lost/);
+    assert.equal(store.failoverRevision(), 11n);
+    await session.rollback();
+    await store.snapshot();
+    assert.equal(store.failoverRevision(), 11n, "a stale read cannot lower the conservative floor");
+  } finally { session.release(); }
+  session.release();
+  assert.equal(store.hasActiveTransactions(), false);
+});
+
 test("snapshot failures and a missing authoritative row never return previously cached authorization", async t => {
   for (const failure of ["revision", "payload", "missing"]) {
     await t.test(failure, async () => {

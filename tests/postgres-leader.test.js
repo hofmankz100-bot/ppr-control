@@ -65,6 +65,15 @@ test("failover can be explicitly disabled", async () => {
   );
 });
 
+test("runtime minimum revision rejects a reachable stale-only replica", async () => {
+  await assert.rejects(selectAuthoritativePostgresNode([
+    node("primary", { healthy: false }), node("mirror", { revision: 10 })
+  ], { minimumRevision: 11n }), error => error.code === "PPR_STATE_REPLICA_STALE");
+  await assert.rejects(selectAuthoritativePostgresNode([
+    node("primary"), node("mirror", { healthy: false })
+  ], { minimumRevision: 11n }), error => error.code === "PPR_STATE_REPLICA_STALE");
+});
+
 test("replica repair copies only older state and blocks divergent or newer state", () => {
   const source = { state_revision: "20", updated_at: "2026-09-07 04:19:10.839+00" };
   assert.equal(compareReplicaVersions(source, null), "copy");

@@ -10,6 +10,10 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   const fencedMirrors = new Set();
   let knownRevision = 0n;
   let knownState = null;
+  // Process-local floor for runtime promotion. Include a COMMIT whose reply may
+  // be lost; a new store must not forget work already observed by this process.
+  let failoverRevision = 0n;
+  let activeTransactions = 0;
 
   function primaryStatus(error) {
     if (typeof pool.markSuccess !== "function" || typeof pool.markFailure !== "function") return;
@@ -74,12 +78,13 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   }
 
   function observe(state, revision, external = false) {
+    if (revision > failoverRevision) failoverRevision = revision;
     if (knownState && revision <= knownRevision) return;
     knownRevision = revision;
     // State transaction snapshots are immutable after commit. Reusing that
     // canonical object avoids retaining a second full copy of the database.
     knownState = state;
-    if (external) onExternalState(knownState);
+    if (external) onExternalState(knownState, store);
   }
 
   async function loadSnapshot(shared = false) {
@@ -247,6 +252,8 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
                 [serializedState]
               );
               if (saved.rowCount !== 1) throw new Error("Authoritative PostgreSQL full_state disappeared");
+              const pendingRevision = BigInt(saved.rows[0].state_revision);
+              if (pendingRevision > failoverRevision) failoverRevision = pendingRevision;
             }
             await client.query("COMMIT");
             finished = true;
@@ -273,8 +280,21 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     }
   }
 
-  return {
-    begin: () => open(),
+  const store = {
+    failoverRevision: () => failoverRevision,
+    hasActiveTransactions: () => activeTransactions > 0,
+    async begin() {
+      activeTransactions += 1;
+      try {
+        const session = await open();
+        let released = false;
+        return { ...session, release() {
+          if (released) return;
+          released = true;
+          try { session.release(); } finally { activeTransactions -= 1; }
+        } };
+      } catch (error) { activeTransactions -= 1; throw error; }
+    },
     prepareMirror,
     async authSnapshot() {
       try {
@@ -337,6 +357,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     },
     async flushMirrors() { await Promise.allSettled([...mirrorJobs]); }
   };
+  return store;
 }
 
 module.exports = { createPostgresStateStore };

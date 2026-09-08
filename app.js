@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v820-quiet-sync-notice";
+const APP_VERSION = "v821-storage-qr-safety";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1606,6 +1606,7 @@ async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
   try {
     attendanceStatus = await apiJson("/api/attendance/status", { timeout: 8000 });
     if (renderProfileBar) renderProfile();
+    if (attendanceStatus?.canEdit === true) flushQrWalkQueue();
     return attendanceStatus;
   } catch {
     return attendanceStatus;
@@ -4572,28 +4573,42 @@ function enqueuePendingQrWalkMark(payload) {
   savePendingQrWalkMarks(pending);
 }
 
+function isQrWalkAttendanceRequired(error) {
+  return Number(error?.status) === 403 && error?.data?.error === "attendance_required";
+}
+
 function isPermanentQrWalkError(error) {
-  return [400, 401, 403, 410, 426].includes(Number(error?.status));
+  return !isQrWalkAttendanceRequired(error) && [400, 401, 403, 410, 426].includes(Number(error?.status));
 }
 
 async function sendQrWalkPayload(payload) {
-  const result = await apiJson("/api/qr-walk/mark", {
-    method: "POST",
-    timeout: 12000,
-    idempotencyKey: String(payload.actionId || ""),
-    body: JSON.stringify(payload)
-  });
-  if (result?.recordKey && result?.record) {
-    mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+  try {
+    const result = await apiJson("/api/qr-walk/mark", {
+      method: "POST",
+      timeout: 12000,
+      idempotencyKey: String(payload.actionId || ""),
+      body: JSON.stringify(payload)
+    });
+    if (result?.recordKey && result?.record) {
+      mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+    }
+    return result;
+  } catch (error) {
+    if (isQrWalkAttendanceRequired(error) && window.PprDeviceCachePolicy.queueItemOwnedBy(payload, authenticatedProfile)) {
+      // The scan stays queued until a fresh attendance response confirms access.
+      // Invalidating the cached grant also stops the flusher's network retry timer.
+      attendanceStatus = { ...attendanceStatus, canEdit: false };
+    }
+    throw error;
   }
-  return result;
 }
 
 let qrWalkQueueFlusher = null;
 function flushQrWalkQueue() {
   qrWalkQueueFlusher ||= window.PprDeviceCachePolicy.createQueueFlusher({
     read: pendingQrWalkMarks, write: savePendingQrWalkMarks, send: sendQrWalkPayload,
-    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady(),
+    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady()
+      && attendanceAllowsEditing() && attendanceStatus?.canEdit !== false,
     canSendItem: item => window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile),
     identity: item => item.actionId || qrWalkMarkIdentity(item),
     discard: error => {
@@ -4653,7 +4668,9 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
     }
     console.warn("QR save deferred until connection recovers", error);
     enqueuePendingQrWalkMark(payload);
-    showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
+    showQrSavedNotice(isQrWalkAttendanceRequired(error)
+      ? "QR отмечен на телефоне. Откройте смену через QR «Кто на работе», чтобы отправить отметку."
+      : "QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
     return "queued";
   }
 }
