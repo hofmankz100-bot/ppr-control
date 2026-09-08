@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v818-text-restored";
+const APP_VERSION = "v819-ppr-work-template";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2084,7 +2084,8 @@ function mergePprSheetsLocal(current = {}, incoming = {}) {
     if (!current?.[date] || !incoming?.[date]) continue;
     merged[date] = {
       ...merged[date],
-      rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows)
+      removedRowIds: [...new Set([...(current[date].removedRowIds || []), ...(incoming[date].removedRowIds || [])])],
+      rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows).filter(row => !current[date].removedRowIds?.includes(String(row.id)) && !incoming[date].removedRowIds?.includes(String(row.id)))
     };
   }
   return merged;
@@ -11975,15 +11976,12 @@ async function publishPprSheetAction(date, action, details = {}) {
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const sheet = pprSheetRecord(date);
-  const savedRows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
-  const rows = [...savedRows];
-  while (rows.length < scheduledItems.length) {
-    rows.push({ id: `${date}-work-${rows.length + 1}`, work: "", mark: "" });
-  }
+  const draft = window.PprPlanEditor.get(date);
+  const rows = draft?.rows || (Array.isArray(sheet.rows) ? sheet.rows : pprSheetDefaultRows(date));
   const completion = pprSheetCompletion(date);
   const locked = Boolean(sheet.approvedAt);
-  const canPlan = canPlanPprSheet() && !locked;
-  const canMark = canMarkPprSheet() && !locked;
+  const canPlan = canPlanPprSheet() && !locked && Boolean(draft);
+  const canMark = canMarkPprSheet() && !locked && !draft;
   const scheduleNames = [...new Set(scheduledItems.map(item =>
     [item.equipment, item.node].filter(Boolean).join(" — ")
   ).filter(Boolean))];
@@ -11995,19 +11993,22 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   const rowHtml = rows.map((row, index) => {
-    const scheduled = scheduledItems[index] || (scheduledItems.length === 1 ? scheduledItems[0] : null);
+    const scheduled = scheduledItems.length === 1 ? scheduledItems[0] : null;
+    const editable = canPlan && !window.PprPlanEditor.started(row);
     const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
     const equipmentName = row.equipment || scheduled?.equipment || "";
     const nodeName = row.node || scheduled?.node || "";
     const areaName = row.area || scheduled?.area || "";
     return `
-    <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
+    <tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" aria-label="Работа ${index + 1}" placeholder="${canPlan ? "Опишите работу" : "—"}" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" maxlength="4000" aria-label="Работа ${index + 1}" placeholder="${editable ? "Опишите работу" : "—"}" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <span class="ppr-sheet-print-text" data-ppr-print-work>${escapeHtml(row.work || "")}</span>${canPlan ? window.PprPlanEditor.rowControls(date, row, escapeHtml) : ""}
       </td>
       <td class="ppr-sheet-resolution">
         <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" aria-label="Результат работы ${index + 1}" placeholder="${canMark ? "Результат или причина" : "—"}" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
+        <span class="ppr-sheet-print-text" data-ppr-print-resolution>${escapeHtml(row.resolutionComment || "")}</span>
         ${row.markedByName ? `<small><strong>${escapeHtml(row.markedByName)}</strong> · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")} · ${dateTimeHuman(row.markedAt)}</small>` : ""}
       </td>
       <td class="ppr-sheet-mark">
@@ -12047,9 +12048,8 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         ${sheet.plannedByName || sheet.updatedByName ? `<small>${sheet.plannedAutomatically ? "Автоплан" : "План составил"}: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedByRole === "system" ? "" : ` · ${escapeHtml(requestRoleLabel(sheet.plannedByRole) || sheet.plannedByRole || "")}`}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
-        ${canPlan ? `<button type="button" class="secondary no-print" data-autofill-ppr-sheet="${date}">Автозаполнить перечень работ</button>` : ""}
-        ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
-        ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
+        ${window.PprPlanEditor.controls(date, canPlanPprSheet() && !locked)}
+        ${!draft && completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
       </footer>
     </section>
   `;
@@ -12058,6 +12058,10 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
 function printPprMaintenanceSheet(date) {
   const sheet = document.querySelector(`[data-ppr-sheet-date="${date}"]`);
   if (!sheet) return;
+  sheet.querySelectorAll("[data-ppr-sheet-row]").forEach(row => {
+    row.classList.toggle("ppr-empty-row", !row.querySelector("[data-ppr-work-input]")?.value.trim());
+    row.querySelector("[data-ppr-print-resolution]").textContent = row.querySelector("[data-ppr-resolution-input]")?.value || "";
+  });
   const oldTitle = document.title;
   document.title = `Лист ППР ${date}`;
   document.body.classList.add("printing-ppr-sheet");
@@ -12227,6 +12231,11 @@ function shiftPprCalendar(monthDelta) {
 }
 
 function bindPprCalendarControls(container, rerender) {
+  window.PprPlanEditor.bind(container, { api: apiJson, canPlan: canPlanPprSheet, rerender, toast: showAppToast, publish: async (date, details) => {
+    const result = await apiJson("/api/ppr-sheet/plan", { method: "POST", timeout: 15000, body: JSON.stringify({ date, ...details, actionId: nextActionId(), clientId: CLIENT_ID }) });
+    if (result?.state) mergeRealtimePatch(result.state);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  } });
   container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
     const date = element.dataset.pprSheetDate;
     const sheet = pprSheetRecord(date);
@@ -12252,37 +12261,6 @@ function bindPprCalendarControls(container, rerender) {
         const selected = container.querySelector(`[data-ppr-sheet-date="${button.dataset.pprDayDate}"]`) || container.querySelector(".ppr-selected-day");
         selected?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 60);
-    });
-  });
-  container?.querySelectorAll("[data-ppr-work-input]").forEach(input => {
-    input.addEventListener("input", () => {
-      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
-      if (!date) return;
-      const sheet = pprSheetRecord(date, true);
-      let row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
-      if (!row) {
-        row = { id: input.dataset.pprWorkInput, work: "", mark: "" };
-        sheet.rows.push(row);
-      }
-      const changedAt = new Date().toISOString();
-      if (row.work !== input.value && row.mark) {
-        row.mark = "";
-        row.markedByName = "";
-        row.markedByRole = "";
-        row.markedAt = "";
-        row.markUpdatedAt = changedAt;
-      }
-      row.work = input.value;
-      row.workUpdatedAt = changedAt;
-      row.updatedAt = row.workUpdatedAt;
-      row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
-      row.equipment = input.dataset.pprEquipment || row.equipment || "";
-      row.node = input.dataset.pprNode || row.node || "";
-      row.area = input.dataset.pprArea || row.area || "";
-      sheet.plannedByName = profile?.name || sheet.plannedByName || "";
-      sheet.plannedByRole = profile?.role || sheet.plannedByRole || "";
-      sheet.plannedAt ||= new Date().toISOString();
-      touchPprSheet(sheet);
     });
   });
   container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
@@ -12320,6 +12298,7 @@ function bindPprCalendarControls(container, rerender) {
         sheet.rows.push(row);
       }
       row.resolutionComment = input.value;
+      input.closest("tr")?.querySelector("[data-ppr-print-resolution]")?.replaceChildren(input.value);
       row.draftUpdatedAt = new Date().toISOString();
       row.resolutionUpdatedAt = row.draftUpdatedAt;
       row.updatedAt = row.draftUpdatedAt;
@@ -12374,30 +12353,6 @@ function bindPprCalendarControls(container, rerender) {
         saveState();
       }
       rerender();
-    });
-  });
-  container?.querySelectorAll("[data-add-ppr-row]").forEach(button => {
-    button.addEventListener("click", async () => {
-      const date = button.dataset.addPprRow;
-      const sheet = pprSheetRecord(date, true);
-      const row = { id: `${date}-work-${Date.now()}`, work: "", mark: "" };
-      sheet.rows.push(row);
-      touchPprSheet(sheet, false);
-      try {
-        await publishPprSheetAction(date, "add-row", { rowId: row.id });
-      } catch {
-        saveState();
-      }
-      rerender();
-    });
-  });
-  container?.querySelectorAll("[data-autofill-ppr-sheet]").forEach(button => {
-    button.addEventListener("click", () => {
-      const date = button.dataset.autofillPprSheet;
-      const selectedItems = pprCalendarMonthData(allEquipment()).itemsByDate[date] || [];
-      if (!selectedItems.length) return;
-      if (!window.confirm("Заменить перечень работ шаблоном по текущему графику? Внесённые отметки и комментарии этого листа будут очищены.")) return;
-      runButtonOperation(button, async () => { await ensurePprSheetAutofill(date, true); rerender(); }, "Загружается…");
     });
   });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {

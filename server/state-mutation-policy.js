@@ -132,13 +132,14 @@ function sanitizeStateMutation({ previous, incoming, user, canAccessEquipment, h
     for (let rawRow of Array.isArray(raw.rows) ? raw.rows : []) {
       const id = String(rawRow?.id || "");
       if (!id) continue;
+      if (old?.removedRowIds?.includes(id) || (old?.explicitPlan && !oldRows.has(id))) continue;
       const saved = oldRows.get(id);
       rawRow = require("./ppr-label-repair").preservePprLabels(rawRow, saved);
       if (!saved && !planner) { ignored.add("pprSheets"); continue; }
       const row = clone(saved || { id, work: "", mark: "" });
       const planFields = ["work", "equipmentId", "equipment", "node", "area", "autoFilled"];
       const planChange = !same(pick(saved, planFields), { ...pick(saved, planFields), ...pick(rawRow, planFields) });
-      if (planChange && planner && (!saved || (Date.parse(rawRow.workUpdatedAt || rawRow.updatedAt || raw.updatedAt) || 0) >= (Date.parse(saved.workUpdatedAt || saved.updatedAt || "") || 0))) {
+      if (planChange && planner && !old?.explicitPlan && !require("./ppr-plan").started(saved || {}) && (!saved || (Date.parse(rawRow.workUpdatedAt || rawRow.updatedAt || raw.updatedAt) || 0) >= (Date.parse(saved.workUpdatedAt || saved.updatedAt || "") || 0))) {
         Object.assign(row, pick(rawRow, planFields), { workUpdatedAt: now, mark: "", markedAt: "", markedByName: "", markedByRole: "", markUpdatedAt: now });
         sheet.plannedByName = actor.name; sheet.plannedByRole = role; sheet.plannedAt = now; sheet.plannedAutomatically = false;
         changed = true;

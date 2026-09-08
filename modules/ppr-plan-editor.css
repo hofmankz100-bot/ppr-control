@@ -1,0 +1,12 @@
+.ppr-plan-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; width:100%; }
+.ppr-plan-controls small, .ppr-plan-controls [role="status"] { flex-basis:100%; }
+.ppr-plan-controls button, .ppr-plan-remove { min-height:44px; }
+.ppr-sheet-work .ppr-plan-remove { margin:4px 6px; font-size:13px; }
+.ppr-sheet-work select { width:calc(100% - 12px); margin:4px 6px; min-height:44px; }
+.ppr-sheet-print-text { display:none; }
+@media print {
+  .ppr-maintenance-sheet .ppr-empty-row { display:none !important; }
+  .ppr-maintenance-sheet textarea { display:none !important; }
+  .ppr-maintenance-sheet .ppr-sheet-print-text { display:block !important; white-space:pre-wrap; overflow-wrap:anywhere; padding:6px; }
+  .ppr-maintenance-sheet .no-print { display:none !important; }
+}

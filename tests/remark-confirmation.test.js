@@ -854,13 +854,13 @@ test("maintenance work can be auto-filled from renamed equipment and node names,
   assert.match(server, /rawItem\.nodeOperationalPauses/);
 });
 
-test("the planned maintenance sheet auto-fills its work rows and keeps every row editable", () => {
+test("the planned maintenance sheet auto-fills and uses explicit plan editing", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const { generatePprSheet } = require("../server/ppr-autofill");
   assert.match(source, /async function ensurePprSheetAutofill\(/);
   assert.match(source, /\/api\/ppr-sheet\/generate/);
   assert.match(source, /function renderPprMaintenanceSheet\([\s\S]*?const sheet = pprSheetRecord\(date\)/);
-  assert.match(source, /data-autofill-ppr-sheet/);
+  assert.match(fs.readFileSync(path.join(root, "modules/ppr-plan-editor.js"), "utf8"), /data-autofill-ppr-sheet/);
   assert.match(source, /textarea data-ppr-work-input=/);
   assert.match(source, /input\.addEventListener\("input"/);
   assert.doesNotMatch(source, /function pprAutofillEngineer\(/);
@@ -1723,11 +1723,11 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
   assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
   assert.match(source, /function mergePprRowFieldsLocal\(currentRow, incomingRow\)/);
-  assert.match(source, /row\.workUpdatedAt = changedAt/);
+  assert.match(fs.readFileSync(path.join(root, "server/ppr-plan.js"), "utf8"), /workUpdatedAt: now/);
   assert.match(source, /row\.resolutionUpdatedAt = row\.draftUpdatedAt/);
   assert.match(server, /function mergePprRowFields\(currentRow, incomingRow\)/);
   assert.match(server, /row\.markUpdatedAt = now/);
-  assert.match(source, /row\.markUpdatedAt = changedAt/);
+  assert.match(source, /row\.markUpdatedAt = new Date/);
   assert.match(server, /incomingTime >= savedTime/);
 });
 

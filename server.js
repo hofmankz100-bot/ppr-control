@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v818-text-restored"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v819-ppr-work-template"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -4341,7 +4341,8 @@ function mergePprSheetsByFreshness(current = {}, incoming = {}) {
   const merged = mergeObjectRecordsByFreshness(current, incoming);
   for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
     if (!current?.[date] || !incoming?.[date]) continue;
-    merged[date] = { ...merged[date], rows: mergePprRows(current[date].rows, incoming[date].rows) };
+    const removedRowIds = [...new Set([...(current[date].removedRowIds || []), ...(incoming[date].removedRowIds || [])])];
+    merged[date] = { ...merged[date], removedRowIds, rows: mergePprRows(current[date].rows, incoming[date].rows).filter(row => !removedRowIds.includes(String(row.id))) };
   }
   return merged;
 }
@@ -6304,6 +6305,29 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/ppr-sheet/plan" && ["GET", "POST"].includes(req.method)) {
+    const role = permissionBaseRoleServer(String(req.authUser?.role || ""));
+    if (!["engineer", "editor"].includes(role)) { sendJson(res, 403, { ok: false, error: "ppr_action_forbidden" }); return true; }
+    const body = req.method === "GET" ? { date: new URL(req.url, "http://localhost").searchParams.get("date") } : await readBody(req);
+    const { validDate } = require("./server/ppr-autofill");
+    if (!validDate(String(body.date || ""))) { sendJson(res, 400, { ok: false, error: "ppr_date_invalid" }); return true; }
+    const { planSnapshot, savePlan } = require("./server/ppr-plan");
+    const result = req.method === "GET" ? planSnapshot(readDb(), body.date) : await enqueueStateWrite(async () => {
+      const db = readDb();
+      const saved = savePlan(db, body, { name: req.authUser.name, role });
+      if (!saved.error) writeDb(db, { action: "ppr_plan_save", date: body.date, actionId: String(body.actionId || ""), user: { name: req.authUser.name, role } });
+      return saved;
+    });
+    if (result.error) { sendJson(res, result.error === "ppr_sheet_not_found" ? 404 : 409, { ok: false, error: result.error }); return true; }
+    if (req.method === "GET") sendJson(res, 200, { ok: true, ...result });
+    else {
+      const patch = { pprSheets: { [body.date]: result.sheet } };
+      const stateVersion = broadcastState(String(body.clientId || "api"), String(body.actionId || ""), patch, true);
+      sendJson(res, 200, { ok: true, state: patch, stateVersion });
+    }
+    return true;
+  }
+
   if (pathname === "/api/ppr-sheet/generate" && req.method === "POST") {
     const body = await readBody(req);
     const date = String(body.date || "").trim();
@@ -6322,7 +6346,7 @@ async function handleApiTransaction(req, res, pathname, url) {
     // Replacing existing unapproved work requires the planner's explicit action.
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const generated = generatePprSheet({ catalog: db.catalog, previous: db.pprSheets?.[date], date, force });
+      const generated = generatePprSheet({ catalog: db.catalog, templates: db.pprWorkTemplates, previous: db.pprSheets?.[date], date, force });
       if (generated.changed) {
         db.pprSheets ||= {};
         db.pprSheets[date] = generated.sheet;
@@ -6406,6 +6430,7 @@ async function handleApiTransaction(req, res, pathname, url) {
           notifyEngineers = true;
         }
       } else if (action === "add-row") {
+        if (sheet.explicitPlan) return { error: "ppr_sheet_locked" };
         sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
       } else if (action === "approve") {
         const activeRows = sheet.rows.filter(row => String(row?.work || "").trim());
