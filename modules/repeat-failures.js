@@ -2,15 +2,24 @@
   const root = window.PPRModules ||= {};
   const measureDrafts = new Map();
 
+  function attribution(label, name, at, escapeHtml) {
+    const date = at ? new Date(at) : null;
+    const time = date && Number.isFinite(date.getTime()) ? date.toLocaleString("ru-RU", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<small class="repeat-measures-attribution">${escapeHtml(label)}: ${escapeHtml(name || "не указан")}${time ? `<br>${escapeHtml(time)}` : ""}</small>`;
+  }
+
   function measuresCell(group, saved, printable, canEdit, escapeHtml) {
     const text = String(saved?.text || "");
-    if (printable || !canEdit || saved?.completedAt) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>`;
+    const author = saved?.textUpdatedByName ?? (!saved?.completedAt ? saved?.updatedByName : "");
+    const authorAt = saved?.textUpdatedAt || (!saved?.completedAt ? saved?.updatedAt : "");
+    const signature = text || author ? attribution("Текст сохранил", author, authorAt, escapeHtml) : "";
+    if (printable || !canEdit || saved?.completedAt) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>${signature}`;
     const draft = measureDrafts.get(group.groupKey);
-    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button></div>`;
+    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button>${signature}</div>`;
   }
 
   function completionCell(group, saved, printable, canEdit, escapeHtml) {
-    if (saved?.completedAt) return `<span class="repeat-measures-completed">☑ Выполнено<small>${escapeHtml(saved.completedByName || "")}<br>${escapeHtml(new Date(saved.completedAt).toLocaleDateString("ru-RU"))}</small></span>`;
+    if (saved?.completedAt) return `<span class="repeat-measures-completed">☑ Выполнено${attribution("Подтвердил", saved.completedByName, saved.completedAt, escapeHtml)}</span>`;
     if (printable || !canEdit) return "Не выполнено";
     return `<button type="button" role="checkbox" aria-checked="false" aria-label="Мероприятия выполнены" class="repeat-measures-complete no-print" data-complete-repeat-measures="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}" data-measures-updated-at="${escapeHtml(saved?.updatedAt || "")}" data-saved-measures="${escapeHtml(saved?.text || "")}">☐ Выполнено</button>`;
   }

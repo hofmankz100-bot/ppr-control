@@ -39,14 +39,20 @@ async function saveGroupMeasures(req, res, body, deps) {
     const actionId = String(body.actionId || "").trim().slice(0, 160);
     if (changed) {
       const now = new Date().toISOString();
-      equipment.repeatFailureMeasures = { ...(equipment.repeatFailureMeasures || {}), [code]: {
+      if (!completing) equipment.repeatFailureMeasures = { ...(equipment.repeatFailureMeasures || {}), [code]: {
         ...previous, cycleNumber, text, updatedAt: now, updatedByKey: deps.resolutionUserKeyServer(actor),
-        updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || "")
+        updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || ""),
+        textUpdatedAt: now, textUpdatedByName: String(actor.name || ""),
+        textUpdatedByKey: deps.resolutionUserKeyServer(actor), textUpdatedByRole: String(actor.role || "")
       } };
       if (completing) {
         equipment.repeatFailureArchives = { ...(equipment.repeatFailureArchives || {}), [cycleId]: {
-          ...equipment.repeatFailureMeasures[code], code, completedAt: now,
-          completedByName: String(actor.name || ""), completedByKey: deps.resolutionUserKeyServer(actor)
+          ...previous, code, completedAt: now,
+          textUpdatedAt: previous.textUpdatedAt || previous.updatedAt || "",
+          textUpdatedByName: previous.textUpdatedByName ?? previous.updatedByName ?? "",
+          textUpdatedByKey: previous.textUpdatedByKey ?? previous.updatedByKey ?? "",
+          textUpdatedByRole: previous.textUpdatedByRole ?? previous.updatedByRole ?? "",
+          completedByName: String(actor.name || ""), completedByKey: deps.resolutionUserKeyServer(actor), completedByRole: String(actor.role || "")
         } };
         equipment.repeatFailureMeasures[code] = { text: "", cycleNumber: cycleNumber + 1, updatedAt: now };
         members.forEach(entry => { entry.repeatFailureClosedAt = now; entry.repeatFailureCycleId = cycleId; entry.updatedAt = now; });

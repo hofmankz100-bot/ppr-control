@@ -31,7 +31,7 @@ function fixture() {
         activeUserPermission: user => user.allowed === true && !user.expired,
         ensureRemarkEntriesServer: item => item.commentLog,
         nodeMutationAccessServer: (user, equipment) => user.area === equipment.area,
-        resolutionUserKeyServer: () => "admin", writeDb: () => { writes++; },
+        resolutionUserKeyServer: user => user.id || "admin", writeDb: () => { writes++; },
         broadcastState: () => ++broadcasts, realtimeStateVersion: () => broadcasts };
       await handleRepeatFailureGroupRoute({ method: "POST", authUser: actor }, {}, "/api/repeat-failure-group", deps);
       return response;
@@ -49,6 +49,61 @@ test("measures are separate from node names and groups and repeated saves are id
   assert.equal(JSON.stringify(f.db.catalog.equipment["2"]), other);
   assert.equal((await f.send({ text: "Inspect cylinder\nReplace seal" })).changed, false);
   assert.equal(f.writes(), 1); assert.equal(f.broadcasts(), 1);
+});
+
+test("text author and completion actor stay separate, session-owned and immutable on retries", async () => {
+  const f = fixture();
+  const writer = { id: "writer", name: "Инженер", role: "engineer", allowed: true, area: "A" };
+  const approver = { id: "approver", name: "Админ", role: "editor" };
+  await f.send({ textUpdatedByName: "Подмена", updatedByName: "Подмена" }, writer);
+  const saved = structuredClone(f.db.catalog.equipment["1"].repeatFailureMeasures["1"]);
+  assert.equal(saved.textUpdatedByName, writer.name);
+  assert.equal(saved.textUpdatedByKey, writer.id);
+  assert.equal((await f.send({}, approver)).changed, false);
+  f.db.downtimes.push({ id: "d1", equipmentId: 1, repeatFailureCode: "1" });
+  const complete = { action: "complete-measures", cycleNumber: 0, expectedUpdatedAt: saved.updatedAt, completedByName: "Подмена" };
+  assert.equal((await f.send(complete, approver)).status, 200);
+  const closed = structuredClone(f.db.catalog.equipment["1"].repeatFailureArchives["1:0"]);
+  assert.equal(closed.textUpdatedByName, writer.name);
+  assert.equal(closed.textUpdatedByKey, writer.id);
+  assert.equal(closed.textUpdatedAt, saved.textUpdatedAt);
+  assert.equal(closed.updatedByName, writer.name);
+  assert.equal(closed.completedByName, approver.name);
+  assert.equal(closed.completedByKey, approver.id);
+  assert.equal((await f.send(complete, writer)).changed, false);
+  assert.deepEqual(f.db.catalog.equipment["1"].repeatFailureArchives["1:0"], closed);
+  await f.send({ cycleNumber: 1 }, approver); // no members in next cycle: old signatures remain untouched
+  assert.deepEqual(f.db.catalog.equipment["1"].repeatFailureArchives["1:0"], closed);
+});
+
+test("closing legacy active measures retains its saved author without inventing old archive authors", async () => {
+  const f = fixture();
+  f.db.catalog.equipment["1"].repeatFailureMeasures["1"] = { text: "Old plan", updatedAt: "2026-09-01T10:20:00Z", updatedByName: "Автор", updatedByKey: "writer" };
+  f.db.downtimes.push({ id: "d1", equipmentId: 1, repeatFailureCode: "1" });
+  await f.send({ action: "complete-measures", expectedUpdatedAt: "2026-09-01T10:20:00Z" });
+  const closed = f.db.catalog.equipment["1"].repeatFailureArchives["1:0"];
+  assert.equal(closed.textUpdatedByName, "Автор");
+  assert.equal(closed.textUpdatedAt, "2026-09-01T10:20:00Z");
+  const legacy = { text: "Old", completedAt: "2026-09-01", updatedByName: "Only the approver" };
+  const html = measuresCell({}, legacy, true, false, escapeHtml);
+  assert.match(html, /Текст сохранил: не указан/);
+  assert.doesNotMatch(html, /Only the approver/);
+});
+
+test("author and confirmer signatures render escaped names and minute precision on screen and print", () => {
+  const group = { equipmentId: 1, manualCode: "1", groupKey: "manual|1|1" };
+  const saved = { text: "Plan", textUpdatedByName: "Автор <img>", textUpdatedAt: "2026-09-08T10:21:00Z", completedByName: "Проверил <script>", completedAt: "2026-09-08T11:42:00Z" };
+  for (const printable of [true, false]) {
+    const text = measuresCell(group, saved, printable, true, escapeHtml);
+    assert.match(text, /Текст сохранил: Автор &lt;img&gt;/);
+    assert.match(text, /08\.09\.2026/); assert.match(text, /\d{2}:21/);
+    const complete = completionCell(group, saved, printable, true, escapeHtml);
+    assert.match(complete, /Подтвердил: Проверил &lt;script&gt;/);
+    assert.match(complete, /\d{2}:42/);
+    assert.doesNotMatch(complete, /<script>|Invalid Date/);
+  }
+  assert.doesNotMatch(measuresCell(group, {}, false, true, escapeHtml), /Текст сохранил/);
+  assert.match(measuresCell(group, { text: "Legacy", updatedByName: "Автор" }, false, true, escapeHtml), /Текст сохранил: Автор/);
 });
 
 test("completion locks members but allows the same number for new cycles and other equipment", async () => {
