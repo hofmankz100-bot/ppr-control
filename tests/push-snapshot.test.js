@@ -25,17 +25,18 @@ const helpers = [
   "personalNotificationBreakdownServer", "personalNotificationCountServer"
 ];
 
-function makeHarness(input, { serverSource = source, delivery = async () => {} } = {}) {
+function makeHarness(input, { serverSource = source, delivery = async () => {}, commit = async () => {} } = {}) {
   let db = input;
   const sent = [], writes = [], vapid = [], errors = [];
   const permissions = createServerPermissions({ primaryAdminEmployeeId: "87064091893" });
   const transactions = createStateTransactions({
-    begin: async () => ({ state: db, commit: async () => {}, rollback: async () => {} }),
+    begin: async () => ({ state: db, commit, rollback: async () => {} }),
     committed: () => db,
     publish: state => { db = state; },
     onEffectError: error => errors.push(error)
   });
   const context = vm.createContext({
+    require: name => require(path.resolve(__dirname, "..", name)),
     ...push, structuredClone, Set, console: { error: error => errors.push(error) },
     stateTransactions: transactions,
     enqueueStateWrite: transactions.run,
@@ -98,7 +99,7 @@ function fixture() {
       "91:0:date": { to: { commentLog: [{ photo: "photo-only", at: "2026-09-08", resolved: false }] } }
     },
     pprSheets: {
-      pending: { approvalRequestedAt: "now", rows: [{ work: "Inspect" }] },
+      pending: { approvalRequestedAt: "now", rows: [{ work: "Inspect", mark: "done" }] },
       approved: { approvalRequestedAt: "now", approvedAt: "now", rows: [{ work: "Done" }] },
       empty: { approvalRequestedAt: "now", rows: [{ work: "  " }] }
     },

@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v823-realtime-push-safety";
+const APP_VERSION = "v824-bounded-mirrors-ppr-calendar";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -552,14 +552,14 @@ let current = {
   returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
-  downtimeMonth: new Date().getMonth(),
-  downtimeYear: new Date().getFullYear(),
-  engineerReportMonth: todayISO().slice(0, 7),
-  ratingYear: new Date().getFullYear(),
-  ratingMonth: todayISO().slice(0, 7),
+  downtimeMonth: dateYearMonth(new Date()).month,
+  downtimeYear: dateYearMonth(new Date()).year,
+  engineerReportMonth: PPRModules.director.calendarMonth(new Date()),
+  ratingYear: dateYearMonth(new Date()).year,
+  ratingMonth: PPRModules.director.calendarMonth(new Date()),
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
-  journalMonth: todayISO().slice(0, 7),
+  journalMonth: PPRModules.director.calendarMonth(new Date()),
   aggregateRepairEquipmentId: 0,
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
@@ -7082,15 +7082,14 @@ function chooseDowntimeType() {
 }
 
 function monthRange(year, month) {
-  const start = new Date(year, month, 1, 0, 0, 0, 0);
-  const end = new Date(year, month + 1, 1, 0, 0, 0, 0);
-  return { start, end };
+  return PPRModules.director.calendarMonthRange(year, month);
 }
 
 function downtimeOverlapMs(item, year = current.downtimeYear, month = current.downtimeMonth) {
   const { start, end } = monthRange(year, month);
-  const itemStart = new Date(item.startedAt).getTime();
-  const itemEnd = item.endedAt ? new Date(item.endedAt).getTime() : Date.now();
+  const itemStart = PPRModules.director.calendarTimeMs(item.startedAt);
+  const itemEnd = item.endedAt ? PPRModules.director.calendarTimeMs(item.endedAt) : Date.now();
+  if (!Number.isFinite(itemStart) || !Number.isFinite(itemEnd)) return 0;
   const from = Math.max(itemStart, start.getTime());
   const to = Math.min(itemEnd, end.getTime());
   return Math.max(to - from, 0);
@@ -8022,8 +8021,7 @@ function weldingRecords() {
 }
 
 function weldingMonthKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? todayISO().slice(0, 7) : date.toISOString().slice(0, 7);
+  return PPRModules.director.calendarMonth(value);
 }
 
 function weldingPendingCount() {
@@ -8291,7 +8289,7 @@ function renderWeldingJournal() {
   if (current.productionTab === "turning") return renderTurningJournal();
   updateWeldingBadge();
   if (!ui.weldingPanel) return;
-  const month = current.weldingMonth || todayISO().slice(0, 7);
+  const month = current.weldingMonth || PPRModules.director.calendarMonth(new Date());
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
   ui.subtitle.textContent = "Сварочные работы";
@@ -8308,7 +8306,7 @@ function renderWeldingJournal() {
     <div class="welding-list">${records.length ? records.map(weldingRecordCard).join("") : `<div class="empty-state">Заявок на сварочные работы пока нет.</div>`}</div>`;
   ui.weldingPanel.querySelector("#weldingRequestForm")?.addEventListener("submit", event => { event.preventDefault(); createWeldingRequest(event.currentTarget); });
   bindProductionTabs();
-  ui.weldingPanel.querySelector("[data-welding-month]")?.addEventListener("change", event => { current.weldingMonth = event.currentTarget.value || todayISO().slice(0, 7); renderWeldingJournal(); });
+  ui.weldingPanel.querySelector("[data-welding-month]")?.addEventListener("change", event => { current.weldingMonth = event.currentTarget.value || PPRModules.director.calendarMonth(new Date()); renderWeldingJournal(); });
   ui.weldingPanel.querySelector("[data-welding-print]")?.addEventListener("click", () => printWeldingJournal(month));
   ui.weldingPanel.querySelectorAll("[data-welding-id]").forEach(card => {
     const item = state.weldingJournal?.[card.dataset.weldingId];
@@ -8320,7 +8318,7 @@ function renderWeldingJournal() {
   });
 }
 
-function printWeldingJournal(month = todayISO().slice(0, 7)) {
+function printWeldingJournal(month = PPRModules.director.calendarMonth(new Date())) {
   const rows = weldingRecords().filter(item => item.status === "completed" && weldingMonthKey(item.completedAt) === month).sort((a,b) => String(a.completedAt).localeCompare(String(b.completedAt)));
   const win = window.open("", "_blank", "width=1400,height=900");
   if (!win) return window.alert("Разрешите всплывающие окна для печати журнала.");
@@ -8399,13 +8397,13 @@ function turningCard(item) {
 }
 
 function renderTurningJournal() {
-  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||todayISO().slice(0,7); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
+  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||PPRModules.director.calendarMonth(new Date()); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
   ui.subtitle.textContent="Токарные работы";
   ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку или присоединитесь к совместной работе.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label><label class="wide"><span><b>6</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x=>x.status==="completed").length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
-  bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||todayISO().slice(0,7);renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
+  bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||PPRModules.director.calendarMonth(new Date());renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
 }
 
-function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
+function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);
@@ -8527,11 +8525,11 @@ function aggregateJournalAreas(equipment = visibleEquipment()) {
 function selectedJournalMonth() {
   return /^\d{4}-\d{2}$/.test(String(current.journalMonth || ""))
     ? String(current.journalMonth)
-    : todayISO().slice(0, 7);
+    : PPRModules.director.calendarMonth(new Date());
 }
 
 function journalMonthMatches(value, month = selectedJournalMonth()) {
-  return String(value || "").slice(0, 7) === month;
+  return Boolean(month) && PPRModules.director.calendarMonth(value) === month;
 }
 
 function journalMonthLabel(month = selectedJournalMonth()) {
@@ -8545,7 +8543,7 @@ function journalMonthControlHtml() {
 
 function bindJournalMonthControl(root, render) {
   root?.querySelector("[data-journal-month]")?.addEventListener("change", event => {
-    current.journalMonth = event.currentTarget.value || todayISO().slice(0, 7);
+    current.journalMonth = event.currentTarget.value || PPRModules.director.calendarMonth(new Date());
     current.compressorSheetIndex = 0;
     current.gasSheetAIndex = 0;
     current.gasSheetBIndex = 0;
@@ -8676,7 +8674,7 @@ function aggregateJournalCount(area, equipmentId = 0) {
   return aggregateJournalItems(area, equipmentId).length;
 }
 
-function installedPartJournalRows(equipmentId, month = todayISO().slice(0, 7)) {
+function installedPartJournalRows(equipmentId, month = PPRModules.director.calendarMonth(new Date())) {
   const rows = [];
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
@@ -8704,13 +8702,13 @@ function installedPartJournalHtml(eq, month, printable = false) {
 }
 
 function openInstalledPartJournal(eq) {
-  let month = todayISO().slice(0, 7);
+  let month = PPRModules.director.calendarMonth(new Date());
   const overlay = document.createElement("div");
   overlay.className = "installed-part-journal-overlay";
   const render = () => {
     overlay.innerHTML = `<section class="installed-part-journal-dialog">${installedPartJournalHtml(eq, month)}</section>`;
     overlay.querySelector("[data-close-parts]")?.addEventListener("click", () => overlay.remove());
-    overlay.querySelector("[data-parts-month]")?.addEventListener("change", event => { month = event.currentTarget.value || todayISO().slice(0, 7); render(); });
+    overlay.querySelector("[data-parts-month]")?.addEventListener("change", event => { month = event.currentTarget.value || PPRModules.director.calendarMonth(new Date()); render(); });
     overlay.querySelector("[data-print-parts]")?.addEventListener("click", () => {
       const popup = window.open("", "_blank", "width=1200,height=900");
       if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
@@ -12930,7 +12928,7 @@ function directorTodayDowntimeStats() {
 }
 
 function directorAnnualYear() {
-  return new Date().getFullYear();
+  return dateYearMonth(new Date()).year;
 }
 
 function directorMonthName(index) {
@@ -12959,19 +12957,12 @@ function directorAnnualEmptyMonths(year = directorAnnualYear()) {
 }
 
 function dateYearMonth(value) {
-  const ms = Date.parse(value || "");
-  if (!Number.isFinite(ms)) return null;
-  const date = new Date(ms);
-  return { year: date.getFullYear(), month: date.getMonth() };
+  const key = PPRModules.director.calendarMonth(value);
+  return key ? { year: Number(key.slice(0, 4)), month: Number(key.slice(5, 7)) - 1 } : null;
 }
 
 function downtimeOverlapMsForMonth(item, year, monthIndex) {
-  const startedAt = Date.parse(item?.startedAt || "");
-  const endedAt = item?.endedAt ? Date.parse(item.endedAt) : Date.now();
-  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return 0;
-  const monthStart = new Date(year, monthIndex, 1).getTime();
-  const monthEnd = new Date(year, monthIndex + 1, 1).getTime();
-  return Math.max(0, Math.min(endedAt, monthEnd) - Math.max(startedAt, monthStart));
+  return downtimeOverlapMs(item, year, monthIndex);
 }
 
 function annualRepairEvents(year = directorAnnualYear()) {
@@ -13073,12 +13064,12 @@ function directorAnnualStats(year = directorAnnualYear()) {
     if (resolved?.year === year) months[resolved.month].repairsClosed += 1;
     if (event.type === "breakdown" && created?.year === year) months[created.month].breakdowns += 1;
   });
-  const currentDate = new Date();
-  if (currentDate.getFullYear() === year) {
-    months[currentDate.getMonth()].openWorks = repairEvents.filter(event => event.type === "remark" && event.open && operationalItemEnabled(event, todayISO())).length;
+  const currentDate = dateYearMonth(new Date());
+  if (currentDate.year === year) {
+    months[currentDate.month].openWorks = repairEvents.filter(event => event.type === "remark" && event.open && operationalItemEnabled(event, todayISO())).length;
   }
   downtimes().forEach(item => {
-    if (!operationalItemEnabled(item, item.startedAt) || !operationalItemEnabled(item, todayISO())) return;
+    if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     if (created?.year === year) {
       months[created.month].stops += 1;
@@ -13634,10 +13625,8 @@ function openWorkerRatingLedger(workerKey) {
   modal.querySelectorAll("[data-close-rating-ledger]").forEach(button => button.addEventListener("click", () => modal.remove()));
 }
 
-function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7)) {
-  const [parsedYear, parsedMonth] = String(period || "").split("-").map(Number);
-  const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
-  const monthIndex = Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth - 1 : new Date().getMonth();
+function workerRatingStats(period = current.ratingMonth || PPRModules.director.calendarMonth(new Date())) {
+  const { year, month: monthIndex } = parseMonthKey(period);
   const inSelectedMonth = value => {
     const parsed = dateYearMonth(value);
     return parsed?.year === year && parsed.month === monthIndex;
@@ -13985,13 +13974,10 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
   `;
 }
 
-function parseMonthKey(monthKey = current.engineerReportMonth || todayISO().slice(0, 7)) {
-  const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
-  const now = new Date();
-  if (!match) return { year: now.getFullYear(), month: now.getMonth(), key: todayISO().slice(0, 7) };
-  const year = Number(match[1]);
-  const month = Math.min(Math.max(Number(match[2]) - 1, 0), 11);
-  return { year, month, key: `${year}-${String(month + 1).padStart(2, "0")}` };
+function parseMonthKey(monthKey = current.engineerReportMonth || PPRModules.director.calendarMonth(new Date())) {
+  const key = PPRModules.director.calendarMonth(`${String(monthKey || "")}-01`) || PPRModules.director.calendarMonth(new Date());
+  const [year, month] = key.split("-").map(Number);
+  return { year, month: month - 1, key };
 }
 
 function monthDisplayName(monthKey = current.engineerReportMonth) {
@@ -14387,7 +14373,7 @@ function renderEngineerReport() {
     ui.engineerReportPanel.innerHTML = `<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
     return;
   }
-  if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
+  if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || PPRModules.director.calendarMonth(new Date());
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
   PPRModules.repeatFailures.bindMeasures(ui.engineerReportPanel, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderEngineerReport, isCurrent: () => current.view === "engineerReport" });
   ui.engineerReportPanel.querySelectorAll("[data-open-repeat-breakdown]").forEach(button => {
@@ -16062,13 +16048,13 @@ ui.workerRatingButton?.addEventListener("click", () => {
 });
 
 ui.workerRatingMonth?.addEventListener("change", () => {
-  current.ratingMonth = ui.workerRatingMonth.value || todayISO().slice(0, 7);
-  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || new Date().getFullYear();
+  current.ratingMonth = ui.workerRatingMonth.value || PPRModules.director.calendarMonth(new Date());
+  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || dateYearMonth(new Date()).year;
   renderWorkerRating();
 });
 
 ui.engineerReportMonth?.addEventListener("change", () => {
-  current.engineerReportMonth = ui.engineerReportMonth.value || todayISO().slice(0, 7);
+  current.engineerReportMonth = ui.engineerReportMonth.value || PPRModules.director.calendarMonth(new Date());
   renderEngineerReport();
 });
 

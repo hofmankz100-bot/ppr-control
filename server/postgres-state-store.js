@@ -1,12 +1,14 @@
 "use strict";
 
 const { isDeepStrictEqual } = require("node:util");
+const { createLatestMirrorQueue } = require("./latest-mirror-queue");
 
 // full_state has one authoritative database. Cross-database mirrors are backups;
 // promoting one automatically after an uncertain commit can lose acknowledged work.
-function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [] } = {}) {
+function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [], mirrorQueryTimeoutMs = 35000, mirrorStatementTimeoutMs = 30000 } = {}) {
   const primary = pool.nodes?.[0]?.pool || pool;
-  const mirrorJobs = new Set();
+  const mirrorQueues = new Map();
+  if (![mirrorQueryTimeoutMs, mirrorStatementTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error("Mirror timeouts must be positive integer milliseconds");
   const fencedMirrors = new Set();
   let knownRevision = 0n;
   let knownState = null;
@@ -30,7 +32,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     } catch (error) { primaryStatus(error); throw error; }
   }
 
-  function checkout(queryable) {
+  function checkout(queryable, queryTimeoutMs = 0) {
     return new Promise((resolve, reject) => queryable.connect((error, client) => {
       if (error) {
         if (queryable === primary) primaryStatus(error);
@@ -48,11 +50,33 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
       // Attach inside the connect callback, before even a Promise continuation:
       // a socket can fail immediately after pg-pool hands out the client.
       client.on("error", onError);
-      resolve({
-        async query(sql, params) {
+      function release() {
+        if (released) return;
+        released = true;
+        try { client.release(connectionError || releaseError); }
+        finally { client.removeListener("error", onError); }
+      }
+      async function query(sql, params) {
           if (connectionError) throw connectionError;
           try {
-            const result = await client.query(sql, params);
+            const running = client.query(sql, params);
+            const result = queryTimeoutMs ? await new Promise((resolveQuery, rejectQuery) => {
+              const timer = setTimeout(() => {
+                connectionError ||= Object.assign(new Error("PostgreSQL mirror query deadline exceeded"), { code: "PPR_MIRROR_QUERY_TIMEOUT" });
+                // pg-pool release(error) removes this checked-out client; pg's
+                // Client.end destroys the socket when a query is still active.
+                // Merely timing out a Promise/query callback would leave SQL live.
+                try { release(); } catch (error) { releaseError = error; }
+                rejectQuery(connectionError);
+              }, queryTimeoutMs);
+              Promise.resolve(running).then(value => {
+                clearTimeout(timer);
+                resolveQuery(value);
+              }, error => {
+                clearTimeout(timer);
+                rejectQuery(error);
+              });
+            }) : await running;
             // An error event can race a response, including the COMMIT response.
             if (connectionError) throw connectionError;
             if (queryable === primary) primaryStatus();
@@ -61,18 +85,15 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
             if (queryable === primary) primaryStatus(connectionError || error);
             throw connectionError || error;
           }
-        },
+      }
+      resolve({
+        query,
         async rollback() {
           if (connectionError) return;
-          try { await client.query("ROLLBACK"); }
+          try { await (queryTimeoutMs ? query("ROLLBACK") : client.query("ROLLBACK")); }
           catch (error) { releaseError = error; throw error; }
         },
-        release() {
-          if (released) return;
-          released = true;
-          try { client.release(connectionError || releaseError); }
-          finally { client.removeListener("error", onError); }
-        }
+        release
       });
     }));
   }
@@ -120,16 +141,19 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   }
 
   async function prepareMirror(node) {
+    const queue = mirrorQueue(node);
+    await queue.pause();
     fencedMirrors.delete(node);
-    const client = await checkout(node.pool);
+    const client = await checkout(node.pool, mirrorQueryTimeoutMs);
     try {
       await client.query("BEGIN");
       await client.query("SET LOCAL lock_timeout = '8s'");
-      await client.query("SET LOCAL statement_timeout = '30s'");
+      await client.query("SELECT set_config('statement_timeout',$1,true)", [String(mirrorStatementTimeoutMs)]);
       await client.query("ALTER TABLE ppr_settings ADD COLUMN IF NOT EXISTS state_revision bigint NOT NULL DEFAULT 0");
       await installRevisionFence(client);
       await client.query("COMMIT");
       fencedMirrors.add(node);
+      queue.resume();
     } catch (error) {
       try { await client.rollback(); } catch {}
       throw error;
@@ -157,20 +181,39 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     }
   }
 
-  function mirror(serializedState, revision, updatedAt) {
-    for (const node of (pool.nodes || []).slice(1)) {
-      if (!node.healthy) continue;
-      const job = Promise.resolve().then(() => node.pool.query(
+  function mirrorQueue(node) {
+    if (!mirrorQueues.has(node)) mirrorQueues.set(node, createLatestMirrorQueue({
+      async write({ serializedState, revision, updatedAt }) {
+        const client = await checkout(node.pool, mirrorQueryTimeoutMs);
+        try {
+          await client.query("BEGIN");
+          await client.query("SET LOCAL lock_timeout = '8s'");
+          await client.query("SELECT set_config('statement_timeout',$1,true)", [String(mirrorStatementTimeoutMs)]);
+          await client.query(
         `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at)
          VALUES ('full_state',$1::jsonb,$2::bigint,$3)
          ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,
            state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
          WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-        [serializedState, revision, updatedAt]
-      )).catch(error => { node.healthy = false; onMirrorError(error, node.name); })
-        .finally(() => mirrorJobs.delete(job));
-      mirrorJobs.add(job);
-    }
+            [serializedState, revision.toString(), updatedAt]
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          try { await client.rollback(); } catch {}
+          throw error;
+        } finally { client.release(); }
+      },
+      onError(error) { node.healthy = false; onMirrorError(error, node.name); }
+    }));
+    return mirrorQueues.get(node);
+  }
+
+  function mirror(serializedState, revision, updatedAt) {
+    // Called only after primary COMMIT. Every item is a complete authoritative
+    // version, not a delta: skipping intermediate pending revisions preserves
+    // cumulative state, including intentional edits/deletions in the latest one.
+    const snapshot = { serializedState, revision: BigInt(revision), updatedAt };
+    for (const node of (pool.nodes || []).slice(1)) mirrorQueue(node).enqueue(snapshot, Boolean(node.healthy));
   }
 
   async function open(initialState, adoptLegacy = false) {
@@ -355,7 +398,9 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         throw error;
       } finally { session.release(); }
     },
-    async flushMirrors() { await Promise.allSettled([...mirrorJobs]); }
+    async flushMirrors() {
+      return Promise.allSettled([...mirrorQueues.values()].map(queue => queue.flush()));
+    }
   };
   return store;
 }

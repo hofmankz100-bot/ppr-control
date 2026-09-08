@@ -1,6 +1,6 @@
 "use strict";
 
-const { equipmentForPlan, scheduledItemsForDate, buildAutofillRows } = require("./ppr-autofill");
+const { equipmentForPlan, scheduledItemsForDate, buildAutofillRows, reconcilePprApprovalRequest } = require("./ppr-autofill");
 const keyFor = row => JSON.stringify([String(row.equipmentId || ""), String(row.node || "")]);
 const planFields = row => [String(row.id), String(row.work || ""), String(row.equipmentId || ""), String(row.node || "")];
 const revision = sheet => JSON.stringify((sheet?.rows || []).map(planFields));
@@ -71,7 +71,7 @@ function savePlan(db, body, actor, now = new Date().toISOString()) {
     plannedByName: actor.name, plannedByRole: actor.role, plannedAt: now,
     plannedAutomatically: false, autofillInitialized: true, explicitPlan: true,
     removedRowIds: [...new Set([...(old.removedRowIds || []), ...removed.map(row => String(row.id))])] };
-  if (!rows.some(row => row.work.trim()) || !rows.filter(row => row.work.trim()).every(row => ["done", "na"].includes(row.mark))) sheet.approvalRequestedAt = "";
+  reconcilePprApprovalRequest(sheet, old, now);
   if (removed.length) {
     db.pprRemovedRows ||= {};
     db.pprRemovedRows[body.date] ||= {};
@@ -99,4 +99,16 @@ function legacyMarkTarget(sheet, row, catalog, now = new Date().toISOString()) {
   return { equipmentId, equipment, node, area };
 }
 
-module.exports = { keyFor, revision, started, planSnapshot, savePlan, legacyMarkTarget };
+function reconcilePprApprovalRequests(sheets, previous, dates, { notify, clear, origin = "", onError = () => {}, now = new Date().toISOString() }) {
+  for (const date of new Set(dates)) {
+    const sheet = sheets?.[date];
+    const transition = reconcilePprApprovalRequest(sheet, previous?.[date], now);
+    if (!transition) continue;
+    // Existing send/clear functions snapshot only their small payload and defer
+    // delivery with the state transaction. Never retain the DB in an async task.
+    try { Promise.resolve((transition === "notify" ? notify : clear)(sheet, origin)).catch(onError); }
+    catch (error) { onError(error); }
+  }
+}
+
+module.exports = { keyFor, revision, started, planSnapshot, savePlan, legacyMarkTarget, reconcilePprApprovalRequests };

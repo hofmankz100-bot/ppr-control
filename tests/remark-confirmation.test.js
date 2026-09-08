@@ -1882,7 +1882,7 @@ test("administration keeps four primary tabs and only useful technical tools", (
 
 test("worker rating is calculated and displayed separately for each calendar month", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /ratingMonth: todayISO\(\)\.slice\(0, 7\)/);
+  assert.match(appSource, /ratingMonth: PPRModules\.director\.calendarMonth\(new Date\(\)\)/);
   assert.match(appSource, /id="workerRatingMonth" type="month"/);
   assert.match(appSource, /function workerRatingStats\(period = current\.ratingMonth/);
   assert.match(appSource, /workerRatingPointMap\(year, monthIndex\)/);

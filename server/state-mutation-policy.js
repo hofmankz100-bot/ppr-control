@@ -2,6 +2,7 @@
 
 const { isDeepStrictEqual } = require("node:util");
 const { ROLE_PERMISSION_BASE, activeUserPermission } = require("./permissions");
+const { reconcilePprApprovalRequest } = require("./ppr-autofill");
 
 const clone = value => value === undefined ? undefined : structuredClone(value);
 const object = value => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -170,8 +171,7 @@ function sanitizeStateMutation({ previous, incoming, user, canAccessEquipment, h
       if (!same(pick(sheet, fields), { ...pick(sheet, fields), ...requested })) { Object.assign(sheet, requested); changed = true; }
     }
     if (changed) { sheet.updatedAt = now; sheet.updatedByName = actor.name; }
-    const active = sheet.rows.filter(row => String(row.work || "").trim());
-    if (active.length && active.every(row => ["done", "na"].includes(row.mark))) sheet.approvalRequestedAt ||= now;
+    reconcilePprApprovalRequest(sheet, old, now);
     // Approval/locking and their actor can only originate in ppr-sheet/action.
     if (["approvedAt", "approvedByName", "approvedByRole", "lockedAt"].some(field => raw[field] && raw[field] !== old?.[field])) ignored.add("pprSheets");
     return sheet;

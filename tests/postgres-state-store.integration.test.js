@@ -171,16 +171,23 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
     const [primary, replica] = pools;
     let delayRevision = "";
     const delayed = new Promise(resolve => { releaseDelayed = resolve; });
-    let mirroredNewest;
-    const newest = new Promise(resolve => { mirroredNewest = resolve; });
+    let mirrorStarted;
+    const started = new Promise(resolve => { mirrorStarted = resolve; });
     const replicaNode = { name: "supabase", healthy: true, pool: {
-      connect: (...args) => replica.connect(...args),
-      async query(sql, params) {
-        if (String(params?.[1]) === delayRevision && delayRevision) await delayed;
-        const result = await replica.query(sql, params);
-        if (String(params?.[1]) === "3") mirroredNewest();
-        return result;
-      }
+      connect(callback) {
+        replica.connect((error, client) => {
+          if (error) return callback(error);
+          callback(null, {
+            on: (...args) => client.on(...args), removeListener: (...args) => client.removeListener(...args),
+            release: (...args) => client.release(...args),
+            async query(sql, params) {
+              if (String(params?.[1]) === delayRevision && delayRevision) { mirrorStarted(); await delayed; }
+              return client.query(sql, params);
+            }
+          });
+        });
+      },
+      query: (...args) => replica.query(...args)
     } };
     const cluster = { nodes: [{ name: "primary", healthy: true, pool: primary }, replicaNode] };
     const read = async pool => (await pool.query("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'")).rows[0];
@@ -226,8 +233,13 @@ test("PostgreSQL legacy cutover, writer fencing and ordered mirrors", { skip: !p
       delayRevision = "2";
       try {
         await mutate(store, "older-delayed");
+        await started;
         await mutate(store, "newest");
-        await newest;
+        assert.equal((await read(primary)).state_revision, "3", "primary commits do not wait for the mirror queue");
+        // Another instance/recovery writer can still reach this database while
+        // this store's older mirror request is delayed. Its newer row must win.
+        const newest = await read(primary);
+        await replica.query("UPDATE ppr_settings SET payload=$1::jsonb,state_revision=$2,updated_at=now() WHERE setting_key='full_state'", [JSON.stringify(newest.payload), newest.state_revision]);
       } finally { releaseDelayed(); }
       await store.flushMirrors();
       assert.equal((await read(replica)).payload.value, "newest");

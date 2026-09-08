@@ -73,7 +73,9 @@ test("acknowledged revision 11 cannot promote mirror 10; retry succeeds after mi
     connect(callback) { callback(null, client); },
     async query() { return { rows: [structuredClone(primaryRow)] }; }
   } };
-  const mirror = { name: "mirror", healthy: true, pool: { async query(sql, params) {
+  const mirror = { name: "mirror", healthy: true, pool: { connect(callback) {
+    callback(null, Object.assign(new EventEmitter(), { query: (...args) => this.query(...args), release() {} }));
+  }, async query(sql, params) {
     if (sql.startsWith("INSERT")) {
       await new Promise(resolve => { finishMirror = resolve; });
       mirrorRow = { payload: JSON.parse(params[0]), state_revision: String(params[1]), updated_at: params[2] };

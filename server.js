@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v823-realtime-push-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v824-bounded-mirrors-ppr-calendar"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -976,12 +976,15 @@ async function recoverPostgresReplicas() {
     const wasHealthy = Boolean(target.healthy);
     try {
       await target.pool.query("SELECT 1");
-      if (!wasHealthy) await postgresStateStore.prepareMirror(target);
+      const recoveryNeeded = !wasHealthy || !target.healthy;
+      // Record this probe before awaiting preparation: a newer background
+      // mirror failure must remain unhealthy and trigger the next recovery.
       target.healthy = true;
+      if (recoveryNeeded) await postgresStateStore.prepareMirror(target);
       target.error = "";
       target.lastSuccessAt = new Date().toISOString();
       target.recoveryFailures = 0; target.nextRecoveryAt = "";
-      if (!wasHealthy) {
+      if (recoveryNeeded) {
         await compressLegacyBackupTables(target.pool);
         const current = await source.pool.query("SELECT payload::text AS payload_text,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
         if (current.rows[0]?.payload_text) {
@@ -2809,8 +2812,7 @@ function pendingPprCountForSubscription(db, subscriptionEntry) {
   return Object.values(db.pprSheets || {}).filter(sheet =>
     sheet
     && sheet.approvalRequestedAt
-    && !sheet.approvedAt
-    && (sheet.rows || []).some(row => String(row?.work || "").trim())
+    && require("./server/ppr-autofill").pprSheetReadyForApproval(sheet)
   ).length;
 }
 
@@ -4347,11 +4349,18 @@ function mergePprRows(currentRows = [], incomingRows = []) {
 function mergePprSheetsByFreshness(current = {}, incoming = {}) {
   const merged = mergeObjectRecordsByFreshness(current, incoming);
   for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
+    if (current?.[date]?.approvedAt) { merged[date] = current[date]; continue; }
     if (!current?.[date] || !incoming?.[date]) continue;
     const removedRowIds = [...new Set([...(current[date].removedRowIds || []), ...(incoming[date].removedRowIds || [])])];
     merged[date] = { ...merged[date], removedRowIds, rows: mergePprRows(current[date].rows, incoming[date].rows).filter(row => !removedRowIds.includes(String(row.id))) };
   }
   return merged;
+}
+
+function reconcilePprApprovalRequests(db, dates, origin = "") {
+  require("./server/ppr-plan").reconcilePprApprovalRequests(db.pprSheets, stateTransactions.baseline().pprSheets, dates, {
+    origin, notify: sendPprApprovalPushNotifications, clear: clearPprApprovalPushNotifications,
+    onError: error => warnServerDiagnostic("ppr.approval-notification", error) });
 }
 
 function remarkDeletionKeyServer(recordKey, remarkId) {
@@ -6266,6 +6275,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.turningJournal = mergeObjectRecordsByFreshness(db.turningJournal, body.turningJournal);
         db.pprSheets = mergePprSheetsByFreshness(db.pprSheets, body.pprSheets);
+        reconcilePprApprovalRequests(db, Object.keys(body.pprSheets || {}), body.clientId || "api");
         db.annualPpr = mergeObjectRecordsByFreshness(db.annualPpr, body.annualPpr);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
@@ -6323,7 +6333,10 @@ async function handleApiTransaction(req, res, pathname, url) {
     const result = req.method === "GET" ? planSnapshot(readDb(), body.date) : await enqueueStateWrite(async () => {
       const db = readDb();
       const saved = savePlan(db, body, { name: req.authUser.name, role });
-      if (!saved.error) writeDb(db, { action: "ppr_plan_save", date: body.date, actionId: String(body.actionId || ""), user: { name: req.authUser.name, role } });
+      if (!saved.error) {
+        reconcilePprApprovalRequests(db, [body.date], body.clientId || "api");
+        writeDb(db, { action: "ppr_plan_save", date: body.date, actionId: String(body.actionId || ""), user: { name: req.authUser.name, role } });
+      }
       return saved;
     });
     if (result.error) { sendJson(res, result.error === "ppr_sheet_not_found" ? 404 : 409, { ok: false, error: result.error }); return true; }
@@ -6358,6 +6371,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (generated.changed) {
         db.pprSheets ||= {};
         db.pprSheets[date] = generated.sheet;
+        reconcilePprApprovalRequests(db, [date], body.clientId || "api");
         writeDb(db, { action: "ppr_sheet_generated", actionId: String(body.actionId || ""), clientId: String(body.clientId || ""), user: req.authUser, date });
       }
       return generated;
@@ -6394,8 +6408,6 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (sheet.approvedAt) return { error: "ppr_sheet_locked" };
       sheet.rows = Array.isArray(sheet.rows) ? sheet.rows : [];
       const now = new Date().toISOString();
-      let notifyEngineers = false;
-      let clearEngineerApproval = false;
       if (action === "draft") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         if (!row || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
@@ -6425,32 +6437,22 @@ async function handleApiTransaction(req, res, pathname, url) {
         row.markUpdatedAt = now;
         row.updatedAt = now;
         Object.assign(row, require("./server/ppr-plan").legacyMarkTarget({ ...sheet, date }, row, db.catalog, now));
-        const activeRows = sheet.rows.filter(item => String(item?.work || "").trim());
-        if (
-          activeRows.length
-          && activeRows.every(item => ["done", "na"].includes(item.mark))
-          && !sheet.approvalRequestedAt
-        ) {
-          sheet.approvalRequestedAt = now;
-          notifyEngineers = true;
-        }
       } else if (action === "add-row") {
         if (sheet.explicitPlan) return { error: "ppr_sheet_locked" };
         sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
       } else if (action === "approve") {
-        const activeRows = sheet.rows.filter(row => String(row?.work || "").trim());
-        if (!activeRows.length || !activeRows.every(row => ["done", "na"].includes(row.mark))) return { error: "ppr_sheet_not_ready" };
+        if (!require("./server/ppr-autofill").pprSheetReadyForApproval(sheet)) return { error: "ppr_sheet_not_ready" };
         sheet.approvedAt = now;
         sheet.approvedByName = name;
         sheet.approvedByRole = role;
         sheet.lockedAt = now;
-        clearEngineerApproval = true;
       }
       sheet.updatedAt = now;
       sheet.updatedByName = name;
       const actionId = String(body.actionId || "");
+      reconcilePprApprovalRequests(db, [date], body.clientId || "api");
       writeDb(db, { action: `ppr_sheet_${action}`, actionId, clientId: String(body.clientId || ""), user: body.user || null, date, rowId });
-      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, notifyEngineers, clearEngineerApproval, sheet };
+      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, sheet };
     });
     if (result.error) {
       const status = result.error === "ppr_sheet_locked" ? 409 : result.error === "ppr_sheet_not_found" ? 404 : 400;
@@ -6458,16 +6460,6 @@ async function handleApiTransaction(req, res, pathname, url) {
       return true;
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
-    if (result.notifyEngineers) {
-      sendPprApprovalPushNotifications(result.sheet, result.origin).catch(error => {
-        console.error(`PPR approval push delivery failed: ${error?.message || error}`);
-      });
-    }
-    if (result.clearEngineerApproval) {
-      clearPprApprovalPushNotifications(result.sheet, result.origin).catch(error => {
-        console.error(`PPR approval clear delivery failed: ${error?.message || error}`);
-      });
-    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
     return true;
   }
