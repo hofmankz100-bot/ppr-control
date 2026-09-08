@@ -2,7 +2,7 @@
   "use strict";
   const drafts = new Map();
   const approvalRequests = new Set();
-  const keyFor = row => JSON.stringify([String(row.equipmentId || ""), String(row.node || "")]);
+  const keyFor = row => JSON.stringify([String(row.equipmentId || ""), row.nodeId ? { nodeId: String(row.nodeId) } : String(row.node || "")]);
   const started = row => Boolean(row.mark || row.markedAt || String(row.resolutionComment || "").trim());
   const messages = {
     ppr_plan_conflict: "Перечень уже изменён другим сотрудником. Ваш текст оставлен на экране. Скопируйте нужные правки, отмените редактирование и откройте его заново.",
@@ -120,7 +120,7 @@
       }));
       element.querySelectorAll("[data-ppr-plan-target]").forEach(select => select.addEventListener("change", () => {
         const row = draft.rows.find(item => item.id === select.dataset.pprPlanTarget);
-        if (row && !started(row)) Object.assign(row, select.value === "" ? { equipmentId: "", equipment: "", node: "", area: "" } : draft.targets[Number(select.value)]);
+        if (row && !started(row)) Object.assign(row, { nodeId: "" }, select.value === "" ? { equipmentId: "", equipment: "", node: "", area: "" } : draft.targets[Number(select.value)]);
       }));
       element.querySelectorAll("[data-ppr-plan-remove]").forEach(button => button.addEventListener("click", () => {
         const row = draft.rows.find(item => item.id === button.dataset.pprPlanRemove);
@@ -146,7 +146,7 @@
         message("Сохраняется…");
         try {
           await publish(date, { revision: draft.revision, templateVersions: draft.templateVersions,
-            rows: draft.rows.map(({ id, work, equipmentId, node }) => ({ id, work, equipmentId, node })) });
+            rows: draft.rows.map(({ id, work, equipmentId, node, nodeId }) => ({ id, work, equipmentId, node, ...(nodeId ? { nodeId } : {}) })) });
           drafts.delete(date); rerender(); toast("Перечень сохранён для этого и следующих ППР");
         } finally { controls.forEach((control, index) => { control.disabled = disabled[index]; }); }
       }));

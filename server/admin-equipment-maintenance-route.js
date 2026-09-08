@@ -1,4 +1,5 @@
 "use strict";
+const { bindPprNodeIdentity, pprNodeBindingAmbiguous, started: pprRowStarted } = require("./ppr-plan");
 
 function createAdminEquipmentMaintenanceRoute({
   broadcastState,
@@ -96,6 +97,8 @@ function createAdminEquipmentMaintenanceRoute({
       if (nodes.some(value => normalizedCatalogNodeName(value) === normalized)) return { error: "node_already_exists" };
       const nodeIndex = nodes.length;
       catalogItem.nodes = [...nodes, node];
+      catalogItem.pprNodeIds ||= {};
+      catalogItem.pprNodeIds[nodeIndex] = { id: require("node:crypto").randomUUID(), name: node, legacy: false };
       catalogItem.nodeCreatedAt = catalogItem.nodeCreatedAt && typeof catalogItem.nodeCreatedAt === "object" ? catalogItem.nodeCreatedAt : {};
       catalogItem.nodeCreatedAt[nodeIndex] = new Date().toISOString();
       catalogItem.qrTokens = catalogItem.qrTokens && typeof catalogItem.qrTokens === "object" ? catalogItem.qrTokens : {};
@@ -131,6 +134,8 @@ function createAdminEquipmentMaintenanceRoute({
         return { error: "node_already_exists", status: 409 };
       }
       if (previousNode === node) return { state: publicState(db), unchanged: true };
+      if (pprNodeBindingAmbiguous(db, equipmentId, nodeIndex)) return { error: "ppr_node_binding_ambiguous", status: 409 };
+      bindPprNodeIdentity(db, equipmentId, nodeIndex, { rename: node, linkSheets: true });
       catalogItem.nodes = [...catalogItem.nodes];
       catalogItem.nodes[nodeIndex] = node;
       if (catalogItem.reminderMeta?.[nodeIndex]?.mode === "auto") catalogItem.reminderMeta[nodeIndex].stale = true;
@@ -141,9 +146,9 @@ function createAdminEquipmentMaintenanceRoute({
       };
       (db.downtimes || []).forEach(updateOpenLabel);
       Object.values(db.pprSheets || {}).forEach(sheet => {
-        updateOpenLabel(sheet);
-        (sheet?.works || []).forEach(updateOpenLabel);
-        (sheet?.rows || []).forEach(updateOpenLabel);
+        if (sheet?.approvedAt) return;
+        // Current rows use the proven PPR identity above, never a stale index.
+        [sheet, ...(sheet?.works || [])].filter(row => !pprRowStarted(row) && !row.nodeId && row.node === previousNode).forEach(updateOpenLabel);
       });
       Object.values(db.annualPpr || {}).forEach(record => (record?.works || []).forEach(updateOpenLabel));
       catalogItem.updatedAt = new Date().toISOString();
@@ -170,6 +175,7 @@ function createAdminEquipmentMaintenanceRoute({
     }
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
+      if (pprNodeBindingAmbiguous(db, equipmentId, nodeIndex)) return { error: "ppr_node_binding_ambiguous" };
       const archivedAt = new Date().toISOString();
       db.archivedNodeChecks ||= [];
       const shiftedChecks = {};
@@ -215,6 +221,7 @@ function createAdminEquipmentMaintenanceRoute({
       db.catalog ||= { equipment: {} };
       db.catalog.equipment ||= {};
       const catalogItem = db.catalog.equipment[equipmentId] || {};
+      bindPprNodeIdentity(db, equipmentId, nodeIndex, { linkSheets: true });
       const shiftIndexedMap = source => {
         const next = {};
         Object.entries(source || {}).forEach(([key, value]) => {
@@ -230,6 +237,7 @@ function createAdminEquipmentMaintenanceRoute({
       catalogItem.reminderMeta = shiftIndexedMap(catalogItem.reminderMeta);
       catalogItem.nodeOperationalPauses = shiftIndexedMap(catalogItem.nodeOperationalPauses);
       catalogItem.nodeCreatedAt = shiftIndexedMap(catalogItem.nodeCreatedAt);
+      catalogItem.pprNodeIds = shiftIndexedMap(catalogItem.pprNodeIds);
       catalogItem.qrTokens = shiftIndexedMap(catalogItem.qrTokens);
       catalogItem.qrTokenAliases = shiftIndexedMap(catalogItem.qrTokenAliases);
       catalogItem.qrUpdatedAt = shiftIndexedMap(catalogItem.qrUpdatedAt);

@@ -148,7 +148,7 @@ test("actual welding/turning screen totals and printed accepted rows use the sam
   const records = [{ id: "boundary", status: "completed", completedAt: "2026-08-31T20:00:00Z", createdAt: "2026-08-20T00:00:00Z", description: "BOUNDARY" },
     { id: "previous", status: "completed", completedAt: "2026-08-31T18:59:59Z", createdAt: "2026-08-20T00:00:00Z", description: "PREVIOUS" },
     { id: "unaccepted", status: "awaitingAcceptance", completedAt: "2026-08-31T20:00:00Z", description: "UNACCEPTED" }];
-  const h = harness(["weldingMonthKey", "weldingRecords", "turningRecords", "renderWeldingJournal", "renderTurningJournal", "printWeldingJournal", "printTurningJournal"], {
+  const h = harness(["weldingMonthKey", "weldingRecords", "turningRecords", "renderWeldingJournal", "renderTurningJournal", "productionAcceptanceHtml", "printWeldingJournal", "printTurningJournal"], {
     state: { weldingJournal: Object.fromEntries(records.map(row => [row.id, row])), turningJournal: Object.fromEntries(records.map(row => [row.id, row])) },
     current: { productionTab: "welding", weldingMonth: "2026-09", turningMonth: "2026-09" },
     ui: { subtitle: {}, weldingPanel: { querySelector: () => null, querySelectorAll: () => [] } },

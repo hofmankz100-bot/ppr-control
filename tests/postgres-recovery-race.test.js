@@ -6,6 +6,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createLatestMirrorQueue } = require("../server/latest-mirror-queue");
+const { fixture: storeFixture } = require("./postgres-mirror-queue.test");
+const { MultiPostgres } = require("../multi-postgres");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture({ failDuringPrepare = false } = {}) {
@@ -38,7 +40,7 @@ function fixture({ failDuringPrepare = false } = {}) {
     .match(/async function recoverPostgresReplicas\([^]*?\n\}/)[0];
   const context = vm.createContext({
     postgresPool: { nodes: [{ name: "primary", healthy: true, pool: { async query() { return { rows: [] }; } } }, target], status: () => ({}) },
-    postgresStateStore: { async prepareMirror() {
+    postgresStateStore: { needsMirrorRecovery: () => queue.needsRecovery(), async prepareMirror() {
       prepared += 1;
       if (prepareError) throw prepareError;
       if (!failDuringPrepare) online = true;
@@ -123,3 +125,48 @@ test("failed preparation keeps recovery unhealthy, honors backoff, and resumes o
   assert.equal(f.target.nextRecoveryAt, "");
   assert.equal(f.queue.status().completedRevision, "2");
 });
+
+for (const initialFailure of ["write-failed", "unavailable-at-enqueue"]) {
+  test(`actual auxiliary health recovery cannot bypass sticky state queue recovery: ${initialFailure}`, async () => {
+    const f = storeFixture();
+    if (initialFailure === "write-failed") {
+      f.beforeQuery = async sql => { if (sql.startsWith("INSERT INTO")) throw new Error("synthetic mirror write failure"); };
+    } else f.node.healthy = false;
+    await f.commit({ saved: 1 });
+    assert.equal((await f.store.flushMirrors())[0].status, "rejected");
+    assert.equal(f.node.healthy, false);
+    assert.equal(f.store.needsMirrorRecovery(f.node), true);
+    f.beforeQuery = async () => {};
+    const cluster = new MultiPostgres([
+      { name: "primary", healthy: true, pool: { async query(sql) {
+        if (sql.includes("pg_database_size")) throw new Error("synthetic primary monitor query unavailable");
+        return { rows: [] };
+      } } }, f.node
+    ]);
+    await cluster.query("SELECT pg_database_size(current_database()) AS size");
+    assert.equal(f.node.healthy, true, "the existing auxiliary health behavior remains unchanged");
+    await f.commit({ saved: 2 });
+    await tick();
+    assert.equal(f.mirrorRow.state_revision, "0", "healthy enqueue alone must not resume an unfenced/recovery-pending queue");
+    assert.equal(f.store.needsMirrorRecovery(f.node), true);
+    let prepared = 0;
+    const context = vm.createContext({
+      postgresPool: cluster, storageStatus: { authoritative: "primary" }, postgresClusterStatus: null,
+      postgresStateStore: {
+        needsMirrorRecovery: node => f.store.needsMirrorRecovery(node),
+        async prepareMirror(node) { prepared += 1; await f.store.prepareMirror(node); }
+      },
+      compressLegacyBackupTables: async () => {}, syncPostgresPhotos: async () => {}, Date, process: { env: {} }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "../server.js"), "utf8")
+      .match(/async function recoverPostgresReplicas\([^]*?\n\}/)[0], context);
+    await context.recoverPostgresReplicas();
+    assert.equal((await f.store.flushMirrors())[0].status, "fulfilled");
+    assert.equal(prepared, 1);
+    assert.equal(f.store.needsMirrorRecovery(f.node), false);
+    assert.equal(f.mirrorRow.state_revision, "2");
+    assert.deepEqual(f.mirrorRow.payload, { saved: 2 });
+    await context.recoverPostgresReplicas();
+    assert.equal(prepared, 1, "completed recovery is not needlessly repeated on a healthy queue");
+  });
+}

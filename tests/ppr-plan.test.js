@@ -32,7 +32,9 @@ test("explicit save updates only this plan and equipment/node template; empty ro
   assert.deepEqual(db.pprRemovedRows[date].b.row, before.pprSheets[date].rows[1]);
   const template = db.pprWorkTemplates[keyFor(target)];
   assert.deepEqual(template.works, [body.rows[0].work]); assert.equal(template.updatedByName, actor.name);
-  const next = buildAutofillRows("2026-10-01", [target], db.pprWorkTemplates);
+  const nextTarget = planSnapshot(db, date).targets.find(item => item.node === target.node);
+  assert.ok(nextTarget.nodeId, "a confirmed save assigns canonical server identity");
+  const next = buildAutofillRows("2026-10-01", [nextTarget], db.pprWorkTemplates);
   assert.deepEqual(next.filter(row => row.work).map(row => row.work), template.works);
   assert.ok(next.every(row => !row.mark && !row.resolutionComment && !row.markedByName));
   assert.notDeepEqual(buildAutofillRows("2026-10-01", [{ ...target, equipmentId: 91 }], db.pprWorkTemplates).map(row => row.work), next.map(row => row.work));

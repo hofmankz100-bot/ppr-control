@@ -37,6 +37,9 @@ function createLatestMirrorQueue({ write, onError = () => {} }) {
   return {
     enqueue(snapshot, healthy = true) {
       available = healthy;
+      // Auxiliary reads can mark a database healthy without preparing its
+      // state-writer fence. Only explicit resume may clear this recovery need.
+      if (!healthy) paused = true;
       if (snapshot.revision <= requested) return;
       requested = snapshot.revision;
       pending = snapshot;
@@ -60,6 +63,7 @@ function createLatestMirrorQueue({ write, onError = () => {} }) {
       }
       return { revision: completed.toString() };
     },
+    needsRecovery: () => paused || !available,
     status: () => ({
       activeRevision: active?.snapshot?.revision?.toString() ?? null,
       pendingRevision: pending?.revision?.toString() ?? null,

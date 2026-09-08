@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v824-bounded-mirrors-ppr-calendar";
+const APP_VERSION = "v825-ppr-identity-workshop-recovery";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3615,8 +3615,7 @@ function canEditEquipmentCatalog(equipmentOrId = current.equipmentId) {
   if (individualAccess) return true;
   if (!isEquipmentCatalogEditingEnabled(eq)) return false;
   if (role !== "shop") return true;
-  const actorArea = authenticatedProfile?.area || profile?.area || "";
-  return Boolean(actorArea && eq.area === actorArea);
+  return userHasArea(authenticatedProfile || profile || {}, eq.area || "");
 }
 
 function canEditCatalog() {
@@ -6200,7 +6199,7 @@ function isResolutionParticipant(item, user = resolutionActor()) {
 function remarkNotificationVisibleToCurrentUser(item, eq = null) {
   const actor = resolutionActor();
   if (["shop", "operator"].includes(actor.role)) {
-    const equipmentArea = String(eq?.area || item?.confirmationArea || "");
+    const equipmentArea = String((eq && equipmentEmployeeArea(eq)) || item?.confirmationArea || "");
     if (!equipmentArea || !userHasArea(actor, equipmentArea)) return false;
   }
   const participants = resolutionParticipants(item);
@@ -6257,7 +6256,7 @@ function userHasArea(user = {}, area = "") {
 
 function remarkConfirmationRule(entry = {}, eq = null) {
   const users = approvedRemarkUsers();
-  const area = String(eq?.area || entry.confirmationArea || "");
+  const area = String((eq && equipmentEmployeeArea(eq)) || entry.confirmationArea || "");
   const shopCandidates = area ? users.filter(user => user.role === "shop" && userHasArea(user, area)) : [];
   if (shopCandidates.length) return { mode: "shop", role: "shop", area, candidates: shopCandidates };
   return { mode: "engineer", role: "engineer", area, candidates: users.filter(user => user.role === "engineer") };
@@ -6378,7 +6377,7 @@ const remarkCollaborationRequests = new Map();
 
 async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, action, extra = {}) {
   const recordKey = key(equipmentId, nodeIndex, date);
-  const equipmentArea = equipmentById(Number(equipmentId))?.area || "";
+  const equipmentArea = equipmentEmployeeArea(equipmentById(Number(equipmentId)) || {});
   const requestKey = JSON.stringify([
     recordKey, action, extra.remarkId || "", extra.participantKey || "",
     extra.performerKey || "", extra.text || "", extra.reason || "", extra.partDescription || ""
@@ -8199,10 +8198,15 @@ function acceptWeldingRequest(item) {
   }, 80);
 }
 
+function canCompleteWeldingWork(item, actor = weldingActor()) {
+  return ["accepted", "returned"].includes(item?.status) && (profile?.role === "editor" || (isWelderUser() && isProductionParticipant(item, "welding", actor)));
+}
+
 async function completeWeldingRequest(item, form) {
   const actor = weldingActor();
-  if (!isWelderUser() || (item.welderId && item.welderId !== actor.id && profile?.role !== "editor")) {
-    return window.alert("Завершить работу может принявший её сварщик или администратор.");
+  item = state.weldingJournal?.[item.id];
+  if (!canCompleteWeldingWork(item, actor)) {
+    return window.alert("Завершить работу может сварщик — участник работы или администратор, пока работа выполняется.");
   }
   const data = new FormData(form);
   const material = String(data.get("material") || "").trim();
@@ -8212,28 +8216,33 @@ async function completeWeldingRequest(item, form) {
   if (!material) return window.alert("Заполните основной материал, марку, толщину и количество либо укажите «Не требуется».");
   if (!consumables) return window.alert("Укажите электрод, проволоку, флюс или защитный газ либо «Не требуется».");
   if (!welderStamp || !welderCertificate) return window.alert("Укажите своё клеймо сварщика и номер удостоверения.");
-  const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
-  const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
-  const participants = productionParticipants(item, "welding").map(person => person.id === actor.id
-    ? { ...person, stamp: welderStamp, certificate: welderCertificate }
-    : person);
-  saveWeldingRecord({
-    ...item,
-    status: "awaitingAcceptance",
-    material: material.slice(0, 1000),
-    jointPosition: String(data.get("jointPosition") || "lower"),
-    consumables: consumables.slice(0, 1000),
-    workComment: String(data.get("workComment") || "").trim().slice(0, 2000),
-    completedAt: new Date().toISOString(),
-    welderId: item.welderId || actor.id,
-    welderName: item.welderName || actor.name,
-    welderPosition: item.welderPosition || actor.position,
-    welderStamp: item.welderId === actor.id ? welderStamp : (item.welderStamp || actor.stamp),
-    welderCertificate: item.welderId === actor.id ? welderCertificate : (item.welderCertificate || actor.certificate),
-    participants,
-    resultPhoto
-  });
-  showAppToast(productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
+  const unlock = lockProductionRequestForm(form);
+  if (!unlock) return;
+  try {
+    const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
+    const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
+    if (weldingActor().id !== actor.id || state.weldingJournal?.[item.id] !== item || !canCompleteWeldingWork(item, actor)) return showAppToast("Запись или профиль изменились. Проверьте данные и повторите завершение.");
+    const participants = productionParticipants(item, "welding").map(person => person.id === actor.id
+      ? { ...person, stamp: welderStamp, certificate: welderCertificate }
+      : person);
+    saveWeldingRecord({
+      ...item,
+      status: "awaitingAcceptance",
+      material: material.slice(0, 1000),
+      jointPosition: String(data.get("jointPosition") || "lower"),
+      consumables: consumables.slice(0, 1000),
+      workComment: String(data.get("workComment") || "").trim().slice(0, 2000),
+      completedAt: new Date().toISOString(),
+      welderId: item.welderId || actor.id,
+      welderName: item.welderName || actor.name,
+      welderPosition: item.welderPosition || actor.position,
+      welderStamp: item.welderId === actor.id ? welderStamp : (item.welderStamp || ""),
+      welderCertificate: item.welderId === actor.id ? welderCertificate : (item.welderCertificate || ""),
+      participants,
+      resultPhoto
+    });
+    showAppToast(productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
+  } finally { unlock(); }
 }
 
 function acceptCompletedWeldingWork(item) {
@@ -8256,7 +8265,7 @@ function returnWeldingWork(item) {
 function weldingRecordCard(item) {
   const canAccept = item.status === "new" && isWelderUser();
   const actor = weldingActor();
-  const canComplete = ["accepted", "returned"].includes(item.status) && (isProductionParticipant(item, "welding", actor) || profile?.role === "editor");
+  const canComplete = canCompleteWeldingWork(item, actor);
   const canJoin = ["accepted", "returned"].includes(item.status) && isWelderUser() && !isProductionParticipant(item, "welding", actor);
   const requesterCanDecide = canDecideProductionWork(item, "welding", actor);
   const engineerDecision = requesterCanDecide && productionWorkWasSelfRequested(item, "welding");
@@ -8318,13 +8327,17 @@ function renderWeldingJournal() {
   });
 }
 
+function productionAcceptanceHtml(item) {
+  return [["Requester", "Принял заявитель"], ["Engineer", "Подтвердил инженер"]].filter(([kind]) => item[`acceptedBy${kind}At`]).map(([kind, label]) => `${label}: ${escapeHtml(item[`acceptedBy${kind}Name`] || (kind === "Requester" ? item.createdByName : "") || "—")} · ${escapeHtml(dateTimeHuman(item[`acceptedBy${kind}At`]))}`).join("<br>") || "Приёмка: —";
+}
+
 function printWeldingJournal(month = PPRModules.director.calendarMonth(new Date())) {
   const rows = weldingRecords().filter(item => item.status === "completed" && weldingMonthKey(item.completedAt) === month).sort((a,b) => String(a.completedAt).localeCompare(String(b.completedAt)));
   const win = window.open("", "_blank", "width=1400,height=900");
   if (!win) return window.alert("Разрешите всплывающие окна для печати журнала.");
   const company = state.adminConfig?.companyName || "Организация";
   const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Все исполнители</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(productionParticipants(item,"welding").map(person => `${person.name}${person.stamp ? ` · клеймо ${person.stamp}` : ""}${person.certificate ? ` · уд. ${person.certificate}` : ""}`).join("\n") || "—")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Все исполнители</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(productionParticipants(item,"welding").map(person => `${person.name}${person.stamp ? ` · клеймо ${person.stamp}` : ""}${person.certificate ? ` · уд. ${person.certificate}` : ""}`).join("\n") || "—")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>${productionAcceptanceHtml(item)}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   finalizeJournalPopup(win);
 }
 
@@ -8403,7 +8416,7 @@ function renderTurningJournal() {
   bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||PPRModules.director.calendarMonth(new Date());renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
 }
 
-function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
+function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>${productionAcceptanceHtml(x)}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);

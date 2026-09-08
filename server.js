@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v824-bounded-mirrors-ppr-calendar"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v825-ppr-identity-workshop-recovery"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -291,7 +291,7 @@ function catalogNodeTombstone(item, name, event = {}) {
 
 const CATALOG_NODE_INDEXED_FIELDS = [
   "reminders", "reminderMeta", "nodeOperationalPauses", "nodeCreatedAt",
-  "qrTokens", "upperQrTokens", "qrTokenAliases", "qrUpdatedAt"
+  "qrTokens", "upperQrTokens", "qrTokenAliases", "qrUpdatedAt", "pprNodeIds"
 ];
 
 function remapCatalogNodeIndexedFields(item, keptEntries = []) {
@@ -976,7 +976,7 @@ async function recoverPostgresReplicas() {
     const wasHealthy = Boolean(target.healthy);
     try {
       await target.pool.query("SELECT 1");
-      const recoveryNeeded = !wasHealthy || !target.healthy;
+      const recoveryNeeded = !wasHealthy || !target.healthy || postgresStateStore.needsMirrorRecovery(target);
       // Record this probe before awaiting preparation: a newer background
       // mirror failure must remain unhealthy and trigger the next recovery.
       target.healthy = true;
@@ -2325,12 +2325,7 @@ function subscriptionMatchesRemarkServer(db, subscriptionEntry, remarkRecord = {
   const actor = sanitizeResolutionParticipant(profile);
   const participants = resolutionParticipantsServer(entry);
   if (participants.some(participant => subscriptionMatchesResolutionParticipant(subscriptionEntry, participant))) return true;
-  const area = String(
-    entry?.area
-    || entry?.confirmationArea
-    || remarkEquipmentAreaServer(db, recordKey, "")
-    || ""
-  ).trim();
+  const area = remarkEquipmentAreaServer(db, recordKey, entry?.area || entry?.confirmationArea || "");
   const role = permissionBaseRoleServer(String(profile.role || ""));
   if (role === "shop") return Boolean(area && userHasAreaServer(profile, area));
   if (role === "engineer") return !(db.users || []).some(user =>
@@ -2648,15 +2643,18 @@ function qrWalkCatalogItemServer(db, equipmentId) {
 
 function remarkEquipmentAreaServer(db, recordKey, requestedArea = "") {
   const equipmentId = String(recordKey || "").split(":")[0];
+  const equipment = db.catalog?.equipment?.[equipmentId] || {};
   const record = db.checks?.[recordKey] || {};
-  return String(
-    db.catalog?.equipment?.[equipmentId]?.area
+  const area = String(
+    equipment.area
     || DEFAULT_EQUIPMENT_AREAS_SERVER[equipmentId]
     || record.area
     || record.to?.area
     || requestedArea
     || ""
   ).trim().slice(0, 200);
+  const name = String(equipment.name || "").trim().slice(0, 200);
+  return area.toLocaleLowerCase("ru-RU") === "резерв" && name && !/^оборудование\s+\d+$/iu.test(name) ? name : area;
 }
 
 function remarkEquipmentNodeServer(recordKey = "") {
@@ -2791,7 +2789,7 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
       const participants = resolutionParticipantsServer(entry);
       const subscriptionActor = sanitizeResolutionParticipant(subscriptionEntry?.profile || {});
       if (entry.resolutionPendingConfirmation) {
-        const confirmationRule = remarkConfirmationRuleServer(db, entry, entry.confirmationArea || "");
+        const confirmationRule = remarkConfirmationRuleServer(db, entry, remarkEquipmentAreaServer(db, recordKey, entry.confirmationArea || ""));
         if (actorCanConfirmRemarkServer(subscriptionActor, entry, confirmationRule)) count += 1;
         return;
       }

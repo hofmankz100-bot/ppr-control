@@ -37,7 +37,10 @@ test("server autofill preserves the equipment, instructions and plant-calendar r
     for (const node of equipment.nodes) assert.deepEqual(nodeReminderItems(node, equipment.name), plain(browser.nodeReminderItems(node, equipment.name)));
     for (let day = 1; day <= 30; day += 1) {
       const date = `2026-09-${String(day).padStart(2, "0")}`;
-      assert.deepEqual(recommendedMaintenanceForDate(equipment, date), plain(browser.recommendedMaintenanceForDate(equipment, date)), `${equipment.id}:${date}`);
+      const selected = recommendedMaintenanceForDate(equipment, date);
+      if (selected) assert.equal(equipment.nodes[selected.nodeIndex], selected.node, "server retains the actual rotation index");
+      const legacyShape = selected ? Object.fromEntries(Object.entries(selected).filter(([key]) => key !== "nodeIndex")) : selected;
+      assert.deepEqual(legacyShape, plain(browser.recommendedMaintenanceForDate(equipment, date)), `${equipment.id}:${date}`);
     }
   }
 });

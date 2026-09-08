@@ -150,7 +150,7 @@ function rawMaintenance(equipment, date) {
   const offset = (dayNumber + Number(equipment.id || 0) * 3) % intervalDays;
   const daysUntil = offset === 0 ? 0 : intervalDays - offset;
   const nodeIndex = equipment.nodes.length ? (dayNumber + Number(equipment.id || 0)) % equipment.nodes.length : 0;
-  return { dueDate: addDays(date, daysUntil), daysUntil, node: equipment.nodes[nodeIndex] || equipment.name, intervalDays };
+  return { dueDate: addDays(date, daysUntil), daysUntil, node: equipment.nodes[nodeIndex] || equipment.name, nodeIndex, intervalDays };
 }
 
 function recommendedMaintenanceForDate(equipment, date) {
@@ -186,26 +186,61 @@ function pauseApplies(pause, date, today) {
   return date >= start && (!end || date <= end);
 }
 
+const pprTargetKey = row => JSON.stringify([String(row.equipmentId || ""), row.nodeId ? { nodeId: String(row.nodeId) } : String(row.node || "")]);
+
+// Positions can move; labels are only a compatibility proof while unique.
+// The saved name also makes unknown legacy reorder/repair paths fail closed.
+function resolvePprTarget(equipment, row, { nodeIndexOnly = false } = {}) {
+  if (!equipment || String(equipment.id) !== String(row?.equipmentId)) return null;
+  const nodes = equipment.nodes || [];
+  const identities = nodes.map((name, index) => {
+    const value = equipment.pprNodeIds?.[index];
+    return value?.name === name && typeof value.id === "string" && value.id ? value.id : "";
+  });
+  const matches = nodes.map((name, index) => row.nodeId ? (identities[index] === row.nodeId ? index : -1) : (name === row.node ? index : -1)).filter(index => index >= 0);
+  if (matches.length !== 1) return null;
+  const index = matches[0], nodeId = identities[index];
+  if (nodeId && identities.filter(id => id === nodeId).length !== 1) return null;
+  if (!row.nodeId && nodeId && equipment.pprNodeIds[index].legacy === false) return null;
+  if (nodeIndexOnly) return index;
+  return { equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node: nodes[index], ...(nodeId ? { nodeId } : {}) };
+}
+
+function pprTemplateEntry(target, templates = {}) {
+  const matches = target.nodeId ? Object.entries(templates).filter(([, value]) => String(value?.equipmentId) === String(target.equipmentId) && value?.nodeId === target.nodeId) : [];
+  if (matches.length > 1) return { conflict: true };
+  if (matches.length === 1) return { key: matches[0][0], template: matches[0][1] };
+  const key = pprTargetKey({ ...target, nodeId: "" });
+  const template = templates[key];
+  if (target.nodeId) return { key: template ? pprTargetKey(target) : key };
+  if (template && !template.nodeId && (!template.equipmentId || String(template.equipmentId) === String(target.equipmentId)) && (!template.node || template.node === target.node)) return { key, template };
+  if (template && !target.nodeId) return { conflict: true };
+  return { key: template ? pprTargetKey(target) : key };
+}
+
 function scheduledItemsForDate(catalog, date, today = date) {
   return equipmentForPlan(catalog).flatMap(equipment => {
     if ((equipment.operationalPauses || []).some(pause => pauseApplies(pause, date, today))) return [];
     const plan = recommendedMaintenanceForDate(equipment, date);
     if (!plan) return [];
-    const index = equipment.nodes.indexOf(plan.node);
+    const index = plan.nodeIndex;
     if ((equipment.nodeOperationalPauses?.[index] || []).some(pause => pauseApplies(pause, date, today))) return [];
-    return [{ equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node: plan.node, intervalDays: plan.intervalDays }];
+    const identity = equipment.pprNodeIds?.[index];
+    const target = resolvePprTarget(equipment, { equipmentId: equipment.id, node: plan.node, ...(identity?.name === plan.node ? { nodeId: identity.id } : {}) });
+    return target ? [{ ...target, intervalDays: plan.intervalDays }] : [];
   });
 }
 
 function buildAutofillRows(date, scheduledItems, templates = {}) {
   const rows = [];
   scheduledItems.forEach((scheduled, index) => {
-    const template = templates[JSON.stringify([String(scheduled.equipmentId), scheduled.node])];
+    const { template, conflict } = pprTemplateEntry(scheduled, templates);
+    if (conflict) return;
     const works = template?.works?.length ? template.works : nodeReminderItems(scheduled.node, scheduled.equipment);
     works.forEach((work, workIndex) => {
       const clean = String(work || "").trim();
       if (!clean || (!template && rows.some(row => row.work === clean && row.equipmentId === scheduled.equipmentId && row.node === scheduled.node))) return;
-      rows.push({ id: `${date}-auto-${index + 1}-${workIndex + 1}`, work: clean, mark: "", equipmentId: scheduled.equipmentId, equipment: scheduled.equipment, node: scheduled.node, area: scheduled.area, autoFilled: true });
+      rows.push({ id: `${date}-auto-${index + 1}-${workIndex + 1}`, work: clean, mark: "", equipmentId: scheduled.equipmentId, equipment: scheduled.equipment, node: scheduled.node, ...(scheduled.nodeId ? { nodeId: scheduled.nodeId } : {}), area: scheduled.area, autoFilled: true });
     });
   });
   while (rows.length < 8) rows.push({ id: `${date}-work-${rows.length + 1}`, work: "", mark: "" });
@@ -251,9 +286,9 @@ function generatePprSheet({ catalog, templates = {}, previous, date, force = fal
     updatedAt: now, updatedByName: "Система", autofillInitialized: true, autofillMode: "template", autofilledAt: now,
     plannedByName: "Система", plannedByRole: "system", plannedAt: now, plannedAutomatically: true,
     approvalRequestedAt: "",
-    autofilledFor: scheduledItems.map(({ equipmentId, equipment, node, area }) => ({ equipmentId, equipment, node, area }))
+    autofilledFor: scheduledItems.map(({ equipmentId, equipment, node, nodeId, area }) => ({ equipmentId, equipment, node, ...(nodeId ? { nodeId } : {}), area }))
   };
   return finalizedAutofill(sheet, previous, true, now);
 }
 
-module.exports = { EQUIPMENT, equipmentForPlan, nodeReminderItems, recommendedMaintenanceForDate, scheduledItemsForDate, buildAutofillRows, generatePprSheet, validDate, pprSheetReadyForApproval, reconcilePprApprovalRequest };
+module.exports = { EQUIPMENT, equipmentForPlan, nodeReminderItems, recommendedMaintenanceForDate, scheduledItemsForDate, buildAutofillRows, generatePprSheet, validDate, pprSheetReadyForApproval, reconcilePprApprovalRequest, pprTargetKey, resolvePprTarget, pprTemplateEntry };

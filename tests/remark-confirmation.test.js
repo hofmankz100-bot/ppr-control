@@ -97,7 +97,8 @@ test.before(async () => {
     checks: {
       "1:0:2026-07-16": { to: { commentLog: [remark("remark-shop", "Электрик Один", "electrician", "Предупреждение в цехе А")] } },
       "1:1:2026-07-16": { to: { commentLog: [remark("remark-any-author", "Директор производства", "productionDirector", "Предупреждение другой роли")] } },
-      "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } }
+      "2:0:2026-07-16": { to: { commentLog: [remark("remark-engineer", "Механик Один", "mechanic", "Предупреждение без начальника")] } },
+      "17:0:2026-07-16": { to: { commentLog: [remark("custom-workshop", "Механик Один", "mechanic", "Замечание НЗП")] } }
       ,
       "10:0:2026-07-16": { to: { commentLog: [remark("remark-gas-10", "Электрик Один", "electrician", "Проверить регулятор", "2026-07-16T05:30:00.000Z")] } },
       "3:0:2026-07-16": {
@@ -135,7 +136,9 @@ test.before(async () => {
       equipment: {
         "1": { name: "Оборудование А", area: "Цех А", nodes: ["Узел А1", "Узел А2"] },
         "2": { name: "Оборудование Б", area: "Цех Б", nodes: ["Узел Б1"] },
-        "3": { name: "Paint equipment", area: "Покрасочный цех", nodes: ["Paint node"] }
+        "3": { name: "Paint equipment", area: "Покрасочный цех", nodes: ["Paint node"] },
+        "17": { name: "НЗП", area: "Резерв", nodes: ["Узел НЗП"] },
+        "18": { name: "Дополнительное оборудование", area: "Второй участок", nodes: ["Второй узел"], editingEnabled: true }
       }
     },
     serviceCosts: [],
@@ -237,6 +240,7 @@ test.before(async () => {
       { employeeId: "legacy-77", name: "Старый сотрудник", role: "mechanic", approved: true, pendingApproval: false },
       user("shop-a-2", "Second Shop Chief", "shop", "Цех А"),
       user("repair-worker", "Repair Worker", "mechanic"),
+      { ...user("custom-chief", "Начальник НЗП", "shop", "НЗП"), areas: ["Второй участок"] },
     ],
     translationCache: {},
     pushNotifications: { subscriptions: [], vapid: null }
@@ -320,6 +324,33 @@ test("closes a downtime only after the dedicated server action and protects it f
   const protectedStop = state.downtimes.find(item => item.id === "downtime-test-1");
   assert.ok(protectedStop.endedAt);
   assert.equal(protectedStop.closeComment, "Equipment started");
+});
+
+test("custom workshop routes repair to its assigned chief and multi-area catalog edits keep server enforcement", async () => {
+  const key = "17:0:2026-07-16", id = "custom-workshop";
+  const before = await (await fetch(`${baseUrl}/api/state`)).json();
+  const pendingResponse = await postRemark(key, id, "resolve", user("mechanic-1", "Подмена", "mechanic"), { text: "Исправлено НЗП", equipmentArea: "Другой цех" });
+  const pending = patchedRemark(pendingResponse, key, id);
+  assert.equal(pending.confirmationArea, "НЗП");
+  assert.equal(pending.confirmationRequiredRole, "shop");
+  assert.deepEqual(pending.resolutionEvents.at(-1).recipientKeys.sort(), ["id:custom-chief", "id:editor-1"]);
+  await postRemark(key, id, "confirm", user("shop-other", "Подмена", "shop", "НЗП"), {}, 403);
+  await postRemark(key, id, "confirm", user("engineer-1", "Инженер Один", "engineer"), {}, 403);
+  const closed = patchedRemark(await postRemark(key, id, "confirm", user("custom-chief", "Подмена", "shop", "Другой цех")), key, id);
+  assert.equal(closed.confirmedByName, "Начальник НЗП");
+  assert.equal(closed.resolvedByName, "Механик Один");
+  const edit = async (actorId, name) => {
+    const state = await (await fetch(`${baseUrl}/api/state`)).json();
+    const response = await fetch(`${baseUrl}/api/state`, { method: "PUT", headers: { "content-type": "application/json", "x-test-user-id": actorId },
+      body: JSON.stringify({ catalog: { equipment: { 18: { ...state.catalog.equipment[18], name, updatedAt: new Date(Date.now() + 1000).toISOString() } } } }) });
+    assert.equal(response.status, 200);
+    return (await (await fetch(`${baseUrl}/api/state`)).json()).catalog.equipment[18];
+  };
+  assert.equal((await edit("custom-chief", "Изменено вторым участком")).name, "Изменено вторым участком");
+  assert.equal((await edit("shop-other", "Чужое изменение")).name, "Изменено вторым участком");
+  const after = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.deepEqual(after.checks["1:0:2026-07-16"], before.checks["1:0:2026-07-16"]);
+  assert.deepEqual(after.inventory, before.inventory);
 });
 
 test("routes every warning to the equipment shop chief and stores the accepted resolution time", async () => {

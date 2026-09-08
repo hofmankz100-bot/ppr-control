@@ -339,6 +339,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
       } catch (error) { activeTransactions -= 1; throw error; }
     },
     prepareMirror,
+    needsMirrorRecovery: node => mirrorQueues.get(node)?.needsRecovery() || false,
     async authSnapshot() {
       try {
         // Photo reads need fresh session/user authorization, not the work history.
