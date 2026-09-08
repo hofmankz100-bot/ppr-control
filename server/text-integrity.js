@@ -86,11 +86,19 @@ function candidatePools(db, reference) {
 
 function repairStoredText(db, reference = require("./text-recovery-reference.json")) {
   db.targetedCleanupVersions ||= {};
-  if (db.targetedCleanupVersions[KEY]) return db.targetedCleanupVersions[KEY];
+  const previous = db.targetedCleanupVersions[KEY];
+  const referenceVersion = reference.version || 1;
+  if (previous && (previous.referenceVersion || 1) >= referenceVersion) return previous;
   const pools = candidatePools(db, reference);
-  const report = { at: new Date().toISOString(), source: reference.source, repaired: 0, changes: [], unresolved: [], invalidatedTranslations: [] };
+  const report = previous || { at: new Date().toISOString(), repaired: 0, changes: [], invalidatedTranslations: [] };
+  report.referenceVersion = referenceVersion; report.source = reference.source;
+  report.unresolved = [];
   for (const entry of scanStoredText(db)) {
-    const after = entry.protected ? entry.before : recoverText(entry.before, pools.get(bucket(entry.key)) || []);
+    const exact = (reference.exactRecords || []).find(item => entry.path[0] === "pprSheets"
+      && entry.path[1] === item.date && entry.path[2] === "rows" && entry.key === item.field
+      && String(entry.parent?.id) === item.rowId && String(entry.parent?.equipmentId) === item.equipmentId
+      && entry.before === item.before && !invalidText(item.after));
+    const after = entry.protected ? entry.before : exact?.after ?? recoverText(entry.before, pools.get(bucket(entry.key)) || []);
     const evidence = { path: entry.path, before: entry.before };
     if (after === entry.before) { report.unresolved.push(evidence); continue; }
     entry.parent[entry.key] = after;

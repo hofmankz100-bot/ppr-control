@@ -26,7 +26,7 @@ test("all-section repair preserves source evidence and every non-text value", ()
   assert.deepEqual(db.translationCache, { healthy: before.translationCache.healthy });
   assert.equal(report.changes[0].before.includes("�"), true);
   const saved = structuredClone(db);
-  repairStoredText(db); assert.deepEqual(db, saved);
+  repairStoredText(db, { source: "test backup", fields: { work: ["Осмотр насоса"] } }); assert.deepEqual(db, saved);
   const audit = textIntegrityReport(db);
   assert.equal(audit.remaining, 1); assert.equal(audit.unresolved[0].text, "[служебное поле]");
   assert.equal(db.targetedCleanupVersions[KEY].changes.length, 4);
@@ -41,6 +41,24 @@ test("recovery never chooses between ambiguous people or rewrites intact histori
   repairStoredText(db, { fields: {} });
   assert.equal(db.checks.a.comment, "Неизвестный т��кст");
   assert.equal(textIntegrityReport(db).remaining, 1);
+});
+
+test("new verified references append recovery evidence without rewriting previous repairs", () => {
+  const db = { checks: { a: { comment: "Осмотр нас��са" }, b: { comment: "Замена кл��пана" } } };
+  repairStoredText(db, { version: 1, fields: { comment: ["Осмотр насоса"] } });
+  const first = structuredClone(db.targetedCleanupVersions[KEY].changes);
+  repairStoredText(db, { version: 2, fields: { comment: ["Замена клапана"] } });
+  assert.equal(db.targetedCleanupVersions[KEY].repaired, 2);
+  assert.deepEqual(db.targetedCleanupVersions[KEY].changes.slice(0, 1), first);
+  assert.equal(textIntegrityReport(db).remaining, 0);
+});
+
+test("short-name recovery requires exact record identity and original damaged value", () => {
+  const row = { id: "row", equipmentId: "15", node: "п��к", mark: "done" };
+  const db = { pprSheets: { day: { rows: [row, { ...row, id: "other" }] } } };
+  repairStoredText(db, { fields: {}, exactRecords: [{ date: "day", rowId: "row", equipmentId: "15", field: "node", before: "п��к", after: "пзк" }] });
+  assert.equal(row.node, "пзк"); assert.equal(row.mark, "done");
+  assert.equal(db.pprSheets.day.rows[1].node, "п��к");
 });
 
 test("clean backup templates recover character damage without spelling or meaning edits", () => {
