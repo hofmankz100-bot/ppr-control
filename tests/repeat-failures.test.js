@@ -7,6 +7,12 @@ const vm = require("node:vm");
 const context = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8"), context);
 const { buildAnnualAnalysis, journalHtml } = context.window.PPRModules.repeatFailures;
+test("journal stylesheet is publicly served without exposing other server files", () => {
+  const { isPublicStaticPath } = require("../server/static-files");
+  assert.equal(isPublicStaticPath("modules/repeat-failures.css"), true);
+  assert.equal(isPublicStaticPath("server/repeat-failure-group-route.js"), false);
+  assert.equal(isPublicStaticPath("modules/../server/env.js"), false);
+});
 const event = (overrides = {}) => ({ type: "remark", equipmentId: 1, equipment: "Пресс", area: "Цех", node: "Насос", createdAt: "2026-08-01T08:00:00Z", text: "Не работает", ...overrides });
 const analyze = events => buildAnnualAnalysis(events, 2026, { workers: [] }).repeatedBreakdowns;
 const helpers = { escapeHtml: value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"), dateTimeHuman: value => value || "", durationText: value => String(value), requestRoleLabel: value => value || "" };
