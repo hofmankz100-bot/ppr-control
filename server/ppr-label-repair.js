@@ -1,5 +1,5 @@
 "use strict";
-const KEY = "pprLabelEncodingRepair20260908";
+const KEY = "pprLabelEncodingRepair20260908v2";
 const damaged = value => typeof value === "string" && value.includes("\uFFFD");
 const fields = ["equipment", "node", "area"];
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -28,9 +28,9 @@ function repairPprLabels(db) {
         const matches = equipmentList.filter(item => item.name === name && !damaged(name));
         if (matches.length === 1) equipment = matches[0];
       }
-      const peers = rows.filter(peer => row.equipmentId != null ? String(peer.equipmentId) === String(row.equipmentId) : peer.equipment === equipment?.name);
+      const peers = rows.filter(peer => row.equipmentId != null ? String(peer.equipmentId) === String(row.equipmentId) : equipment?.name && peer.equipment === equipment.name);
       const candidates = {
-        equipment: [equipment?.name], area: [equipment?.area],
+        equipment: [equipment?.name, ...peers.map(peer => peer.equipment)], area: [equipment?.area, ...peers.map(peer => peer.area)],
         node: [...(equipment?.nodes || []), ...peers.map(peer => peer.node)]
       };
       for (const field of fields) {

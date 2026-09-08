@@ -96,6 +96,22 @@ test("PPR repair does not guess ambiguous labels or change healthy historical na
   repairPprLabels(db); assert.equal(db.pprSheets["2026-09-09"].rows[0].node, "скважина №2");
 });
 
+test("sparse live catalogs retain names in sheet peers; repair uses only the same equipment ID", () => {
+  const db = fixture();
+  delete db.catalog.equipment["1"].name;
+  delete db.catalog.equipment["1"].area;
+  const rows = db.pprSheets["2026-09-09"].rows;
+  rows[1].area = "Во��а";
+  rows.push({ id: "unrelated", equipmentId: "99", equipment: "Нассосная", node: "скважина №2", area: "Вона" });
+  const previousAudit = { at: "2026-09-08T00:00:00Z", changes: [{ before: "original" }] };
+  db.targetedCleanupVersions = { pprLabelEncodingRepair20260908: previousAudit };
+  repairPprLabels(db);
+  assert.equal(rows[1].equipment, "Насосная");
+  assert.equal(rows[1].area, "Вода");
+  assert.equal(rows[5].equipment, "Нассосная");
+  assert.deepEqual(db.targetedCleanupVersions.pprLabelEncodingRepair20260908, previousAudit);
+});
+
 test("stale browser labels cannot undo repair or clear existing completion marks", () => {
   const previous = fixture(); repairPprLabels(previous);
   delete previous.pprSheets["2026-09-09"].approvedAt;
