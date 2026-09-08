@@ -1,5 +1,10 @@
 .repeat-breakdown-count-button{min-width:36px;min-height:36px;border:1px solid #0f766e;border-radius:8px;background:#ccfbf1;color:#115e59;font-size:14px;font-weight:800;cursor:pointer}
 .repeat-breakdown-count-button:hover{background:#99f6e4}
+.repeat-measures-editor{display:grid;gap:5px;min-width:140px}
+.repeat-measures-editor textarea{box-sizing:border-box;width:100%;min-height:64px;resize:vertical;padding:7px;border:1px solid #94a3b8;border-radius:6px;font:inherit}
+.repeat-measures-editor button{justify-self:start;min-height:36px;padding:5px 10px;border-radius:6px}
+.repeat-measures-text{overflow-wrap:anywhere}
+@media(max-width:680px){.repeat-measures-editor textarea{font-size:16px;min-height:76px}.repeat-measures-editor button{min-height:40px}}
 .repeat-breakdown-manual-code{color:#9a3412}
 .repeat-failure-journal-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:12px}
 .repeat-failure-journal-backdrop{position:absolute;inset:0;background:rgba(8,25,36,.78)}

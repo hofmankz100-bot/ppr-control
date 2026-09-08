@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v810-journal-scroll";
+const APP_VERSION = "v811-repeat-measures";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -14126,8 +14126,8 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
   };
 }
 
-function engineerReportRows(items, emptyText, renderRow) {
-  if (!items.length) return `<tr><td colspan="6" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
+function engineerReportRows(items, emptyText, renderRow, columnCount = 6) {
+  if (!items.length) return `<tr><td colspan="${columnCount}" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
   return items.map(renderRow).join("");
 }
 
@@ -14277,16 +14277,15 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
     "Нет повторов, отмеченных вручную. Укажите одинаковый номер у двух или более записей агрегатного журнала.",
     item => `
       <tr>
-        <td>${escapeHtml(item.area || "-")}</td>
+        <td>${PPRModules.repeatFailures.measuresCell(item, state.catalog?.equipment?.[String(item.equipmentId)]?.repeatFailureMeasures?.[item.manualCode], printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
         <td>${escapeHtml(item.equipment || "-")}</td>
-        <td>${escapeHtml(item.node || "-")}</td>
         <td>${printable
           ? item.count
           : `<button type="button" class="repeat-breakdown-count-button" data-open-repeat-breakdown="${escapeHtml(encodeURIComponent(item.groupKey))}" data-repeat-year="${annual.year}" aria-label="Открыть ${item.count} повторных поломок">${item.count}</button>`}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
         <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">№${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.name || item.texts[0] || "Название не указано")}</td>
       </tr>
-    `
+    `, 5
   );
   const employeeRows = engineerReportRows(
     annual.employeeRating,
@@ -14355,7 +14354,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </section>
       <section class="engineer-report-block">
         <h3>5. Повторные поломки за весь период</h3>
-        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
+        <table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
@@ -14388,6 +14387,7 @@ function renderEngineerReport() {
   }
   if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
+  PPRModules.repeatFailures.bindMeasures(ui.engineerReportPanel, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderEngineerReport, isCurrent: () => current.view === "engineerReport" });
   ui.engineerReportPanel.querySelectorAll("[data-open-repeat-breakdown]").forEach(button => {
     button.addEventListener("click", () => {
       const year = Number(button.dataset.repeatYear);

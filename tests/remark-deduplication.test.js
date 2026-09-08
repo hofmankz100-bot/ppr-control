@@ -246,6 +246,28 @@ test("repeat-failure analysis exposes a clickable printable detail journal", () 
   assert.match(appSource, /Группировка повторных поломок/);
 });
 
+test("measures are persisted by the live API and survive unrelated full-state catalog sync", async () => {
+  const post = body => fetch(`${baseUrl}/api/repeat-failure-group`, {
+    method: "POST", headers: { "content-type": "application/json", "x-test-user-id": "editor-1" }, body: JSON.stringify(body)
+  }).then(async response => ({ status: response.status, body: await response.json() }));
+  assert.equal((await post({ sourceType: "downtime", downtimeId: "repeat-breakdown-1", code: "9" })).status, 200);
+  assert.equal((await post({ action: "save-measures", equipmentId: 1, code: "9", text: "Inspect seal\nReplace cylinder" })).status, 200);
+  const before = await (await fetch(`${baseUrl}/api/state`)).json();
+  const equipment = structuredClone(before.catalog.equipment["1"]);
+  equipment.repeatFailureMeasures = { "9": { text: "stale client value" } };
+  equipment.updatedAt = new Date().toISOString();
+  const sync = await fetch(`${baseUrl}/api/state`, { method: "PUT",
+    headers: { "content-type": "application/json", "x-test-user-id": "editor-1" },
+    body: JSON.stringify({ catalog: { equipment: { "1": equipment } } }) });
+  assert.equal(sync.status, 200, await sync.text());
+  const after = await (await fetch(`${baseUrl}/api/state`)).json();
+  assert.equal(after.catalog.equipment["1"].repeatFailureMeasures["9"].text, "Inspect seal\nReplace cylinder");
+  assert.deepEqual(after.catalog.equipment["1"].nodes, before.catalog.equipment["1"].nodes);
+  assert.equal(after.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "9");
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
+  assert.equal(stored.catalog.equipment["1"].repeatFailureMeasures["9"].text, "Inspect seal\nReplace cylinder");
+});
+
 test("the same manual number combines separate breakdown rows into one printable group", () => {
   const context = { window: {} };
   vm.runInNewContext(repeatFailuresSource, context);

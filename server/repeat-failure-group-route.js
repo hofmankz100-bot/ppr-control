@@ -1,9 +1,54 @@
 "use strict";
 
+async function saveGroupMeasures(req, res, body, deps) {
+  const equipmentId = Number(body.equipmentId);
+  const code = String(body.code || "").trim();
+  if (!Number.isSafeInteger(equipmentId) || equipmentId <= 0 || !/^[1-9]\d{0,5}$/.test(code)
+    || typeof body.text !== "string" || body.text.length > 2000) {
+    deps.sendJson(res, 400, { ok: false, error: "repeat_failure_measures_invalid" });
+    return true;
+  }
+  const result = await deps.enqueueStateWrite(async () => {
+    const db = deps.readDb(), actor = req.authUser || {};
+    if (actor.role !== "editor" && !deps.activeUserPermission(actor, "repeatFailureGroup")) return { error: "repeat_failure_group_forbidden" };
+    const equipment = db.catalog?.equipment?.[String(equipmentId)];
+    if (!equipment || equipment.deleted) return { error: "repeat_failure_not_found" };
+    if (actor.role !== "editor" && !deps.nodeMutationAccessServer(actor, equipment)) return { error: "repeat_failure_group_forbidden" };
+    const matching = entry => String(entry?.repeatFailureCode || "").trim() === code;
+    const exists = (db.downtimes || []).some(entry => !entry.deleted && entry.type !== "production" && Number(entry.equipmentId) === equipmentId && matching(entry))
+      || Object.entries(db.checks || {}).some(([key, record]) => Number(key.split(":")[0]) === equipmentId
+        && (record?.to?.commentLog || []).some(matching));
+    if (!exists) return { error: "repeat_failure_not_found" };
+    const text = body.text.trim();
+    const previous = equipment.repeatFailureMeasures?.[code];
+    const changed = String(previous?.text || "") !== text;
+    const actionId = String(body.actionId || "").trim().slice(0, 160);
+    if (changed) {
+      const now = new Date().toISOString();
+      equipment.repeatFailureMeasures = { ...(equipment.repeatFailureMeasures || {}), [code]: {
+        text, updatedAt: now, updatedByKey: deps.resolutionUserKeyServer(actor),
+        updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || "")
+      } };
+      equipment.updatedAt = now;
+      deps.writeDb(db, { action: "repeat_failure_measures_saved", actionId, clientId: String(body.clientId || ""),
+        user: actor, equipmentId, repeatFailureCode: code, previousText: previous?.text || "", text });
+    }
+    return { changed, actionId, patch: { catalog: { equipment: { [String(equipmentId)]: equipment } } } };
+  });
+  if (result.error) {
+    deps.sendJson(res, result.error.includes("forbidden") ? 403 : 404, { ok: false, error: result.error });
+    return true;
+  }
+  const stateVersion = result.changed ? deps.broadcastState(body.clientId || "api", result.actionId, result.patch, true) : deps.realtimeStateVersion();
+  deps.sendJson(res, 200, { ok: true, changed: result.changed, actionId: result.actionId, stateVersion, state: result.patch });
+  return true;
+}
+
 async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
   if (pathname !== "/api/repeat-failure-group" || req.method !== "POST") return false;
   const { readBody, sendJson, enqueueStateWrite, readDb, activeUserPermission, nodeMutationAccessServer, ensureRemarkEntriesServer, resolutionUserKeyServer, writeDb, broadcastState, realtimeStateVersion } = deps;
   const body = await readBody(req);
+  if (body.action === "save-measures") return saveGroupMeasures(req, res, body, deps);
   const sourceType = String(body.sourceType || "").trim();
   const code = String(body.code || "").trim();
   const name = String(body.name || "").trim();

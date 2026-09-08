@@ -1,5 +1,37 @@
 (function () {
   const root = window.PPRModules ||= {};
+  const measureDrafts = new Map();
+
+  function measuresCell(group, saved, printable, canEdit, escapeHtml) {
+    const text = String(saved?.text || "");
+    if (printable || !canEdit) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>`;
+    const draft = measureDrafts.get(group.groupKey);
+    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button></div>`;
+  }
+
+  function bindMeasures(container, helpers) {
+    container.querySelectorAll("[data-repeat-measures-key]").forEach(editor => {
+      const input = editor.querySelector("[data-repeat-measures]");
+      const key = editor.dataset.repeatMeasuresKey;
+      input.addEventListener("input", () => measureDrafts.set(key, input.value));
+      editor.querySelector("[data-save-repeat-measures]").addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
+        const text = input.value;
+        const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000,
+          body: JSON.stringify({ action: "save-measures", actionId: helpers.nextActionId(), clientId: helpers.clientId,
+            equipmentId: Number(editor.dataset.equipmentId), code: editor.dataset.repeatCode, text }) });
+        if (result?.state) helpers.mergeRealtimePatch(result.state);
+        if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
+        helpers.persist();
+        if (measureDrafts.get(key) === text) measureDrafts.delete(key);
+        helpers.showAppToast("Мероприятия сохранены.", "ok");
+        if (helpers.isCurrent()) {
+          const left = window.scrollX, top = window.scrollY;
+          helpers.render();
+          window.scrollTo({ left, top, behavior: "instant" });
+        }
+      }, "Сохраняем…"));
+    });
+  }
 
   function metadata(entry) {
     return {
@@ -137,5 +169,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
+  root.repeatFailures = { measuresCell, bindMeasures, metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
 })();
