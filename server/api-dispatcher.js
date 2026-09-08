@@ -1,6 +1,6 @@
 "use strict";
 
-function createApiDispatcher({ stateTransactions, handleApiTransaction, readBody, enqueueStateWrite, getPostgresStateStore = () => null, readDbFile = () => ({}) }) {
+function createApiDispatcher({ stateTransactions, handleApiTransaction, readBody, enqueueStateWrite, sendJson, getPostgresStateStore = () => null, readDbFile = () => ({}) }) {
   async function readPhotoAuthSnapshot() {
     const store = getPostgresStateStore();
     if (store) return store.authSnapshot();
@@ -39,7 +39,12 @@ function createApiDispatcher({ stateTransactions, handleApiTransaction, readBody
       return stateTransactions.view(() => handleApiTransaction(req, res, pathname, url));
     }
     // Network uploads must finish before holding the shared PostgreSQL state lock.
-    await readBody(req).catch(() => {});
+    let body;
+    try { body = await readBody(req); }
+    catch {
+      sendJson(res, 400, { ok: false, error: "Повреждённый запрос. Обновите приложение и повторите отправку.", code: "invalid_json_encoding" });
+      return true;
+    }
     return enqueueStateWrite(() => handleApiTransaction(req, res, pathname, url));
   };
 }

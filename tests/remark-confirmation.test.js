@@ -2177,11 +2177,11 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
 
 test("saved PPR templates repair known replacement-character damage", () => {
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(serverSource, /function repairKnownEncodingDamageServer/);
-  assert.match(serverSource, /колон\\uFFFD\+ы/);
-  assert.match(serverSource, /Object\.values\(db\.pprSheets \|\| \{\}\)/);
-  assert.match(serverSource, /repairField\(row, "work"\)/);
-  assert.match(serverSource, /item\.reminders\[nodeIndex\] = lines\.map/);
+  assert.doesNotMatch(serverSource, /function repairKnownEncodingDamageServer/);
+  assert.match(serverSource, /text-integrity"\)\.repairStoredText\(db\)/);
+  const { recoverText } = require("../server/text-integrity");
+  const text = "Осмотреть раму, колонны, направляющие, крепления и рабочую зону.";
+  assert.equal(recoverText(text.replace("колонны", "колон��ы"), [text]), text);
 });
 
 test("annual PPR marks nodes scheduled in multiple months", () => {

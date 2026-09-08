@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v815-measures-authors"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v816-text-integrity"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -627,44 +627,6 @@ function archiveAndRemoveCraneBeamData(db) {
   return true;
 }
 
-function repairKnownEncodingDamageServer(db) {
-  const repair = value => String(value || "")
-    .replace(/колон\uFFFD+ы/giu, "колонны")
-    .replace(/КОЛОН\uFFFD+Ы/gu, "КОЛОННЫ");
-  let repaired = 0;
-  const repairField = (target, field) => {
-    if (!target || typeof target[field] !== "string" || !target[field].includes("\uFFFD")) return;
-    const next = repair(target[field]);
-    if (next === target[field]) return;
-    target[field] = next;
-    repaired += 1;
-  };
-  Object.values(db.pprSheets || {}).forEach(sheet => {
-    (Array.isArray(sheet?.rows) ? sheet.rows : []).forEach(row => repairField(row, "work"));
-  });
-  Object.values(db.catalog?.equipment || {}).forEach(item => {
-    repairField(item, "name");
-    repairField(item, "area");
-    if (Array.isArray(item?.nodes)) item.nodes = item.nodes.map(value => {
-      const next = repair(value);
-      if (next !== value) repaired += 1;
-      return next;
-    });
-    Object.entries(item?.reminders || {}).forEach(([nodeIndex, lines]) => {
-      if (!Array.isArray(lines)) return;
-      item.reminders[nodeIndex] = lines.map(value => {
-        const next = repair(value);
-        if (next !== value) repaired += 1;
-        return next;
-      });
-    });
-  });
-  if (repaired) {
-    db.targetedCleanupVersions ||= {};
-    db.targetedCleanupVersions.encodingDamageRepair20260831 = { at: new Date().toISOString(), repaired };
-  }
-  return repaired;
-}
 
 function removeAugust19TestInstalledPartRecords(db) {
   const cleanupKey = "removeTestInstalledParts20260819v3";
@@ -724,8 +686,7 @@ function normalizeDb(db) {
   db.archivedDuplicateRemarks = Array.isArray(db.archivedDuplicateRemarks) ? db.archivedDuplicateRemarks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
-  repairKnownEncodingDamageServer(db);
-  require("./server/ppr-label-repair").repairPprLabels(db);
+  require("./server/text-integrity").repairStoredText(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -4776,6 +4737,7 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
 });
 
 const handleApi = createApiDispatcher({
+  sendJson,
   stateTransactions,
   handleApiTransaction,
   readBody,
@@ -4821,6 +4783,14 @@ async function handleApiTransaction(req, res, pathname, url) {
     req.authUser = authUser;
   }
 
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    const body = await readBody(req);
+    const previous = pathname === "/api/state" && req.method === "PUT" ? readDb() : undefined;
+    if (require("./server/text-integrity").requestContainsInvalidText(body, previous)) {
+      sendJson(res, 422, { ok: false, error: "В тексте есть повреждённые символы. Обновите приложение; если ошибка осталась, исправьте текст перед сохранением.", code: "text_encoding_invalid" });
+      return true;
+    }
+  }
   if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
 
   if (await handleAdminStorageRoute(req, res, pathname)) return true;
@@ -5857,6 +5827,15 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/text-integrity" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const integrity = require("./server/text-integrity"), db = readDb();
+    const backupId = String(url.searchParams.get("backupId") || "");
+    const backup = backupId ? await readAdminBackupPayload(backupId) : null;
+    sendJson(res, 200, { ok: true, ...integrity.textIntegrityReport(db), backupId,
+      backupValid: backup?.valid || false, suggestions: backup?.valid ? integrity.backupTextSuggestions(db, backup.payload) : [] });
+    return true;
+  }
   if (pathname === "/api/export/all" && req.method === "GET") {
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
