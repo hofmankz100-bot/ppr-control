@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v809-named-repeat-history";
+const APP_VERSION = "v810-journal-scroll";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -15522,6 +15522,7 @@ function renderAggregateJournal() {
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
   const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
   const repeatFailureGroupingEnabled = canManageRepeatFailureGroups();
+  const restoreJournalPosition = PPRModules.aggregateJournalView.capturePosition(ui.aggregateJournalList, JSON.stringify([selectedEquipment?.id, selectedArea, selectedJournalMonth()]));
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -15581,7 +15582,7 @@ function renderAggregateJournal() {
               ? `${item.closedWithoutScoreByName}${noScoreCloserRole ? ` (${noScoreCloserRole})` : ""}`
               : noScoreCloserRole;
             return `
-              <tr class="${item.resolved ? "" : "open"}">
+              <tr class="${item.resolved ? "" : "open"}" data-journal-row="${escapeHtml(item.id)}">
                 <td data-mobile-label="№">${rowNumber}</td>
                 <td data-mobile-label="Оборудование и узел">${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
                 <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
@@ -15642,25 +15643,7 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
-  ui.aggregateJournalList.classList.remove("mobile-record-carousel-active");
-  if (window.matchMedia?.("(max-width: 680px)")?.matches) {
-    const sourceRows = [...ui.aggregateJournalList.querySelectorAll(".standard-aggregate-journal-sheet tbody tr")];
-    if (sourceRows.length) {
-      const mobileSection = document.createElement("section");
-      mobileSection.className = "aggregate-mobile-record-view no-print";
-      mobileSection.innerHTML = `<div class="mobile-journal-swipe-title"><strong>Записи журнала</strong><span>Свайп влево или вправо</span></div><div class="aggregate-mobile-record-carousel"></div>`;
-      const carousel = mobileSection.querySelector(".aggregate-mobile-record-carousel");
-      sourceRows.forEach(row => {
-        const card = document.createElement("article");
-        card.className = `aggregate-mobile-record-card ${row.classList.contains("open") ? "open" : ""}`;
-        [...row.children].forEach(cell => card.append(cell.cloneNode(true)));
-        card.querySelectorAll(".no-print:not(.repeat-failure-editor), .aggregate-correction").forEach(node => node.remove());
-        carousel.append(card);
-      });
-      ui.aggregateJournalList.querySelector(".aggregate-journal-sheet")?.before(mobileSection);
-      ui.aggregateJournalList.classList.add("mobile-record-carousel-active");
-    }
-  }
+  PPRModules.aggregateJournalView.buildMobileCards(ui.aggregateJournalList);
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
   bindJournalMonthControl(ui.aggregateJournalList, renderAggregateJournal);
   ui.aggregateJournalList.querySelector("[data-toggle-aggregate-repair]")?.addEventListener("click", () => {
@@ -15726,6 +15709,7 @@ function renderAggregateJournal() {
     }, "Сохраняем..."));
   });
   PPRModules.repeatFailures.bindAggregateEditors(ui.aggregateJournalList, items, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderAggregateJournal });
+  restoreJournalPosition();
 }
 
 function printAggregateJournal(area, selectedSheetIndex = null) {

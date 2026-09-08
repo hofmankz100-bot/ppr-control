@@ -907,8 +907,10 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction, \.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
   assert.match(source, /standard-aggregate-journal-sheet/);
   assert.match(source, /data-mobile-label="Оборудование и узел"/);
-  assert.match(source, /aggregate-mobile-record-carousel/);
-  assert.match(source, /sourceRows\.forEach\(row =>/);
+  const journalView = fs.readFileSync(path.join(root, "modules/aggregate-journal-view.js"), "utf8");
+  assert.match(source, /aggregateJournalView\.buildMobileCards/);
+  assert.match(journalView, /aggregate-mobile-record-carousel/);
+  assert.match(journalView, /sourceRows\.forEach\(row =>/);
   assert.match(styles, /standard-aggregate-journal-sheet \.aggregate-journal-table td::before/);
   assert.match(styles, /scroll-snap-type: x mandatory/);
   assert.match(styles, /#aggregateJournalScreen \.aggregate-print-actions/);
