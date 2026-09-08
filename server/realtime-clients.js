@@ -6,6 +6,14 @@ function messageBytes(message) {
   return typeof message === "string" ? Buffer.byteLength(message, "utf8") : message.byteLength;
 }
 
+function authorizeWebSocket(client, authorize, onError = () => {}) {
+  if (client.readyState !== 1 || !client.pprAuthenticated) return false;
+  try { if (authorize(client)) return true; } catch (error) { onError(error); }
+  client.pprAuthenticated = false;
+  try { client.close(1008, "authentication_required"); } catch (error) { onError(error); }
+  return false;
+}
+
 function sendBounded(client, message, onError, bytes = messageBytes(message)) {
   if (client.readyState !== 1 || !client.pprAuthenticated) return false;
   const queued = Number(client.bufferedAmount || 0);
@@ -26,16 +34,17 @@ function sendBounded(client, message, onError, bytes = messageBytes(message)) {
   } catch (error) { onError(error); return false; }
 }
 
-function broadcastWebSockets(servers, message, onError = () => {}) {
+function broadcastWebSockets(servers, message, onError = () => {}, authorize = () => true) {
   const bytes = messageBytes(message);
   for (const server of servers) {
     for (const client of server.clients) {
+      if (!authorizeWebSocket(client, authorize, onError)) continue;
       sendBounded(client, message, onError, bytes);
     }
   }
 }
 
-function attachWebSocketServer(WebSocketServer, server, { authenticate, stateVersion, onError = () => {} }) {
+function attachWebSocketServer(WebSocketServer, server, { authenticate, stateVersion, validator = () => () => true, onError = () => {} }) {
   // Per-socket zlib contexts can fragment native memory on the 512 MiB host.
   const sockets = new WebSocketServer({ server, path: "/ws", perMessageDeflate: false });
   sockets.on("connection", async (socket, req) => {
@@ -44,14 +53,16 @@ function attachWebSocketServer(WebSocketServer, server, { authenticate, stateVer
     socket.pprAuthenticated = false;
     socket.on("error", onError);
     try {
-      if (!(await authenticate(req))) { socket.close(1008, "authentication_required"); return; }
+      socket.pprAuth = await authenticate(req);
+      if (!socket.pprAuth) { socket.close(1008, "authentication_required"); return; }
       if (socket.readyState !== 1) return;
       socket.pprAuthenticated = true;
+      if (!authorizeWebSocket(socket, validator(), onError)) return;
       socket.isAlive = true;
       socket.on("pong", () => { socket.isAlive = true; });
       if (!sendBounded(socket, JSON.stringify({ type: "ready", origin: "server", stateVersion: stateVersion() }), onError)) return;
       socket.on("message", raw => {
-        if (socket.readyState !== 1 || !socket.pprAuthenticated) return;
+        if (!authorizeWebSocket(socket, validator(), onError)) return;
         try {
           const message = JSON.parse(String(raw || "{}"));
           if (message.type === "ping") sendBounded(socket, JSON.stringify({ type: "pong" }), onError);
@@ -66,4 +77,18 @@ function attachWebSocketServer(WebSocketServer, server, { authenticate, stateVer
   return sockets;
 }
 
-module.exports = { broadcastWebSockets, attachWebSocketServer, MAX_BUFFERED_BYTES };
+function sendServerEvent(clients, res, payload, authorize = () => true) {
+  try {
+    if (!authorize(res)) { clients.delete(res); res.end(); return; }
+    const message = typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`;
+    const queued = Number(res.writableLength || 0);
+    const bytes = Buffer.byteLength(message);
+    if (res.destroyed || res.writableEnded || queued > MAX_BUFFERED_BYTES
+      || queued + bytes > Math.max(MAX_BUFFERED_BYTES, 2 * bytes)) {
+      clients.delete(res); res.destroy?.(); return;
+    }
+    res.write(message);
+  } catch { clients.delete(res); res.destroy?.(); }
+}
+
+module.exports = { broadcastWebSockets, attachWebSocketServer, authorizeWebSocket, sendServerEvent, MAX_BUFFERED_BYTES };

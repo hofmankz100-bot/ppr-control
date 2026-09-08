@@ -20,8 +20,9 @@ async function saveGroupMeasures(req, res, body, deps) {
     const cycleId = `${code}:${cycleNumber}`;
     const archived = equipment.repeatFailureArchives?.[cycleId];
     const previous = equipment.repeatFailureMeasures?.[code];
+    const stale = () => ({ error: "repeat_failure_measures_stale", patch: { catalog: { equipment: { [String(equipmentId)]: equipment } } } });
     if (archived && !completing) return { error: "repeat_failure_group_closed" };
-    if (!archived && cycleNumber !== (previous?.cycleNumber || 0)) return { error: "repeat_failure_measures_stale" };
+    if (!archived && cycleNumber !== (previous?.cycleNumber || 0)) return stale();
     const matching = entry => String(entry?.repeatFailureCode || "").trim() === code
       && (archived ? entry.repeatFailureCycleId === cycleId : !entry.repeatFailureClosedAt && !entry.repeatFailureCycleId);
     const members = (db.downtimes || []).filter(entry => !entry.deleted && entry.type !== "production" && Number(entry.equipmentId) === equipmentId && matching(entry));
@@ -33,12 +34,16 @@ async function saveGroupMeasures(req, res, body, deps) {
     });
     if (!members.length) return { error: "repeat_failure_not_found" };
     if (completing && !archived && (!previous?.text?.trim() || members.length < 2)) return { error: "repeat_failure_measures_required" };
-    if (completing && !archived && body.expectedUpdatedAt !== previous?.updatedAt) return { error: "repeat_failure_measures_stale" };
+    if (completing && !archived && body.expectedUpdatedAt !== previous?.updatedAt) return stale();
     const text = completing ? (archived || previous).text : body.text.trim();
     const changed = completing ? !archived : String(previous?.text || "") !== text;
+    // Identical retries are harmless, but an older client cannot safely replace
+    // existing text without identifying the snapshot its author actually saw.
+    if (!completing && changed && ((previous && !Object.hasOwn(body, "expectedUpdatedAt"))
+      || String(body.expectedUpdatedAt ?? "") !== String(previous?.updatedAt || ""))) return stale();
     const actionId = String(body.actionId || "").trim().slice(0, 160);
     if (changed) {
-      const now = new Date().toISOString();
+      const now = new Date(completing ? Date.now() : Math.max(Date.now(), (Date.parse(previous?.updatedAt || "") || 0) + 1)).toISOString();
       if (!completing) equipment.repeatFailureMeasures = { ...(equipment.repeatFailureMeasures || {}), [code]: {
         ...previous, cycleNumber, text, updatedAt: now, updatedByKey: deps.resolutionUserKeyServer(actor),
         updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || ""),
@@ -66,7 +71,7 @@ async function saveGroupMeasures(req, res, body, deps) {
       ...(completing ? { checks, downtimes: (db.downtimes || []).filter(entry => members.includes(entry)) } : {}) } };
   });
   if (result.error) {
-    deps.sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 409, { ok: false, error: result.error });
+    deps.sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 409, { ok: false, error: result.error, ...(result.patch ? { state: result.patch } : {}) });
     return true;
   }
   const stateVersion = result.changed ? deps.broadcastState(body.clientId || "api", result.actionId, result.patch, true) : deps.realtimeStateVersion();

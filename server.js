@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const zlib = require("zlib"); const { isDeepStrictEqual } = require("node:util");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
+const { PUSH_TIMEOUT_MS, createPushSnapshot, pushParticipants, pushRemarks, pushSheet } = require("./server/push-snapshot");
 const { compressBackupPayload, decodeBackupPayload } = require("./server/backup-codec");
 const { buildHealthPayload } = require("./server/health");
 const { createStaticHandler } = require("./server/static-files");
@@ -18,7 +19,8 @@ const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
 const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
 const { syncPostgresPhotos } = require("./server/replica-photo-sync");
-const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
+const { broadcastWebSockets, attachWebSocketServer, authorizeWebSocket, sendServerEvent } = require("./server/realtime-clients");
+const { createRealtimeAuth } = require("./server/realtime-auth");
 const { createRealtimeHistory } = require("./server/realtime-history"); const { getLatestMonitoringSnapshot, monitoringAlertsNeedWrite, setLatestMonitoringSnapshot } = require("./server/monitoring-state");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
@@ -69,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v822-ppr-history-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v823-realtime-push-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2357,11 +2359,11 @@ function ensurePushConfig(db) {
   return false;
 }
 
-async function pushDbSnapshot() {
-  return enqueueStateWrite(async () => {
+async function pushDbSnapshot(select) {
+  return enqueueStateWrite(() => {
     const db = readDb();
     if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
-    return structuredClone(db);
+    return select(db);
   });
 }
 
@@ -2374,118 +2376,121 @@ async function removeExpiredPushSubscriptions(expired) {
   });
 }
 
-async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
-  if (stateTransactions.defer(() => sendRemarkPushNotifications(...arguments))) return;
-  if (!added) return;
-  const db = await pushDbSnapshot();
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(db, item, remark)));
-  if (!subscriptions.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async item => {
-    try {
-      const payload = {
-        type: "remark",
-        title: "ALKZ — новое замечание",
-        body: added === 1 ? "Поступило новое замечание" : `Новых замечаний: ${added}`,
-        badgeCount: personalNotificationCountServer(db, item),
-        url,
-        entityId,
-        tag: `remark:${entityId}`
-      };
-      await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
-      else console.error(`Push notification failed: ${error?.message || error}`);
+function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
+  newRemarks = pushRemarks(newRemarks);
+  if (stateTransactions.defer(() => sendRemarkPushNotifications(added, total, origin, url, entityId, newRemarks))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    if (!added) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db,
+      (view, item) => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(view, item, remark)),
+      personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async item => {
+      try {
+        const payload = {
+          type: "remark",
+          title: "ALKZ — новое замечание",
+          body: added === 1 ? "Поступило новое замечание" : `Новых замечаний: ${added}`,
+          badgeCount: item.badgeCount,
+          url,
+          entityId,
+          tag: `remark:${entityId}`
+        };
+        await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
+        else console.error(`Push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(item => !expired.has(item.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
-  if (stateTransactions.defer(() => sendPprApprovalPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && engineerPermissionRoleServer(entry.profile) === "engineer"
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
-  const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
-      const payload = {
-        type: "ppr-approval",
-        title: "ALKZ — ППР выполнен",
-        body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
-        badgeCount: personalNotificationCountServer(db, entry),
-        url: "/?view=requests",
-        entityId,
-        tag: `ppr-approval:${entityId}`
-      };
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`PPR approval push failed: ${error?.message || error}`);
+function sendPprApprovalPushNotifications(sheet, origin = "") {
+  sheet = pushSheet(sheet, true);
+  if (stateTransactions.defer(() => sendPprApprovalPushNotifications(sheet, origin))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && engineerPermissionRoleServer(entry.profile) === "engineer"
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
+    const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+        const payload = {
+          type: "ppr-approval",
+          title: "ALKZ — ППР выполнен",
+          body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
+          badgeCount: entry.badgeCount,
+          url: "/?view=requests",
+          entityId,
+          tag: `ppr-approval:${entityId}`
+        };
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`PPR approval push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
-  if (stateTransactions.defer(() => clearPprApprovalPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && engineerPermissionRoleServer(entry.profile) === "engineer"
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, JSON.stringify({
-        type: "ppr-approval-cleared",
-        badgeCount: personalNotificationCountServer(db, entry),
-        clearTag: `ppr-approval:${entityId}`,
-        silentUpdate: true
-      }), { TTL: 300, urgency: "normal" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`PPR approval clear push failed: ${error?.message || error}`);
+function clearPprApprovalPushNotifications(sheet, origin = "") {
+  sheet = pushSheet(sheet);
+  if (stateTransactions.defer(() => clearPprApprovalPushNotifications(sheet, origin))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && engineerPermissionRoleServer(entry.profile) === "engineer"
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        await webPush.sendNotification(entry.subscription, JSON.stringify({
+          type: "ppr-approval-cleared",
+          badgeCount: entry.badgeCount,
+          clearTag: `ppr-approval:${entityId}`,
+          silentUpdate: true
+        }), { TTL: 300, urgency: "normal", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`PPR approval clear push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
 function resolutionUserKeyServer(user = {}) {
@@ -2874,135 +2879,135 @@ function syncPushProfilesForUser(db, user = {}) {
 }
 
 
-async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
-  if (stateTransactions.defer(() => sendResolutionPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  const targetParticipants = Array.isArray(participants) ? participants : [];
-  if (!targetParticipants.length) return;
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    const badgeCount = personalNotificationCountServer(db, entry);
-    const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
-    try {
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Resolution push notification failed: ${error?.message || error}`);
+function sendResolutionPushNotifications(participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
+  participants = pushParticipants(participants);
+  if (stateTransactions.defer(() => sendResolutionPushNotifications(participants, origin, title, body, url, entityId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const targetParticipants = Array.isArray(participants) ? participants : [];
+    if (!targetParticipants.length) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      const badgeCount = entry.badgeCount;
+      const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
+      try {
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Resolution push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function clearRemarkPushNotifications(db, participants, origin, entityId = "general") {
-  if (stateTransactions.defer(() => clearRemarkPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  const targetParticipants = Array.isArray(participants) ? participants : [];
-  if (!targetParticipants.length) return;
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, JSON.stringify({
-        type: "remark-cleared",
-        badgeCount: personalNotificationCountServer(db, entry),
-        clearTag: `remark:${entityId}`,
-        silentUpdate: true
-      }), { TTL: 300, urgency: "normal" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Remark clear push failed: ${error?.message || error}`);
+function clearRemarkPushNotifications(participants, origin, entityId = "general") {
+  participants = pushParticipants(participants);
+  if (stateTransactions.defer(() => clearRemarkPushNotifications(participants, origin, entityId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const targetParticipants = Array.isArray(participants) ? participants : [];
+    if (!targetParticipants.length) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        await webPush.sendNotification(entry.subscription, JSON.stringify({
+          type: "remark-cleared",
+          badgeCount: entry.badgeCount,
+          clearTag: `remark:${entityId}`,
+          silentUpdate: true
+        }), { TTL: 300, urgency: "normal", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Remark clear push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
-  if (stateTransactions.defer(() => sendDowntimePushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const requested = Array.isArray(participants) ? participants : null;
-  const downtime = (db.downtimes || []).find(item => String(item?.id || "") === String(downtimeId || ""));
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && (
-      requested
-        ? requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-        : (() => {
-            const role = permissionBaseRoleServer(entry.profile?.role);
-            if (["engineer", "editor"].includes(role)) return true;
-            if (role === "shop") return Boolean(downtime?.area && userHasAreaServer(entry.profile, downtime.area));
-            const author = {
-              id: downtime?.authorId,
-              employeeId: downtime?.authorEmployeeId,
-              phone: downtime?.authorPhone,
-              name: downtime?.authorName,
-              role: downtime?.authorRole
-            };
-            if (resolutionUserKeyServer(author) === resolutionUserKeyServer(entry.profile || {})) return true;
-            return (Array.isArray(downtime?.participants) ? downtime.participants : [])
-              .some(participant => subscriptionMatchesResolutionParticipant(entry, participant));
-          })()
-    )
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      const payload = {
-        type: "downtime",
-        title,
-        body,
-        badgeCount: personalNotificationCountServer(db, entry),
-        url: targetUrl,
-        entityId: downtimeId || "general",
-        tag: `downtime:${downtimeId || "general"}`
-      };
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Downtime push notification failed: ${error?.message || error}`);
+function sendDowntimePushNotifications(title, body, origin = "", participants = null, downtimeId = "") {
+  participants = Array.isArray(participants) ? pushParticipants(participants) : null;
+  if (stateTransactions.defer(() => sendDowntimePushNotifications(title, body, origin, participants, downtimeId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const requested = Array.isArray(participants) ? participants : null;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) => {
+      const downtime = (view.downtimes || []).find(item => String(item?.id || "") === String(downtimeId || ""));
+      return (!origin || entry.clientId !== origin)
+      && (
+        requested
+          ? requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+          : (() => {
+              const role = permissionBaseRoleServer(entry.profile?.role);
+              if (["engineer", "editor"].includes(role)) return true;
+              if (role === "shop") return Boolean(downtime?.area && userHasAreaServer(entry.profile, downtime.area));
+              const author = {
+                id: downtime?.authorId,
+                employeeId: downtime?.authorEmployeeId,
+                phone: downtime?.authorPhone,
+                name: downtime?.authorName,
+                role: downtime?.authorRole
+              };
+              if (resolutionUserKeyServer(author) === resolutionUserKeyServer(entry.profile || {})) return true;
+              return (Array.isArray(downtime?.participants) ? downtime.participants : [])
+                .some(participant => subscriptionMatchesResolutionParticipant(entry, participant));
+            })()
+      )
+    }, personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        const payload = {
+          type: "downtime",
+          title,
+          body,
+          badgeCount: entry.badgeCount,
+          url: targetUrl,
+          entityId: downtimeId || "general",
+          tag: `downtime:${downtimeId || "general"}`
+        };
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Downtime push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
 function hasMeaningfulCheckKindServer(item) {
@@ -3895,6 +3900,9 @@ function rejectRepeatedAdminMutation(req, res, pathname) {
 let wss = null;
 const wsServers = [];
 const sseClients = new Set();
+const realtimeAuth = createRealtimeAuth({ readState: () => storageStatus.mode === "postgres-degraded" ? {} : (postgresState || readDbFile()),
+  readAuthSnapshot: () => postgresStateStore ? postgresStateStore.authSnapshot() : readDbFile(), authenticatedUser,
+  onError: error => warnServerDiagnostic("realtime.authentication", error) });
 const realtimeInstanceId = crypto.randomBytes(8).toString("hex");
 let realtimeStateCounter = 0;
 const realtimeHistory = createRealtimeHistory();
@@ -3904,22 +3912,7 @@ function realtimeStateVersion() {
   return `${realtimeInstanceId}:${realtimeStateCounter}`;
 }
 
-function sendSse(res, payload) {
-  try {
-    const message = typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`;
-    const queued = Number(res.writableLength || 0);
-    const bytes = Buffer.byteLength(message);
-    if (res.destroyed || res.writableEnded || queued > 8 * 1024 * 1024
-      || queued + bytes > Math.max(8 * 1024 * 1024, 2 * bytes)) {
-      sseClients.delete(res);
-      res.destroy?.();
-      return;
-    }
-    res.write(message);
-  } catch {
-    sseClients.delete(res);
-  }
-}
+function sendSse(res, payload, authorize = realtimeAuth.validator()) { sendServerEvent(sseClients, res, payload, authorize); }
 
 function broadcastState(origin = "server", actionId = "", state = publicState(), partial = false) {
   const transaction = stateTransactions.current();
@@ -3934,10 +3927,11 @@ function broadcastState(origin = "server", actionId = "", state = publicState(),
   if (transaction?.superseded) { payload.state = publicState(postgresState); payload.partial = false; }
   const message = JSON.stringify(payload);
   realtimeHistory.add(realtimeStateCounter, payload, message);
-  broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error));
+  const authorize = realtimeAuth.validator();
+  broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error), authorize);
   const sseMessage = `data: ${message}\n\n`;
   for (const client of sseClients) {
-    sendSse(client, sseMessage);
+    sendSse(client, sseMessage, authorize);
   }
   };
   if (!stateTransactions.defer(publish)) publish();
@@ -5136,8 +5130,8 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/push/public-key" && req.method === "GET") {
-    const db = await pushDbSnapshot();
-    sendJson(res, 200, { ok: true, publicKey: db.pushNotifications.vapid.publicKey });
+    const publicKey = await pushDbSnapshot(db => db.pushNotifications.vapid.publicKey);
+    sendJson(res, 200, { ok: true, publicKey });
     return true;
   }
 
@@ -5247,7 +5241,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         url: "/",
         entityId: `test:${targetId}`,
         tag: `push-test:${targetId}:${Date.now()}`
-      }, entry), { TTL: 300, urgency: "high" });
+      }, entry), { TTL: 300, urgency: "high", timeout: PUSH_TIMEOUT_MS });
       sendJson(res, 200, { ok: true });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) {
@@ -5260,6 +5254,7 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/events" && req.method === "GET") {
+    res.pprAuth = realtimeAuth.capture(req, req.authUser);
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-store",
@@ -6464,12 +6459,12 @@ async function handleApiTransaction(req, res, pathname, url) {
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
     if (result.notifyEngineers) {
-      sendPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
+      sendPprApprovalPushNotifications(result.sheet, result.origin).catch(error => {
         console.error(`PPR approval push delivery failed: ${error?.message || error}`);
       });
     }
     if (result.clearEngineerApproval) {
-      clearPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
+      clearPprApprovalPushNotifications(result.sheet, result.origin).catch(error => {
         console.error(`PPR approval clear delivery failed: ${error?.message || error}`);
       });
     }
@@ -6539,7 +6534,7 @@ async function handleApiTransaction(req, res, pathname, url) {
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
     if (result.notifyParticipants.length) {
-      sendDowntimePushNotifications(readDb(), "Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants, result.downtime.id).catch(error => {
+      sendDowntimePushNotifications("Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants, result.downtime.id).catch(error => {
         console.error(`Downtime close push delivery failed: ${error?.message || error}`);
       });
     }
@@ -7236,12 +7231,12 @@ async function handleApiTransaction(req, res, pathname, url) {
       : realtimeStateVersion();
     if (result.changed && result.notifyParticipants.length) {
       const remarkUrl = `/?record=${encodeURIComponent(result.recordKey)}&remark=${encodeURIComponent(result.remarkId)}`;
-      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
+      sendResolutionPushNotifications(result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
         console.error(`Resolution push delivery failed: ${error?.message || error}`);
       });
     }
     if (result.changed && result.clearParticipants?.length) {
-      clearRemarkPushNotifications(readDb(), result.clearParticipants, result.origin, result.remarkId).catch(error => {
+      clearRemarkPushNotifications(result.clearParticipants, result.origin, result.remarkId).catch(error => {
         console.error(`Remark clear push delivery failed: ${error?.message || error}`);
       });
     }
@@ -7332,7 +7327,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       const item = result.newDowntimes[0];
       const title = item.type === "production" ? "Производственный простой" : "Аварийная остановка";
       const bodyText = `${item.equipment || item.node || "Оборудование"}: ${item.comment || "без причины"}`;
-      sendDowntimePushNotifications(readDb(), title, bodyText, result.origin, null, item.id).catch(error => {
+      sendDowntimePushNotifications(title, bodyText, result.origin, null, item.id).catch(error => {
         console.error(`Downtime push delivery failed: ${error?.message || error}`);
       });
     }
@@ -7631,15 +7626,10 @@ function createHttpsServer() {
 
 const httpsServer = createHttpsServer();
 
-async function websocketAuthenticated(req) {
-  try { return Boolean(await stateTransactions.view(() => authenticatedUser(req))); }
-  catch (error) { warnServerDiagnostic("websocket.authentication", error); return false; }
-}
-
 if (WebSocketServer) {
   for (const endpoint of [server, qrServer, httpsServer].filter(Boolean)) {
     wsServers.push(attachWebSocketServer(WebSocketServer, endpoint, {
-      authenticate: websocketAuthenticated,
+      authenticate: realtimeAuth.authenticate, validator: realtimeAuth.validator,
       stateVersion: realtimeStateVersion,
       onError: error => warnServerDiagnostic("websocket.connection", error)
     }));
@@ -7648,8 +7638,10 @@ if (WebSocketServer) {
 }
 
 const heartbeatTimer = setInterval(() => {
+  const authorize = realtimeAuth.validator();
   for (const wsServer of wsServers) {
     for (const ws of wsServer.clients) {
+      if (!authorizeWebSocket(ws, authorize, error => warnServerDiagnostic("websocket.authentication", error))) continue;
       if (ws.isAlive === false) {
         try { ws.terminate(); } catch (error) { warnServerDiagnostic("websocket.terminate", error); }
         continue;
@@ -7659,7 +7651,7 @@ const heartbeatTimer = setInterval(() => {
     }
   }
   for (const client of sseClients) {
-    sendSse(client, { type: "ping", time: new Date().toISOString() });
+    sendSse(client, { type: "ping", time: new Date().toISOString() }, authorize);
   }
 }, 15000);
 const systemMonitorTimer = setInterval(() => {

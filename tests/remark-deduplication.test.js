@@ -308,7 +308,9 @@ test("completed membership survives state and node sync; number reuse starts a n
   const newRow = after.downtimes.find(item => item.id === fresh.id);
   assert.equal(newRow.repeatFailureCode, "9"); assert.equal(newRow.repeatFailureCycleId, undefined);
   assert.equal((await post({ action: "save-measures", equipmentId: 1, code: "9", cycleNumber: 0, text: "stale old editor" })).status, 409);
-  assert.equal((await post({ action: "save-measures", equipmentId: 1, code: "9", cycleNumber: 1, text: "New cycle measures" })).status, 200);
+  const newMeasures = { action: "save-measures", equipmentId: 1, code: "9", cycleNumber: 1, text: "New cycle measures" };
+  assert.equal((await post(newMeasures)).status, 409, "unversioned requests cannot overwrite the initialized next cycle");
+  assert.equal((await post({ ...newMeasures, expectedUpdatedAt: after.catalog.equipment["1"].repeatFailureMeasures["9"].updatedAt })).status, 200);
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
   assert.ok(stored.catalog.equipment["1"].repeatFailureArchives["9:0"].completedAt);
   assert.equal(stored.catalog.equipment["1"].repeatFailureMeasures["9"].text, "New cycle measures");

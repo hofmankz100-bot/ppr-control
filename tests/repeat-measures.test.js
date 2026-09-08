@@ -26,7 +26,7 @@ function fixture() {
   return { db, writes: () => writes, broadcasts: () => broadcasts,
     async send(body = {}, actor = { role: "editor", name: "Admin" }) {
       let response;
-      const deps = { readBody: async () => ({ action: "save-measures", equipmentId: 1, code: "1", text: "Replace seal", ...body }),
+      const deps = { readBody: async () => ({ action: "save-measures", equipmentId: 1, code: "1", text: "Replace seal", expectedUpdatedAt: db.catalog.equipment[String(body.equipmentId || 1)]?.repeatFailureMeasures?.[body.code || "1"]?.updatedAt || "", ...body }),
         sendJson: (_, status, value) => { response = { status, ...value }; }, enqueueStateWrite: fn => fn(), readDb: () => db,
         activeUserPermission: user => user.allowed === true && !user.expired,
         ensureRemarkEntriesServer: item => item.commentLog,

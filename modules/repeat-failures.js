@@ -1,6 +1,7 @@
 (function () {
   const root = window.PPRModules ||= {};
   const measureDrafts = new Map();
+  const measureSaves = new Set();
 
   function attribution(label, name, at, escapeHtml) {
     const date = at ? new Date(at) : null;
@@ -15,7 +16,7 @@
     const signature = text || author ? attribution("Текст сохранил", author, authorAt, escapeHtml) : "";
     if (printable || !canEdit || saved?.completedAt) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>${signature}`;
     const draft = measureDrafts.get(group.groupKey);
-    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button>${signature}</div>`;
+    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${draft?.cycleNumber ?? saved?.cycleNumber ?? 0}" data-repeat-code="${escapeHtml(group.manualCode)}" data-measures-updated-at="${escapeHtml(draft?.expectedUpdatedAt ?? saved?.updatedAt ?? "")}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft?.text ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures ${measureSaves.has(group.groupKey) ? "disabled" : ""}>Сохранить</button><button type="button" class="no-print" data-cancel-repeat-measures>Отменить правки</button>${signature}</div>`;
   }
 
   function completionCell(group, saved, printable, canEdit, escapeHtml) {
@@ -36,7 +37,7 @@
   function bindMeasures(container, helpers) {
     container.querySelectorAll("[data-complete-repeat-measures]").forEach(button => button.addEventListener("click", () => {
       const key = button.dataset.completeRepeatMeasures;
-      if (!(button.dataset.savedMeasures || "").trim() || (measureDrafts.has(key) && measureDrafts.get(key).trim() !== button.dataset.savedMeasures.trim())) {
+      if (!(button.dataset.savedMeasures || "").trim() || (measureDrafts.has(key) && measureDrafts.get(key).text.trim() !== button.dataset.savedMeasures.trim())) {
         helpers.showAppToast("Сначала сохраните текст мероприятий.", "error");
         return;
       }
@@ -60,21 +61,55 @@
     container.querySelectorAll("[data-repeat-measures-key]").forEach(editor => {
       const input = editor.querySelector("[data-repeat-measures]");
       const key = editor.dataset.repeatMeasuresKey;
-      input.addEventListener("input", () => measureDrafts.set(key, input.value));
-      editor.querySelector("[data-save-repeat-measures]").addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
-        const text = input.value;
-        const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000,
-          body: JSON.stringify({ action: "save-measures", actionId: helpers.nextActionId(), clientId: helpers.clientId,
-            equipmentId: Number(editor.dataset.equipmentId), code: editor.dataset.repeatCode, cycleNumber: Number(editor.dataset.cycleNumber), text }) });
-        if (result?.state) helpers.mergeRealtimePatch(result.state);
-        if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
-        helpers.persist();
-        if (measureDrafts.get(key) === text) measureDrafts.delete(key);
-        helpers.showAppToast("Мероприятия сохранены.", "ok");
+      const captureDraft = () => {
+        const previous = measureDrafts.get(key);
+        const draft = { text: input.value, expectedUpdatedAt: previous?.expectedUpdatedAt ?? editor.dataset.measuresUpdatedAt ?? "", cycleNumber: previous?.cycleNumber ?? Number(editor.dataset.cycleNumber) };
+        measureDrafts.set(key, draft);
+        return draft;
+      };
+      input.addEventListener("input", captureDraft);
+      editor.querySelector("[data-cancel-repeat-measures]")?.addEventListener("click", () => {
+        if (measureSaves.has(key) || !window.confirm("Отменить несохранённые правки мероприятий и показать сохранённый текст?")) return;
+        measureDrafts.delete(key);
         if (helpers.isCurrent()) {
           const left = window.scrollX, top = window.scrollY;
           helpers.render();
           window.scrollTo({ left, top, behavior: "instant" });
+        }
+      });
+      editor.querySelector("[data-save-repeat-measures]").addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
+        if (measureSaves.has(key)) return;
+        const draft = captureDraft();
+        measureSaves.add(key);
+        try {
+          const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000,
+            body: JSON.stringify({ action: "save-measures", actionId: helpers.nextActionId(), clientId: helpers.clientId,
+              equipmentId: Number(editor.dataset.equipmentId), code: editor.dataset.repeatCode, cycleNumber: draft.cycleNumber, expectedUpdatedAt: draft.expectedUpdatedAt, text: draft.text }) });
+          if (result?.state) helpers.mergeRealtimePatch(result.state);
+          if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
+          helpers.persist();
+          const saved = result?.state?.catalog?.equipment?.[editor.dataset.equipmentId]?.repeatFailureMeasures?.[editor.dataset.repeatCode];
+          if (measureDrafts.get(key) === draft) measureDrafts.delete(key);
+          else if (saved) {
+            const next = measureDrafts.get(key);
+            if (next?.expectedUpdatedAt === draft.expectedUpdatedAt && next.cycleNumber === draft.cycleNumber) measureDrafts.set(key, { ...next, expectedUpdatedAt: saved.updatedAt || "" });
+          }
+          helpers.showAppToast("Мероприятия сохранены.", "ok");
+        } catch (error) {
+          if (error?.data?.error === "repeat_failure_measures_stale") {
+            if (error.data.state) {
+              helpers.mergeRealtimePatch(error.data.state);
+              helpers.persist();
+            }
+            helpers.showAppToast("Мероприятия изменены другим сотрудником. Ваши правки оставлены на экране. Скопируйте их и нажмите «Отменить правки», чтобы проверить сохранённый текст.", "error");
+          } else throw error;
+        } finally {
+          measureSaves.delete(key);
+          if (helpers.isCurrent()) {
+            const left = window.scrollX, top = window.scrollY;
+            helpers.render();
+            window.scrollTo({ left, top, behavior: "instant" });
+          }
         }
       }, "Сохраняем…"));
     });

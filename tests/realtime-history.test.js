@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createRealtimeHistory } = require("../server/realtime-history");
+const { sendServerEvent } = require("../server/realtime-clients");
 
 test("reconnect history is bounded by UTF-8 bytes and count", () => {
   const history = createRealtimeHistory({ maxBytes: 20, maxEntries: 2 });
@@ -33,7 +34,7 @@ test("SSE disconnects slow consumers without blocking other clients or one large
   const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
   const code = source.slice(source.indexOf("function sendSse("), source.indexOf("function broadcastState("));
   const clients = new Set();
-  const context = { Buffer, sseClients: clients };
+  const context = { Buffer, sseClients: clients, sendServerEvent, realtimeAuth: { validator: () => () => true } };
   vm.createContext(context);
   vm.runInContext(code, context);
   let closed = 0, writes = 0;
