@@ -210,15 +210,196 @@
       "Проверили были замечания горелка и термопара неправильно показал долго грелся устранили на месте"
     ]
   },
-  "version": 2,
+  "version": 3,
   "exactRecords": [
     {
-      "date": "2026-08-11", "rowId": "2026-08-11-auto-2-5", "equipmentId": "15", "field": "node",
-      "before": "п��к", "after": "пзк", "source": "Same row ID and equipment in local export dated 2026-08-21T10:46:07.319Z"
+      "date": "2026-08-11",
+      "rowId": "2026-08-11-auto-2-5",
+      "equipmentId": "15",
+      "field": "node",
+      "before": "п��к",
+      "after": "пзк",
+      "source": "Same row ID and equipment in local export dated 2026-08-21T10:46:07.319Z"
     },
     {
-      "date": "2026-09-03", "rowId": "2026-09-03-work-1788405983858", "equipmentId": "12", "field": "node",
-      "before": "ТП��2 10", "after": "ТП№2 10", "source": "Live equipment 12 catalog and intact same-equipment PPR row labels, checked 2026-09-08"
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-work-1788405983858",
+      "equipmentId": "12",
+      "field": "node",
+      "before": "ТП��2 10",
+      "after": "ТП№2 10",
+      "source": "Live equipment 12 catalog and intact same-equipment PPR row labels, checked 2026-09-08"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-1-1",
+      "equipmentId": "1",
+      "field": "resolutionComment",
+      "before": "��остороннего шума и запаха от насоса и двигателя не об��аружено.",
+      "after": "Постороннего шума и запаха от насоса и двигателя не обнаружено.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-1-2",
+      "equipmentId": "1",
+      "field": "resolutionComment",
+      "before": "Гидростанция: из главного блока происходит утечка масла треб��ется замена сальни���а. Также име��тся утечка масла из сливной трубы требуется замена манжеты. Устра��ение неи��п��авностей выполнить пр�� замене ��атрицы.",
+      "after": "Гидростанция: из главного блока происходит утечка масла требуется замена сальника. Также имеется утечка масла из сливной трубы требуется замена манжеты. Устранение неисправностей выполнить при замене матрицы.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-1-3",
+      "equipmentId": "1",
+      "field": "resolutionComment",
+      "before": "О�����аждения, блокир��вки и аварийная остановка исправны.",
+      "after": "Ограждения, блокировки и аварийная остановка исправны.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-1-4",
+      "equipmentId": "1",
+      "field": "resolutionComment",
+      "before": "Посторон��его ����ма, вибра��ии и перег���ева ��ет. Ход пл��вный.",
+      "after": "Постороннего шума, вибрации и перегрева нет. Ход плавный.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-2-1",
+      "equipmentId": "15",
+      "field": "resolutionComment",
+      "before": "Чисто����� и кр��пления в норме. Хомут на трубе ��70 от��утствует, требуется установ����ть.",
+      "after": "Чистота и крепления в норме. Хомут на трубе отсутствует, требуется установить. Размер трубы требует проверки: в исходной записи сохранилось «70», символы перед ним повреждены.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history",
+      "reviewNote": "Размер трубы не восстановлен: сохранилось «70», символы перед ним утрачены. Проверить по оборудованию или документации до подбора хомута."
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-2-2",
+      "equipmentId": "15",
+      "field": "resolutionComment",
+      "before": "Не�� ��апаха и уте��к��",
+      "after": "Нет запаха и утечки",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-2-4",
+      "equipmentId": "15",
+      "field": "resolutionComment",
+      "before": "Ви��то��ые кран�� смазано",
+      "after": "Винтовые краны смазано",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-08-25",
+      "rowId": "2026-08-25-auto-2-5",
+      "equipmentId": "15",
+      "field": "resolutionComment",
+      "before": "Необходимо заменить ма��ом��тр�� на ли����ейном цехе",
+      "after": "Необходимо заменить манометры на литейном цехе",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-01",
+      "rowId": "2026-09-01-auto-1-1",
+      "equipmentId": "8",
+      "field": "resolutionComment",
+      "before": "На полировочной машине фонари надо поправит�� и ��ополнительно надо ста��ить",
+      "after": "На полировочной машине фонари надо поправить и дополнительно надо ставить",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-auto-1-1",
+      "equipmentId": "12",
+      "field": "work",
+      "before": "Прове��ить помещение, двери и замки ��� ПУЭ: доступ посторо��них запрещён.",
+      "after": "Проверить помещение, двери и замки — ПУЭ: доступ посторонних запрещён.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-auto-1-2",
+      "equipmentId": "12",
+      "field": "work",
+      "before": "Про��ерить освещение и вентиляцию �� ПУЭ: должны б��ть исп��авны.",
+      "after": "Проверить освещение и вентиляцию — ПУЭ: должны быть исправны.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-auto-1-3",
+      "equipmentId": "12",
+      "field": "resolutionComment",
+      "before": "На ��гнетушителях давление 0 на перезаправка отправили",
+      "after": "На огнетушителях давление 0 на перезаправка отправили",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-auto-1-5",
+      "equipmentId": "12",
+      "field": "work",
+      "before": "Проверить наличие аптечки — ПУЭ: аптеч��а обязательна.",
+      "after": "Проверить наличие аптечки — ПУЭ: аптечка обязательна.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-work-6",
+      "equipmentId": "12",
+      "field": "work",
+      "before": "П��оверить трансформатор �� ПУЭ: не допускаются течь масла и перегрев.",
+      "after": "Проверить трансформатор — ПУЭ: не допускаются течь масла и перегрев.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-work-6",
+      "equipmentId": "12",
+      "field": "resolutionComment",
+      "before": "Сухие трансформаторы без м��сла по сторону предмета нету",
+      "after": "Сухие трансформаторы без масла по сторону предмета нету",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-03",
+      "rowId": "2026-09-03-work-8",
+      "equipmentId": "12",
+      "field": "work",
+      "before": "Проверить заземление ��� П��Э: со��динения должны б��ть целыми и надёжными.",
+      "after": "Проверить заземление — ПУЭ: соединения должны быть целыми и надёжными.",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
+    },
+    {
+      "date": "2026-09-07",
+      "rowId": "2026-09-07-auto-1-3",
+      "equipmentId": "2",
+      "field": "work",
+      "before": "Электр кабельдери,клемалар Жане ж��рге косу,козгалткыштын ток тутынуын олшеу",
+      "after": "Электр кабельдери,клемалар Жане жерге косу,козгалткыштын ток тутынуын олшеу",
+      "mode": "user-approved-contextual-recovery",
+      "source": "User approved contextual restoration of remaining damaged text on 2026-09-08; original text retained in recovery history"
     }
   ]
 }

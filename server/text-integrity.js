@@ -102,7 +102,8 @@ function repairStoredText(db, reference = require("./text-recovery-reference.jso
     const evidence = { path: entry.path, before: entry.before };
     if (after === entry.before) { report.unresolved.push(evidence); continue; }
     entry.parent[entry.key] = after;
-    report.changes.push({ ...evidence, after });
+    report.changes.push({ ...evidence, after, source: exact?.source || reference.source,
+      mode: exact?.mode || "verified-reference", ...(exact?.reviewNote ? { reviewNote: exact.reviewNote } : {}) });
     report.repaired++;
   }
   // Derived translations are regenerated; keep their exact previous values for recovery.
@@ -120,6 +121,7 @@ function textIntegrityReport(db) {
   for (const entry of entries) sections[entry.path[0]] = (sections[entry.path[0]] || 0) + 1;
   const migration = db.targetedCleanupVersions?.[KEY];
   return { remaining: entries.length, sections, repaired: migration?.repaired || 0,
+    reviewNotes: (migration?.changes || []).filter(item => item.reviewNote).map(item => ({ path: item.path, note: item.reviewNote })),
     invalidatedTranslations: migration?.invalidatedTranslations?.length || 0,
     unresolved: entries.map(({ path, before, protected: sensitive }) => ({ path, text: sensitive ? "[служебное поле]" : before })) };
 }
