@@ -6,6 +6,11 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
   const body = await readBody(req);
   const sourceType = String(body.sourceType || "").trim();
   const code = String(body.code || "").trim();
+  const name = String(body.name || "").trim();
+  if (name.length > 120 || (!code && name)) {
+    sendJson(res, 400, { ok: false, error: "repeat_failure_group_invalid" });
+    return true;
+  }
   if (!new Set(["downtime", "remark"]).has(sourceType) || (code && !/^[1-9]\d{0,5}$/.test(code))) {
     sendJson(res, 400, { ok: false, error: "repeat_failure_group_invalid" });
     return true;
@@ -42,9 +47,29 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
       if (!target) return { error: "repeat_failure_not_found" };
       patch = { checks: { [recordKey]: record } };
     }
-    const changed = String(target.repeatFailureCode || "") !== code;
+    // A number is local to one equipment; reuse its latest explicitly saved name.
+    let existingName = "";
+    let namedAt = "";
+    const consider = entry => {
+      if (String(entry?.repeatFailureCode || "") !== code || !entry.repeatFailureName) return;
+      const at = String(entry.repeatFailureMarkedAt || "");
+      if (!existingName || at > namedAt) { existingName = entry.repeatFailureName; namedAt = at; }
+    };
+    if (code) {
+      (db.downtimes || []).forEach(entry => {
+        if (!entry.deleted && entry.type !== "production" && Number(entry.equipmentId) === equipmentId) consider(entry);
+      });
+      Object.entries(db.checks || {}).forEach(([key, record]) => {
+        if (Number(key.split(":")[0]) === equipmentId && record?.to) {
+          (Array.isArray(record.to.commentLog) ? record.to.commentLog : []).forEach(consider);
+        }
+      });
+    }
+    const savedName = code ? name || existingName : "";
+    const changed = String(target.repeatFailureCode || "") !== code || String(target.repeatFailureName || "") !== savedName;
     if (changed) {
       target.repeatFailureCode = code;
+      target.repeatFailureName = savedName;
       target.repeatFailureMarkedAt = now;
       target.repeatFailureMarkedByKey = resolutionUserKeyServer(actor);
       target.repeatFailureMarkedByName = String(actor.name || "").trim();

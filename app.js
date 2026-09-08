@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v808-repeat-journal-styles";
+const APP_VERSION = "v809-named-repeat-history";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -8547,7 +8547,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         commentEditedByName: entry.commentEditedByName || "",
         commentEditedByRole: entry.commentEditedByRole || "",
         commentEditHistory: Array.isArray(entry.commentEditHistory) ? entry.commentEditHistory : [],
-        repeatFailureCode: String(entry.repeatFailureCode || ""),
+        ...PPRModules.repeatFailures.metadata(entry),
         durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
@@ -8578,7 +8578,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       resolvedByName: item.closedByName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedComment: item.closeComment || "",
-      repeatFailureCode: String(item.repeatFailureCode || ""),
+      ...PPRModules.repeatFailures.metadata(item),
       durationMs: downtimeDurationMs(item)
     });
   });
@@ -12996,7 +12996,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           name: event.targetName || "",
           at: event.at || ""
         }));
-      if (created?.year === year || resolved?.year === year || confirmed?.year === year || ratingReturns.some(event => dateYearMonth(event.at)?.year === year)) {
+      if (year === null || created?.year === year || resolved?.year === year || confirmed?.year === year || ratingReturns.some(event => dateYearMonth(event.at)?.year === year)) {
         events.push({
           type: "remark",
           resolutionKey: `remark:${recordKey}:${stableRemarkId(entry)}`,
@@ -13023,7 +13023,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
-          repeatFailureCode: String(entry.repeatFailureCode || ""),
+          ...PPRModules.repeatFailures.metadata(entry),
           resolvedComment: entry.resolvedComment || "",
           text: entry.text || item.comment || ""
         });
@@ -13035,7 +13035,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
     if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     const resolved = dateYearMonth(item.endedAt || "");
-    if (created?.year !== year && resolved?.year !== year) return;
+    if (year !== null && created?.year !== year && resolved?.year !== year) return;
     events.push({
       type: "breakdown",
       sourceType: "downtime",
@@ -13054,7 +13054,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
       ratingParticipants: Array.isArray(item.closedParticipants) ? item.closedParticipants : [],
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
-      repeatFailureCode: String(item.repeatFailureCode || ""),
+      ...PPRModules.repeatFailures.metadata(item),
       resolvedComment: item.closeComment || "",
       text: item.comment || ""
     });
@@ -14000,9 +14000,9 @@ function monthDisplayName(monthKey = current.engineerReportMonth) {
 
 
 function engineerAnnualAnalysis(year) {
-  const events = annualRepairEvents(year);
+  const events = annualRepairEvents(null);
   const annualStats = directorAnnualStats(year);
-  return PPRModules.repeatFailures.buildAnnualAnalysis(events, year, annualStats);
+  return { ...PPRModules.repeatFailures.buildAnalysis(events, annualStats), year };
 }
 
 function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
@@ -14284,7 +14284,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
           ? item.count
           : `<button type="button" class="repeat-breakdown-count-button" data-open-repeat-breakdown="${escapeHtml(encodeURIComponent(item.groupKey))}" data-repeat-year="${annual.year}" aria-label="Открыть ${item.count} повторных поломок">${item.count}</button>`}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
-        <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">Группа №${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.texts[0] || "Проверить причину повторения")}</td>
+        <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">№${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.name || item.texts[0] || "Название не указано")}</td>
       </tr>
     `
   );
@@ -14326,7 +14326,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
       </div>
       <div class="engineer-report-year-strip">
-        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за ${annual.year}</span></div>
+        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за весь период</span></div>
         <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер по выполненным работам${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
       </div>
       <section class="engineer-report-note">
@@ -14354,8 +14354,8 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Событий</th><th>Простой</th><th>Вывод</th></tr></thead><tbody>${problemRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>5. Анализ повторных поломок за ${annual.year}</h3>
-        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Повторов</th><th>Простой</th><th>Комментарий</th></tr></thead><tbody>${repeatRows}</tbody></table>
+        <h3>5. Повторные поломки за весь период</h3>
+        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
@@ -14394,7 +14394,7 @@ function renderEngineerReport() {
       const groupKey = decodeURIComponent(button.dataset.openRepeatBreakdown || "");
       const group = engineerAnnualAnalysis(year).repeatedBreakdowns.find(item => item.groupKey === groupKey);
       if (!group) return showAppToast("Группа повторных поломок не найдена.", "error");
-      PPRModules.repeatFailures.openJournal(group, year, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup });
+      PPRModules.repeatFailures.openJournal(group, null, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup });
     });
   });
 }
@@ -15591,6 +15591,7 @@ function renderAggregateJournal() {
                   ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
                   ${repeatFailureGroupingEnabled ? `<span class="repeat-failure-editor no-print">
                     <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер группы одинаковой неисправности" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="№">
+                    <input type="text" maxlength="120" aria-label="Название поломки" data-repeat-failure-name value="" placeholder="${escapeHtml(item.repeatFailureName || "Название поломки")}" title="Укажите название один раз; для существующего номера оно подставится автоматически">
                     <button type="button" class="mini-action" title="Сохранить номер" aria-label="Сохранить номер" data-save-repeat-failure="${escapeHtml(item.id)}">✓</button>
                     ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" title="Снять номер" aria-label="Снять номер" data-clear-repeat-failure="${escapeHtml(item.id)}">×</button>` : ""}
                   </span>` : ""}

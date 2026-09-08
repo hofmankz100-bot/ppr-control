@@ -1,19 +1,30 @@
 (function () {
   const root = window.PPRModules ||= {};
 
-  function buildAnnualAnalysis(events, year, annualStats) {
+  function metadata(entry) {
+    return {
+      repeatFailureCode: String(entry.repeatFailureCode || ""),
+      repeatFailureName: String(entry.repeatFailureName || ""),
+      repeatFailureMarkedAt: String(entry.repeatFailureMarkedAt || "")
+    };
+  }
+
+  function buildAnalysis(events, annualStats) {
     const repeatedMap = new Map();
     events
       .filter(event => ["remark", "breakdown"].includes(event.type))
       .forEach(event => {
         const created = new Date(event.createdAt || "");
-        if (Number.isNaN(created.getTime()) || created.getFullYear() !== year) return;
+        if (Number.isNaN(created.getTime())) return;
         const manualCode = String(event.repeatFailureCode || "").trim();
         if (!/^[1-9]\d{0,5}$/.test(manualCode)) return;
         const key = `manual|${Number(event.equipmentId) || 0}|${manualCode}`;
         const item = repeatedMap.get(key) || {
           groupKey: key,
           manualCode,
+          equipmentId: Number(event.equipmentId) || 0,
+          name: "",
+          namedAt: "",
           area: event.area || "",
           equipment: event.equipment || "",
           node: event.node || "",
@@ -26,6 +37,10 @@
           events: []
         };
         item.count += 1;
+        if (event.repeatFailureName && (!item.name || String(event.repeatFailureMarkedAt || "") > item.namedAt)) {
+          item.name = String(event.repeatFailureName);
+          item.namedAt = String(event.repeatFailureMarkedAt || "");
+        }
         if (event.type === "breakdown") {
           item.breakdowns += 1;
           item.downtimeMs += Number(event.durationMs || 0);
@@ -46,11 +61,11 @@
       .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
       .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
       .slice(0, 12);
-    return { year, repeatedBreakdowns, employeeRating };
+    return { repeatedBreakdowns, employeeRating };
   }
 
   function journalTitle(group = {}) {
-    if (group.manualCode) return `Повторные неисправности №${group.manualCode}`;
+    if (group.manualCode) return `Повторные неисправности №${group.manualCode}${group.name ? " — " + group.name : ""}`;
     return `Повторные поломки: ${group.equipment || "Оборудование"} · ${group.node || "узел не указан"}`;
   }
 
@@ -59,13 +74,14 @@
     const code = String(group.manualCode || "").trim();
     const events = (Array.isArray(group.events) ? group.events : []).filter(event =>
       /^[1-9]\d{0,5}$/.test(code) && String(event.repeatFailureCode || "").trim() === code
+      && (group.equipmentId == null || Number(event.equipmentId) === group.equipmentId)
       && ["remark", "breakdown"].includes(event.type));
     const person = (name, role) => [name, role ? requestRoleLabel(role) : ""].filter(Boolean).join(" · ");
     const sheets = [];
     for (let offset = 0; offset < events.length; offset += 10) sheets.push(events.slice(offset, offset + 10));
     if (!sheets.length) sheets.push([]);
     const header = '<thead><tr><th rowspan="2">№ п/п</th><th rowspan="2">Наименование узла, в котором обнаружен дефект</th><th rowspan="2">Дата осмотра или ревизии</th><th rowspan="2">Краткая характеристика дефекта</th><th rowspan="2">Подпись лица, производившего осмотр</th><th rowspan="2">Дата ремонта</th><th rowspan="2">Перечень работ, выполненных для устранения дефектов</th><th colspan="2">Результат устранения</th></tr><tr><th>Время устранения замечания</th><th>Кто устранил / кто подтвердил</th></tr></thead>';
-    return `<article class="repeat-failure-journal-print"><header><h2>${escapeHtml(journalTitle(group))}</h2><p>${escapeHtml(String(year))} год · ${events.length} записей · Простой: ${escapeHtml(durationText(events.filter(event => event.type === "breakdown").reduce((sum, event) => sum + Number(event.durationMs || 0), 0)))}</p></header>${sheets.map((sheet, sheetIndex) => `<section class="repeat-journal-sheet"><div class="aggregate-sheet-head"><strong>Агрегатный журнал: ${escapeHtml(group.equipment || "Оборудование")}</strong><span>Лист № ${sheetIndex + 1}</span></div><div class="repeat-journal-table-wrap"><table class="aggregate-journal-table repeat-journal-table"><colgroup>${[4, 14, 9, 17, 10, 9, 16, 9, 12].map(width => `<col style="width:${width}%">`).join("")}</colgroup>${header}<tbody>${sheet.length ? sheet.map((event, index) => {
+    return `<article class="repeat-failure-journal-print"><header><h2>${escapeHtml(journalTitle(group))}</h2><p>${year == null ? "За весь период" : escapeHtml(String(year)) + " год"} · ${events.length} записей · Простой: ${escapeHtml(durationText(events.filter(event => event.type === "breakdown").reduce((sum, event) => sum + Number(event.durationMs || 0), 0)))}</p></header>${sheets.map((sheet, sheetIndex) => `<section class="repeat-journal-sheet"><div class="aggregate-sheet-head"><strong>Агрегатный журнал: ${escapeHtml(group.equipment || "Оборудование")}</strong><span>Лист № ${sheetIndex + 1}</span></div><div class="repeat-journal-table-wrap"><table class="aggregate-journal-table repeat-journal-table"><colgroup>${[4, 14, 9, 17, 10, 9, 16, 9, 12].map(width => `<col style="width:${width}%">`).join("")}</colgroup>${header}<tbody>${sheet.length ? sheet.map((event, index) => {
       const participants = (event.ratingParticipants || []).map(entry => person(entry.name, entry.role)).filter(Boolean);
       const resolver = [...new Set(participants)].join(", ") || person(event.resolvedByName, event.resolvedByRole);
       const confirmer = person(event.confirmedByName, event.confirmedByRole);
@@ -92,8 +108,8 @@
     modal.querySelector("[data-print-repeat-journal]")?.addEventListener("click", () => printJournal(group, year, helpers));
   }
 
-  async function saveCode(item, code, helpers) {
-    const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000, body: JSON.stringify({ actionId: helpers.nextActionId(), clientId: helpers.clientId, sourceType: item.sourceType, downtimeId: item.downtimeId || "", recordKey: item.recordKey || "", remarkId: item.remarkId || "", code: String(code || "").trim() }) });
+  async function saveCode(item, code, helpers, name = "") {
+    const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000, body: JSON.stringify({ name, actionId: helpers.nextActionId(), clientId: helpers.clientId, sourceType: item.sourceType, downtimeId: item.downtimeId || "", recordKey: item.recordKey || "", remarkId: item.remarkId || "", code: String(code || "").trim() }) });
     if (result?.state) helpers.mergeRealtimePatch(result.state);
     if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
     helpers.persist();
@@ -104,9 +120,11 @@
     container.querySelectorAll("[data-save-repeat-failure]").forEach(button => button.addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
       const item = items.find(entry => String(entry.id) === String(event.currentTarget.dataset.saveRepeatFailure || ""));
       const code = String(event.currentTarget.closest(".repeat-failure-editor")?.querySelector("[data-repeat-failure-code]")?.value || "").trim();
+      const name = String(event.currentTarget.closest(".repeat-failure-editor")?.querySelector("[data-repeat-failure-name]")?.value || "").trim();
       if (!item) throw new Error("repeat_failure_not_found");
       if (code && !/^[1-9]\d{0,5}$/.test(code)) return helpers.showAppToast("Введите номер группы от 1 до 999999.", "error");
-      await saveCode(item, code, helpers);
+      if (name && !code) return helpers.showAppToast("Укажите номер для названия поломки.", "error");
+      await saveCode(item, code, helpers, name);
       helpers.showAppToast(code ? `Запись добавлена в группу №${code}.` : "Запись исключена из группы.", "ok");
       helpers.render();
     }, "Сохраняем...")));
@@ -119,5 +137,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { buildAnnualAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
+  root.repeatFailures = { metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
 })();

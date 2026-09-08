@@ -17,9 +17,10 @@
 #repeatFailureJournalModal .repeat-journal-table tr{display:table-row!important}
 #repeatFailureJournalModal .repeat-journal-table th,#repeatFailureJournalModal .repeat-journal-table td{display:table-cell!important;position:static!important;border:1px solid #526775;padding:6px;font-size:11px;text-align:left;vertical-align:top;overflow-wrap:anywhere;white-space:pre-line}
 #repeatFailureJournalModal .repeat-journal-table th{background:#e2e8f0;text-align:center;font-weight:800}
-#aggregateJournalScreen .repeat-failure-editor{grid-column:1/-1;display:inline-flex;flex-wrap:nowrap;align-items:center;gap:4px;width:fit-content;max-width:100%;margin-top:5px;padding:0;border:0;background:none}
+#aggregateJournalScreen .repeat-failure-editor{grid-column:1/-1;display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;width:fit-content;max-width:100%;margin-top:5px;padding:0;border:0;background:none}
 #aggregateJournalScreen .repeat-failure-editor input{width:68px;min-width:68px;height:32px;min-height:32px;box-sizing:border-box;padding:4px;text-align:center;border:1px solid #94a3b8;border-radius:6px;font-size:13px;background:#fff;color:#17212b}
 #aggregateJournalScreen .repeat-failure-editor button{width:32px;min-width:32px;height:32px;min-height:32px;box-sizing:border-box;padding:0;border:1px solid #94a3b8;border-radius:6px;font-size:16px;line-height:1}
+#aggregateJournalScreen .repeat-failure-editor input[data-repeat-failure-name]{width:160px;min-width:100px;max-width:100%;text-align:left;flex:1 1 140px}
 .repeat-failure-badge{display:inline-block;margin:4px 0;font-size:11px;color:#9a3412}
 @media(max-width:680px){
   .repeat-failure-journal-modal{padding:5px}

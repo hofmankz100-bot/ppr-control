@@ -197,7 +197,7 @@ test("aggregate journal collapses one remark and downtime row for the same incid
 });
 
 test("administrator and a specifically permitted employee can assign a repeat-failure group", async () => {
-  const assign = (userId, code) => fetch(`${baseUrl}/api/repeat-failure-group`, {
+  const assign = (userId, code, name) => fetch(`${baseUrl}/api/repeat-failure-group`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-user-id": userId },
     body: JSON.stringify({
@@ -205,13 +205,20 @@ test("administrator and a specifically permitted employee can assign a repeat-fa
       clientId: "repeat-group-test",
       sourceType: "downtime",
       downtimeId: "repeat-breakdown-1",
-      code
+      code, name
     })
   }).then(async response => ({ status: response.status, body: await response.json() }));
 
-  const adminResult = await assign("editor-1", "5");
+  const adminResult = await assign("editor-1", "5", "Течь цилиндра");
   assert.equal(adminResult.status, 200, JSON.stringify(adminResult.body));
   assert.equal(adminResult.body.state.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "5");
+  assert.equal(adminResult.body.state.downtimes[0].repeatFailureName, "Течь цилиндра");
+  const retry = await assign("editor-1", "5");
+  assert.equal(retry.body.changed, false);
+  assert.equal(retry.body.state.downtimes[0].repeatFailureName, "Течь цилиндра");
+  const renamed = await assign("editor-1", "5", "Течь штока");
+  assert.equal(renamed.body.state.downtimes[0].repeatFailureName, "Течь штока");
+  assert.equal((await assign("editor-1", "5", "a".repeat(121))).status, 400);
 
   const deniedResult = await assign("worker-1", "6");
   assert.equal(deniedResult.status, 403, JSON.stringify(deniedResult.body));
@@ -219,13 +226,17 @@ test("administrator and a specifically permitted employee can assign a repeat-fa
   const permittedResult = await assign("engineer-1", "6");
   assert.equal(permittedResult.status, 200, JSON.stringify(permittedResult.body));
   assert.equal(permittedResult.body.state.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "6");
+  assert.equal(permittedResult.body.state.downtimes[0].repeatFailureName, "");
+  const cleared = await assign("editor-1", "");
+  assert.equal(cleared.body.state.downtimes[0].repeatFailureCode, "");
+  assert.equal(cleared.body.state.downtimes[0].repeatFailureName, "");
 });
 
 test("repeat-failure analysis exposes a clickable printable detail journal", () => {
   assert.match(appSource, /data-open-repeat-breakdown/);
   assert.match(repeatFailuresSource, /function openJournal/);
   assert.match(repeatFailuresSource, /function printJournal/);
-  assert.match(repeatFailuresSource, /function buildAnnualAnalysis/);
+  assert.match(repeatFailuresSource, /function buildAnalysis/);
   assert.match(appSource, /repeatFailureGroup/);
   assert.match(appSource, /\.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
   assert.match(appSource, /repeatFailureGroupingEnabled \? `<span class="repeat-failure-editor no-print">/);
@@ -238,10 +249,10 @@ test("repeat-failure analysis exposes a clickable printable detail journal", () 
 test("the same manual number combines separate breakdown rows into one printable group", () => {
   const context = { window: {} };
   vm.runInNewContext(repeatFailuresSource, context);
-  const analysis = context.window.PPRModules.repeatFailures.buildAnnualAnalysis([
+  const analysis = context.window.PPRModules.repeatFailures.buildAnalysis([
     { type: "breakdown", equipmentId: 7, area: "Прессовый участок", equipment: "Пресс 2400", node: "Робот", createdAt: "2026-01-10T08:00:00Z", durationMs: 60000, repeatFailureCode: "5", text: "Не запускается" },
     { type: "breakdown", equipmentId: 7, area: "Прессовый участок", equipment: "Пресс 2400", node: "Печь", createdAt: "2026-08-10T08:00:00Z", durationMs: 120000, repeatFailureCode: "5", text: "Не запускается" }
-  ], 2026, { workers: [] });
+  ], { workers: [] });
   assert.equal(analysis.repeatedBreakdowns.length, 1);
   assert.equal(analysis.repeatedBreakdowns[0].manualCode, "5");
   assert.equal(analysis.repeatedBreakdowns[0].count, 2);
