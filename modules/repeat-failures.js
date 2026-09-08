@@ -9,9 +9,8 @@
         const created = new Date(event.createdAt || "");
         if (Number.isNaN(created.getTime()) || created.getFullYear() !== year) return;
         const manualCode = String(event.repeatFailureCode || "").trim();
-        const key = manualCode
-          ? `manual|${Number(event.equipmentId) || 0}|${manualCode}`
-          : `automatic|${event.area || ""}|${event.equipment || ""}|${event.node || ""}`;
+        if (!/^[1-9]\d{0,5}$/.test(manualCode)) return;
+        const key = `manual|${Number(event.equipmentId) || 0}|${manualCode}`;
         const item = repeatedMap.get(key) || {
           groupKey: key,
           manualCode,
@@ -42,8 +41,7 @@
     const repeatedBreakdowns = [...repeatedMap.values()]
       .filter(item => item.count >= 2)
       .map(item => ({ ...item, events: item.events.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) }))
-      .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"))
-      .slice(0, 10);
+      .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"));
     const employeeRating = annualStats.workers
       .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
       .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
@@ -52,20 +50,34 @@
   }
 
   function journalTitle(group = {}) {
-    if (group.manualCode) return `Группа повторных поломок №${group.manualCode}`;
+    if (group.manualCode) return `Повторные неисправности №${group.manualCode}`;
     return `Повторные поломки: ${group.equipment || "Оборудование"} · ${group.node || "узел не указан"}`;
   }
 
   function journalHtml(group = {}, year, helpers) {
     const { escapeHtml, dateTimeHuman, durationText, requestRoleLabel } = helpers;
-    const events = Array.isArray(group.events) ? group.events : [];
-    return `<article class="repeat-failure-journal-print"><header><div><span>Детализация за ${escapeHtml(String(year))} год</span><h2>${escapeHtml(journalTitle(group))}</h2><p>${escapeHtml(group.area || "-")} · ${escapeHtml(group.equipment || "-")} · записей: ${events.length} · общий простой: ${escapeHtml(durationText(group.downtimeMs || 0))}</p></div></header><table><thead><tr><th>№</th><th>Дата</th><th>Узел</th><th>Неисправность</th><th>Простой</th><th>Выполненная работа</th><th>Кто обнаружил</th><th>Кто устранил</th><th>Статус</th></tr></thead><tbody>${events.length ? events.map((event, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(dateTimeHuman(event.createdAt))}</td><td>${escapeHtml(event.node || "-")}</td><td>${escapeHtml(event.text || "Причина не указана")}</td><td>${event.type === "breakdown" ? escapeHtml(durationText(event.durationMs || 0)) : "-"}</td><td>${escapeHtml(event.resolvedComment || (event.resolvedAt ? "Устранено" : "-"))}</td><td>${escapeHtml(event.authorName || requestRoleLabel(event.authorRole) || "-")}</td><td>${escapeHtml(event.resolvedByName || requestRoleLabel(event.resolvedByRole) || "-")}</td><td>${event.open ? "Открыта" : "Закрыта"}</td></tr>`).join("") : `<tr><td colspan="9" class="engineer-report-empty">Записей в группе нет</td></tr>`}</tbody></table></article>`;
+    const code = String(group.manualCode || "").trim();
+    const events = (Array.isArray(group.events) ? group.events : []).filter(event =>
+      /^[1-9]\d{0,5}$/.test(code) && String(event.repeatFailureCode || "").trim() === code
+      && ["remark", "breakdown"].includes(event.type));
+    const person = (name, role) => [name, role ? requestRoleLabel(role) : ""].filter(Boolean).join(" · ");
+    const sheets = [];
+    for (let offset = 0; offset < events.length; offset += 10) sheets.push(events.slice(offset, offset + 10));
+    if (!sheets.length) sheets.push([]);
+    const header = '<thead><tr><th rowspan="2">№ п/п</th><th rowspan="2">Наименование узла, в котором обнаружен дефект</th><th rowspan="2">Дата осмотра или ревизии</th><th rowspan="2">Краткая характеристика дефекта</th><th rowspan="2">Подпись лица, производившего осмотр</th><th rowspan="2">Дата ремонта</th><th rowspan="2">Перечень работ, выполненных для устранения дефектов</th><th colspan="2">Результат устранения</th></tr><tr><th>Время устранения замечания</th><th>Кто устранил / кто подтвердил</th></tr></thead>';
+    return `<article class="repeat-failure-journal-print"><header><h2>${escapeHtml(journalTitle(group))}</h2><p>${escapeHtml(String(year))} год · ${events.length} записей · Простой: ${escapeHtml(durationText(events.filter(event => event.type === "breakdown").reduce((sum, event) => sum + Number(event.durationMs || 0), 0)))}</p></header>${sheets.map((sheet, sheetIndex) => `<section class="repeat-journal-sheet"><div class="aggregate-sheet-head"><strong>Агрегатный журнал: ${escapeHtml(group.equipment || "Оборудование")}</strong><span>Лист № ${sheetIndex + 1}</span></div><div class="repeat-journal-table-wrap"><table class="aggregate-journal-table repeat-journal-table"><colgroup>${[4, 14, 9, 17, 10, 9, 16, 9, 12].map(width => `<col style="width:${width}%">`).join("")}</colgroup>${header}<tbody>${sheet.length ? sheet.map((event, index) => {
+      const participants = (event.ratingParticipants || []).map(entry => person(entry.name, entry.role)).filter(Boolean);
+      const resolver = [...new Set(participants)].join(", ") || person(event.resolvedByName, event.resolvedByRole);
+      const confirmer = person(event.confirmedByName, event.confirmedByRole);
+      const resolution = [resolver ? `Устранили: ${resolver}` : "", confirmer ? `Подтвердил: ${confirmer}${event.confirmedAt ? " · " + dateTimeHuman(event.confirmedAt) : ""}` : ""].filter(Boolean).join("\n");
+      return `<tr><td>${sheetIndex * 10 + index + 1}</td><td>${escapeHtml(event.equipment || group.equipment || "-")}<br>${escapeHtml(event.node || "-")}</td><td>${escapeHtml(dateTimeHuman(event.createdAt))}</td><td>${escapeHtml((event.type === "breakdown" ? "Поломка: " : "Замечание: ") + (event.text || "Без комментария"))}${event.correctedDefectText ? `<br><b>Исправленный комментарий:</b> ${escapeHtml(event.correctedDefectText)}` : ""}</td><td>${escapeHtml(person(event.authorName, event.authorRole))}</td><td>${event.resolvedAt ? escapeHtml(dateTimeHuman(event.resolvedAt)) : ""}</td><td>${escapeHtml(event.resolvedComment || (event.resolvedAt ? "Устранено" : ""))}${event.correctedResolvedComment ? `<br><b>Исправленная запись:</b> ${escapeHtml(event.correctedResolvedComment)}` : ""}</td><td>${event.durationMs ? escapeHtml(durationText(event.durationMs)) : ""}</td><td>${escapeHtml(resolution)}</td></tr>`;
+    }).join("") : '<tr><td colspan="9">Нет отмеченных записей</td></tr>'}</tbody></table></div></section>`).join("")}</article>`;
   }
 
   function printJournal(group, year, helpers) {
     const popup = window.open("", "_blank", "width=1400,height=900");
     if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
-    popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${helpers.escapeHtml(journalTitle(group))}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#111827}header{display:flex;justify-content:space-between;border-bottom:2px solid #111827;margin-bottom:10px;padding-bottom:8px}header span{font-size:11px;text-transform:uppercase}h2{margin:3px 0 5px;font-size:20px}p{margin:0;font-size:11px;color:#475569}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #64748b;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere}th{background:#e2e8f0;text-align:left}tr{break-inside:avoid}</style></head><body>${journalHtml(group, year, helpers)}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+    popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${helpers.escapeHtml(journalTitle(group))}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#111827}header{display:flex;justify-content:space-between;border-bottom:2px solid #111827;margin-bottom:10px;padding-bottom:8px}header span{font-size:11px;text-transform:uppercase}h2{margin:3px 0 5px;font-size:20px}p{margin:0;font-size:11px;color:#475569}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #64748b;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere}th{background:#e2e8f0;text-align:left}thead{display:table-header-group}tr{break-inside:avoid}.aggregate-sheet-head{display:flex;justify-content:space-between;margin:8px 0;font-size:11px}.repeat-journal-sheet{break-after:page}.repeat-journal-sheet:last-child{break-after:auto}.repeat-journal-table-wrap{overflow:visible}td{white-space:pre-line}</style></head><body>${journalHtml(group, year, helpers)}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
     helpers.finalizeJournalPopup(popup);
   }
 
@@ -95,14 +107,14 @@
       if (!item) throw new Error("repeat_failure_not_found");
       if (code && !/^[1-9]\d{0,5}$/.test(code)) return helpers.showAppToast("Введите номер группы от 1 до 999999.", "error");
       await saveCode(item, code, helpers);
-      helpers.showAppToast(code ? `Поломка добавлена в группу №${code}.` : "Поломка исключена из группы.", "ok");
+      helpers.showAppToast(code ? `Запись добавлена в группу №${code}.` : "Запись исключена из группы.", "ok");
       helpers.render();
     }, "Сохраняем...")));
     container.querySelectorAll("[data-clear-repeat-failure]").forEach(button => button.addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
       const item = items.find(entry => String(entry.id) === String(event.currentTarget.dataset.clearRepeatFailure || ""));
       if (!item) throw new Error("repeat_failure_not_found");
       await saveCode(item, "", helpers);
-      helpers.showAppToast("Поломка исключена из группы.", "ok");
+      helpers.showAppToast("Запись исключена из группы.", "ok");
       helpers.render();
     }, "Снимаем...")));
   }

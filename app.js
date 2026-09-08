@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v806-repeat-failure-mobile-simple";
+const APP_VERSION = "v807-manual-repeats";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -13018,6 +13018,8 @@ function annualRepairEvents(year = directorAnnualYear()) {
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
           ratingParticipants: completedResolutionParticipants(entry),
+          correctedDefectText: entry.correctedDefectText || "",
+          correctedResolvedComment: entry.correctedResolvedComment || "",
           ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
@@ -14272,7 +14274,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   const repeatRows = engineerReportRows(
     annual.repeatedBreakdowns,
-    "Повторных поломок и повторных замечаний за год не выявлено",
+    "Нет повторов, отмеченных вручную. Укажите одинаковый номер у двух или более записей агрегатного журнала.",
     item => `
       <tr>
         <td>${escapeHtml(item.area || "-")}</td>
@@ -15585,13 +15587,12 @@ function renderAggregateJournal() {
                 <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
                 <td data-mobile-label="Неисправность">
                   ${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}
-                  ${item.repeatFailureCode ? `<span class="repeat-failure-badge">Группа повторов №${escapeHtml(item.repeatFailureCode)}</span>` : ""}
+                  ${item.repeatFailureCode && !repeatFailureGroupingEnabled ? `<span class="repeat-failure-badge no-print">№${escapeHtml(item.repeatFailureCode)}</span>` : ""}
                   ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
                   ${repeatFailureGroupingEnabled ? `<span class="repeat-failure-editor no-print">
-                    <span class="repeat-failure-editor-title">Группа повторов</span>
                     <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер группы одинаковой неисправности" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="№">
-                    <button type="button" class="mini-action" data-save-repeat-failure="${escapeHtml(item.id)}">Сохранить</button>
-                    ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" data-clear-repeat-failure="${escapeHtml(item.id)}">Снять</button>` : ""}
+                    <button type="button" class="mini-action" title="Сохранить номер" aria-label="Сохранить номер" data-save-repeat-failure="${escapeHtml(item.id)}">✓</button>
+                    ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" title="Снять номер" aria-label="Снять номер" data-clear-repeat-failure="${escapeHtml(item.id)}">×</button>` : ""}
                   </span>` : ""}
                 </td>
                 <td data-mobile-label="Осмотр выполнил">${escapeHtml(author)}</td>
