@@ -1,6 +1,7 @@
 (function (root) {
   "use strict";
   const drafts = new Map();
+  const approvalRequests = new Set();
   const keyFor = row => JSON.stringify([String(row.equipmentId || ""), String(row.node || "")]);
   const started = row => Boolean(row.mark || row.markedAt || String(row.resolutionComment || "").trim());
   const messages = {
@@ -26,8 +27,52 @@
       ? `<select class="no-print" data-ppr-plan-target="${escape(row.id)}" aria-label="Оборудование и узел"><option value="">Выберите оборудование и узел</option>${draft.targets.map((target, index) => `<option value="${index}" ${keyFor(target) === keyFor(row) ? "selected" : ""}>${escape(target.equipment)} · ${escape(target.node)}</option>`).join("")}</select>` : "";
     return `${targetSelect}<button type="button" class="secondary no-print ppr-plan-remove" data-ppr-plan-remove="${escape(row.id)}">Убрать</button>`;
   }
+  function serverApprovalFields(sheet = {}) {
+    return {
+      approvedAt: sheet.approvedAt || "",
+      approvedByName: sheet.approvedByName || "",
+      approvedByRole: sheet.approvedByRole || "",
+      lockedAt: sheet.lockedAt || sheet.approvedAt || ""
+    };
+  }
+  async function approve(date, button, deps) {
+    const { api, rerender, toast, approval } = deps;
+    const { canApprove, getSheet, completion, publish, persist, setBusy } = approval;
+    if (!canApprove() || approvalRequests.has(date)) return;
+    if (getSheet(date).approvedAt || !completion(date).workersComplete) return;
+    approvalRequests.add(date);
+    setBusy(button, true, "Принимаем…");
+    const acceptServerApproval = sheet => {
+      if (!sheet?.approvedAt || !sheet?.approvedByName) throw new Error("ppr_approval_not_confirmed");
+      // Only the server supplies the signature. Keep local work/drafts even if
+      // their device timestamps are newer than the confirmed server snapshot.
+      Object.assign(getSheet(date, true), serverApprovalFields(sheet));
+      persist();
+    };
+    try {
+      const result = await publish(date, "approve");
+      acceptServerApproval(result?.state?.pprSheets?.[date]);
+    } catch (error) {
+      let confirmed = false;
+      if (Number(error?.status) === 409 && error?.data?.error === "ppr_sheet_locked") {
+        try {
+          const snapshot = await api(`/api/ppr-sheet/plan?date=${encodeURIComponent(date)}`);
+          acceptServerApproval(snapshot?.sheet);
+          confirmed = true;
+        } catch {}
+      }
+      if (!confirmed) toast("Приёмка не подтверждена сервером. Проверьте связь и повторите. Записи сохранены.", "error");
+    } finally {
+      approvalRequests.delete(date);
+      if (button?.isConnected) setBusy(button, false);
+      rerender();
+    }
+  }
   function bind(container, deps) {
     const { api, publish, rerender, toast, canPlan } = deps;
+    if (deps.approval) container?.querySelectorAll("[data-approve-ppr-sheet]").forEach(button => {
+      button.addEventListener("click", () => approve(button.dataset.approvePprSheet, button, deps));
+    });
     container?.querySelectorAll("[data-ppr-sheet-date]").forEach(element => {
       const date = element.dataset.pprSheetDate;
       element.querySelectorAll("textarea").forEach(input => {
@@ -107,5 +152,5 @@
       }));
     });
   }
-  root.PprPlanEditor = { get: date => drafts.get(date), started, controls, rowControls, bind };
+  root.PprPlanEditor = { get: date => drafts.get(date), approvalPending: date => approvalRequests.has(date), serverApprovalFields, started, controls, rowControls, bind };
 })(window);

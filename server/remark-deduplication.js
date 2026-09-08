@@ -81,6 +81,17 @@ function areTechnicalDuplicates(left = {}, right = {}, sameRecord = true) {
   if (!sameStoredAuthor && !sameNamedAuthor) return false;
   if (normalizeValue(left.text) !== normalizeValue(right.text) || !normalizeValue(left.text)) return false;
   if (!timestampsWithin(left.at, right.at)) return false;
+  const membershipFields = [...new Set([...Object.keys(left), ...Object.keys(right)])]
+    .filter(key => key.startsWith("repeatFailure"));
+  const membershipValue = (entry, key) => String(entry[key] ?? "").trim();
+  if (membershipFields.some(key => membershipValue(left, key) || membershipValue(right, key))) {
+    // A manual classification is attached to one stored remark, including an
+    // explicitly cleared number and a completed cycle. Similar text/time must
+    // not remove an independently classified member. Only a replay of that same
+    // member in the same record, with unchanged metadata, can be collapsed.
+    if (!sameRecord || !left.id || String(left.id) !== String(right.id || "")) return false;
+    if (membershipFields.some(key => membershipValue(left, key) !== membershipValue(right, key))) return false;
+  }
   const exactCreationTime = String(left.at || "") === String(right.at || "");
   const leftResolution = normalizeValue(left.resolvedComment || left.resolutionSubmittedComment);
   const rightResolution = normalizeValue(right.resolvedComment || right.resolutionSubmittedComment);

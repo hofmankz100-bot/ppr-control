@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v821-storage-qr-safety";
+const APP_VERSION = "v822-ppr-history-safety";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -390,6 +390,9 @@ let sessionValidationState = "pending";
 let sessionRefreshPromise = null;
 let networkResumePromise = null;
 let sessionRetryTimer = null;
+let pendingApprovalPollTimer = null;
+let pendingApprovalPollOwner = "";
+let pendingApprovalPollGeneration = 0;
 let attendanceStatus = null;
 let attendanceRefreshTimer = null;
 applyWorkCleanFromUrl();
@@ -2079,7 +2082,7 @@ function mergePprSheetRowsLocal(currentRows = [], incomingRows = []) {
   });
 }
 
-function mergePprSheetsLocal(current = {}, incoming = {}) {
+function mergePprSheetsLocal(current = {}, incoming = {}, serverApprovals = false) {
   const merged = mergeObjectByFreshnessLocal(current, incoming);
   for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
     if (!current?.[date] || !incoming?.[date]) continue;
@@ -2089,6 +2092,10 @@ function mergePprSheetsLocal(current = {}, incoming = {}) {
       rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows).filter(row => !current[date].removedRowIds?.includes(String(row.id)) && !incoming[date].removedRowIds?.includes(String(row.id)))
     };
   }
+  // Only verified server sheets reconcile signatures; offline cache merges do not.
+  if (serverApprovals) Object.entries(incoming || {}).forEach(([date, sheet]) => {
+    if (sheet && typeof sheet === "object") merged[date] = { ...merged[date], ...window.PprPlanEditor.serverApprovalFields(sheet) };
+  });
   return merged;
 }
 
@@ -2281,7 +2288,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   // PPR rows can contain a phone draft that has not reached the server yet.
   // Merge them row-by-row even during a full refresh so a stale empty server
   // snapshot cannot erase newer local work.
-  state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {});
+  state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {}, options.serverPprApprovals === true);
   state.annualPpr = preferRemote
     ? { ...(remote.annualPpr || {}) }
     : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
@@ -2323,7 +2330,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
   if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
-  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets);
+  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets, true);
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
@@ -2369,7 +2376,7 @@ function handleRealtimeMessage(data) {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else {
-      mergeRemoteState(msg.state || {}, { preferRemote: true });
+      mergeRemoteState(msg.state || {}, { preferRemote: true, serverPprApprovals: true });
       remoteStateHydrated = true;
     }
     if (msg.origin === CLIENT_ID) {
@@ -2550,7 +2557,7 @@ async function loadRemoteState() {
       const localResetAtBeforeMerge = String(state.operationalResetAt || "");
       const remoteResetAt = String(remote.operationalResetAt || "");
       rememberRemoteStateBaseline(remote);
-      mergeRemoteState(remote, { preferRemote: true });
+      mergeRemoteState(remote, { preferRemote: true, serverPprApprovals: true });
       const sameOperationalPeriod = !remoteResetAt || localResetAtBeforeMerge === remoteResetAt;
       if (sameOperationalPeriod) {
         const recoveredChecks = {};
@@ -2648,6 +2655,8 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
 
 async function loadRemoteUsers() {
   if (loadRemoteUsers.promise) return loadRemoteUsers.promise;
+  const approvalPollGeneration = pendingApprovalPollGeneration;
+  const approvalProfileKey = isProfileWaitingApproval() ? resolutionUserKey(profile) : "";
   loadRemoteUsers.promise = (async () => {
   try {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
@@ -2657,14 +2666,15 @@ async function loadRemoteUsers() {
       const nextUsers = JSON.stringify(users);
       const usersChanged = previousUsers !== nextUsers;
       localStorage.setItem(USERS_KEY, nextUsers);
-      if (isProfileWaitingApproval()) {
+      if (approvalPollGeneration === pendingApprovalPollGeneration && approvalProfileKey
+        && isProfileWaitingApproval() && approvalProfileKey === resolutionUserKey(profile)) {
         const fresh = users.find(user =>
           (profile.id && user.id === profile.id) ||
           (profile.employeeId && user.employeeId === profile.employeeId) ||
           (profile.phone && user.phone === profile.phone)
         );
         if (fresh?.approved === true && fresh?.pendingApproval !== true) {
-          localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false }));
+          localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false, registrationPending: false }));
           await finishAuthOnCurrentPage();
           return;
         }
@@ -2819,7 +2829,7 @@ async function saveRemoteState() {
     }
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges, serverPprApprovals: true });
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     if (!hasNewLocalChanges && pendingRequestIds.size) {
       pendingRequestIds.clear();
@@ -3296,6 +3306,7 @@ async function registerEmployee(data) {
     method: "POST",
     body: JSON.stringify(data)
   });
+  stopPendingApprovalPolling();
   const pendingProfile = { ...result.user, registrationPending: true, approved: false, pendingApproval: true };
   localStorage.setItem(PROFILE_KEY, JSON.stringify(pendingProfile));
   return pendingProfile;
@@ -3313,6 +3324,7 @@ async function loginEmployee(identifier, password) {
     method: "POST",
     body: JSON.stringify({ identifier, password })
   });
+  stopPendingApprovalPolling();
   await requirePendingStateAuthor(result.user);
   if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
   remoteStateHydrated = false;
@@ -3337,6 +3349,7 @@ function updateConnectionStatus() {
 }
 
 function rejectServerSession() {
+  stopPendingApprovalPolling();
   pendingStateOwner.captureLegacy(loadProfile());
   sessionValidationState = "signed-out";
   authenticatedProfile = profile = attendanceStatus = null;
@@ -3368,6 +3381,7 @@ async function restoreServerSession() {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
     profile = activeProfileFromSession(authenticatedProfile);
     sessionValidationState = "verified";
+    startPendingApprovalPolling();
     return true;
   } catch (error) {
     if (!error.pendingOwnerConflict && !window.PprDeviceCachePolicy.isSessionRejected(error) && window.PprDeviceCachePolicy.canRestoreCachedProfile(stored) && ROLE_ACCESS[stored.role]) {
@@ -3407,6 +3421,28 @@ function refreshAuthenticatedProfile() {
   return sessionRefreshPromise;
 }
 
+function stopPendingApprovalPolling() {
+  window.clearInterval(pendingApprovalPollTimer);
+  pendingApprovalPollTimer = null;
+  pendingApprovalPollOwner = "";
+  pendingApprovalPollGeneration += 1;
+}
+
+function startPendingApprovalPolling() {
+  if (!isProfileWaitingApproval()) { stopPendingApprovalPolling(); return; }
+  const owner = resolutionUserKey(profile);
+  if (pendingApprovalPollTimer !== null && pendingApprovalPollOwner === owner) return;
+  stopPendingApprovalPolling();
+  pendingApprovalPollOwner = owner;
+  pendingApprovalPollTimer = window.setInterval(() => {
+    if (!isProfileWaitingApproval() || resolutionUserKey(profile) !== owner) {
+      stopPendingApprovalPolling();
+      return;
+    }
+    loadRemoteUsers();
+  }, 5000);
+}
+
 async function finishAuthOnCurrentPage() {
   authenticatedProfile = loadProfile();
   profile = activeProfileFromSession(authenticatedProfile);
@@ -3415,10 +3451,11 @@ async function finishAuthOnCurrentPage() {
     ui.loginOverlay.hidden = false;
     ui.loginForm.hidden = true;
     ui.loginError.textContent = t("pendingApproval");
-    window.setInterval(loadRemoteUsers, 5000);
+    startPendingApprovalPolling();
     return;
   }
 
+  stopPendingApprovalPolling();
   if (!isProfileReady()) return;
 
   ui.loginOverlay.hidden = true;
@@ -3795,7 +3832,7 @@ async function saveNodeName(equipmentId, nodeIndex, value) {
     timeout: 60000,
     body: JSON.stringify({ equipmentId, nodeIndex, node: nextName })
   });
-  if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+  if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
   if (result?.ok !== true) return false;
   return true;
 }
@@ -3812,7 +3849,7 @@ async function addNodeName(equipmentId, value) {
       timeout: 60000,
       body: JSON.stringify({ equipmentId, equipment: eq.name, nodes: eq.nodes, node: clean })
     });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     return result?.ok === true;
   }
   const item = equipmentOverride(equipmentId);
@@ -3853,7 +3890,7 @@ async function deleteNodeName(equipmentId, nodeIndex) {
       timeout: 60000,
       body: JSON.stringify({ equipmentId, nodeIndex, equipment: eq.name, nodes: eq.nodes })
     });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     return result?.ok === true;
   }
   const item = equipmentOverride(equipmentId);
@@ -4108,6 +4145,7 @@ function renderProfile() {
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
+    stopPendingApprovalPolling();
     await removePushSubscriptionForLogout();
     await apiJson("/api/auth/logout", { method: "POST", timeout: 5000 }).catch(() => {});
     pendingStateOwner.captureLegacy(loadProfile());
@@ -4239,7 +4277,7 @@ function setupLogin() {
     ui.loginOverlay.hidden = false;
     ui.loginForm.hidden = true;
     ui.loginError.textContent = t("pendingApproval");
-    window.setInterval(loadRemoteUsers, 5000);
+    startPendingApprovalPolling();
     return;
   }
   ui.loginOverlay.hidden = isProfileReady();
@@ -9855,7 +9893,7 @@ function openCreateEquipmentDialog() {
     runButtonOperation(button, async () => {
       const values = Object.fromEntries(new FormData(form).entries());
       const result = await apiJson("/api/admin/equipment/create", { method: "POST", timeout: 60000, body: JSON.stringify(values) });
-      if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+      if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
       if (!result?.ok) throw new Error(result?.error || "equipment_create_failed");
       close();
       renderEquipment();
@@ -9943,7 +9981,7 @@ function openCustomJournalEditor(eq) {
     const resultMode = overlay.querySelector("[data-journal-result-mode]").value;
     const frequency = overlay.querySelector("[data-journal-frequency]").value;
     const result = await apiJson("/api/admin/equipment/journal-schema", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, title, scope, journalNodeIndex, fieldsTiming, resultMode, frequency, columns: draft.columns }) });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     if (!result?.ok) throw new Error(result?.error || "journal_schema_failed");
     close(); renderEquipment(); showAppToast("Структура журнала сохранена", "ok");
   }, "Сохраняется..."));
@@ -10176,7 +10214,7 @@ function renderEquipment() {
         if (!password) return;
         runButtonOperation(event.currentTarget, async () => {
           const result = await apiJson("/api/admin/equipment/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, equipment: eq.name, area: eq.area, nodes: eq.nodes, builtIn: eq.created !== true, reason, password }) });
-          if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+          if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
           if (!result?.ok) throw new Error(result?.error || "equipment_delete_failed");
           renderEquipment();
           showAppToast("Оборудование перемещено в корзину", "ok");
@@ -11912,14 +11950,23 @@ const pprSheetGenerationRequests = new Map();
 const pprSheetGenerationAttempts = new Map();
 
 async function ensurePprSheetAutofill(date, force = false) {
+  if (pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile)) return null;
   if (pprSheetGenerationRequests.has(date)) return pprSheetGenerationRequests.get(date);
+  const actor = resolutionUserKey(authenticatedProfile);
+  const before = JSON.stringify(state.pprSheets?.[date] || null);
   const operation = apiJson("/api/ppr-sheet/generate", {
     method: "POST", timeout: 15000,
     body: JSON.stringify({ date, force, clientId: CLIENT_ID, actionId: nextActionId() })
   }).then(result => {
+    if (pendingDeviceRestoreRequired || sessionValidationState !== "verified" || actor !== resolutionUserKey(authenticatedProfile) || !pendingStateOwner.owns(authenticatedProfile)) return null;
     if (result?.sheet) {
       state.pprSheets ||= {};
-      state.pprSheets[date] = result.sheet;
+      const currentSheet = state.pprSheets[date];
+      // A late generated plan must not replace restored or edited rows, even with a newer server timestamp.
+      state.pprSheets[date] = JSON.stringify(currentSheet || null) === before ? result.sheet : {
+        ...mergePprSheetsLocal({ [date]: currentSheet }, { [date]: result.sheet }, true)[date],
+        rows: currentSheet?.rows || [], removedRowIds: currentSheet?.removedRowIds || []
+      };
       persistStateLocally(state);
     }
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
@@ -12062,7 +12109,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
         ${window.PprPlanEditor.controls(date, canPlanPprSheet() && !locked)}
-        ${!draft && completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
+        ${!draft && completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}" ${window.PprPlanEditor.approvalPending(date) ? "disabled" : ""}>${window.PprPlanEditor.approvalPending(date) ? "Принимаем…" : "Принять выполненные работы"}</button>` : ""}
       </footer>
     </section>
   `;
@@ -12244,7 +12291,10 @@ function shiftPprCalendar(monthDelta) {
 }
 
 function bindPprCalendarControls(container, rerender) {
-  window.PprPlanEditor.bind(container, { api: apiJson, canPlan: canPlanPprSheet, rerender, toast: showAppToast, publish: async (date, details) => {
+  window.PprPlanEditor.bind(container, { api: apiJson, canPlan: canPlanPprSheet, rerender, toast: showAppToast,
+    approval: { canApprove: canApprovePprSheet, getSheet: pprSheetRecord, completion: pprSheetCompletion,
+      publish: publishPprSheetAction, persist: () => persistStateLocally(state), setBusy: setButtonBusy },
+    publish: async (date, details) => {
     const result = await apiJson("/api/ppr-sheet/plan", { method: "POST", timeout: 15000, body: JSON.stringify({ date, ...details, actionId: nextActionId(), clientId: CLIENT_ID }) });
     if (result?.state) mergeRealtimePatch(result.state);
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
@@ -12252,7 +12302,7 @@ function bindPprCalendarControls(container, rerender) {
   container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
     const date = element.dataset.pprSheetDate;
     const sheet = pprSheetRecord(date);
-    if (!navigator.onLine || sessionValidationState !== "verified" || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
+    if (!navigator.onLine || pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile) || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
     if (Date.now() - (pprSheetGenerationAttempts.get(date) || 0) < 30000) return;
     pprSheetGenerationAttempts.set(date, Date.now());
     ensurePprSheetAutofill(date).then(result => { if (result?.sheet && container.isConnected) rerender(); }).catch(() => {
@@ -12370,26 +12420,6 @@ function bindPprCalendarControls(container, rerender) {
   });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
     button.addEventListener("click", () => printPprMaintenanceSheet(button.dataset.printPprSheet));
-  });
-  container?.querySelectorAll("[data-approve-ppr-sheet]").forEach(button => {
-    button.addEventListener("click", async () => {
-      if (!canApprovePprSheet()) return;
-      const date = button.dataset.approvePprSheet;
-      const sheet = pprSheetRecord(date, true);
-      const completion = pprSheetCompletion(date);
-      if (!completion.workersComplete) return;
-      sheet.approvedAt = new Date().toISOString();
-      sheet.approvedByName = profile?.name || "";
-      sheet.approvedByRole = profile?.role || "engineer";
-      sheet.lockedAt = sheet.approvedAt;
-      touchPprSheet(sheet, false);
-      try {
-        await publishPprSheetAction(date, "approve");
-      } catch {
-        saveState();
-      }
-      rerender();
-    });
   });
 }
 

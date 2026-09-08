@@ -45,6 +45,7 @@ test("generic state writes use the production session, preserve foreign snapshot
       [`91:0:${date}`]: { updatedAt: oldTime, to: { updatedAt: oldTime, commentLog: [remark("foreign-existing", "Existing B")], walkGroups: {} } }
     },
     pprSheets: {
+      "2026-09-02": { id: "explicit-target-sheet", date: "2026-09-02", explicitPlan: true, rows: [{ id: "target-row", work: "Saved target work", equipmentId: "90", equipment: "Saved equipment", node: "Saved node", area: "Area A", mark: "" }] },
       [date]: { id: `sheet:${date}`, date, updatedAt: oldTime, plannedByName: "Original engineer", rows: [{ id: "row-1", work: "Inspect motor", equipmentId: "90", workUpdatedAt: oldTime, mark: "" }] },
       "2026-09-03": { id: "locked-sheet", date: "2026-09-03", approvedAt: oldTime, approvedByName: "Original engineer", lockedAt: oldTime, rows: [{ id: "locked-row", work: "Locked plan", mark: "done", markedByName: "Original worker" }] }
     },
@@ -118,6 +119,22 @@ test("generic state writes use the production session, preserve foreign snapshot
     const result = await put("operator", { checks: { [`90:0:${date}`]: own, "91:0:2026-09-05": { to: { commentLog: [remark("forbidden", "Another area")] } } } });
     assert.equal(result.status, 403);
     assert.equal((await state()).checks[`90:0:${date}`].to.commentLog.some(entry => entry.id === "must-not-exist"), false);
+  });
+
+  await t.test("marking an explicit plan cannot change its saved equipment, node or work", async () => {
+    const before = await state();
+    const date = "2026-09-02";
+    const result = await request("worker", "/api/ppr-sheet/action", "POST", { date, action: "mark", rowId: "target-row", mark: "done", resolutionComment: "Inspected", equipmentId: "91", equipment: "Injected machine", node: "Injected node", area: "Area B", work: "Injected work" });
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    const after = await state(), row = after.pprSheets[date].rows[0];
+    for (const field of ["equipmentId", "equipment", "node", "area", "work"]) assert.equal(row[field], before.pprSheets[date].rows[0][field], field);
+    assert.equal(row.mark, "done"); assert.equal(row.markedByName, "Policy worker");
+    assert.deepEqual(after.checks, before.checks);
+    assert.deepEqual(after.pprSheets["2026-09-03"], before.pprSheets["2026-09-03"]);
+    const unmark = await request("worker", "/api/ppr-sheet/action", "POST", { date, action: "mark", rowId: "target-row", mark: "", equipmentId: "91", node: "Injected node" });
+    assert.equal(unmark.status, 200);
+    const unmarked = (await state()).pprSheets[date].rows[0];
+    assert.equal(unmarked.mark, ""); assert.equal(unmarked.equipmentId, "90"); assert.equal(unmarked.node, "Saved node");
   });
 
   await t.test("workers can mark planned work but cannot author plans or approve sheets", async () => {

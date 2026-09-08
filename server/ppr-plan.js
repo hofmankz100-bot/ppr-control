@@ -88,4 +88,15 @@ function savePlan(db, body, actor, now = new Date().toISOString()) {
   return { sheet };
 }
 
-module.exports = { keyFor, revision, started, planSnapshot, savePlan };
+// Old, unbound sheets used the only scheduled target in the browser. Preserve
+// that compatibility using the server schedule, never labels sent by a worker.
+function legacyMarkTarget(sheet, row, catalog, now = new Date().toISOString()) {
+  if (sheet.explicitPlan || row.equipmentId || row.equipment || row.node || row.area) return {};
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+  const targets = scheduledItemsForDate(catalog, sheet.date, today);
+  if (targets.length !== 1) return {};
+  const { equipmentId, equipment, node, area } = targets[0];
+  return { equipmentId, equipment, node, area };
+}
+
+module.exports = { keyFor, revision, started, planSnapshot, savePlan, legacyMarkTarget };

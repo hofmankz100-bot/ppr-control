@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v821-storage-qr-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v822-ppr-history-safety"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -6429,10 +6429,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         row.resolutionUpdatedAt = now;
         row.markUpdatedAt = now;
         row.updatedAt = now;
-        row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
-        row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
-        row.node = String(body.node || row.node || "").slice(0, 300);
-        row.area = String(body.area || row.area || "").slice(0, 300);
+        Object.assign(row, require("./server/ppr-plan").legacyMarkTarget({ ...sheet, date }, row, db.catalog, now));
         const activeRows = sheet.rows.filter(item => String(item?.work || "").trim());
         if (
           activeRows.length

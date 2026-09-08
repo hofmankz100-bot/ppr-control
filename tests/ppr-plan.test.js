@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { savePlan, planSnapshot, keyFor } = require("../server/ppr-plan");
+const { savePlan, planSnapshot, keyFor, legacyMarkTarget } = require("../server/ppr-plan");
 const { buildAutofillRows, generatePprSheet } = require("../server/ppr-autofill");
 const { sanitizeStateMutation } = require("../server/state-mutation-policy");
 const date = "2026-09-08";
@@ -73,4 +73,28 @@ test("stale full-state sync cannot resurrect removed rows or overwrite saved pla
 test("autofill keeps identical work separately on different equipment and nodes", () => {
   const rows = buildAutofillRows(date, [target, { ...target, equipmentId: 91 }]);
   assert.equal(rows.filter(row => row.work && row.equipmentId === 90).length, rows.filter(row => row.work && row.equipmentId === 91).length);
+});
+
+test("mark target keeps saved bindings and derives only an unambiguous legacy target from the server", () => {
+  const { EQUIPMENT, scheduledItemsForDate } = require("../server/ppr-autofill");
+  const equipment = Object.fromEntries(EQUIPMENT.map(eq => [eq.id, { deleted: true }]));
+  equipment[90] = { id: 90, created: true, name: "Серверный пресс", area: "Цех", nodes: ["Узел"] };
+  const catalog = { equipment };
+  let scheduledDate, target;
+  for (let day = 1; day <= 30; day++) {
+    const date = `2026-09-${String(day).padStart(2, "0")}`;
+    const targets = scheduledItemsForDate(catalog, date);
+    if (targets.length === 1) { scheduledDate = date; target = targets[0]; break; }
+  }
+  assert.ok(scheduledDate);
+  const { equipmentId, equipment: name, node, area } = target;
+  assert.deepEqual(legacyMarkTarget({ date: scheduledDate }, {}, catalog), { equipmentId, equipment: name, node, area });
+  assert.deepEqual(legacyMarkTarget({ date: scheduledDate, explicitPlan: true }, {}, catalog), {});
+  for (const field of ["equipmentId", "equipment", "node", "area"]) assert.deepEqual(legacyMarkTarget({ date: scheduledDate }, { [field]: "Historical" }, catalog), {});
+  assert.deepEqual(legacyMarkTarget({ date: "2026-09-06" }, {}, catalog), {}, "no schedule on Sunday; never invent a target");
+  const before = JSON.stringify(catalog);
+  legacyMarkTarget({ date: scheduledDate }, {}, catalog);
+  assert.equal(JSON.stringify(catalog), before);
+  equipment[90].operationalPauses = [{ startedAt: `${scheduledDate}T00:00:00+05:00`, endedAt: `${scheduledDate}T12:00:00+05:00` }];
+  assert.deepEqual(legacyMarkTarget({ date: scheduledDate }, {}, catalog, "2026-10-01T00:00:00+05:00"), {}, "historical completed pauses must not be treated as today's reopened equipment");
 });

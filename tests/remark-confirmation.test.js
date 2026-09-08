@@ -780,7 +780,7 @@ test("new catalog nodes are registered atomically with a permanent QR identity",
   const server = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   assert.match(client, /async function addNodeName\(equipmentId, value\)/);
   assert.match(client, /\/api\/admin\/equipment\/node-add/);
-  assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true \}\)/);
+  assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true, serverPprApprovals: true \}\)/);
   assert.match(client, /\.\.\.override,[\s\S]*id: eq\.id,[\s\S]*name: override\.name \|\| eq\.name/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/node-add"/);
   assert.match(server, /catalogItem\.nodeCreatedAt\[nodeIndex\]/);
@@ -1718,7 +1718,7 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(server, /row\.draftByName = name/);
   assert.doesNotMatch(server, /if \(!row \|\| row\.mark \|\| !String\(row\.work/);
   assert.match(source, /function mergePprSheetRowsLocal\(currentRows = \[\], incomingRows = \[\]\)/);
-  assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets\)/);
+  assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets, true\)/);
   assert.doesNotMatch(source, /state\.pprSheets = preferRemote\s*\? \{ \.\.\.\(remote\.pprSheets/);
   assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
   assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
