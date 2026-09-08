@@ -128,7 +128,7 @@ test.describe("session authority during server failures", () => {
     expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").checks || {}).length)).toBeGreaterThan(0);
     expect(markRequests).toBe(0);
     await login(page, app, app.users.engineer);
-    await expect(page.locator("#connectionStatus")).toContainText("Отметки другого сотрудника");
+    await expect(page.locator("#connectionStatus")).toBeHidden();
     expect(await serverMarks(page, app)).toHaveLength(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-state-v3-qr-pending-marks-v1") || "[]").length)).toBe(1);
     expect(markRequests).toBe(0);

@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v819-ppr-work-template";
+const APP_VERSION = "v820-quiet-sync-notice";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3329,14 +3329,10 @@ function updateConnectionStatus() {
     notice.setAttribute("role", "status");
     ui.profileBar?.before(notice);
   }
-  const pending = pendingQrWalkMarks().length + Number(localStorage.getItem(`${STORE_KEY}-pending`) === "1");
-  const other = pendingQrWalkMarks().filter(item => !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)).length;
-  // Session revalidation retries silently. Only surface conditions where the
-  // employee needs useful status: no network or locally queued work.
-  notice.hidden = !isProfileReady() || (navigator.onLine && !pending);
-  notice.textContent = !navigator.onLine ? "Нет связи. Данные сохранены на устройстве; отправим после подключения."
-    : `Данные сохранены на устройстве. Ожидают отправки: ${pending}.`;
-  if (other) notice.textContent += ` Отметки другого сотрудника или без подтверждённого автора: ${other}. Они сохранены и автоматически не отправляются.`;
+  // Queue ownership and retries stay in the synchronization layer. Do not show
+  // its diagnostic counters to employees or discard records to clear a banner.
+  notice.hidden = !isProfileReady() || navigator.onLine;
+  notice.textContent = notice.hidden ? "" : "Нет связи. Новые записи сохраняются на устройстве.";
 }
 
 function rejectServerSession() {
