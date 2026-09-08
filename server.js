@@ -41,7 +41,7 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
-const remarkDeduplication = require("./server/remark-deduplication"); const { handleRepeatFailureGroupRoute } = require("./server/repeat-failure-group-route");
+const remarkDeduplication = require("./server/remark-deduplication"); const { handleRepeatFailureGroupRoute, preserveRepeatFailureMetadata } = require("./server/repeat-failure-group-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -69,7 +69,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v811-repeat-measures"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v812-repeat-cycles"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3693,7 +3693,7 @@ function mergeCommentLogs(current = [], incoming = []) {
     if (brokenText && brokenName) return;
     const key = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     const previous = map.get(key) || {};
-    const next = { ...previous, ...entry };
+    const next = fromIncoming ? preserveRepeatFailureMetadata(previous, { ...previous, ...entry }) : { ...previous, ...entry };
     const previousDecisionTime = remarkDecisionTime(previous);
     const incomingDecisionTime = remarkDecisionTime(entry);
     const preservePreviousDecision = fromIncoming && previousDecisionTime > 0 && previousDecisionTime >= incomingDecisionTime;
@@ -3879,7 +3879,7 @@ function mergeArrayById(current = [], incoming = []) {
     if (!item || !item.id) continue;
     if (String(item.id).includes("\uFFFD")) continue;
     const currentItem = map.get(item.id) || {};
-    const nextItem = { ...currentItem, ...sanitizeIncomingValue(currentItem, item) };
+    const nextItem = preserveRepeatFailureMetadata(currentItem, { ...currentItem, ...sanitizeIncomingValue(currentItem, item) });
     if (currentItem.endedAt && !item.endedAt) {
       nextItem.endedAt = currentItem.endedAt;
       nextItem.updatedAt = currentItem.updatedAt || currentItem.endedAt;

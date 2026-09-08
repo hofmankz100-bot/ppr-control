@@ -1,10 +1,13 @@
 "use strict";
 
 async function saveGroupMeasures(req, res, body, deps) {
+  const completing = body.action === "complete-measures";
   const equipmentId = Number(body.equipmentId);
   const code = String(body.code || "").trim();
+  const cycleNumber = Number(body.cycleNumber ?? 0);
   if (!Number.isSafeInteger(equipmentId) || equipmentId <= 0 || !/^[1-9]\d{0,5}$/.test(code)
-    || typeof body.text !== "string" || body.text.length > 2000) {
+    || !Number.isSafeInteger(cycleNumber) || cycleNumber < 0
+    || (!completing && (typeof body.text !== "string" || body.text.length > 2000))) {
     deps.sendJson(res, 400, { ok: false, error: "repeat_failure_measures_invalid" });
     return true;
   }
@@ -14,29 +17,50 @@ async function saveGroupMeasures(req, res, body, deps) {
     const equipment = db.catalog?.equipment?.[String(equipmentId)];
     if (!equipment || equipment.deleted) return { error: "repeat_failure_not_found" };
     if (actor.role !== "editor" && !deps.nodeMutationAccessServer(actor, equipment)) return { error: "repeat_failure_group_forbidden" };
-    const matching = entry => String(entry?.repeatFailureCode || "").trim() === code;
-    const exists = (db.downtimes || []).some(entry => !entry.deleted && entry.type !== "production" && Number(entry.equipmentId) === equipmentId && matching(entry))
-      || Object.entries(db.checks || {}).some(([key, record]) => Number(key.split(":")[0]) === equipmentId
-        && (record?.to?.commentLog || []).some(matching));
-    if (!exists) return { error: "repeat_failure_not_found" };
-    const text = body.text.trim();
+    const cycleId = `${code}:${cycleNumber}`;
+    const archived = equipment.repeatFailureArchives?.[cycleId];
     const previous = equipment.repeatFailureMeasures?.[code];
-    const changed = String(previous?.text || "") !== text;
+    if (archived && !completing) return { error: "repeat_failure_group_closed" };
+    if (!archived && cycleNumber !== (previous?.cycleNumber || 0)) return { error: "repeat_failure_measures_stale" };
+    const matching = entry => String(entry?.repeatFailureCode || "").trim() === code
+      && (archived ? entry.repeatFailureCycleId === cycleId : !entry.repeatFailureClosedAt && !entry.repeatFailureCycleId);
+    const members = (db.downtimes || []).filter(entry => !entry.deleted && entry.type !== "production" && Number(entry.equipmentId) === equipmentId && matching(entry));
+    const checks = {};
+    Object.entries(db.checks || {}).forEach(([key, record]) => {
+      if (Number(key.split(":")[0]) !== equipmentId) return;
+      const remarks = (Array.isArray(record?.to?.commentLog) ? record.to.commentLog : []).filter(matching);
+      if (remarks.length) { members.push(...remarks); checks[key] = record; }
+    });
+    if (!members.length) return { error: "repeat_failure_not_found" };
+    if (completing && !archived && (!previous?.text?.trim() || members.length < 2)) return { error: "repeat_failure_measures_required" };
+    if (completing && !archived && body.expectedUpdatedAt !== previous?.updatedAt) return { error: "repeat_failure_measures_stale" };
+    const text = completing ? (archived || previous).text : body.text.trim();
+    const changed = completing ? !archived : String(previous?.text || "") !== text;
     const actionId = String(body.actionId || "").trim().slice(0, 160);
     if (changed) {
       const now = new Date().toISOString();
       equipment.repeatFailureMeasures = { ...(equipment.repeatFailureMeasures || {}), [code]: {
-        text, updatedAt: now, updatedByKey: deps.resolutionUserKeyServer(actor),
+        ...previous, cycleNumber, text, updatedAt: now, updatedByKey: deps.resolutionUserKeyServer(actor),
         updatedByName: String(actor.name || ""), updatedByRole: String(actor.role || "")
       } };
+      if (completing) {
+        equipment.repeatFailureArchives = { ...(equipment.repeatFailureArchives || {}), [cycleId]: {
+          ...equipment.repeatFailureMeasures[code], code, completedAt: now,
+          completedByName: String(actor.name || ""), completedByKey: deps.resolutionUserKeyServer(actor)
+        } };
+        equipment.repeatFailureMeasures[code] = { text: "", cycleNumber: cycleNumber + 1, updatedAt: now };
+        members.forEach(entry => { entry.repeatFailureClosedAt = now; entry.repeatFailureCycleId = cycleId; entry.updatedAt = now; });
+        Object.values(checks).forEach(record => { record.updatedAt = now; record.to.updatedAt = now; });
+      }
       equipment.updatedAt = now;
-      deps.writeDb(db, { action: "repeat_failure_measures_saved", actionId, clientId: String(body.clientId || ""),
-        user: actor, equipmentId, repeatFailureCode: code, previousText: previous?.text || "", text });
+      deps.writeDb(db, { action: completing ? "repeat_failure_group_completed" : "repeat_failure_measures_saved", actionId, clientId: String(body.clientId || ""),
+        user: actor, equipmentId, repeatFailureCode: code, cycleNumber, previousText: previous?.text || "", text });
     }
-    return { changed, actionId, patch: { catalog: { equipment: { [String(equipmentId)]: equipment } } } };
+    return { changed, actionId, patch: { catalog: { equipment: { [String(equipmentId)]: equipment } },
+      ...(completing ? { checks, downtimes: (db.downtimes || []).filter(entry => members.includes(entry)) } : {}) } };
   });
   if (result.error) {
-    deps.sendJson(res, result.error.includes("forbidden") ? 403 : 404, { ok: false, error: result.error });
+    deps.sendJson(res, result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 409, { ok: false, error: result.error });
     return true;
   }
   const stateVersion = result.changed ? deps.broadcastState(body.clientId || "api", result.actionId, result.patch, true) : deps.realtimeStateVersion();
@@ -48,7 +72,7 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
   if (pathname !== "/api/repeat-failure-group" || req.method !== "POST") return false;
   const { readBody, sendJson, enqueueStateWrite, readDb, activeUserPermission, nodeMutationAccessServer, ensureRemarkEntriesServer, resolutionUserKeyServer, writeDb, broadcastState, realtimeStateVersion } = deps;
   const body = await readBody(req);
-  if (body.action === "save-measures") return saveGroupMeasures(req, res, body, deps);
+  if (["save-measures", "complete-measures"].includes(body.action)) return saveGroupMeasures(req, res, body, deps);
   const sourceType = String(body.sourceType || "").trim();
   const code = String(body.code || "").trim();
   const name = String(body.name || "").trim();
@@ -92,6 +116,7 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
       if (!target) return { error: "repeat_failure_not_found" };
       patch = { checks: { [recordKey]: record } };
     }
+    if (target.repeatFailureClosedAt || target.repeatFailureCycleId) return { error: "repeat_failure_group_closed" };
     // A number is local to one equipment; reuse its latest explicitly saved name.
     let existingName = "";
     let namedAt = "";
@@ -130,7 +155,7 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
     return { actionId, changed, origin: body.clientId || "api", patch };
   });
   if (result.error) {
-    const status = result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : 400;
+    const status = result.error.includes("forbidden") ? 403 : result.error.includes("not_found") ? 404 : result.error === "repeat_failure_group_closed" ? 409 : 400;
     sendJson(res, status, { ok: false, error: result.error });
     return true;
   }
@@ -139,4 +164,15 @@ async function handleRepeatFailureGroupRoute(req, res, pathname, deps) {
   return true;
 }
 
-module.exports = { handleRepeatFailureGroupRoute };
+// Generic device sync cannot assign, move or unlock groups. Only this audited route may do so.
+function preserveRepeatFailureMetadata(current, incoming) {
+  const keys = new Set([...Object.keys(current), ...Object.keys(incoming)].filter(key => key.startsWith("repeatFailure")));
+  for (const key of keys) {
+    if (Object.hasOwn(current, key)) incoming[key] = current[key];
+    else delete incoming[key];
+  }
+  if (current.repeatFailureClosedAt && current.equipmentId != null) incoming.equipmentId = current.equipmentId;
+  return incoming;
+}
+
+module.exports = { handleRepeatFailureGroupRoute, preserveRepeatFailureMetadata };

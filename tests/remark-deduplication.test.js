@@ -239,7 +239,7 @@ test("repeat-failure analysis exposes a clickable printable detail journal", () 
   assert.match(repeatFailuresSource, /function buildAnalysis/);
   assert.match(appSource, /repeatFailureGroup/);
   assert.match(appSource, /\.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
-  assert.match(appSource, /repeatFailureGroupingEnabled \? `<span class="repeat-failure-editor no-print">/);
+  assert.match(appSource, /repeatFailureGroupingEnabled && !PPRModules\.repeatFailures\.isClosed\(item, state\.catalog\) \? `<span class="repeat-failure-editor no-print">/);
   assert.doesNotMatch(appSource, /repeatFailureGroupingEnabled && item\.kind === "Поломка"/);
   assert.doesNotMatch(appSource, /Группа повторов/);
   assert.match(appSource, /aria-label="Номер группы одинаковой неисправности"/);
@@ -266,6 +266,52 @@ test("measures are persisted by the live API and survive unrelated full-state ca
   assert.equal(after.downtimes.find(item => item.id === "repeat-breakdown-1").repeatFailureCode, "9");
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
   assert.equal(stored.catalog.equipment["1"].repeatFailureMeasures["9"].text, "Inspect seal\nReplace cylinder");
+});
+
+test("completed membership survives state and node sync; number reuse starts a new cycle", async () => {
+  const headers = { "content-type": "application/json", "x-test-user-id": "editor-1" };
+  const post = body => fetch(`${baseUrl}/api/repeat-failure-group`, { method: "POST", headers, body: JSON.stringify(body) })
+    .then(async response => ({ status: response.status, body: await response.json() }));
+  const key = "1:2:2026-09-07";
+  assert.equal((await post({ sourceType: "remark", recordKey: key, remarkId: "open-remark", code: "9" })).status, 200);
+  const before = await (await fetch(`${baseUrl}/api/state`)).json();
+  const complete = { action: "complete-measures", equipmentId: 1, code: "9", cycleNumber: 0,
+    expectedUpdatedAt: before.catalog.equipment["1"].repeatFailureMeasures["9"].updatedAt };
+  assert.equal((await post(complete)).status, 200);
+  assert.equal((await post(complete)).body.changed, false);
+  const state = await (await fetch(`${baseUrl}/api/state`)).json();
+  const closed = state.downtimes.find(item => item.id === "repeat-breakdown-1");
+  const record = structuredClone(state.checks[key]);
+  const remark = record.to.commentLog.find(item => item.id === "open-remark");
+  remark.repeatFailureCode = "88"; remark.repeatFailureClosedAt = ""; remark.repeatFailureCycleId = "";
+  const forged = { ...closed, repeatFailureCode: "88", repeatFailureClosedAt: "", repeatFailureCycleId: "" };
+  const equipment = structuredClone(state.catalog.equipment["1"]);
+  equipment.repeatFailureArchives = {}; equipment.repeatFailureMeasures = {};
+  for (const [url, body] of [
+    ["/api/state", { checks: { [key]: record }, downtimes: [forged], catalog: { equipment: { "1": equipment } } }],
+    ["/api/node-update", { key, record, downtimes: [forged] }]
+  ]) {
+    const response = await fetch(baseUrl + url, { method: "PUT", headers, body: JSON.stringify(body) });
+    assert.equal(response.status, 200, await response.text());
+    const after = await (await fetch(`${baseUrl}/api/state`)).json();
+    assert.equal(after.downtimes.find(item => item.id === closed.id).repeatFailureCode, "9");
+    assert.equal(after.checks[key].to.commentLog.find(item => item.id === "open-remark").repeatFailureCycleId, "9:0");
+    assert.ok(after.catalog.equipment["1"].repeatFailureArchives["9:0"].completedAt);
+  }
+  assert.equal((await post({ sourceType: "downtime", downtimeId: closed.id, code: "8" })).status, 409);
+  assert.equal((await post({ sourceType: "remark", recordKey: key, remarkId: "open-remark", code: "" })).status, 409);
+  const fresh = { ...closed, id: "fresh-cycle-breakdown", repeatFailureCode: "9", repeatFailureCycleId: "9:0", repeatFailureClosedAt: closed.repeatFailureClosedAt };
+  const sync = await fetch(`${baseUrl}/api/state`, { method: "PUT", headers, body: JSON.stringify({ downtimes: [fresh] }) });
+  assert.equal(sync.status, 200, await sync.text());
+  assert.equal((await post({ sourceType: "downtime", downtimeId: fresh.id, code: "9" })).status, 200);
+  const after = await (await fetch(`${baseUrl}/api/state`)).json();
+  const newRow = after.downtimes.find(item => item.id === fresh.id);
+  assert.equal(newRow.repeatFailureCode, "9"); assert.equal(newRow.repeatFailureCycleId, undefined);
+  assert.equal((await post({ action: "save-measures", equipmentId: 1, code: "9", cycleNumber: 0, text: "stale old editor" })).status, 409);
+  assert.equal((await post({ action: "save-measures", equipmentId: 1, code: "9", cycleNumber: 1, text: "New cycle measures" })).status, 200);
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
+  assert.ok(stored.catalog.equipment["1"].repeatFailureArchives["9:0"].completedAt);
+  assert.equal(stored.catalog.equipment["1"].repeatFailureMeasures["9"].text, "New cycle measures");
 });
 
 test("the same manual number combines separate breakdown rows into one printable group", () => {

@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v811-repeat-measures";
+const APP_VERSION = "v812-repeat-cycles";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1411,6 +1411,9 @@ async function runButtonOperation(button, handler, text = "В ожидании..
     if (requestId) pendingRequestIds.delete(requestId);
     console.error("Request action failed", error);
     const actionErrors = {
+      repeat_failure_group_closed: "Мероприятия выполнены: этот список закрыт. Его записи нельзя переносить. Новым записям можно поставить тот же номер — они попадут в отдельный список.",
+      repeat_failure_measures_required: "Сначала сохраните мероприятия. Для закрытия группы нужны хотя бы две записи.",
+      repeat_failure_measures_stale: "Мероприятия изменены другим сотрудником. Обновите отчёт и проверьте текст перед закрытием.",
       remark_actor_invalid: "Сервер не подтвердил учётную запись сотрудника. Выйдите из приложения и войдите снова.",
       remark_not_open: "Это замечание уже закрыто или было обновлено. Откройте список предупреждений заново.",
       remark_awaiting_confirmation: "Работа уже передана на подтверждение.",
@@ -14002,7 +14005,7 @@ function monthDisplayName(monthKey = current.engineerReportMonth) {
 function engineerAnnualAnalysis(year) {
   const events = annualRepairEvents(null);
   const annualStats = directorAnnualStats(year);
-  return { ...PPRModules.repeatFailures.buildAnalysis(events, annualStats), year };
+  return { ...PPRModules.repeatFailures.buildAnalysis(events, annualStats, state.catalog), year };
 }
 
 function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
@@ -14126,8 +14129,8 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
   };
 }
 
-function engineerReportRows(items, emptyText, renderRow, columnCount = 6) {
-  if (!items.length) return `<tr><td colspan="${columnCount}" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
+function engineerReportRows(items, emptyText, renderRow) {
+  if (!items.length) return `<tr><td colspan="6" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
   return items.map(renderRow).join("");
 }
 
@@ -14277,15 +14280,16 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
     "Нет повторов, отмеченных вручную. Укажите одинаковый номер у двух или более записей агрегатного журнала.",
     item => `
       <tr>
-        <td>${PPRModules.repeatFailures.measuresCell(item, state.catalog?.equipment?.[String(item.equipmentId)]?.repeatFailureMeasures?.[item.manualCode], printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
+        <td>${PPRModules.repeatFailures.measuresCell(item, PPRModules.repeatFailures.groupMeasures(item, state.catalog), printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
         <td>${escapeHtml(item.equipment || "-")}</td>
+        <td>${PPRModules.repeatFailures.completionCell(item, PPRModules.repeatFailures.groupMeasures(item, state.catalog), printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
         <td>${printable
           ? item.count
           : `<button type="button" class="repeat-breakdown-count-button" data-open-repeat-breakdown="${escapeHtml(encodeURIComponent(item.groupKey))}" data-repeat-year="${annual.year}" aria-label="Открыть ${item.count} повторных поломок">${item.count}</button>`}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
         <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">№${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.name || item.texts[0] || "Название не указано")}</td>
       </tr>
-    `, 5
+    `
   );
   const employeeRows = engineerReportRows(
     annual.employeeRating,
@@ -14354,7 +14358,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </section>
       <section class="engineer-report-block">
         <h3>5. Повторные поломки за весь период</h3>
-        <table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
+        <table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Выполнено</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
@@ -15588,9 +15592,9 @@ function renderAggregateJournal() {
                 <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
                 <td data-mobile-label="Неисправность">
                   ${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}
-                  ${item.repeatFailureCode && !repeatFailureGroupingEnabled ? `<span class="repeat-failure-badge no-print">№${escapeHtml(item.repeatFailureCode)}</span>` : ""}
+                  ${item.repeatFailureCode && (!repeatFailureGroupingEnabled || PPRModules.repeatFailures.isClosed(item, state.catalog)) ? `<span class="repeat-failure-badge no-print">№${escapeHtml(item.repeatFailureCode)}${PPRModules.repeatFailures.isClosed(item, state.catalog) ? " · 🔒 Мероприятия выполнены" : ""}</span>` : ""}
                   ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
-                  ${repeatFailureGroupingEnabled ? `<span class="repeat-failure-editor no-print">
+                  ${repeatFailureGroupingEnabled && !PPRModules.repeatFailures.isClosed(item, state.catalog) ? `<span class="repeat-failure-editor no-print">
                     <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер группы одинаковой неисправности" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="№">
                     <input type="text" maxlength="120" aria-label="Название поломки" data-repeat-failure-name value="" placeholder="${escapeHtml(item.repeatFailureName || "Название поломки")}" title="Укажите название один раз; для существующего номера оно подставится автоматически">
                     <button type="button" class="mini-action" title="Сохранить номер" aria-label="Сохранить номер" data-save-repeat-failure="${escapeHtml(item.id)}">✓</button>

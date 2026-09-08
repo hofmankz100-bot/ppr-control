@@ -4,12 +4,50 @@
 
   function measuresCell(group, saved, printable, canEdit, escapeHtml) {
     const text = String(saved?.text || "");
-    if (printable || !canEdit) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>`;
+    if (printable || !canEdit || saved?.completedAt) return `<span class="repeat-measures-text">${escapeHtml(text || "—").replace(/\n/g, "<br>")}</span>`;
     const draft = measureDrafts.get(group.groupKey);
-    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button></div>`;
+    return `<div class="repeat-measures-editor" data-repeat-measures-key="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}"><textarea rows="2" maxlength="2000" aria-label="Мероприятия" placeholder="Что нужно сделать" data-repeat-measures>${escapeHtml(draft ?? text)}</textarea><button type="button" class="no-print" data-save-repeat-measures>Сохранить</button></div>`;
+  }
+
+  function completionCell(group, saved, printable, canEdit, escapeHtml) {
+    if (saved?.completedAt) return `<span class="repeat-measures-completed">☑ Выполнено<small>${escapeHtml(saved.completedByName || "")}<br>${escapeHtml(new Date(saved.completedAt).toLocaleDateString("ru-RU"))}</small></span>`;
+    if (printable || !canEdit) return "Не выполнено";
+    return `<button type="button" role="checkbox" aria-checked="false" aria-label="Мероприятия выполнены" class="repeat-measures-complete no-print" data-complete-repeat-measures="${escapeHtml(group.groupKey)}" data-equipment-id="${group.equipmentId}" data-cycle-number="${saved?.cycleNumber || 0}" data-repeat-code="${escapeHtml(group.manualCode)}" data-measures-updated-at="${escapeHtml(saved?.updatedAt || "")}" data-saved-measures="${escapeHtml(saved?.text || "")}">☐ Выполнено</button>`;
+  }
+
+  function isClosed(item) {
+    return Boolean(item.repeatFailureClosedAt || item.repeatFailureCycleId);
+  }
+
+  function groupMeasures(group, catalog) {
+    const equipment = catalog?.equipment?.[String(group.equipmentId)];
+    return (group.cycleId ? equipment?.repeatFailureArchives?.[group.cycleId] : equipment?.repeatFailureMeasures?.[group.manualCode]) || {};
   }
 
   function bindMeasures(container, helpers) {
+    container.querySelectorAll("[data-complete-repeat-measures]").forEach(button => button.addEventListener("click", () => {
+      const key = button.dataset.completeRepeatMeasures;
+      if (!(button.dataset.savedMeasures || "").trim() || (measureDrafts.has(key) && measureDrafts.get(key).trim() !== button.dataset.savedMeasures.trim())) {
+        helpers.showAppToast("Сначала сохраните текст мероприятий.", "error");
+        return;
+      }
+      if (!window.confirm("Подтвердить выполнение мероприятий?\n\nЭтот список будет закрыт: изменить мероприятия, снять галочку или перенести его записи будет нельзя. Новые записи с тем же номером попадут в отдельный список.")) return;
+      return helpers.runButtonOperation(button, async () => {
+        const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000,
+          body: JSON.stringify({ action: "complete-measures", actionId: helpers.nextActionId(), clientId: helpers.clientId,
+            equipmentId: Number(button.dataset.equipmentId), code: button.dataset.repeatCode, cycleNumber: Number(button.dataset.cycleNumber), expectedUpdatedAt: button.dataset.measuresUpdatedAt }) });
+        if (result?.state) helpers.mergeRealtimePatch(result.state);
+        if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
+        helpers.persist();
+        measureDrafts.delete(key);
+        helpers.showAppToast("Мероприятия выполнены. Записи закреплены за закрытой группой.", "ok");
+        if (helpers.isCurrent()) {
+          const left = window.scrollX, top = window.scrollY;
+          helpers.render();
+          window.scrollTo({ left, top, behavior: "instant" });
+        }
+      }, "Закрываем…");
+    }));
     container.querySelectorAll("[data-repeat-measures-key]").forEach(editor => {
       const input = editor.querySelector("[data-repeat-measures]");
       const key = editor.dataset.repeatMeasuresKey;
@@ -18,7 +56,7 @@
         const text = input.value;
         const result = await helpers.apiJson("/api/repeat-failure-group", { method: "POST", timeout: 20000,
           body: JSON.stringify({ action: "save-measures", actionId: helpers.nextActionId(), clientId: helpers.clientId,
-            equipmentId: Number(editor.dataset.equipmentId), code: editor.dataset.repeatCode, text }) });
+            equipmentId: Number(editor.dataset.equipmentId), code: editor.dataset.repeatCode, cycleNumber: Number(editor.dataset.cycleNumber), text }) });
         if (result?.state) helpers.mergeRealtimePatch(result.state);
         if (result?.stateVersion) helpers.setRealtimeStateVersion(result.stateVersion);
         helpers.persist();
@@ -37,11 +75,13 @@
     return {
       repeatFailureCode: String(entry.repeatFailureCode || ""),
       repeatFailureName: String(entry.repeatFailureName || ""),
+      repeatFailureClosedAt: String(entry.repeatFailureClosedAt || ""),
+      repeatFailureCycleId: String(entry.repeatFailureCycleId || ""),
       repeatFailureMarkedAt: String(entry.repeatFailureMarkedAt || "")
     };
   }
 
-  function buildAnalysis(events, annualStats) {
+  function buildAnalysis(events, annualStats, catalog = {}) {
     const repeatedMap = new Map();
     events
       .filter(event => ["remark", "breakdown"].includes(event.type))
@@ -50,9 +90,13 @@
         if (Number.isNaN(created.getTime())) return;
         const manualCode = String(event.repeatFailureCode || "").trim();
         if (!/^[1-9]\d{0,5}$/.test(manualCode)) return;
-        const key = `manual|${Number(event.equipmentId) || 0}|${manualCode}`;
+        const cycleId = String(event.repeatFailureCycleId || "");
+        const cycleNumber = catalog.equipment?.[String(event.equipmentId)]?.repeatFailureMeasures?.[manualCode]?.cycleNumber || 0;
+        const key = `manual|${Number(event.equipmentId) || 0}|${manualCode}${cycleId ? "|closed:" + cycleId : cycleNumber ? "|open:" + cycleNumber : ""}`;
         const item = repeatedMap.get(key) || {
           groupKey: key,
+          cycleId,
+          closedAt: String(event.repeatFailureClosedAt || ""),
           manualCode,
           equipmentId: Number(event.equipmentId) || 0,
           name: "",
@@ -97,7 +141,7 @@
   }
 
   function journalTitle(group = {}) {
-    if (group.manualCode) return `Повторные неисправности №${group.manualCode}${group.name ? " — " + group.name : ""}`;
+    if (group.manualCode) return `Повторные неисправности №${group.manualCode}${group.name ? " — " + group.name : ""}${group.closedAt ? " · Выполнено " + new Date(group.closedAt).toLocaleDateString("ru-RU") : ""}`;
     return `Повторные поломки: ${group.equipment || "Оборудование"} · ${group.node || "узел не указан"}`;
   }
 
@@ -107,6 +151,7 @@
     const events = (Array.isArray(group.events) ? group.events : []).filter(event =>
       /^[1-9]\d{0,5}$/.test(code) && String(event.repeatFailureCode || "").trim() === code
       && (group.equipmentId == null || Number(event.equipmentId) === group.equipmentId)
+      && String(event.repeatFailureCycleId || "") === String(group.cycleId || "")
       && ["remark", "breakdown"].includes(event.type));
     const person = (name, role) => [name, role ? requestRoleLabel(role) : ""].filter(Boolean).join(" · ");
     const sheets = [];
@@ -169,5 +214,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { measuresCell, bindMeasures, metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
+  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
 })();
