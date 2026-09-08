@@ -129,10 +129,11 @@ function sanitizeStateMutation({ previous, incoming, user, canAccessEquipment, h
     const oldRows = new Map((old?.rows || []).map(row => [String(row.id), row]));
     const rows = new Map([...oldRows].map(([id, row]) => [id, clone(row)]));
     let changed = false;
-    for (const rawRow of Array.isArray(raw.rows) ? raw.rows : []) {
+    for (let rawRow of Array.isArray(raw.rows) ? raw.rows : []) {
       const id = String(rawRow?.id || "");
       if (!id) continue;
       const saved = oldRows.get(id);
+      rawRow = require("./ppr-label-repair").preservePprLabels(rawRow, saved);
       if (!saved && !planner) { ignored.add("pprSheets"); continue; }
       const row = clone(saved || { id, work: "", mark: "" });
       const planFields = ["work", "equipmentId", "equipment", "node", "area", "autoFilled"];
