@@ -10,55 +10,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch attendance policy
+      - name: Patch attendance policy safely
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           p = Path('server.js')
           s = p.read_text()
           old_status = '      canEdit: !attendanceRoleAllowed(req.authUser) || Boolean(ownSession),'
-          new_status = '      canEdit: true,'
           assert old_status in s, 'attendance status gate not found'
-          s = s.replace(old_status, new_status, 1)
-          old_gate = '''  const attendanceMutationExempt = pathname.startsWith("/api/push/")
-            || pathname === "/api/client-error"
-            || pathname === "/api/remark-collaboration";
-          if (
-            attendanceRoleAllowed(req.authUser)
-            && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
-            && !attendanceMutationExempt
-          ) {
-            const db = readDb();
-            if (!activeAttendanceSession(db, req.authUser)) {
-              sendJson(res, 403, {
-                ok: false,
-                error: "attendance_required",
-                message: "Смена не открыта. Отсканируйте рабочий QR-код."
-              });
-              return true;
-            }
-          }
+          s = s.replace(old_status, '      canEdit: true,', 1)
 
-          '''
-          assert old_gate in s, 'global attendance mutation gate not found'
-          s = s.replace(old_gate, '', 1)
-          # Attendance remains a 10-hour presence marker only. No write endpoint may use
-          # attendance_required as an authorization failure after this change.
+          pattern = re.compile(
+              r'\n  const attendanceMutationExempt = pathname\.startsWith\("/api/push/"\)[\s\S]*?'
+              r'\n  if \(pathname === "/api/push/public-key"',
+              re.M,
+          )
+          match = pattern.search(s)
+          assert match, 'global attendance mutation gate not found'
+          block = match.group(0)
+          assert 'error: "attendance_required"' in block, 'matched block is not attendance gate'
+          s = s[:match.start()] + '\n  if (pathname === "/api/push/public-key"' + s[match.end():]
           assert 'error: "attendance_required"' not in s, 'another attendance_required gate still exists'
+          assert 'const ATTENDANCE_WINDOW_MS = 10 * 60 * 60 * 1000;' in s, '10-hour attendance window changed unexpectedly'
           p.write_text(s)
 
           t = Path('tests/attendance.test.js')
           x = t.read_text()
-          x = x.replace('test("permanent attendance QR unlocks a worker for one shift and admin can close it"', 'test("permanent attendance QR marks a worker on duty for ten hours without gating work"', 1)
-          x = x.replace('''      required: true,
-                canEdit: false
-              });''', '''      required: true,
-                canEdit: true
-              });''', 1)
-          x = x.replace('''    })).status, 403);''', '''    })).status, 200);''')
+          x = x.replace(
+              'test("permanent attendance QR unlocks a worker for one shift and admin can close it"',
+              'test("permanent attendance QR marks a worker on duty for ten hours without gating work"',
+              1,
+          )
+          x = x.replace('      canEdit: false\n', '      canEdit: true\n', 1)
+          x = x.replace('    })).status, 403);', '    })).status, 200);')
+          assert '10 * 60 * 60 * 1000' in x, '10-hour attendance test missing'
           t.write_text(x)
       - name: Run attendance test
         run: node --test tests/attendance.test.js
+      - name: Run full validation
+        run: npm run check
       - name: Commit patch
         run: |
           rm .github/workflows/attendance-nonblocking-once.yml
