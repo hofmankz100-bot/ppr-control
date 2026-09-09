@@ -1,0 +1,69 @@
+name: Apply non-blocking attendance policy
+on:
+  push:
+    paths:
+      - '.github/workflows/attendance-nonblocking-once.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch attendance policy
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server.js')
+          s = p.read_text()
+          old_status = '      canEdit: !attendanceRoleAllowed(req.authUser) || Boolean(ownSession),'
+          new_status = '      canEdit: true,'
+          assert old_status in s, 'attendance status gate not found'
+          s = s.replace(old_status, new_status, 1)
+          old_gate = '''  const attendanceMutationExempt = pathname.startsWith("/api/push/")
+            || pathname === "/api/client-error"
+            || pathname === "/api/remark-collaboration";
+          if (
+            attendanceRoleAllowed(req.authUser)
+            && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
+            && !attendanceMutationExempt
+          ) {
+            const db = readDb();
+            if (!activeAttendanceSession(db, req.authUser)) {
+              sendJson(res, 403, {
+                ok: false,
+                error: "attendance_required",
+                message: "Смена не открыта. Отсканируйте рабочий QR-код."
+              });
+              return true;
+            }
+          }
+
+          '''
+          assert old_gate in s, 'global attendance mutation gate not found'
+          s = s.replace(old_gate, '', 1)
+          # Attendance remains a 10-hour presence marker only. No write endpoint may use
+          # attendance_required as an authorization failure after this change.
+          assert 'error: "attendance_required"' not in s, 'another attendance_required gate still exists'
+          p.write_text(s)
+
+          t = Path('tests/attendance.test.js')
+          x = t.read_text()
+          x = x.replace('test("permanent attendance QR unlocks a worker for one shift and admin can close it"', 'test("permanent attendance QR marks a worker on duty for ten hours without gating work"', 1)
+          x = x.replace('''      required: true,
+                canEdit: false
+              });''', '''      required: true,
+                canEdit: true
+              });''', 1)
+          x = x.replace('''    })).status, 403);''', '''    })).status, 200);''')
+          t.write_text(x)
+      - name: Run attendance test
+        run: node --test tests/attendance.test.js
+      - name: Commit patch
+        run: |
+          rm .github/workflows/attendance-nonblocking-once.yml
+          git config user.name "ChatGPT Codex Connector"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.js tests/attendance.test.js .github/workflows/attendance-nonblocking-once.yml
+          git commit -m "fix: make attendance QR informational only"
+          git push
