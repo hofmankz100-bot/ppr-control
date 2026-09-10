@@ -1,0 +1,61 @@
+name: Fix orphan pending login once
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-orphan-pending-login-once.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Allow login when pending owner is truly unknown
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('modules/device-cache-policy.js')
+          s = p.read_text()
+          old = '''      reconcile(user, stored) {
+        captureLegacy(stored);
+        if (pending() && !read(ownerKey) && queueItemOwnedBy(read(legacyKey), user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
+        return !pending() || queueItemOwnedBy(read(ownerKey), user);
+      },'''
+          new = '''      reconcile(user, stored) {
+        captureLegacy(stored);
+        const owner = read(ownerKey);
+        const legacy = read(legacyKey);
+        if (pending() && !owner && queueItemOwnedBy(legacy, user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
+        const resolvedOwner = read(ownerKey);
+        // A pending marker without any recoverable owner must never be attributed
+        // to the next employee. Keep that orphaned work isolated, but do not lock
+        // every future login on this device forever.
+        return !pending() || (!resolvedOwner && !legacy) || queueItemOwnedBy(resolvedOwner, user);
+      },'''
+          assert old in s, 'target reconcile block not found'
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          t = Path('tests/device-cache-policy.test.js')
+          x = t.read_text()
+          old_assert = '  assert.equal(pending.reconcile(operator, null), false, "An unknown legacy snapshot is retained, never attributed to the next login");\n  assert.equal(store.getItem("state-pending"), "1");'
+          new_assert = '  assert.equal(pending.reconcile(operator, null), true, "An ownerless legacy marker must not lock future logins");\n  assert.equal(pending.owns(operator), false, "Ownerless pending work must remain isolated and never be sent as the new login");\n  assert.equal(store.getItem("state-pending"), "1");'
+          assert old_assert in x, 'target test assertion not found'
+          x = x.replace(old_assert, new_assert, 1)
+          t.write_text(x)
+      - run: node --test tests/device-cache-policy.test.js
+      - run: npm run check
+      - name: Commit fix
+        run: |
+          rm .github/workflows/fix-orphan-pending-login-once.yml
+          git config user.name "ChatGPT Codex Connector"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add modules/device-cache-policy.js tests/device-cache-policy.test.js .github/workflows/fix-orphan-pending-login-once.yml
+          git commit -m "fix: do not block login on ownerless pending cache"
+          git push
