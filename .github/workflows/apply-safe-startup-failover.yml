@@ -3,7 +3,7 @@ name: Apply safe PostgreSQL startup failover
 on:
   push:
     paths:
-      - '.github/workflows/apply-safe-startup-failover.yml'
+      - 'tools/apply-safe-startup-failover.js'
 
 permissions:
   contents: write
@@ -15,98 +15,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch startup failover safely
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path('server.js')
-          s = p.read_text()
-
-          old = '''    await Promise.allSettled(nodes.map(async node => {
-      try {
-        await node.pool.query("SELECT now()")
-        node.healthy = true;
-        node.lastSuccessAt = new Date().toISOString();
-      } catch (error) {
-        node.error = String(error.message || error);
-        node.lastErrorAt = new Date().toISOString();
-      }
-    }));
-    if (!nodes[0].healthy) {
-      await Promise.allSettled(nodes.map(node => node.pool.end()));
-      throw new Error("Authoritative PostgreSQL database is unavailable; automatic state failover is disabled");
-    }
-    postgresClusterStatus = pool.status();'''
-
-          new = '''    await Promise.allSettled(nodes.map(async node => {
-      try {
-        await node.pool.query("SELECT now()")
-        node.healthy = true;
-        node.lastSuccessAt = new Date().toISOString();
-      } catch (error) {
-        node.error = String(error.message || error);
-        node.lastErrorAt = new Date().toISOString();
-      }
-    }));
-    const automaticFailoverEnabled = !["0", "false", "off", "no"].includes(
-      String(process.env.PPR_AUTOMATIC_STATE_FAILOVER || "true").trim().toLowerCase()
-    );
-    let startupSourceIndex = 0;
-    if (!nodes[0].healthy) {
-      if (!automaticFailoverEnabled) {
-        await Promise.allSettled(nodes.map(node => node.pool.end()));
-        throw new Error("Authoritative PostgreSQL database is unavailable; automatic state failover is disabled");
-      }
-      const candidates = [];
-      for (let index = 1; index < nodes.length; index += 1) {
-        const node = nodes[index];
-        if (!node.healthy) continue;
-        try {
-          const result = await node.pool.query(
-            "SELECT state_revision FROM ppr_settings WHERE setting_key='full_state' LIMIT 1"
-          );
-          if (!result.rows[0]) continue;
-          const revision = Number(result.rows[0].state_revision || 0);
-          if (!Number.isFinite(revision)) continue;
-          candidates.push({ index, revision });
-        } catch (error) {
-          node.healthy = false;
-          node.error = String(error.message || error);
-          node.lastErrorAt = new Date().toISOString();
-        }
-      }
-      candidates.sort((a, b) => b.revision - a.revision || a.index - b.index);
-      const selected = candidates[0];
-      if (!selected) {
-        await Promise.allSettled(nodes.map(node => node.pool.end()));
-        throw new Error("Authoritative PostgreSQL database is unavailable and no revisioned mirror is safe to promote");
-      }
-      startupSourceIndex = selected.index;
-      pool.activeIndex = startupSourceIndex;
-      console.warn(`PostgreSQL automatic state failover selected ${nodes[startupSourceIndex].name} at revision ${selected.revision}`);
-    }
-    postgresClusterStatus = pool.status();'''
-
-          if old not in s:
-              raise SystemExit('startup probe block not found')
-          s = s.replace(old, new, 1)
-          s = s.replace('    pool.activeIndex = 0;\n    const stateStore = createPostgresStateStore(pool, {',
-                        '    pool.activeIndex = startupSourceIndex;\n    const stateStore = createPostgresStateStore(pool, {', 1)
-          s = s.replace('    await seedEmptyPostgresReplicas(nodes, 0);',
-                        '    await seedEmptyPostgresReplicas(nodes, startupSourceIndex);', 1)
-          s = s.replace('  const sourceIndex = 0;\n  const source = postgresPool.nodes[sourceIndex];',
-                        '  const sourceIndex = Math.max(0, Number(postgresPool.activeIndex) || 0);\n  const source = postgresPool.nodes[sourceIndex];', 1)
-          p.write_text(s)
-
-          t = Path('tests/postgres-startup-errors.test.js')
-          x = t.read_text()
-          old_env = 'process: { env: { DATABASE_URL: "postgres://primary.invalid/test", NEON_DATABASE_URL: "postgres://replica.invalid/test" } },'
-          new_env = 'process: { env: { DATABASE_URL: "postgres://primary.invalid/test", NEON_DATABASE_URL: "postgres://replica.invalid/test", PPR_AUTOMATIC_STATE_FAILOVER: "false" } },'
-          if old_env not in x:
-              raise SystemExit('startup error test env not found')
-          t.write_text(x.replace(old_env, new_env, 1))
-          PY
+      - name: Apply patch
+        run: node tools/apply-safe-startup-failover.js
       - name: Validate patch
         run: |
           node --check server.js
