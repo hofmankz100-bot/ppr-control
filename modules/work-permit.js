@@ -824,7 +824,8 @@
 
   let language = loadLanguage();
   let saveTimer = 0;
-  let activeDraftOwnerKey = "";  let instructionStoreIsAdmin = false;
+  let activeDraftOwnerKey = "";
+  let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
   const serverAcknowledgedInstructionIds = new Set();
 
