@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v790-ownerless-login-1";
+const CACHE_NAME = "ppr-v789-server-recovery-1-hotfix1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -82,32 +82,23 @@ self.addEventListener("notificationclick", event => {
         return;
       }
       await self.clients.openWindow(targetUrl);
-    } catch {}
+    } catch (error) {
+      console.warn("Notification click failed", error);
+    }
   })());
 });
 
 self.addEventListener("push", event => {
-  event.waitUntil((async () => {
-    let payload = {};
-    try { payload = event.data?.json() || {}; } catch {}
-    const count = Math.max(0, Number(payload.badgeCount) || 0);
-    try {
-      if (count > 0 && "setAppBadge" in self.navigator) await self.navigator.setAppBadge(count);
-      else if ("clearAppBadge" in self.navigator) await self.navigator.clearAppBadge();
-    } catch {}
-    if (payload.clearTag) {
-      const notifications = await self.registration.getNotifications({ tag: payload.clearTag });
-      notifications.forEach(notification => notification.close());
-      if (payload.silentUpdate) return;
-    }
-    await self.registration.showNotification(payload.title || "ALKZ — новое замечание", {
-      body: payload.body || "Поступило новое замечание",
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: payload.tag || `${payload.type || "notice"}:${payload.entityId || "general"}`,
-      renotify: true,
-      silent: false,
-      data: { url: payload.url || "/" }
-    });
-  })());
+  let payload = {};
+  try { payload = event.data?.json?.() || {}; } catch { payload = { body: event.data?.text?.() || "" }; }
+  const title = payload.title || "ППР Контроль";
+  const options = {
+    body: payload.body || "Новое уведомление",
+    icon: payload.icon || "/icon-192.png",
+    badge: payload.badge || "/icon-192.png",
+    tag: payload.tag || `ppr-${Date.now()}`,
+    data: payload.data || {},
+    renotify: true
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
 });
