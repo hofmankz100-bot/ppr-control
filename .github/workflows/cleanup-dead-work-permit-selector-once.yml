@@ -1,0 +1,76 @@
+name: Cleanup dead work permit selector tails once
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-dead-work-permit-selector-once.yml'
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Remove dead selector tails
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('modules/work-permit.js')
+          s = p.read_text()
+
+          assert 'function sectionSelectorHtml()' in s
+          assert 'return "";' in s
+          assert '#workPermitSectionSelector' not in s.split('function sectionSelectorHtml()',1)[0], 'unexpected selector markup before function'
+
+          patterns = [
+            r'\n  let sectionSelectorVisible = false;\n',
+            r'\n  function setSectionSelectorVisible\([\s\S]*?\n  }\n\n  function addSelectedOptionalSections\([\s\S]*?\n  }\n',
+            r'\n    screen\n      \.querySelector\(\n        "#workPermitOpenSectionSelector"\n      \)[\s\S]*?\n      \);\n',
+            r'\n    screen\n      \.querySelector\(\n        "#workPermitCloseSectionSelector"\n      \)[\s\S]*?\n      \);\n',
+            r'\n    screen\n      \.querySelector\(\n        "#workPermitAddSelectedSections"\n      \)[\s\S]*?\n      \);\n',
+          ]
+
+          removed_total = 0
+          for pattern in patterns:
+            matches = list(re.finditer(pattern, s, re.M))
+            assert len(matches) == 1, f'expected one match for {pattern!r}, got {len(matches)}'
+            block = matches[0].group(0)
+            assert 'journal' not in block.lower(), 'journal-related code found in selector tail'
+            assert 'api/' not in block.lower(), 'API-related code found in selector tail'
+            removed_total += block.count('\n')
+            s = s[:matches[0].start()] + s[matches[0].end():]
+
+          for forbidden in [
+            'sectionSelectorVisible',
+            'setSectionSelectorVisible',
+            'addSelectedOptionalSections',
+            '#workPermitOpenSectionSelector',
+            '#workPermitCloseSectionSelector',
+            '#workPermitAddSelectedSections',
+            '#workPermitSectionSelector'
+          ]:
+            assert forbidden not in s, f'{forbidden} still present'
+
+          assert 'function removeOptionalSection' in s, 'active removeOptionalSection unexpectedly removed'
+          assert 'removeOptionalSection(' in s, 'removeOptionalSection call unexpectedly removed'
+          print(f'Removed approximately {removed_total} lines')
+          p.write_text(s)
+      - name: Run work permit tests
+        run: node --test tests/work-permit.test.js
+      - name: Run full validation
+        run: npm run check
+      - name: Commit cleanup
+        run: |
+          rm .github/workflows/cleanup-dead-work-permit-selector-once.yml
+          git config user.name "ChatGPT Codex Connector"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add modules/work-permit.js .github/workflows/cleanup-dead-work-permit-selector-once.yml
+          git commit -m "chore: remove dead work permit selector tails"
+          git push
