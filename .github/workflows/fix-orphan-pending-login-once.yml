@@ -16,8 +16,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Allow login when pending owner is truly unknown
-        shell: python {0}
+        shell: bash
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           p = Path('modules/device-cache-policy.js')
@@ -39,19 +40,19 @@ jobs:
         return !pending() || (!resolvedOwner && !legacy) || queueItemOwnedBy(resolvedOwner, user);
       },'''
           assert old in s, 'target reconcile block not found'
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+          p.write_text(s.replace(old, new, 1))
 
           t = Path('tests/device-cache-policy.test.js')
           x = t.read_text()
           old_assert = '  assert.equal(pending.reconcile(operator, null), false, "An unknown legacy snapshot is retained, never attributed to the next login");\n  assert.equal(store.getItem("state-pending"), "1");'
           new_assert = '  assert.equal(pending.reconcile(operator, null), true, "An ownerless legacy marker must not lock future logins");\n  assert.equal(pending.owns(operator), false, "Ownerless pending work must remain isolated and never be sent as the new login");\n  assert.equal(store.getItem("state-pending"), "1");'
           assert old_assert in x, 'target test assertion not found'
-          x = x.replace(old_assert, new_assert, 1)
-          t.write_text(x)
+          t.write_text(x.replace(old_assert, new_assert, 1))
+          PY
       - run: node --test tests/device-cache-policy.test.js
       - run: npm run check
       - name: Commit fix
+        shell: bash
         run: |
           rm .github/workflows/fix-orphan-pending-login-once.yml
           git config user.name "ChatGPT Codex Connector"
