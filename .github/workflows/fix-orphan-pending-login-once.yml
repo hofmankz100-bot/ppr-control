@@ -16,7 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Allow login when pending owner is truly unknown
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
