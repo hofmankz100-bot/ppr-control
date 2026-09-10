@@ -160,7 +160,8 @@ test("legacy pending state binds only after its saved confirmed profile matches 
   assert.equal(pending.owns({ ...operator, id: "different-user" }), false);
   pending.clear();
   store.setItem("state-pending", "1");
-  assert.equal(pending.reconcile(operator, null), false, "An unknown legacy snapshot is retained, never attributed to the next login");
+  assert.equal(pending.reconcile(operator, null), true, "An ownerless pending marker must not lock future logins");
+  assert.equal(pending.owns(operator), false, "Ownerless pending work stays isolated and is never sent as the new login");
   assert.equal(store.getItem("state-pending"), "1");
 });
 
