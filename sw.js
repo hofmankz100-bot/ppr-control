@@ -1,4 +1,4 @@
-const CACHE_NAME = "ppr-v789-server-recovery-1";
+const CACHE_NAME = "ppr-v790-ownerless-login-1";
 const ASSETS = [
   "./",
   "./index.html",
