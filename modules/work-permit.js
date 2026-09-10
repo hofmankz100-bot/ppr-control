@@ -824,9 +824,7 @@
 
   let language = loadLanguage();
   let saveTimer = 0;
-  let activeDraftOwnerKey = "";
-  let sectionSelectorVisible = false;
-  let instructionStoreIsAdmin = false;
+  let activeDraftOwnerKey = "";  let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
   const serverAcknowledgedInstructionIds = new Set();
 
@@ -3586,56 +3584,6 @@
           checkbox.disabled = active;
         }
       });
-  }
-
-  function setSectionSelectorVisible(
-    visible
-  ) {
-    sectionSelectorVisible =
-      Boolean(visible);
-
-    const selector =
-      screen.querySelector(
-        "#workPermitSectionSelector"
-      );
-
-    if (selector) {
-      selector.hidden =
-        !sectionSelectorVisible;
-    }
-  }
-
-  function addSelectedOptionalSections() {
-    const selected = [
-      ...screen.querySelectorAll(
-        "[data-optional-section-checkbox]:checked"
-      )
-    ];
-
-    selected.forEach(checkbox => {
-      const sectionId =
-        checkbox.value;
-
-      setOptionalSectionVisible(
-        sectionId,
-        true,
-        false
-      );
-
-      if (
-        dynamicRows[sectionId]
-      ) {
-        renderDynamicRows(
-          sectionId
-        );
-      }
-    });
-
-    updateRelatedProducerFields();
-
-    setSectionSelectorVisible(false);
-    updateOptionalSectionsUi();
-    saveDraft(true);
   }
 
   function removeOptionalSection(
@@ -6665,41 +6613,6 @@
         }
       }
     );
-
-    screen
-      .querySelector(
-        "#workPermitOpenSectionSelector"
-      )
-      ?.addEventListener(
-        "click",
-        () => {
-          setSectionSelectorVisible(
-            !sectionSelectorVisible
-          );
-        }
-      );
-
-    screen
-      .querySelector(
-        "#workPermitCloseSectionSelector"
-      )
-      ?.addEventListener(
-        "click",
-        () => {
-          setSectionSelectorVisible(
-            false
-          );
-        }
-      );
-
-    screen
-      .querySelector(
-        "#workPermitAddSelectedSections"
-      )
-      ?.addEventListener(
-        "click",
-        addSelectedOptionalSections
-      );
 
     screen
       .querySelector(
