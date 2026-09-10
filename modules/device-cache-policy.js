@@ -59,16 +59,25 @@
     const read = item => { try { return JSON.parse(storage.getItem(item) || "null"); } catch { return null; } };
     const pending = () => storage.getItem(`${key}-pending`) === "1";
     const identity = user => ({ ownerId: user?.id || "", ownerEmployeeId: user?.employeeId || "", ownerName: user?.name || "" });
+    const hasIdentity = item => Boolean(item && (String(item.ownerId || "").trim() || String(item.ownerEmployeeId || "").trim()));
     const captureLegacy = user => {
-      if (pending() && !read(ownerKey) && !read(legacyKey) && canRestoreCachedProfile(user)) storage.setItem(legacyKey, JSON.stringify(identity(user)));
+      if (pending() && !hasIdentity(read(ownerKey)) && !hasIdentity(read(legacyKey)) && canRestoreCachedProfile(user)) storage.setItem(legacyKey, JSON.stringify(identity(user)));
     };
     return {
-      owner: () => read(ownerKey) || read(legacyKey),
+      owner: () => {
+        const owner = read(ownerKey), legacy = read(legacyKey);
+        return hasIdentity(owner) ? owner : hasIdentity(legacy) ? legacy : null;
+      },
       captureLegacy,
       reconcile(user, stored) {
         captureLegacy(stored);
-        if (pending() && !read(ownerKey) && queueItemOwnedBy(read(legacyKey), user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
-        return !pending() || queueItemOwnedBy(read(ownerKey), user);
+        const owner = read(ownerKey);
+        const legacy = read(legacyKey);
+        if (pending() && !hasIdentity(owner) && queueItemOwnedBy(legacy, user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
+        const resolvedOwner = read(ownerKey);
+        const knownOwner = hasIdentity(resolvedOwner) ? resolvedOwner : null;
+        const knownLegacy = hasIdentity(legacy) ? legacy : null;
+        return !pending() || (!knownOwner && !knownLegacy) || queueItemOwnedBy(knownOwner, user);
       },
       owns: user => !pending() || queueItemOwnedBy(read(ownerKey), user),
       mark(user) {
