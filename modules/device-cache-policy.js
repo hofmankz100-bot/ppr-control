@@ -67,8 +67,11 @@
       captureLegacy,
       reconcile(user, stored) {
         captureLegacy(stored);
-        if (pending() && !read(ownerKey) && queueItemOwnedBy(read(legacyKey), user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
-        return !pending() || queueItemOwnedBy(read(ownerKey), user);
+        const owner = read(ownerKey);
+        const legacy = read(legacyKey);
+        if (pending() && !owner && queueItemOwnedBy(legacy, user)) storage.setItem(ownerKey, JSON.stringify(identity(user)));
+        const resolvedOwner = read(ownerKey);
+        return !pending() || (!resolvedOwner && !legacy) || queueItemOwnedBy(resolvedOwner, user);
       },
       owns: user => !pending() || queueItemOwnedBy(read(ownerKey), user),
       mark(user) {
