@@ -90,6 +90,5 @@ async function optimizeLegacyPhoto(bytes, { mimeType = "", fileName = "" } = {})
 }
 
 module.exports = {
-  optimizeLegacyPhoto, MAX_INPUT_BYTES, MAX_INPUT_PIXELS, MAX_OUTPUT_BYTES,
-  MAX_SIDE, MIN_SAVED_BYTES, MIN_SAVED_RATIO
+  optimizeLegacyPhoto, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES, MAX_SIDE
 };

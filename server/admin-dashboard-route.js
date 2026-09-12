@@ -176,4 +176,4 @@ function createAdminDashboardRoute(dependencies = {}) {
   };
 }
 
-module.exports = { createAdminDashboardRoute, stateSectionSizeSummary };
+module.exports = { createAdminDashboardRoute };

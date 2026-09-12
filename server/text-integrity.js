@@ -166,4 +166,4 @@ function requestContainsInvalidText(value, previous) {
   return Object.entries(value).some(([key, child]) => invalidText(key) || requestContainsInvalidText(child, previous?.[key]));
 }
 
-module.exports = { KEY, invalidText, recoverText, scanStoredText, repairStoredText, textIntegrityReport, backupTextSuggestions, requestContainsInvalidText };
+module.exports = { KEY, invalidText, recoverText, repairStoredText, textIntegrityReport, backupTextSuggestions, requestContainsInvalidText };

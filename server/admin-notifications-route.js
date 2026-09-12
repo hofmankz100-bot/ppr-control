@@ -148,4 +148,4 @@ function createAdminNotificationsRoute(dependencies = {}) {
   };
 }
 
-module.exports = { ALLOWED_BROADCAST_ROLES, ALLOWED_PRIORITIES, createAdminNotificationsRoute };
+module.exports = { createAdminNotificationsRoute };

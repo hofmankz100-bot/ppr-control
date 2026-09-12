@@ -112,4 +112,4 @@ async function selectAuthoritativePostgresNode(nodes, { allowFailover = true, mi
   };
 }
 
-module.exports = { assertMinimumStateRevision, compareReplicaVersions, inspectNode, selectAuthoritativePostgresNode, stateProbeSql };
+module.exports = { assertMinimumStateRevision, compareReplicaVersions, selectAuthoritativePostgresNode };

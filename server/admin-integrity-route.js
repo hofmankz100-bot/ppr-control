@@ -94,4 +94,4 @@ function createAdminIntegrityRoute(dependencies = {}) {
   };
 }
 
-module.exports = { ALLOWED_INTEGRITY_FIXES, createAdminIntegrityRoute };
+module.exports = { createAdminIntegrityRoute };

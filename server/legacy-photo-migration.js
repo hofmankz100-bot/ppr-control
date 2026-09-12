@@ -222,5 +222,5 @@ async function mirrorPhoto(pool, row, previousSha256, updatedAt) {
 module.exports = {
   FILE_NAME, MAX_NEW_ORIGINAL_BYTES, MAX_DATABASE_BYTES, sha256, photoPath,
   assertBudget, ensureRecoveryTable, planMigration, getRecovery, currentPhoto,
-  replaceCache, mirrorPhoto, compressOne, restoreOne
+  mirrorPhoto, compressOne, restoreOne
 };

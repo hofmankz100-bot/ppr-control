@@ -171,4 +171,4 @@ function configuredDatabases(env = process.env) {
   });
 }
 
-module.exports = { MultiPostgres, configuredDatabases, WRITE_SQL };
+module.exports = { MultiPostgres, configuredDatabases };

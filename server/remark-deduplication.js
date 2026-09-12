@@ -297,7 +297,6 @@ module.exports = {
   ensureRemarkEntries,
   isDowntimeEntry,
   mergeHistoryItems,
-  normalizeValue,
   repeatedActionReceipt,
   stableRemarkId,
   syncItemSummary

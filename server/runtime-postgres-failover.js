@@ -79,4 +79,4 @@ function createRuntimePostgresFailover({ nodes, createStore, storeOptions, onPro
   return { promote, schedule, running: () => running };
 }
 
-module.exports = { createRuntimePostgresFailover, stateCluster };
+module.exports = { createRuntimePostgresFailover };

@@ -11,4 +11,4 @@ function isTransientPostgresConnectionError(error) {
   return /connection (?:terminated|closed|ended)|socket hang up|getaddrinfo|server closed the connection/i.test(String(error?.message || error || ""));
 }
 
-module.exports = { isTransientPostgresConnectionError, TRANSIENT_CODES };
+module.exports = { isTransientPostgresConnectionError };

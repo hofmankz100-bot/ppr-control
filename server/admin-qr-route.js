@@ -145,4 +145,4 @@ function createAdminQrRoute(dependencies = {}) {
   };
 }
 
-module.exports = { ELIGIBLE_QR_JOURNAL_ROLES, createAdminQrRoute };
+module.exports = { createAdminQrRoute };
