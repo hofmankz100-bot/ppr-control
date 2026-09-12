@@ -35,10 +35,19 @@ test("unused receiver shell and stale client hooks stay removed", () => {
   const styles = source("styles.css");
   assert.equal(fs.existsSync(path.join(root, "modules", "receiver.js")), false);
   assert.doesNotMatch(assets, /modules\/receiver\.js/);
-  for (const binding of ["authTitle", "authSubmitButton", "authHint", "loginNameRow", "loginPhoneRow", "loginIdentifierLabel", "equipmentTitle", "equipmentMeta", "nodeTitle", "nodeMeta", "monthLabel", "prevMonth", "nextMonth", "commentLabel", "openRequestsButton", "directorMeta"]) {
+  for (const binding of ["authTitle", "authSubmitButton", "authHint", "loginNameRow", "loginPhoneRow", "loginIdentifierLabel", "equipmentTitle", "equipmentMeta", "nodeTitle", "nodeMeta", "monthLabel", "prevMonth", "nextMonth", "directorMeta"]) {
     assert.match(app, new RegExp(`${binding}: document\\.querySelector`));
     assert.match(app, new RegExp(`ui\\.${binding}\\b`));
   }
   assert.doesNotMatch(app, /data-theme-toggle|data-mobile-view="requests"|data-mobile-remark-count|data-remark-confirm|data-remark-return|data-admin-close-legacy-remark|data-compressor-shift|data-node-fixed|data-node-comment-preview|data-open-remark-id/);
   assert.doesNotMatch(styles, /\.theme-toggle\b|\[data-node-fixed\]/);
+});
+
+test("unreachable legacy checklist shell stays removed", () => {
+  const app = source("app.js");
+  const html = source("index.html");
+  const styles = source("styles.css");
+  assert.doesNotMatch(app, /\b(?:TASKS|saveCommentDraft|saveCommentResolution|markCommentResolved|renderPhotoPreview)\b|current\.(?:kind|scrollToMainComment|ratingYear)\b|ui\.(?:engineerIncomingBanner|commentPanel|commentLabel|commentInput|commentPhotoInput|commentPhotoPreview|requestInput|requestInlineStatus|createRequestButton|openRequestsButton|resolvedInput)\b|data-kind/);
+  assert.doesNotMatch(html, /class="comment-panel"|id="(?:commentLabel|commentInput|commentPhotoInput|commentPhotoPreview|resolvedInput)"/);
+  assert.doesNotMatch(styles, /\.(?:comment-panel|checklist-table|resolved-row|ppr-calendar-task|annual-card)\b|--to[23]\b|\.day-status\.to[23]\b|\.schedule-table td\.to[23]\b/);
 });

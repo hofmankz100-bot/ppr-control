@@ -1,24 +1,3 @@
-const TASKS = {
-  to: [
-    "Внешний осмотр оборудования и рабочей зоны.",
-    "Проверить отсутствие постороннего шума, вибрации и перегрева.",
-    "Проверить отсутствие утечек масла, воздуха, воды или газа.",
-    "Проверить показания давления, температуры и индикации.",
-    "Проверить защитные кожухи, ограждения и аварийную остановку.",
-    "Проверить состояние кабелей, шлангов, трубопроводов и соединений.",
-    "Проверить чистоту оборудования и отсутствие загрязнений.",
-    "Проверить отсутствие посторонних предметов на движущихся частях.",
-    "Проверить исправность кнопок управления и панели оператора.",
-    "Проверить доступность проходов и зоны обслуживания.",
-    "Проверить состояние маркировки и предупреждающих табличек.",
-    "Проверить освещение рабочей зоны.",
-    "Проверить замечания предыдущего обхода.",
-    "Зафиксировать выявленные замечания в комментарии.",
-    "Записать результат ежедневного ТО."
-  ]
-};
-
-
 const DEFAULT_NODES = [
   "Основное оборудование", "Привод и механическая часть", "Электрическая часть", "Панель управления и автоматика",
   "Система безопасности", "Смазка и обслуживание", "Рабочая зона", "Освещение", "Шкаф управления", "Журнал замечаний"
@@ -72,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v832-deep-code-audit";
+const APP_VERSION = "v833-checklist-dead-code-cleanup";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -110,9 +89,7 @@ const LANGUAGES = {
 const I18N = {
   ru: {
     appTitle: "ППР Контроль",
-    equipment: "Оборудование",
     home: "Главная",
-    requests: "Заявки",
     downtime: "Простои",
     profile: "Профиль",
     reminders: "График ППР",
@@ -142,18 +119,12 @@ const I18N = {
     changeRole: "Сменить роль",
     viewMode: "Режим просмотра",
     commonControl: "Общий контроль",
-    clearRecords: "Очистить записи",
     logout: "Выйти",
-    createRequest: "Создать заявку",
-    remarks: "Предупреждения",
-    director: "Администрирование",
-    aggregateJournal: "Агрегатный журнал"
+    director: "Администрирование"
   },
   kk: {
     appTitle: "ППР бақылау",
-    equipment: "Жабдық",
     home: "Басты бет",
-    requests: "Өтінімдер",
     downtime: "Тоқтап тұру",
     profile: "Профиль",
     reminders: "ППР кестесі",
@@ -183,12 +154,8 @@ const I18N = {
     changeRole: "Рөлді ауыстыру",
     viewMode: "Көру режимі",
     commonControl: "Жалпы бақылау",
-    clearRecords: "Жазбаларды тазалау",
     logout: "Шығу",
-    createRequest: "Өтінім жасау",
-    remarks: "Ескертулер",
-    director: "Директорлық",
-    aggregateJournal: "Агрегат журналы"
+    director: "Директорлық"
   }
 };
 const DOWNTIME_COLORS = [
@@ -431,22 +398,12 @@ const ui = {
   nodeMeta: document.querySelector("#nodeMeta"),
   monthLabel: document.querySelector("#monthLabel"),
   scheduleGrid: document.querySelector("#scheduleGrid"),
-  engineerIncomingBanner: document.querySelector("#engineerIncomingBanner"),
   prevMonth: document.querySelector("#prevMonth"),
   nextMonth: document.querySelector("#nextMonth"),
   checklistTitle: document.querySelector("#checklistTitle"),
   checklistMeta: document.querySelector("#checklistMeta"),
   dayStatus: document.querySelector("#dayStatus"),
   taskList: document.querySelector("#taskList"),
-  commentPanel: document.querySelector(".comment-panel"),
-  commentLabel: document.querySelector("#commentLabel"),
-  commentInput: document.querySelector("#commentInput"),
-  commentPhotoInput: document.querySelector("#commentPhotoInput"),
-  commentPhotoPreview: document.querySelector("#commentPhotoPreview"),
-  requestInput: document.querySelector("#requestInput"),
-  requestInlineStatus: document.querySelector("#requestInlineStatus"),
-  createRequestButton: document.querySelector("#createRequestButton"),
-  openRequestsButton: document.querySelector("#openRequestsButton"),
   directorOpenButton: document.querySelector("#directorOpenButton"),
   directorOpenLabel: document.querySelector("#directorOpenLabel"),
   directorBadge: document.querySelector("#directorBadge"),
@@ -465,8 +422,7 @@ const ui = {
   directorMeta: document.querySelector("#directorMeta"),
   directorPanel: document.querySelector("#directorPanel"),
   directorControlPanel: document.querySelector("#directorControlPanel"),
-  rolePersonalInbox: document.querySelector("#rolePersonalInbox"),
-  resolvedInput: document.querySelector("#resolvedInput")
+  rolePersonalInbox: document.querySelector("#rolePersonalInbox")
 };
 
 let current = {
@@ -474,18 +430,15 @@ let current = {
   equipmentId: null,
   nodeIndex: null,
   date: todayISO(),
-  kind: "to",
   nodeDetailIndex: null,
   requestRole: defaultRequestRole(profile?.role),
   scrollToCommentNode: null,
   scrollToRemarkId: "",
   returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
-  scrollToMainComment: false,
   downtimeMonth: dateYearMonth(new Date()).month,
   downtimeYear: dateYearMonth(new Date()).year,
   engineerReportMonth: PPRModules.director.calendarMonth(new Date()),
-  ratingYear: dateYearMonth(new Date()).year,
   ratingMonth: PPRModules.director.calendarMonth(new Date()),
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
@@ -4502,7 +4455,6 @@ async function handleIncomingNodeQrFromUrl() {
   current.equipmentId = parsed.equipmentId;
   current.nodeIndex = parsed.nodeIndex;
   current.date = shift.date;
-  current.kind = "to";
   show(homeViewForProfile(profile?.role), false);
   const action = await promptQrWalkDecision(parsed);
   if (action === "comment-saved") showAppToast("Комментарий отправлен. Обход этой смены засчитан.");
@@ -6142,46 +6094,6 @@ function beginCommentEdit(item, nextText) {
   item.updatedAt = now;
 }
 
-function saveCommentDraft(item, nextText) {
-  const text = String(nextText || "");
-  if (!sameCommentAuthor(item) && !text.trim()) return;
-  beginCommentEdit(item, text);
-}
-
-function saveCommentResolution(item, text = "", photo = "", options = {}) {
-  const now = new Date().toISOString();
-  if (options.preserveExisting && item.resolvedAt) return;
-  const startedAt = firstCommentTime(item);
-  const startedMs = Date.parse(startedAt || "");
-  const endedMs = Date.parse(now);
-  item.resolvedAt = now;
-  item.resolvedStartedAt = startedAt || item.resolvedStartedAt || "";
-  item.resolvedDurationMs = Number.isFinite(startedMs) && Number.isFinite(endedMs) ? Math.max(endedMs - startedMs, 0) : 0;
-  item.resolvedByName = profile?.name || "";
-  item.resolvedByRole = profile?.role || "";
-  item.resolvedComment = String(text || "").trim();
-  item.resolvedPhoto = photo || "";
-  const hasSavedRemark = Array.isArray(item.commentLog) && item.commentLog.some(entry => !isDowntimeCommentEntry(entry) && String(entry?.text || "").trim());
-  if (hasSavedRemark && String(item.comment || "").trim() === item.resolvedComment && item.commentOwnerRole === currentRoleId()) {
-    item.comment = "";
-    item.commentOwnerRole = "";
-    item.commentOwnerName = "";
-    item.commentUpdatedAt = "";
-  }
-  item.comment = "";
-  item.commentPhoto = "";
-  item.commentOwnerRole = "";
-  item.commentOwnerName = "";
-  item.commentUpdatedAt = "";
-  item.nodeDraftText = "";
-  item.updatedAt = now;
-}
-
-function markCommentResolved(item, text = "", photo = "", options = {}) {
-  saveCommentResolution(item, text, photo, options);
-  item.resolved = true;
-}
-
 function commentResolutionText(item) {
   if (!item?.resolved) return "";
   const durationMs = Number(item.resolvedDurationMs || 0);
@@ -6395,14 +6307,6 @@ function requestRoleLabel(role) {
   return ROLE_ACCESS[role]?.label || systemLabel;
 }
 
-function renderPhotoPreview(container, src, label) {
-  if (!container) return;
-  container.innerHTML = src ? `
-    <img src="${src}" alt="${label}">
-    <button type="button" data-clear-photo="${label}">Удалить фото</button>
-  ` : "";
-}
-
 async function uploadPhotoDataUrl(dataUrl) {
   if (!String(dataUrl || "").startsWith("data:image/")) return dataUrl || "";
   const result = await apiJson("/api/photos", {
@@ -6484,10 +6388,8 @@ function openDowntimeComment(item) {
   current.nodeIndex = nodeIndex;
   current.nodeDetailIndex = current.nodeIndex;
   current.date = downtimeDate;
-  current.kind = "to";
   current.scrollToDowntimeNode = current.nodeIndex;
   current.scrollToCommentNode = null;
-  current.scrollToMainComment = false;
   show("checklist");
   return true;
 }
@@ -6512,7 +6414,6 @@ function handleIncomingNotificationLink() {
       current.nodeIndex = nodeIndex;
       current.nodeDetailIndex = nodeIndex;
       current.date = date;
-      current.kind = "to";
       current.scrollToCommentNode = nodeIndex;
       current.scrollToRemarkId = remarkId;
       show("checklist");
@@ -7426,7 +7327,6 @@ function openAllRemarkCards() {
     current.nodeIndex = Number(button.dataset.nodeIndex);
     current.nodeDetailIndex = Number(button.dataset.nodeIndex);
     current.date = button.dataset.date || todayISO();
-    current.kind = "to";
     current.scrollToCommentNode = current.nodeIndex;
     current.scrollToRemarkId = button.dataset.remarkId || "";
     current.returnToRemarkListAfterResolve = true;
@@ -9604,7 +9504,6 @@ function renderEquipment() {
           current.nodeIndex = downtimeOpen ? stoppedNodeIndex : firstOpenCommentIndex >= 0 ? firstOpenCommentIndex : 0;
           current.nodeDetailIndex = null;
           current.date = date;
-          current.kind = "to";
           current.scrollToDowntimeNode = null;
           current.scrollToCommentNode = null;
           show("checklist");
@@ -9910,7 +9809,6 @@ function renderSchedule() {
         current.nodeIndex = nodeIndex;
         current.nodeDetailIndex = null;
         current.date = date;
-        current.kind = "to";
         current.scrollToDowntimeNode = null;
         current.scrollToCommentNode = null;
         show("checklist");
@@ -9930,82 +9828,8 @@ function statusClass(status) {
 }
 
 function renderChecklist() {
-  current.kind = "to";
   const eq = equipmentById(current.equipmentId);
-  const node = eq.nodes[current.nodeIndex];
-  const rec = record();
-  const kind = rec[current.kind];
-  ui.subtitle.textContent = "Чек-лист";
-  if (current.kind === "to") {
-    renderNodeWalkthrough(eq);
-    return;
-  }
-  document.querySelector(".tabs[role='tablist']")?.removeAttribute("hidden");
-  ui.commentPanel.hidden = false;
-  ui.checklistTitle.textContent = node;
-  ui.checklistMeta.textContent = `${eq.name} · ${dateHuman(current.date)}`;
-  const status = statusForRecord(rec);
-  ui.dayStatus.textContent = status || "Пусто";
-  ui.dayStatus.style.background = status === "ТО" ? "var(--to)" : "var(--nav-soft)";
-  document.querySelectorAll(".tab[data-kind]").forEach(tab => tab.classList.toggle("active", tab.dataset.kind === current.kind));
-  ui.taskList.innerHTML = "";
-  const table = document.createElement("table");
-  table.className = `checklist-table ${current.kind}`;
-  const title = "Ежедневный осмотр (ТО)";
-  table.innerHTML = `
-    <thead>
-      <tr class="section-title">
-        <th class="num-col"></th>
-        <th>${title}</th>
-        <th class="mark-col"></th>
-      </tr>
-    </thead>
-  `;
-  const tbody = document.createElement("tbody");
-  TASKS[current.kind].forEach((task, index) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="num-col">${index + 1}</td>
-      <td>${task}</td>
-      <td class="mark-col"><input type="checkbox" ${kind.tasks[index] ? "checked" : ""}></td>
-    `;
-    const input = tr.querySelector("input");
-    input.disabled = !canEditChecklist();
-    input.addEventListener("change", event => {
-      if (!canEditChecklist()) return;
-      const now = new Date().toISOString();
-      kind.tasks[index] = event.target.checked;
-      kind.updatedAt = now;
-      record().updatedAt = now;
-      saveState();
-      renderChecklist();
-    });
-    tbody.append(tr);
-  });
-  const done = kind.tasks.every(Boolean);
-  const statusRow = document.createElement("tr");
-  statusRow.className = "status-row";
-  statusRow.innerHTML = `<td></td><td>Статус ТО:</td><td>${done ? "Выполнено" : ""}</td>`;
-  tbody.append(statusRow);
-  table.append(tbody);
-  ui.taskList.append(table);
-  ui.commentLabel.textContent = "Комментарий ТО";
-  const canEditThisComment = canEditComment(kind);
-  ui.commentInput.value = kind.comment;
-  renderPhotoPreview(ui.commentPhotoPreview, kind.commentPhoto, "comment");
-  ui.resolvedInput.checked = Boolean(kind.resolved);
-  ui.commentInput.disabled = !canEditThisComment;
-  ui.commentPhotoInput.disabled = !canEditThisComment;
-  ui.resolvedInput.disabled = !canEditChecklist();
-  if (current.scrollToMainComment) {
-    current.scrollToMainComment = false;
-    window.setTimeout(() => {
-      ui.commentInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-      ui.commentInput?.classList.add("focus-comment");
-      if (!ui.commentInput?.disabled) ui.commentInput?.focus();
-      window.setTimeout(() => ui.commentInput?.classList.remove("focus-comment"), 1600);
-    }, 80);
-  }
+  renderNodeWalkthrough(eq);
 }
 
 function renderNodeWalkthrough(eq) {
@@ -10021,8 +9845,6 @@ function renderNodeWalkthrough(eq) {
     : null;
   ui.checklistTitle.textContent = selectedNodeIndex === null ? `Узлы - ${eq.name}` : eq.nodes[selectedNodeIndex];
   ui.checklistMeta.textContent = `${eq.area} · ${dateHuman(current.date)} · ${activeShift.label} ${activeShift.range}`;
-  document.querySelector(".tabs[role='tablist']")?.setAttribute("hidden", "");
-  ui.commentPanel.hidden = true;
   ui.taskList.innerHTML = "";
 
   const doneCount = eq.nodes.filter((_, index) => isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key)).length;
@@ -11820,7 +11642,6 @@ function openPersonalRemarkNode(message) {
   current.nodeIndex = message.nodeIndex;
   current.nodeDetailIndex = message.nodeIndex;
   current.date = message.date;
-  current.kind = "to";
   current.scrollToCommentNode = message.nodeIndex;
   current.scrollToRemarkId = message.remarkId;
   show("checklist");
@@ -15213,7 +15034,6 @@ ui.workerRatingButton?.addEventListener("click", () => {
 
 ui.workerRatingMonth?.addEventListener("change", () => {
   current.ratingMonth = ui.workerRatingMonth.value || PPRModules.director.calendarMonth(new Date());
-  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || dateYearMonth(new Date()).year;
   renderWorkerRating();
 });
 
@@ -15262,71 +15082,6 @@ ui.nextDowntimeMonth?.addEventListener("click", () => {
     current.downtimeYear += 1;
   }
   renderDowntime();
-});
-
-document.querySelectorAll(".tab[data-kind]").forEach(tab => {
-  tab.addEventListener("click", () => {
-    current.kind = tab.dataset.kind;
-    renderChecklist();
-  });
-});
-
-ui.commentInput.addEventListener("input", () => {
-  const rec = record();
-  const item = rec[current.kind];
-  if (!canEditComment(item)) return;
-  const nextComment = ui.commentInput.value;
-  if (nextComment !== item.comment) item.resolved = false;
-  saveCommentDraft(item, nextComment);
-  ui.resolvedInput.checked = false;
-  saveState();
-});
-
-ui.commentPhotoInput.addEventListener("change", async () => {
-  const rec = record();
-  const item = rec[current.kind];
-  if (!canEditComment(item)) return;
-  saveCommentDraft(item, ui.commentInput.value || item.comment || "");
-  if (!sameCommentAuthor(item) && String(item.comment || "").trim()) {
-    beginCommentEdit(item, "");
-  }
-  item.commentPhoto = await readPhotoFile(ui.commentPhotoInput.files?.[0]);
-  setCommentOwner(item);
-  item.commentUpdatedAt = new Date().toISOString();
-  item.updatedAt = item.commentUpdatedAt;
-  ui.commentPhotoInput.value = "";
-  saveState();
-  renderChecklist();
-});
-
-ui.commentPhotoPreview.addEventListener("click", event => {
-  if (!canEditChecklist() || !event.target.matches("[data-clear-photo]")) return;
-  const rec = record();
-  if (!canEditComment(rec[current.kind])) return;
-  rec[current.kind].commentPhoto = "";
-  saveState();
-  renderChecklist();
-});
-
-ui.openRequestsButton?.addEventListener("click", () => {
-  current.requestRole = defaultRequestRole();
-  show("requests");
-});
-
-
-ui.resolvedInput.addEventListener("change", () => {
-  if (!canEditChecklist()) return;
-  const rec = record();
-  if (ui.resolvedInput.checked) {
-    markCommentResolved(rec[current.kind]);
-  } else {
-    rec[current.kind].resolved = false;
-    rec[current.kind].resolvedAt = "";
-    rec[current.kind].resolvedDurationMs = 0;
-    rec[current.kind].updatedAt = new Date().toISOString();
-  }
-  saveState();
-  render();
 });
 
 document.querySelectorAll("[data-open-role]").forEach(button => {
