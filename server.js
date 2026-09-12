@@ -204,7 +204,6 @@ const contentTypes = {
   ".webp": "image/webp",
   ".pdf": "application/pdf",
   ".svg": "image/svg+xml; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".mobileconfig": "application/x-apple-aspen-config"
 };
 function directoryStorageStats(directory) {

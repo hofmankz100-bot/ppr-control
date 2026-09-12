@@ -69,7 +69,7 @@ function createStaticHandler({ root, contentTypes, securityHeaders, zlib }) {
           ? "public, max-age=31536000, immutable"
           : "public, max-age=3600";
       const acceptsGzip = /(?:^|,)\s*gzip\s*(?:,|$)/i.test(String(req.headers["accept-encoding"] || ""));
-      const compressible = [".html", ".js", ".css", ".json", ".svg", ".webmanifest"].includes(extension);
+      const compressible = [".html", ".js", ".css", ".json", ".svg"].includes(extension);
       if (acceptsGzip && compressible && data.length >= 1024) {
         const compressed = zlib.gzipSync(data, { level: zlib.constants.Z_BEST_SPEED });
         res.writeHead(200, {
