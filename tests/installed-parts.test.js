@@ -13,7 +13,9 @@ test("confirmed resolutions create monthly installed-parts journal entries", () 
   assert.match(app, /Без запчасти/);
   assert.match(app, /data-installed-parts-equipment/);
   assert.match(app, /function installedPartJournalRows\(/);
-  assert.match(app, /journalMonthMatches\(entry\.resolvedAt \|\| date, month\)/);
+  assert.match(app, /if \(!entry\?\.resolved \|\| entry\.partInstalled !== true\) return;/);
+  assert.match(app, /const acceptedAt = entry\.confirmedAt \|\| entry\.resolvedAt \|\| date/);
+  assert.match(app, /journalMonthMatches\(acceptedAt, month\)/);
   assert.match(app, /function openInstalledPartJournal\(/);
   assert.match(styles, /\.installed-part-journal-list:has\(\.installed-part-entry\)/);
   assert.match(styles, /scroll-snap-stop:always/);

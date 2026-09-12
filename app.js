@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v840-director-report-journal-linkage";
+const APP_VERSION = "v841-journal-acceptance-linkage";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -7962,11 +7962,13 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     const equipmentId = Number(equipmentIdRaw);
     const nodeIndex = Number(nodeIndexRaw);
     const eq = equipmentById(equipmentId);
-    if (!eq || eq.area !== area || !journalMonthMatches(date) || (targetEquipmentId && equipmentId !== targetEquipmentId)) return;
+    if (!eq || eq.area !== area || (targetEquipmentId && equipmentId !== targetEquipmentId)) return;
     const item = rec?.to;
     if (!item) return;
     visibleCommentEntries(item).forEach((entry, entryIndex) => {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
+      const at = entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`;
+      if (!journalMonthMatches(at)) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
         sourceType: "remark",
@@ -7978,7 +7980,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         date,
         equipment: eq.name || "",
         node: eq.nodes[nodeIndex] || "",
-        at: entry.at || item.commentUpdatedAt || `${date}T00:00:00.000Z`,
+        at,
         authorName: entry.name || item.commentOwnerName || "",
         authorRole: entry.role || item.commentOwnerRole || "",
         text: entry.text || "",
@@ -8054,18 +8056,20 @@ function installedPartJournalRows(equipmentId, month = PPRModules.director.calen
     if (Number(rawEquipmentId) !== Number(equipmentId)) return;
     const eq = equipmentById(Number(rawEquipmentId));
     visibleCommentEntries(rec?.to || {}).forEach(entry => {
-      if (!entry?.resolved || entry.partInstalled !== true || !journalMonthMatches(entry.resolvedAt || date, month)) return;
+      if (!entry?.resolved || entry.partInstalled !== true) return;
+      const acceptedAt = entry.confirmedAt || entry.resolvedAt || date;
+      if (!journalMonthMatches(acceptedAt, month)) return;
       rows.push({
         id: entry.id || stableRemarkId(entry), date: entry.resolvedAt || date,
         area: eq?.area || "", equipment: eq?.name || "", node: eq?.nodes?.[Number(rawNodeIndex)] || "",
         remark: entry.text || "", work: entry.resolvedComment || "", description: entry.partDescription || "",
         photos: Array.isArray(entry.partPhotos) ? entry.partPhotos : [],
         performers: resolutionParticipantsText(entry, entry.resolvedByName || ""),
-        confirmedBy: entry.confirmedByName || "", confirmedAt: entry.confirmedAt || ""
+        confirmedBy: entry.confirmedByName || "", confirmedAt: entry.confirmedAt || "", acceptedAt
       });
     });
   });
-  return rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return rows.sort((a, b) => String(a.acceptedAt).localeCompare(String(b.acceptedAt)));
 }
 
 function installedPartJournalHtml(eq, month, printable = false) {
@@ -13285,30 +13289,16 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   const closedRows = engineerReportRows(
     stats.closedRemarks.slice(0, printable ? 60 : 14),
     "Закрытых работ за выбранный месяц нет",
-    item => {
-      if (item.number) {
-        return `
-          <tr>
-            <td>${escapeHtml(dateTimeHuman(item.doneAt))}</td>
-            <td>${escapeHtml(item.area || "-")}</td>
-            <td>${escapeHtml(item.equipment || "-")}</td>
-            <td>${escapeHtml(item.node || "-")}</td>
-            <td>${escapeHtml(item.worker || requestRoleLabel(item.workerRole) || "-")}</td>
-            <td>${escapeHtml(item.name || "Заявка выполнена")}</td>
-          </tr>
-        `;
-      }
-      return `
-        <tr>
-          <td>${escapeHtml(dateTimeHuman(item.acceptedAt || item.resolvedAt))}</td>
-          <td>${escapeHtml(item.area || "-")}</td>
-          <td>${escapeHtml(item.equipment || "-")}</td>
-          <td>${escapeHtml(item.node || "-")}</td>
-          <td>${escapeHtml(item.resolvedBy || requestRoleLabel(item.resolvedByRole) || "-")}</td>
-          <td>${escapeHtml(item.resolvedComment || item.text || "Замечание устранено")}</td>
-        </tr>
-      `;
-    }
+    item => `
+      <tr>
+        <td>${escapeHtml(dateTimeHuman(item.acceptedAt || item.resolvedAt))}</td>
+        <td>${escapeHtml(item.area || "-")}</td>
+        <td>${escapeHtml(item.equipment || "-")}</td>
+        <td>${escapeHtml(item.node || "-")}</td>
+        <td>${escapeHtml(item.resolvedBy || requestRoleLabel(item.resolvedByRole) || "-")}</td>
+        <td>${escapeHtml(item.resolvedComment || item.text || "Замечание устранено")}</td>
+      </tr>
+    `
   );
   const openRows = engineerReportRows(
     stats.openRemarks.slice(0, printable ? 60 : 12),

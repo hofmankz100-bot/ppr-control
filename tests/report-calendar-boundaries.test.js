@@ -118,7 +118,7 @@ test("historical Qyzylorda transitions resolve legacy wall times without a singl
 });
 
 test("installed parts preserve equipment/status filters, print rows, source timestamps and photos", () => {
-  const entry = { id: "boundary", resolved: true, partInstalled: true, resolvedAt: "2026-08-31T20:00:00Z", text: "Boundary part", partPhotos: ["saved-photo"] };
+  const entry = { id: "boundary", resolved: true, partInstalled: true, resolvedAt: "2026-08-31T18:00:00Z", confirmedAt: "2026-08-31T20:00:00Z", text: "Boundary part", partPhotos: ["saved-photo"] };
   const state = { checks: { "1:0:2026-08-31": { to: { commentLog: [entry, { ...entry, id: "unresolved", resolved: false }, { ...entry, id: "not-part", partInstalled: false }] } },
     "2:0:2026-09-01": { to: { commentLog: [{ ...entry, id: "other" }] } } } };
   const before = structuredClone(state), equipment = { id: 1, name: "Press", area: "A", nodes: ["Node"] };
@@ -129,6 +129,8 @@ test("installed parts preserve equipment/status filters, print rows, source time
   });
   assert.deepEqual(Array.from(h.installedPartJournalRows(1, "2026-09"), row => row.id), ["boundary"]);
   assert.equal(h.installedPartJournalRows(1, "2026-08").length, 0);
+  assert.equal(h.installedPartJournalRows(1, "2026-09")[0].date, entry.resolvedAt);
+  assert.equal(h.installedPartJournalRows(1, "2026-09")[0].acceptedAt, entry.confirmedAt);
   const print = h.installedPartJournalHtml(equipment, "2026-09", true);
   assert.match(print, /Boundary part/); assert.match(print, /saved-photo/); assert.doesNotMatch(print, /data-parts-month/);
   assert.deepEqual(state, before);
@@ -138,11 +140,18 @@ test("aggregate downtime journal keeps month, area, equipment and production exc
   const item = { id: "boundary", startedAt: "2026-08-31T20:00:00Z", area: "A", equipmentId: 1, type: "breakdown" };
   const items = [item, { ...item, id: "wrong-area", area: "B" }, { ...item, id: "wrong-equipment", equipmentId: 2 },
     { ...item, id: "production", type: "production" }, { ...item, id: "previous", startedAt: "2026-08-31T18:59:59Z" }];
+  const checks = { "1:0:2026-08-31": { to: { commentLog: [
+    { id: "remark-boundary", at: "2026-08-31T20:00:00Z", text: "New month" },
+    { id: "remark-previous", at: "2026-08-31T18:59:59Z", text: "Previous month" }
+  ] } } };
   const before = structuredClone(items);
   const h = harness(["journalMonthMatches", "aggregateJournalItems"], {
-    state: { checks: {} }, selectedJournalMonth: () => "2026-09", downtimes: () => items, downtimeDurationMs: () => 0
+    state: { checks }, selectedJournalMonth: () => "2026-09", downtimes: () => items, downtimeDurationMs: () => 0,
+    equipmentById: () => ({ id: 1, name: "Press", area: "A", nodes: ["Node"] }),
+    visibleCommentEntries: value => value.commentLog || [], isDowntimeCommentEntry: () => false,
+    stableRemarkId: entry => entry.id, resolutionParticipants: () => [], completedResolutionParticipants: () => []
   });
-  assert.deepEqual(Array.from(h.aggregateJournalItems("A", 1), row => row.id), ["boundary"]);
+  assert.deepEqual(Array.from(h.aggregateJournalItems("A", 1), row => row.id), ["remark:1:0:2026-08-31:0", "boundary"]);
   assert.deepEqual(items, before);
 });
 
@@ -200,8 +209,8 @@ test("installed-parts modal opens/reopens on factory month and switches/clears i
   } };
   const equipment = { id: 1, name: "Press", area: "A", nodes: ["Node"] };
   const state = { checks: { "1:0:2026-08-31": { to: { commentLog: [
-    { id: "aug", resolved: true, partInstalled: true, text: "AUGUST-PART", resolvedAt: "2026-08-31T18:00:00Z" },
-    { id: "sep", resolved: true, partInstalled: true, text: "SEPTEMBER-PART", resolvedAt: "2026-08-31T20:00:00Z" }
+    { id: "aug", resolved: true, partInstalled: true, text: "AUGUST-PART", resolvedAt: "2026-08-31T18:00:00Z", confirmedAt: "2026-08-31T18:30:00Z" },
+    { id: "sep", resolved: true, partInstalled: true, text: "SEPTEMBER-PART", resolvedAt: "2026-08-31T18:00:00Z", confirmedAt: "2026-08-31T20:00:00Z" }
   ] } } } };
   const before = structuredClone(state);
   const h = harness(["journalMonthMatches", "installedPartJournalRows", "installedPartJournalHtml", "openInstalledPartJournal"], {

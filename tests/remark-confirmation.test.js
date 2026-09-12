@@ -2136,6 +2136,7 @@ test("director control and engineer report use live journal and accepted-work da
   assert.match(clientSource, /resolvedBy: resolutionParticipantsText\(entry, entry\.resolvedByName \|\| ""\)/);
   assert.match(clientSource, /<th>Баллы<\/th><th>Выполнено<\/th>/);
   assert.doesNotMatch(clientSource, /function directorRecentRemarks|function directorArchivedRemarks/);
+  assert.doesNotMatch(clientSource, /if \(item\.number\) \{[\s\S]*?Заявка выполнена/);
 });
 
 test("closing without score replaces the check record on every realtime client", () => {
