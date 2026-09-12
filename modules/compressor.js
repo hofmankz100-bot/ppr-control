@@ -6,14 +6,10 @@
     requiredFields.every(field => String(row?.[field] || "").trim());
 
   root.compressor = {
-    rowFieldsComplete,
     rowComplete(row) {
       return rowFieldsComplete(row)
         && ["shiftTime", "blowTime", "checkedBy"].every(field => String(row?.[field] || "").trim())
         && row?.entryStatus !== "draft";
-    },
-    rowsComplete(rows) {
-      return Array.isArray(rows) && rows.length > 0 && rows.every(root.compressor.rowComplete);
     }
   };
 })();

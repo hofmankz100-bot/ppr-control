@@ -9,8 +9,6 @@
     rowHasRequiredValues(row, ["wells", "gasSmell", "protectionZone", "remarks", "actions"]);
 
   root.shgrp = {
-    rowAFieldsComplete,
-    rowBFieldsComplete,
     rowAComplete(row) {
       return rowAFieldsComplete(row) && Boolean(String(row?.checkedBy || "").trim()) && entryIsFixed(row);
     },

@@ -52,3 +52,11 @@ test("unreachable legacy checklist shell stays removed", () => {
   assert.doesNotMatch(html, /class="comment-panel"|id="(?:commentLabel|commentInput|commentPhotoInput|commentPhotoPreview|resolvedInput)"/);
   assert.doesNotMatch(styles, /\.(?:comment-panel|checklist-table|resolved-row|ppr-calendar-task|annual-card)\b|--to[23]\b|\.day-status\.to[23]\b|\.schedule-table td\.to[23]\b/);
 });
+
+test("client modules expose only their active public methods", () => {
+  assert.doesNotMatch(source("modules/director.js"), /\bneedsAttention\s*\(/);
+  assert.doesNotMatch(source("modules/compressor.js"), /\browsComplete\s*\(|root\.compressor\s*=\s*\{\s*rowFieldsComplete\b/);
+  assert.doesNotMatch(source("modules/shgrp.js"), /root\.shgrp\s*=\s*\{\s*rowAFieldsComplete\b/);
+  assert.doesNotMatch(source("modules/photo-compression.js"), /const api = \{[^}]*\bMAX_SIDE\b/);
+  assert.doesNotMatch(source("modules/repeat-failures.js"), /root\.repeatFailures = \{[^}]*\b(?:journalTitle|printJournal|saveCode)\b/);
+});

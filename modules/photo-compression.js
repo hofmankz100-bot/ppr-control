@@ -60,7 +60,7 @@
     return next;
   }
 
-  const api = { read, compress, dataBytes, MAX_BYTES, MAX_SIDE };
+  const api = { read, compress, dataBytes, MAX_BYTES };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.PprPhotoCompression = api;
 })(typeof window !== "undefined" ? window : globalThis);

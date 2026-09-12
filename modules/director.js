@@ -88,9 +88,6 @@
       if (score >= 70) return "yellow";
       if (score >= 50) return "orange";
       return "red";
-    },
-    needsAttention(count) {
-      return Number(count || 0) > 0;
     }
   };
 })();

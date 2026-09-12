@@ -345,5 +345,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, employeeRepeatPenaltyCounts, kpdPercent, journalTitle, journalHtml, printJournal, openJournal, saveCode, activeGroups, editorHtml, bindAggregateEditors };
+  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, employeeRepeatPenaltyCounts, kpdPercent, journalHtml, openJournal, activeGroups, editorHtml, bindAggregateEditors };
 })();
