@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v845-app-code-cleanup";
+const APP_VERSION = "v846-zero-unused-code";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1383,7 +1383,6 @@ async function apiJsonRequest(url, options = {}, idempotencyKey = "") {
   const timeout = Number(options.timeout || 15000);
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
-    const method = String(options.method || "GET").toUpperCase();
     const response = await fetch(url, {
       headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}), ...(options.headers || {}) },
       ...options,
@@ -4703,7 +4702,6 @@ function ordinaryNodeIndexes(eq = {}) {
 
 function printNodeQrCode(eq, nodeIndex) {
   const nodeName = eq.nodes[nodeIndex] || "";
-  const payload = nodeQrPayload(eq.id, nodeIndex);
   const qrLink = nodeQrUrl(eq.id, nodeIndex);
   const displayCode = nodeQrDisplayCode(eq.id, nodeIndex);
   const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
@@ -9122,7 +9120,6 @@ function renderGasJournal() {
 }
 
 function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
-  const sheetIndex = compressorJournalSheetIndex();
   const maxSheetIndex = compressorJournalMaxSheetIndex();
   if (current.compressorSheetIndex > maxSheetIndex) current.compressorSheetIndex = maxSheetIndex;
   const activeSheetIndex = compressorJournalSheetIndex();
@@ -10941,7 +10938,7 @@ function printAnnualPprSchedule(overlay, year) {
   clone.style.setProperty("--annual-ppr-row-height", `${Math.max(4.8, Math.min(9, 135 / rowCount)).toFixed(2)}mm`);
   const popup = window.open("", "_blank", "width=1500,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
-  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{width:100%;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#111}.annual-ppr-print-area{width:100%;max-width:100%;overflow:visible}.annual-ppr-print-title{text-align:center;margin:0 0 2mm}.annual-ppr-print-title h1{font-size:10.5pt;margin:0 0 .7mm}.annual-ppr-print-title div{font-size:7pt}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:1.5mm;font-size:7pt;line-height:1.3}.annual-ppr-approval>div{min-width:82mm}.annual-ppr-approval .annual-ppr-print-value{min-width:62mm;margin-left:2mm}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:6pt;margin-bottom:1mm}.annual-ppr-scroll{width:100%;max-width:100%;overflow:visible}.annual-ppr-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:fixed;font-size:4.9pt}.annual-ppr-table th,.annual-ppr-table td{border:.2mm solid #222;padding:.45mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table tbody tr{height:var(--annual-ppr-row-height,5.5mm)}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{height:4.5mm;background:#dde7ef}.annual-ppr-equipment-name{text-align:left!important}.annual-ppr-plan{background:#eef7e9}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6mm;margin-top:3mm;font-size:6.5pt}.annual-ppr-signatures label{display:grid;grid-template-rows:auto auto 6mm;gap:.8mm}.annual-ppr-signatures strong{font-size:6.5pt}.annual-ppr-sign-caption{font-size:5.8pt}.annual-ppr-print-value{display:block;min-width:0;min-height:5mm;border-bottom:.25mm solid #111;padding:1mm 1.5mm;font-weight:400}.annual-ppr-note{font-size:5.5pt;margin:1mm 0}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+  popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Годовой график ППР ${year}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{width:100%;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#111}.annual-ppr-print-area{width:100%;max-width:100%;overflow:visible}.annual-ppr-print-title{text-align:center;margin:0 0 2mm}.annual-ppr-print-title h1{font-size:10.5pt;margin:0 0 .7mm}.annual-ppr-print-title div{font-size:7pt}.annual-ppr-approval{display:flex;justify-content:flex-end;margin-bottom:1.5mm;font-size:7pt;line-height:1.3}.annual-ppr-approval>div{min-width:82mm}.annual-ppr-approval .annual-ppr-print-value{min-width:62mm;margin-left:2mm}.annual-ppr-meta{display:flex;justify-content:space-between;font-size:6pt;margin-bottom:1mm}.annual-ppr-scroll{width:100%;max-width:100%;overflow:visible}.annual-ppr-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:fixed;font-size:4.9pt}.annual-ppr-table th,.annual-ppr-table td{border:.2mm solid #222;padding:.45mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.annual-ppr-table tbody tr{height:var(--annual-ppr-row-height,5.5mm)}.annual-ppr-table thead{display:table-header-group}.annual-ppr-table thead th{height:4.5mm;background:#dde7ef}.annual-ppr-equipment-name{text-align:left!important}.annual-ppr-fact{background:#fff8dc}.annual-ppr-signatures{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6mm;margin-top:3mm;font-size:6.5pt}.annual-ppr-signatures label{display:grid;grid-template-rows:auto auto 6mm;gap:.8mm}.annual-ppr-signatures strong{font-size:6.5pt}.annual-ppr-sign-caption{font-size:5.8pt}.annual-ppr-print-value{display:block;min-width:0;min-height:5mm;border-bottom:.25mm solid #111;padding:1mm 1.5mm;font-weight:400}.annual-ppr-note{font-size:5.5pt;margin:1mm 0}.no-print{display:none!important}tr{break-inside:avoid}</style></head><body>${clone.outerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
   finalizeJournalPopup(popup);
 }
 
@@ -14507,7 +14504,6 @@ async function renderQrWalkJournal() {
     const entry = done.get(`${eq.id}:${nodeIndex}`);
     return { eq, node, nodeIndex, entry };
   }));
-  const completed = rows.filter(row => row.entry).length;
   const mobileMode = window.matchMedia?.("(max-width: 680px)")?.matches === true;
   const areaGroups = [...rows.reduce((map, row) => {
     const area = String(row.eq.area || "Без цеха").trim() || "Без цеха";

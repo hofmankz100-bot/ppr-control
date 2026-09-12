@@ -74,23 +74,6 @@ function patchedRemark(response, key, remarkId) {
   return response.state.checks[key].to.commentLog.find(entry => entry.id === remarkId);
 }
 
-async function postEngineerRequest(action, actor, extra = {}, expectedStatus = 200) {
-  const response = await fetch(`${baseUrl}/api/engineer-request/action`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      actionId: `engineer-request-test-${Date.now()}-${Math.random()}`,
-      clientId: "engineer-request-test",
-      action,
-      actor,
-      ...extra
-    })
-  });
-  const body = await response.json();
-  assert.equal(response.status, expectedStatus, JSON.stringify(body));
-  return body;
-}
-
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "ppr-remark-test-"));
   const db = {
@@ -1408,7 +1391,6 @@ test("the decorative Hofmann forklift animation is completely removed", () => {
 
 test("admin garbage check is read-only and Back skips invalid history entries", () => {
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const storageRoute = fs.readFileSync(path.join(root, "server", "admin-storage-route.js"), "utf8");
   const style = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.match(app, /data-open-storage-diagnostics>Проверить мусор/);

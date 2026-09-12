@@ -77,7 +77,6 @@
 .annual-ppr-table .annual-ppr-area-row th { padding: 6px 8px; background: #bfd2df; text-align: left; font-size: 12px; }
 .annual-ppr-table th:first-child { min-width: 250px; }
 .annual-ppr-table input, .annual-ppr-table select { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; }
-.annual-ppr-plan { background: #eef7e9; }
 .annual-ppr-fact { background: #fff8dc; font-weight: 800; }
 .annual-ppr-equipment-name { text-align: left !important; }
 .annual-ppr-equipment-name strong, .annual-ppr-equipment-name small, .annual-ppr-progress-cell strong, .annual-ppr-progress-cell small { display: block; }
@@ -4745,11 +4744,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   background: #b91c1c !important;
   color: #fff !important;
   border-color: #7f1d1d !important;
-}
-
-.day-status.to {
-  background: var(--to);
-  color: #5c4500;
 }
 
 .tabs {
@@ -11057,10 +11051,6 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-table tbody th {
     background: #111b21;
     color: #dfe7eb;
-  }
-
-  html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-plan {
-    background: #12332e;
   }
 
   html[data-theme="dark"] .annual-ppr-print-area:not(.annual-ppr-pdf-output) .annual-ppr-fact {

@@ -97,7 +97,7 @@
       });
     }
 
-    return { request, installNow, startServiceWorkerUpdates, pendingVersion: () => requiredVersion };
+    return { request, startServiceWorkerUpdates };
   }
 
   return { create };

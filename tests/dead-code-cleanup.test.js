@@ -11,6 +11,9 @@ const source = name => fs.readFileSync(path.join(root, name), "utf8");
 test("retired client and server implementations stay removed", () => {
   const runtime = `${source("app.js")}\n${source("server.js")}`;
   assert.doesNotMatch(runtime, /\b(?:openAnnualPprActs|annualPprActsDocumentHtml|annualPprActSectionHtml|annualPprFacts|directorTraffic|requireAuthenticated|TRANSLATE_LANGS)\b/);
+  assert.doesNotMatch(source("server.js"), /function mergeUsers\b/);
+  assert.doesNotMatch(source("app.js"), /const (?:payload = nodeQrPayload|sheetIndex = compressorJournalSheetIndex|completed = rows\.filter\(row => row\.entry\)\.length);/);
+  assert.doesNotMatch(source("server.js"), /const actor = sanitizeResolutionParticipant\(profile\);/);
 });
 
 test("orphaned legacy style families stay removed", () => {
@@ -50,7 +53,7 @@ test("unreachable legacy checklist shell stays removed", () => {
   const styles = source("styles.css");
   assert.doesNotMatch(app, /\b(?:TASKS|saveCommentDraft|saveCommentResolution|markCommentResolved|renderPhotoPreview)\b|current\.(?:kind|scrollToMainComment|ratingYear)\b|ui\.(?:engineerIncomingBanner|commentPanel|commentLabel|commentInput|commentPhotoInput|commentPhotoPreview|requestInput|requestInlineStatus|createRequestButton|openRequestsButton|resolvedInput)\b|data-kind/);
   assert.doesNotMatch(html, /class="comment-panel"|id="(?:commentLabel|commentInput|commentPhotoInput|commentPhotoPreview|resolvedInput)"/);
-  assert.doesNotMatch(styles, /\.(?:comment-panel|checklist-table|resolved-row|ppr-calendar-task|annual-card)\b|--to[23]\b|\.day-status\.to[23]\b|\.schedule-table td\.to[23]\b/);
+  assert.doesNotMatch(styles, /\.(?:comment-panel|checklist-table|resolved-row|ppr-calendar-task|annual-card|annual-ppr-plan)\b|--to[23]\b|\.day-status\.to\b|\.schedule-table td\.to[23]\b/);
 });
 
 test("client modules expose only their active public methods", () => {
@@ -59,4 +62,5 @@ test("client modules expose only their active public methods", () => {
   assert.doesNotMatch(source("modules/shgrp.js"), /root\.shgrp\s*=\s*\{\s*rowAFieldsComplete\b/);
   assert.doesNotMatch(source("modules/photo-compression.js"), /const api = \{[^}]*\bMAX_SIDE\b/);
   assert.doesNotMatch(source("modules/repeat-failures.js"), /root\.repeatFailures = \{[^}]*\b(?:journalTitle|printJournal|saveCode)\b/);
+  assert.doesNotMatch(source("modules/app-updater.js"), /return \{[^}]*\b(?:installNow|pendingVersion)\b/);
 });
