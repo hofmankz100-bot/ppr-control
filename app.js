@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v835-module-api-cleanup";
+const APP_VERSION = "v836-kpi-points-linked";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -5678,10 +5678,16 @@ function completedResolutionParticipants(item = {}) {
     .reverse()
     .find(event => event?.action === "confirmed" && event.confirmerKey && event.targetKey);
   if (!repairedDecision) return normalized;
-  const repairedPerformer = normalized.find(participant => participant.key === repairedDecision.targetKey);
-  if (repairedPerformer) return [repairedPerformer];
+  const repairedKeys = [...new Set([
+    ...(Array.isArray(repairedDecision.targetKeys) ? repairedDecision.targetKeys : []),
+    repairedDecision.targetKey
+  ].map(value => String(value || "").trim()).filter(Boolean))];
+  const repairedPerformers = repairedKeys
+    .map(key => normalized.find(participant => participant.key === key))
+    .filter(Boolean);
+  if (repairedPerformers.length) return repairedPerformers;
   const fallback = resolutionParticipantFromUser({
-    key: item.resolvedByKey || repairedDecision.targetKey,
+    key: item.resolvedByKey || repairedKeys[0],
     name: item.resolvedByName || repairedDecision.targetName,
     role: item.resolvedByRole || repairedDecision.targetRole
   });
@@ -11959,6 +11965,7 @@ function downtimeOverlapMsForMonth(item, year, monthIndex) {
 
 function annualRepairEvents(year = directorAnnualYear()) {
   const events = [];
+  const ratingByDowntimeId = new Map();
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
     const eq = equipmentById(Number(equipmentIdRaw));
@@ -11972,6 +11979,14 @@ function annualRepairEvents(year = directorAnnualYear()) {
       const created = dateYearMonth(createdAt);
       const resolved = dateYearMonth(entry.resolved ? entry.resolvedAt || "" : "");
       const confirmed = dateYearMonth(entry.confirmedAt || "");
+      const ratingParticipants = completedResolutionParticipants(entry);
+      if (entry.confirmedAt && ratingParticipants.length) {
+        (Array.isArray(entry.resolutionDowntimeIds) ? entry.resolutionDowntimeIds : [])
+          .forEach(id => ratingByDowntimeId.set(String(id || ""), {
+            participants: ratingParticipants,
+            completedAt: entry.confirmedAt
+          }));
+      }
       const ratingReturns = (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : [])
         .filter(event => event?.action === "returned")
         .map(event => ({
@@ -11994,6 +12009,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           node: eq.nodes[Number(nodeIndexRaw)] || "",
           createdAt,
           resolvedAt: entry.resolved ? entry.resolvedAt || "" : "",
+          ratingCompletedAt: entry.confirmedAt || "",
           authorRole: entry.role || item.commentOwnerRole || "",
           authorName: entry.name || item.commentOwnerName || "",
           resolvedByRole: entry.resolvedByRole || "",
@@ -12001,7 +12017,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           confirmedAt: entry.confirmedAt || "",
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
-          ratingParticipants: completedResolutionParticipants(entry),
+          ratingParticipants,
           correctedDefectText: entry.correctedDefectText || "",
           correctedResolvedComment: entry.correctedResolvedComment || "",
           ratingReturns,
@@ -12020,6 +12036,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
     const created = dateYearMonth(item.startedAt || "");
     const resolved = dateYearMonth(item.endedAt || "");
     if (year !== null && created?.year !== year && resolved?.year !== year) return;
+    const linkedRating = ratingByDowntimeId.get(String(item.id || ""));
     events.push({
       type: "breakdown",
       sourceType: "downtime",
@@ -12031,11 +12048,13 @@ function annualRepairEvents(year = directorAnnualYear()) {
       node: item.node || "",
       createdAt: item.startedAt || "",
       resolvedAt: item.endedAt || "",
+      ratingCompletedAt: linkedRating?.completedAt || (item.closeAwaitingConfirmation === true ? "" : item.endedAt || ""),
       authorRole: item.authorRole || "",
       authorName: item.authorName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedByName: item.closedByName || "",
-      ratingParticipants: Array.isArray(item.closedParticipants) ? item.closedParticipants : [],
+      ratingParticipants: linkedRating?.participants || (Array.isArray(item.closedParticipants) ? item.closedParticipants : []),
+      ratingAccepted: Boolean(linkedRating) || item.closeAwaitingConfirmation !== true,
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
       ...PPRModules.repeatFailures.metadata(item),
@@ -12050,6 +12069,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
   const months = directorAnnualEmptyMonths(year);
   const repairEvents = annualRepairEvents(year);
   const allRepairEvents = annualRepairEvents(null);
+  const usersByResolutionKey = new Map(loadUsers().map(user => [resolutionUserKey(user), user]));
   repairEvents.forEach(event => {
     const created = dateYearMonth(event.createdAt);
     const resolved = dateYearMonth(event.resolvedAt);
@@ -12098,9 +12118,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
   const workerMap = new Map();
   const workerKey = (role, name) => `${canonicalWorkerRole(role)}:${String(name || "").trim().toLowerCase()}`;
   const ensureWorker = (role, name) => {
-    if (!isResolutionExecutorRole(role)) return null;
+    if (!isWorkerRatingRole(role)) return null;
     role = canonicalWorkerRole(role);
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
+    if (workerRatingExcluded(role, cleanName)) return null;
     const key = workerKey(role, cleanName);
     if (!workerMap.has(key)) {
       workerMap.set(key, {
@@ -12113,41 +12134,48 @@ function directorAnnualStats(year = directorAnnualYear()) {
         downtimeClosed: 0,
         installs: 0,
         repeatFailures: 0,
+        points: 0,
         durations: []
       });
     }
     return workerMap.get(key);
   };
   loadUsers()
-    .filter(user => isResolutionExecutorRole(user.role))
+    .filter(user => isWorkerRatingRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
   repairEvents.forEach(event => {
-    const worker = ensureWorker(event.resolvedByRole, event.resolvedByName);
-    if (worker && event.resolvedAt) {
-      worker.closed += 1;
-      if (event.type === "breakdown") worker.downtimeClosed += 1;
-      if (event.type === "install") worker.installs += 1;
-      if (event.durationMs > 0) worker.durations.push(event.durationMs);
+    const completedAt = workerRatingCompletionAt(event);
+    if (dateYearMonth(completedAt)?.year === year) {
+      workerRatingParticipants(event, usersByResolutionKey).forEach(participant => {
+        const worker = ensureWorker(participant.role, participant.name);
+        if (!worker) return;
+        worker.closed += 1;
+        if (event.type === "breakdown") worker.downtimeClosed += 1;
+        if (event.type === "install") worker.installs += 1;
+        if (event.durationMs > 0) worker.durations.push(event.durationMs);
+      });
     }
-    if (event.open && isResolutionExecutorRole(event.authorRole)) {
+    if (event.open && isWorkerRatingRole(event.authorRole)) {
       const started = Date.parse(event.createdAt || "");
       if (Number.isFinite(started) && Date.now() - started >= 3 * 86400000) {
-        const openWorker = ensureWorker(event.authorRole, event.resolvedByName || event.authorName);
+        const openWorker = ensureWorker(event.authorRole, event.authorName || event.resolvedByName);
         if (openWorker) openWorker.overdueOpen += 1;
       }
     }
   });
-  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerKey, isElectromechanicRole, value => dateYearMonth(value)?.year === year)
+  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerKey, isWorkerRatingRole, value => dateYearMonth(value)?.year === year)
     .forEach((count, key) => {
       if (workerMap.has(key)) workerMap.get(key).repeatFailures = count;
     });
+  const annualPoints = workerRatingPointMap(year);
   const workers = [...workerMap.values()]
     .map(worker => {
       const avgMs = worker.durations.length ? worker.durations.reduce((sum, value) => sum + value, 0) / worker.durations.length : 0;
       const kpd = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures);
-      return { ...worker, avgMs, kpd };
+      const points = Number(annualPoints.get(worker.key) || 0);
+      return { ...worker, avgMs, kpd, points };
     })
-    .sort((a, b) => (b.kpd ?? -1) - (a.kpd ?? -1) || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
+    .sort((a, b) => (b.kpd ?? -1) - (a.kpd ?? -1) || b.points - a.points || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
   const totals = {
     repairsCreated: months.reduce((sum, item) => sum + item.repairsCreated, 0),
     repairsClosed: months.reduce((sum, item) => sum + item.repairsClosed, 0),
@@ -12181,7 +12209,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <div class="annual-role-card ${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <div><strong>${escapeHtml(worker.name)}</strong><span>${escapeHtml(worker.roleLabel)}</span></div>
       <b>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</b>
-      <small>Закрыто: ${worker.closed} · Повторы, снижающие КПД: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
+      <small>Баллы: ${worker.points} · Закрыто: ${worker.closed} · Повторы, снижающие КПД: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
     </div>
   `).join("");
   const workerRows = stats.workers.map((worker, index) => `
@@ -12189,6 +12217,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <td>${index + 1}</td>
       <td><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.roleLabel)}</small></td>
       <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</td>
+      <td><strong>${worker.points}</strong></td>
       <td>${worker.closed}</td>
       <td>${worker.installs}</td>
       <td>${worker.repeatFailures}</td>
@@ -12232,7 +12261,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <section class="director-annual-card">
       <div class="director-section-head">
         <div><span>📈</span><h2>Годовая статистика ${stats.year}</h2></div>
-        <small>КПД = (закрыто − повторы) / (закрыто + просрочено)</small>
+        <small>Баллы и КПД используют одну цепочку принятых работ; КПД = (закрыто − повторы) / (закрыто + просрочено)</small>
       </div>
       <div class="annual-summary-grid">
         <div><strong>${stats.totals.repairsCreated}</strong><span>ремонтов/замечаний создано</span></div>
@@ -12243,8 +12272,8 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте электромехаников в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
-          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Повторы (−КПД)</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
-          <tbody>${workerRows || `<tr><td colspan="9">Пока нет данных по электромеханикам</td></tr>`}</tbody>
+          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Баллы</th><th>Закрыто</th><th>Установки</th><th>Повторы (−КПД)</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
+          <tbody>${workerRows || `<tr><td colspan="10">Пока нет данных по электромеханикам</td></tr>`}</tbody>
         </table>
       </div>
       <div class="annual-trend-note">
@@ -12299,6 +12328,22 @@ function workerRatingKey(role, name) {
 
 function isWorkerRatingRole(role) {
   return isResolutionExecutorRole(role) && !new Set(["forkliftDriver", "welder", "turner"]).has(canonicalWorkerRole(role));
+}
+
+function workerRatingParticipants(event = {}, usersByResolutionKey = null) {
+  const users = usersByResolutionKey || new Map(loadUsers().map(user => [resolutionUserKey(user), user]));
+  const saved = Array.isArray(event.ratingParticipants) ? event.ratingParticipants : [];
+  const candidates = saved.length ? saved : [{ role: event.resolvedByRole, name: event.resolvedByName }];
+  const normalized = candidates
+    .map(participant => users.get(participant.key || resolutionUserKey(participant)) || participant)
+    .filter(participant => isWorkerRatingRole(participant?.role) && String(participant?.name || "").trim());
+  return [...new Map(normalized.map(participant => [workerRatingKey(participant.role, participant.name), participant])).values()];
+}
+
+function workerRatingCompletionAt(event = {}) {
+  if (Object.prototype.hasOwnProperty.call(event, "ratingCompletedAt")) return String(event.ratingCompletedAt || "");
+  if (event.type === "remark") return String(event.confirmedAt || "");
+  return event.ratingAccepted === false ? "" : String(event.resolvedAt || "");
 }
 
 function workerRatingExcluded(role, name) {
@@ -12406,24 +12451,12 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
       });
     }
   };
-  const participantList = event => {
-    const list = Array.isArray(event.ratingParticipants) ? event.ratingParticipants : [];
-    const normalized = list
-      .map(participant => {
-        const registered = usersByResolutionKey.get(participant.key || resolutionUserKey(participant));
-        return registered || participant;
-      })
-      .filter(participant => isWorkerRatingRole(participant?.role) && String(participant?.name || "").trim());
-    if (normalized.length) return [...new Map(normalized.map(participant => [workerRatingKey(participant.role, participant.name), participant])).values()];
-    return [{ role: event.resolvedByRole, name: event.resolvedByName }];
-  };
-
   annualRepairEvents(year).forEach(event => {
     if (event.type === "remark") {
       // A warning changes the rating only after a supervisor has accepted it.
       if (event.confirmedAt && inPeriod(event.confirmedAt)) {
         const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.remarkPress : WORK_RATING_POINTS.remark;
-        participantList(event).forEach(participant => {
+        workerRatingParticipants(event, usersByResolutionKey).forEach(participant => {
           add(participant.role, participant.name, value, {
             date: event.confirmedAt,
             type: "remark",
@@ -12462,10 +12495,11 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
       });
       return;
     }
-    if (event.type === "breakdown" && event.resolvedAt && inPeriod(event.resolvedAt)) {
+    if (event.type === "breakdown" && inPeriod(workerRatingCompletionAt(event))) {
       const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.breakdownPress : WORK_RATING_POINTS.breakdown;
-      participantList(event).forEach(participant => add(participant.role, participant.name, value, {
-        date: event.resolvedAt,
+      const completedAt = workerRatingCompletionAt(event);
+      workerRatingParticipants(event, usersByResolutionKey).forEach(participant => add(participant.role, participant.name, value, {
+        date: completedAt,
         type: "breakdown",
         title: "Устранён аварийный простой",
         equipment: event.equipment,
@@ -12631,6 +12665,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     return parsed?.year === year && parsed.month === monthIndex;
   };
   const workers = new Map();
+  const usersByResolutionKey = new Map(loadUsers().map(user => [resolutionUserKey(user), user]));
   const ensureWorker = (role, name) => {
     if (!isWorkerRatingRole(role)) return null;
     const cleanName = String(name || "").trim() || requestRoleLabel(role);
@@ -12650,29 +12685,32 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
   const overdueRemarkKeys = new Set();
   repairEvents.forEach(event => {
     const created = dateYearMonth(event.createdAt || "");
-    const resolved = dateYearMonth(event.resolvedAt || "");
+    const completedAt = workerRatingCompletionAt(event);
     if (event.type === "remark" && created?.year === year && created.month === monthIndex) {
       const author = ensureWorker(event.authorRole, event.authorName);
       if (author) author.remarksFound += 1;
     }
-    let countResolution = Boolean(event.resolvedAt && resolved?.year === year && resolved.month === monthIndex);
+    let countResolution = Boolean(completedAt && inSelectedMonth(completedAt));
     if (event.type === "remark" && event.resolutionKey) {
       if (resolvedRemarkKeys.has(event.resolutionKey)) countResolution = false;
       else if (countResolution) resolvedRemarkKeys.add(event.resolutionKey);
     }
-    const worker = ensureWorker(event.resolvedByRole, event.resolvedByName);
-    if (worker && countResolution) {
-      worker.closed += 1;
-      if (event.type === "breakdown") worker.breakdownClosed += 1;
-      if (event.type === "install") worker.installs += 1;
-      if (event.type === "remark") {
-        worker.plannedDone += 1;
-        worker.remarksResolved += 1;
-      }
-      if (event.durationMs > 0) {
-        worker.reactionDurations.push(event.durationMs);
-        if (event.type !== "install") worker.repairDurations.push(event.durationMs);
-      }
+    if (countResolution) {
+      workerRatingParticipants(event, usersByResolutionKey).forEach(participant => {
+        const worker = ensureWorker(participant.role, participant.name);
+        if (!worker) return;
+        worker.closed += 1;
+        if (event.type === "breakdown") worker.breakdownClosed += 1;
+        if (event.type === "install") worker.installs += 1;
+        if (event.type === "remark") {
+          worker.plannedDone += 1;
+          worker.remarksResolved += 1;
+        }
+        if (event.durationMs > 0) {
+          worker.reactionDurations.push(event.durationMs);
+          if (event.type !== "install") worker.repairDurations.push(event.durationMs);
+        }
+      });
     }
     if (event.open && inSelectedMonth(event.createdAt) && isWorkerRatingRole(event.authorRole)) {
       if (event.type === "remark" && event.resolutionKey) {
@@ -12692,7 +12730,8 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       if (workers.has(key)) workers.get(key).repeatFailures = count;
     });
 
-  Object.values(state.checks || {}).forEach(rec => {
+  const countedQrShifts = new Set();
+  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const shifts = { ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) };
     Object.values(shifts).forEach(shift => {
       if (!shift?.done) return;
@@ -12700,8 +12739,12 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       if (at?.year !== year || at.month !== monthIndex) return;
       const worker = ensureWorker(shift.byRole, shift.byName);
       if (!worker) return;
-      worker.qrDone += 1;
+      const date = String(recordKey || "").split(":")[2] || String(shift.at || "").slice(0, 10);
       const shiftKey = shift.shift === "night" ? "night" : "day";
+      const awardKey = `${worker.key}:${date}:${shiftKey}`;
+      if (countedQrShifts.has(awardKey)) return;
+      countedQrShifts.add(awardKey);
+      worker.qrDone += 1;
       worker.shifts[shiftKey] += 1;
     });
   });
@@ -12715,7 +12758,6 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       ? worker.repairDurations.reduce((sum, value) => sum + value, 0) / worker.repairDurations.length
       : 0;
     const workTotal = worker.closed + worker.qrDone;
-    const planBase = worker.closed + worker.overdueOpen;
     const planPercent = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures) ?? 0;
     const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const pprPercent = workTotal ? Math.round((worker.plannedDone + worker.qrDone) / workTotal * 100) : 0;
@@ -12770,7 +12812,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
   const winnerFull = winner ? stats.workers.find(worker => sameWorkerRole(worker.role, winner.role) && worker.name === winner.name) : null;
   const winnerName = winner ? winner.name : "Пока нет победителя";
   const winnerRole = winner ? winner.roleLabel : "Нет закрытых работ";
-  const winnerKpi = winnerFull ? ` · КПД ${winnerFull.efficiency}%` : "";
+  const winnerKpi = winnerFull ? ` · КПД ${winnerFull.planPercent}%` : "";
   const bestMechanic = stats.bestMechanic ? `${stats.bestMechanic.name} · ${stats.bestMechanic.points} баллов` : "нет данных";
   const maxPoints = Math.max(...stats.workers.map(worker => worker.points), 1);
   const graph = stats.workers.map(worker => {
@@ -12794,7 +12836,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div class="worker-place">${worker.place === 1 ? "🏆" : worker.place}</div>
       <div class="worker-main">
         <strong>${escapeHtml(worker.name)}</strong>
-        <span>${escapeHtml(worker.roleLabel)} · ${worker.points} баллов · КПД ${worker.efficiency}%</span>
+        <span>${escapeHtml(worker.roleLabel)} · ${worker.points} баллов · КПД ${worker.planPercent}%</span>
         <div class="worker-achievements">
           ${worker.achievements.length ? worker.achievements.map(item => `<b>${escapeHtml(item)}</b>`).join("") : "<small>Достижения появятся после выполненных работ</small>"}
         </div>

@@ -198,10 +198,14 @@
     groups.forEach(group => {
       if (group.length < 2) return;
       group.forEach(event => {
-        if (!event.resolvedAt || !inPeriod(event.resolvedAt)) return;
-        const participants = String(event.resolvedByName || "").trim()
-          ? [{ role: event.resolvedByRole, name: event.resolvedByName }]
-          : (Array.isArray(event.ratingParticipants) ? event.ratingParticipants : []);
+        const completedAt = Object.prototype.hasOwnProperty.call(event, "ratingCompletedAt")
+          ? event.ratingCompletedAt
+          : event.resolvedAt;
+        if (!completedAt || event.ratingAccepted === false || !inPeriod(completedAt)) return;
+        const savedParticipants = Array.isArray(event.ratingParticipants) ? event.ratingParticipants : [];
+        const participants = savedParticipants.length
+          ? savedParticipants
+          : [{ role: event.resolvedByRole, name: event.resolvedByName }];
         const seen = new Set();
         participants.forEach(person => {
           if (!eligibleRole(person?.role) || !String(person?.name || "").trim()) return;

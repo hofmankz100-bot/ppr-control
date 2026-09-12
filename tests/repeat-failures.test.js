@@ -78,14 +78,18 @@ test("every completed repair shown in a manual repeat group reduces its executor
     event({ repeatFailureCode: "5", createdAt: "2026-09-01", resolvedAt: "2026-09-01", resolvedByRole: "mechanic", resolvedByName: "Иван" }),
     event({ repeatFailureCode: "5", createdAt: "2026-09-03", resolvedAt: "2026-09-03", resolvedByRole: "electrician", resolvedByName: "Пётр" }),
     event({ repeatFailureCode: "5", createdAt: "2026-09-05", resolvedAt: "2026-09-05", resolvedByRole: "mechanic", resolvedByName: "Иван" }),
-    event({ repeatFailureCode: "6", createdAt: "2026-09-01", resolvedAt: "2026-09-01", ratingParticipants: [{ role: "mechanic", name: "Иван" }, { role: "mechanic", name: "Иван" }] }),
+    event({ repeatFailureCode: "6", createdAt: "2026-09-01", resolvedAt: "2026-09-01", resolvedByRole: "mechanic", resolvedByName: "Ведущий", ratingParticipants: [{ role: "mechanic", name: "Иван" }, { role: "mechanic", name: "Иван" }] }),
     event({ repeatFailureCode: "6", createdAt: "2026-09-02" }),
     event({ repeatFailureCode: "7", createdAt: "2026-09-01", resolvedAt: "2026-09-01", resolvedByRole: "operator", resolvedByName: "Оператор" }),
-    event({ repeatFailureCode: "7", createdAt: "2026-09-02" })
+    event({ repeatFailureCode: "7", createdAt: "2026-09-02" }),
+    event({ repeatFailureCode: "8", createdAt: "2026-09-01", resolvedAt: "2026-09-01", ratingCompletedAt: "", resolvedByRole: "mechanic", resolvedByName: "Ожидает" }),
+    event({ repeatFailureCode: "8", createdAt: "2026-09-02" })
   ];
   const counts = employeeRepeatPenaltyCounts(marked, (role, name) => `${role}:${name}`, role => ["mechanic", "electrician"].includes(role), date => date.startsWith("2026-09"));
   assert.equal(counts.get("mechanic:Иван"), 3);
   assert.equal(counts.get("electrician:Пётр"), 1);
+  assert.equal(counts.has("mechanic:Ведущий"), false);
+  assert.equal(counts.has("mechanic:Ожидает"), false);
   assert.equal(counts.has("operator:Оператор"), false);
 });
 

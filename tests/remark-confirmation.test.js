@@ -1587,7 +1587,8 @@ test("collaborative resolution UI batches checked participants and shows every r
   assert.match(appSource, /current\.aggregateRepairEquipmentId = 0/);
   assert.match(appSource, /event\?\.action === "confirmed" && event\.confirmerKey && event\.targetKey/);
   assert.match(appSource, /\.filter\(participant => isResolutionExecutorRole\(participant\.role\)\)/);
-  assert.match(appSource, /ratingParticipants: completedResolutionParticipants\(entry\)/);
+  assert.match(appSource, /const ratingParticipants = completedResolutionParticipants\(entry\)/);
+  assert.match(appSource, /ratingParticipants,/);
 });
 
 test("an executor can submit work immediately and is joined automatically", () => {

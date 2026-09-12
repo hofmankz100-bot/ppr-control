@@ -173,7 +173,8 @@ test("historical annual downtime does not disappear when equipment or its node i
   const h = harness(["operationalPauseApplies", "activeOperationalPause", "operationalControlEnabled", "operationalItemEnabled",
     "directorAnnualEmptyMonths", "dateYearMonth", "monthRange", "downtimeOverlapMs", "downtimeOverlapMsForMonth", "directorAnnualStats"], {
     todayISO: () => "2026-09-08", equipmentById: () => equipment, allEquipment: () => [equipment], downtimes: () => [item],
-    directorMonthName: index => String(index), annualRepairEvents: () => [], walkShiftKeysDueForDate: () => [], loadUsers: () => []
+    directorMonthName: index => String(index), annualRepairEvents: () => [], walkShiftKeysDueForDate: () => [], loadUsers: () => [],
+    resolutionUserKey: () => "", isWorkerRatingRole: () => false, workerRatingPointMap: () => new Map()
   });
   const baseline = h.directorAnnualStats(2026).months[7];
   assert.equal(baseline.stops, 1); assert.equal(baseline.downtimeMs, 3600000);
@@ -227,7 +228,7 @@ test("rating default/reopen/month-switch and empty worker/engineer selectors use
     createdAt: at, resolvedByRole: "mechanic", resolvedByName: "Worker", durationMs: 3600000, text: `event-${index}` }));
   const state = { checks: { "1:0:2026-09-01": { to: { walkShifts: { day: { done: true, at: "2026-08-31T20:00:00Z", byRole: "mechanic", byName: "Worker" } } } } } };
   const monthControl = () => ({ value: "", addEventListener(type, fn) { this[type] = fn; } });
-  const h = harness(["dateYearMonth", "parseMonthKey", "emptyWorkerRating", "isPressRatingEquipment", "workerRatingPointMap", "workerRatingStats", "renderWorkerRating"], {
+  const h = harness(["dateYearMonth", "parseMonthKey", "emptyWorkerRating", "isPressRatingEquipment", "workerRatingParticipants", "workerRatingCompletionAt", "workerRatingPointMap", "workerRatingStats", "renderWorkerRating"], {
     Date: FactoryNow, current: {}, state, annualRepairEvents: () => events, loadUsers: () => [worker],
     canonicalWorkerRole: role => role, requestRoleLabel: role => role, workerRatingKey: (role, name) => `${role}:${name}`,
     workerRatingExcluded: () => false, isWorkerRatingRole: role => role === "mechanic", isElectromechanicRole: role => role === "mechanic",
@@ -261,4 +262,54 @@ test("rating default/reopen/month-switch and empty worker/engineer selectors use
   h.ui.engineerReportMonth.value = "2026-08"; h.ui.engineerReportMonth.change(); assert.equal(h.current.engineerReportMonth, "2026-08");
   h.ui.engineerReportMonth.value = ""; h.ui.engineerReportMonth.change(); assert.equal(h.current.engineerReportMonth, "2026-09");
   assert.equal(h.ui.engineerReportMonth.value, "2026-09");
+});
+
+test("accepted work, KPI counters and points credit the same participants in the confirmation month", () => {
+  const workers = [
+    { id: "lead", role: "mechanic", name: "Lead" },
+    { id: "partner", role: "mechanic", name: "Partner" }
+  ];
+  const event = {
+    type: "remark",
+    resolutionKey: "remark:1",
+    createdAt: "2026-08-29T08:00:00Z",
+    resolvedAt: "2026-08-31T08:00:00Z",
+    confirmedAt: "2026-09-01T08:00:00Z",
+    resolvedByRole: "mechanic",
+    resolvedByName: "Lead",
+    ratingParticipants: workers,
+    durationMs: 3600000
+  };
+  const breakdown = {
+    ...event,
+    type: "breakdown",
+    resolutionKey: "",
+    ratingCompletedAt: event.confirmedAt
+  };
+  const shift = { done: true, at: "2026-09-01T09:00:00Z", byRole: "mechanic", byName: "Lead", shift: "day" };
+  const state = { checks: {
+    "1:0:2026-09-01": { to: { walkShifts: { day: shift } } },
+    "2:0:2026-09-01": { to: { walkShifts: { day: shift } } }
+  } };
+  const h = harness(["dateYearMonth", "parseMonthKey", "emptyWorkerRating", "isPressRatingEquipment", "workerRatingParticipants", "workerRatingCompletionAt", "workerRatingPointMap", "workerRatingStats"], {
+    current: {}, state, annualRepairEvents: () => [event, breakdown], loadUsers: () => workers,
+    canonicalWorkerRole: role => role, requestRoleLabel: role => role,
+    workerRatingKey: (role, name) => `${role}:${name}`,
+    workerRatingExcluded: () => false, isWorkerRatingRole: role => role === "mechanic",
+    isElectromechanicRole: role => role === "mechanic", sameWorkerRole: (left, right) => left === right,
+    resolutionUserKey: item => item.id
+  });
+  const august = h.workerRatingStats("2026-08");
+  assert.equal(august.totals.closed, 0);
+  assert.equal(august.totals.points, 0);
+  const september = h.workerRatingStats("2026-09");
+  assert.equal(september.totals.closed, 4);
+  assert.equal(september.totals.remarksResolved, 2);
+  assert.equal(september.totals.breakdownClosed, 2);
+  assert.equal(september.totals.qrDone, 1, "one shared shift is counted once even when saved on two nodes");
+  assert.equal(september.totals.points, 63);
+  assert.deepEqual(JSON.parse(JSON.stringify(september.workers.map(worker => [worker.name, worker.closed, worker.points]))), [
+    ["Lead", 2, 33],
+    ["Partner", 2, 30]
+  ]);
 });
