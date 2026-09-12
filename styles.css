@@ -466,7 +466,6 @@ button:not(.icon-button):not(.director-detail-close) {
 }
 
 button[data-gas-print],
-button[data-print-compressor-sheet],
 button[data-print-aggregate-journal]{
   background: var(--nav);
   color: #fff;

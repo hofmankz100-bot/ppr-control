@@ -68,5 +68,6 @@ test("client modules expose only their active public methods", () => {
 test("legacy generic tab styles stay removed", () => {
   const styles = source("styles.css");
   assert.doesNotMatch(styles, /\.tabs?\b/);
+  assert.doesNotMatch(styles, /data-print-compressor-sheet/);
   assert.match(styles, /\.segmented\s*\{/);
 });
