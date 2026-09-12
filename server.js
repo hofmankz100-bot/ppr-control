@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v849"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v850"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -1349,7 +1349,7 @@ function adminActivityFeed(db, adminUser) {
   return { readAt, unreadCount: items.filter(item => item.unread).length, items };
 }
 
-function monitorRequest(req, res) {
+function monitorRequest(res) {
   const started = Date.now();
   runtimeMonitor.requests += 1;
   res.once("finish", () => {
@@ -2568,7 +2568,7 @@ function remarkConfirmationRuleServer(db, remark = {}, equipmentArea = "") {
   return { mode: "engineer", role: "engineer", area, users: mergeUsers(users.filter(user => engineerPermissionRoleServer(user) === "engineer"), globalUsers), globalUsers };
 }
 
-function actorCanConfirmRemarkServer(actor, remark, rule) {
+function actorCanConfirmRemarkServer(actor, rule) {
   if (permissionBaseRoleServer(actor?.role) === "editor") return true;
   if ((rule.globalUsers || []).some(user => resolutionUserKeyServer(user) === resolutionUserKeyServer(actor))) return true;
   const role = engineerPermissionRoleServer(actor);
@@ -2757,7 +2757,7 @@ function openRemarkCountForSubscription(db, subscriptionEntry) {
       const subscriptionActor = sanitizeResolutionParticipant(subscriptionEntry?.profile || {});
       if (entry.resolutionPendingConfirmation) {
         const confirmationRule = remarkConfirmationRuleServer(db, entry, entry.confirmationArea || "");
-        if (actorCanConfirmRemarkServer(subscriptionActor, entry, confirmationRule)) count += 1;
+        if (actorCanConfirmRemarkServer(subscriptionActor, confirmationRule)) count += 1;
         return;
       }
       if (entry.resolutionReturnedAt && entry.resolutionSubmittedByKey) {
@@ -6871,7 +6871,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (action === "confirm") {
         const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
         const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
-        if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
+        if (!actorCanConfirmRemarkServer(actor, confirmationRule)) return { error: "remark_confirmation_forbidden" };
         const submittedAt = latestRemarkSubmissionAtServer(remark);
         if (!submittedAt) return { error: "remark_resolution_time_missing" };
         const createdMs = Date.parse(remark.at || "");
@@ -6920,7 +6920,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (action === "return") {
         const equipmentArea = remarkEquipmentAreaServer(db, recordKey, body.equipmentArea);
         const confirmationRule = remarkConfirmationRuleServer(db, remark, equipmentArea);
-        if (!actorCanConfirmRemarkServer(actor, remark, confirmationRule)) return { error: "remark_confirmation_forbidden" };
+        if (!actorCanConfirmRemarkServer(actor, confirmationRule)) return { error: "remark_confirmation_forbidden" };
         const reason = String(body.reason || "").trim().slice(0, 2000);
         if (!reason) return { error: "remark_return_reason_required" };
         remark.resolutionPendingConfirmation = false;
@@ -7370,7 +7370,7 @@ async function handleApiTransaction(req, res, pathname, url) {
 const serveStatic = createStaticHandler({ root, contentTypes, securityHeaders, zlib });
 
 const server = http.createServer(async (req, res) => {
-  monitorRequest(req, res);
+  monitorRequest(res);
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
@@ -7381,7 +7381,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const qrServer = http.createServer(async (req, res) => {
-  monitorRequest(req, res);
+  monitorRequest(res);
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;
@@ -7410,7 +7410,7 @@ function createHttpsServer() {
     }
     if (!options) return null;
     return https.createServer(options, async (req, res) => {
-      monitorRequest(req, res);
+      monitorRequest(res);
       try {
         const url = new URL(req.url || "/", `https://${req.headers.host || "localhost"}`);
         if (url.pathname.startsWith("/api/") && await handleApi(req, res, url.pathname, url)) return;

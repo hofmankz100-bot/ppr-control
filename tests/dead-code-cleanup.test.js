@@ -14,6 +14,8 @@ test("retired client and server implementations stay removed", () => {
   assert.doesNotMatch(source("server.js"), /function mergeUsers\b/);
   assert.doesNotMatch(source("app.js"), /const (?:payload = nodeQrPayload|sheetIndex = compressorJournalSheetIndex|completed = rows\.filter\(row => row\.entry\)\.length);/);
   assert.doesNotMatch(source("server.js"), /const actor = sanitizeResolutionParticipant\(profile\);/);
+  assert.doesNotMatch(source("app.js"), /function (?:eligibleResolutionUsers|canEditComment|plannedStatus|gasJournalBaseDate)\([^)]|function remarkCardHtml\(eq,\s*item|\.map\(\(groupRows,\s*sheetIndex\)/);
+  assert.doesNotMatch(source("server.js"), /function monitorRequest\(req|function actorCanConfirmRemarkServer\(actor,\s*remark/);
 });
 
 test("orphaned legacy style families stay removed", () => {

@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v849";
+const APP_VERSION = "v850";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -5825,7 +5825,7 @@ function canManageResolutionParticipants(item) {
     || Boolean(item?.resolutionLeadKey && item.resolutionLeadKey === actor.key);
 }
 
-function eligibleResolutionUsers(eq) {
+function eligibleResolutionUsers() {
   const actor = resolutionActor();
   const users = [...loadUsers(), actor]
     .filter(user => user && user.approved !== false && user.pendingApproval !== true && isResolutionExecutorRole(user.role));
@@ -6052,7 +6052,7 @@ async function askInstalledPartDetails() {
   });
 }
 
-function canEditComment(item) {
+function canEditComment() {
   if (!canEditChecklist()) return false;
   if (profile?.role === "editor" || profile?.role === "director") return true;
   return true;
@@ -6203,7 +6203,7 @@ function commentResolutionText(item) {
 }
 
 
-function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
+function remarkCardHtml(eq, nodeIndex, entry, entryIndex) {
   const remarkId = stableRemarkId(entry);
   const author = commentEntryAuthor(entry);
   const resolved = Boolean(entry.resolved);
@@ -6213,7 +6213,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
   const participantKeys = new Set(participants.map(participant => participant.key));
   const currentParticipant = isResolutionParticipant(entry);
   const canManageParticipants = canManageResolutionParticipants(entry);
-  const participantOptions = eligibleResolutionUsers(eq).filter(user => !participantKeys.has(user.key));
+  const participantOptions = eligibleResolutionUsers().filter(user => !participantKeys.has(user.key));
   const resolutionUpdates = (Array.isArray(entry.resolutionUpdates) ? entry.resolutionUpdates : []).slice().reverse();
   const resolutionEvents = (Array.isArray(entry.resolutionEvents) ? entry.resolutionEvents : []).slice().reverse();
   const resolutionStartedText = entry.resolutionStartedAt ? `В работе с ${dateTimeHuman(entry.resolutionStartedAt)}` : "Нажмите «Начать устранение»";
@@ -7235,7 +7235,7 @@ function statusForRecord(rec, date = current.date) {
   return "";
 }
 
-function plannedStatus(day) {
+function plannedStatus() {
   return "ТО";
 }
 
@@ -7436,7 +7436,7 @@ function openAllRemarkCards() {
 
 function askAdminRemarkClose(withScore = false) {
   if (!canCloseRemarksForEmployees()) return Promise.resolve(null);
-  const workers = eligibleResolutionUsers(null);
+  const workers = eligibleResolutionUsers();
   return new Promise(resolve => {
     const overlay = document.createElement("div");
     overlay.className = "send-kind-overlay";
@@ -8540,7 +8540,7 @@ function gasJournalKey(section, date) {
   return `${section}::${date}`;
 }
 
-function gasJournalBaseDate(section) {
+function gasJournalBaseDate() {
   return `${selectedJournalMonth()}-01`;
 }
 
@@ -8567,7 +8567,7 @@ function addDaysISO(dateISO, days) {
 }
 
 function gasJournalSheetDates(section) {
-  const base = gasJournalBaseDate(section);
+  const base = gasJournalBaseDate();
   const sheetIndex = gasJournalSheetIndex(section);
   const daysPerSheet = gasJournalDaysPerSheet(section);
   const startOffset = sheetIndex * daysPerSheet;
@@ -9897,7 +9897,7 @@ function renderSchedule() {
       const rec = getRecord(current.equipmentId, nodeIndex, date);
       const completion = nodeWalkCompletion(rec, date);
       const factStatus = statusForRecord(rec, date);
-      const plan = plannedStatus(day);
+      const plan = plannedStatus();
       const status = factStatus || plan;
       const open = hasOpenCommentRecord(rec);
       const activeNodeDowntime = activeDowntime(current.equipmentId, nodeIndex);
@@ -10114,7 +10114,7 @@ function renderNodeWalkthrough(eq) {
     if (selectedNodeIndex !== index) return;
     const reminderItems = reminderItemsForNode(eq.id, index, nodeName);
     const reminderMeta = equipmentOverride(eq.id).reminderMeta?.[index] || {};
-    const canEditThisComment = canEditComment(item);
+    const canEditThisComment = canEditComment();
     const ownerText = commentOwnerText(item);
     const allCommentEntries = visibleCommentEntries(item, !sameCommentAuthor(item));
     const remarkEntries = ensureRemarkEntries(item).slice().reverse();
@@ -10125,7 +10125,7 @@ function renderNodeWalkthrough(eq) {
     const remarkCardsBlock = remarkEntries.length ? `
       <div class="remark-cards" data-node-first-comment="${index}" tabindex="-1">
         <div class="remark-cards-title"><strong>Все замечания</strong><span>Открыто: ${remarkEntries.filter(entry => !entry.resolved).length}</span></div>
-        ${remarkEntries.map((entry, entryIndex) => remarkCardHtml(eq, item, index, entry, entryIndex)).join("")}
+        ${remarkEntries.map((entry, entryIndex) => remarkCardHtml(eq, index, entry, entryIndex)).join("")}
       </div>
     ` : "";
     const downtimeCommentHistory = downtimeCommentEntries.length ? `
@@ -10251,7 +10251,7 @@ function renderNodeWalkthrough(eq) {
       }));
       addParticipantsButton?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
         const selectedKeys = participantChecks.filter(input => input.checked).map(input => input.value);
-        const participantsToAdd = eligibleResolutionUsers(eq).filter(user => selectedKeys.includes(user.key));
+        const participantsToAdd = eligibleResolutionUsers().filter(user => selectedKeys.includes(user.key));
         if (!participantsToAdd.length) return;
         await publishRemarkCollaborationAction(eq.id, index, current.date, "add", { remarkId, participants: participantsToAdd });
         renderNodeWalkthrough(equipmentById(eq.id));
@@ -10332,7 +10332,7 @@ function renderNodeWalkthrough(eq) {
       }, "Удаляем..."));
     });
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
-      if (!canEditComment(item)) return;
+      if (!canEditComment()) return;
       const liveItem = record(eq.id, index, current.date).to;
       liveItem.nodeDraftText = event.target.value;
       liveItem.updatedAt = new Date().toISOString();
@@ -10347,7 +10347,7 @@ function renderNodeWalkthrough(eq) {
     const submitNodeText = async (button, sendChoice) => {
       await nodePhotoProcessing;
       const liveItem = record(eq.id, index, current.date).to;
-      if (!canEditComment(liveItem)) return;
+      if (!canEditComment()) return;
       const text = row.querySelector("[data-node-comment]").value;
       if (!text.trim()) {
         const commentBox = row.querySelector("[data-node-comment]");
@@ -10395,7 +10395,7 @@ function renderNodeWalkthrough(eq) {
     });
     row.querySelector("[data-node-comment-photo]").addEventListener("change", event => {
       const liveItem = record(eq.id, index, current.date).to;
-      if (!canEditComment(liveItem)) return;
+      if (!canEditComment()) return;
       const file = event.target.files?.[0];
       if (!file) return;
       liveItem.nodeDraftText = row.querySelector("[data-node-comment]")?.value || liveItem.nodeDraftText || "";
@@ -10426,7 +10426,7 @@ function renderNodeWalkthrough(eq) {
         if (!canEditChecklist()) return;
         const type = event.currentTarget.dataset.clearNodePhoto;
         const liveItem = record(eq.id, index, current.date).to;
-        if (type === "comment" && !canEditComment(liveItem)) return;
+        if (type === "comment" && !canEditComment()) return;
         if (type === "comment") liveItem.commentPhoto = "";
         saveState();
         renderNodeWalkthrough(eq);
@@ -14616,7 +14616,7 @@ function renderCustomEquipmentJournal(eq) {
   if (!schemaGroups.size) schemaGroups.set(`current:${currentSchema.version || 1}`, []);
   ui.aggregateJournalTitle.textContent = currentSchema.title || `Журнал: ${eq.name}`;
   ui.aggregateJournalMeta.textContent = `${rows.length} записей за ${journalMonthLabel()}. Структура каждой исторической записи сохраняется в том виде, в котором она была заполнена.`;
-  ui.aggregateJournalList.innerHTML = `<div class="aggregate-print-actions">${journalMonthControlHtml()}<button type="button" data-print-aggregate-journal>${printActionLabel("Печать журнала", "PDF журнала")}</button><button type="button" class="secondary" data-edit-current-journal>Настроить журнал</button></div>${[...schemaGroups.values()].map((groupRows, sheetIndex) => {
+  ui.aggregateJournalList.innerHTML = `<div class="aggregate-print-actions">${journalMonthControlHtml()}<button type="button" data-print-aggregate-journal>${printActionLabel("Печать журнала", "PDF журнала")}</button><button type="button" class="secondary" data-edit-current-journal>Настроить журнал</button></div>${[...schemaGroups.values()].map(groupRows => {
     const snapshot = groupRows[0]?.schema || currentSchema;
     const columns = snapshot.columns || [];
     return `<div class="aggregate-journal-sheet custom-equipment-journal-sheet"><div class="aggregate-sheet-head"><strong>${escapeHtml(snapshot.title || currentSchema.title)}</strong><span>${escapeHtml(journalMonthLabel())} · форма ${snapshot.schemaVersion || snapshot.version || 1}</span></div><div class="aggregate-journal-table-wrap"><table class="aggregate-journal-table"><thead><tr><th>№</th>${columns.map(column => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${groupRows.length ? groupRows.map((row, rowIndex) => `<tr><td>${rowIndex + 1}</td>${columns.map(column => { const value = row.schema.values?.[column.id]; return `<td>${value === true ? "✓" : value === false ? "—" : escapeHtml(String(value ?? ""))}</td>`; }).join("")}</tr>`).join("") : `<tr><td colspan="${columns.length + 1}">За выбранный месяц записей пока нет</td></tr>`}</tbody></table></div></div>`;
@@ -14653,7 +14653,7 @@ function renderAggregateJournal() {
   const openCount = items.filter(item => !item.resolved).length;
   const repairMode = profile?.role === "editor"
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
-  const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
+  const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers() : [];
   const repeatFailureGroupingEnabled = canManageRepeatFailureGroups();
   const repeatFailureEvents = repeatFailureGroupingEnabled ? annualRepairEvents(null) : [];
   const restoreJournalPosition = PPRModules.aggregateJournalView.capturePosition(ui.aggregateJournalList, JSON.stringify([selectedEquipment?.id, selectedArea, selectedJournalMonth()]));
