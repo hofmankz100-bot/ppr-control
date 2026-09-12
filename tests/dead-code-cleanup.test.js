@@ -16,6 +16,7 @@ test("retired client and server implementations stay removed", () => {
 test("orphaned legacy style families stay removed", () => {
   const styles = source("styles.css");
   assert.doesNotMatch(styles, /\.(?:annual-ppr-act-overlay|annual-ppr-work-list|director-messages|director-send|director-memo-form|director-reply|forklift-driver-home|admin-form-builder|admin-role-label-editor|director-dashboard-grid|director-control-grid|engineer-service-form|excel-table)\b/);
+  assert.doesNotMatch(styles, /@keyframes\s+(?:directorDowntimePulse|commentBlink|requestBlink|compressorJournalBlink|overdueLineBlink|overdueBlink|gasJournalBlink)\b|--(?:space-sm|space-md|status-color|status-green|status-yellow|status-red)\b|shift\s+inspections/);
 });
 
 test("active PPR and compatibility paths remain intact", () => {
