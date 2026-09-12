@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v828-repeat-repairs-kpd";
+const APP_VERSION = "v829-ppr-groups";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11722,9 +11722,8 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const locked = Boolean(sheet.approvedAt);
   const canPlan = canPlanPprSheet() && !locked && Boolean(draft);
   const canMark = canMarkPprSheet() && !locked && !draft;
-  const scheduleNames = [...new Set(scheduledItems.map(item =>
-    [item.equipment, item.node].filter(Boolean).join(" — ")
-  ).filter(Boolean))];
+  const scheduleGroups = window.PprPlanEditor.groupByTarget(scheduledItems);
+  const scheduleHtml = scheduleGroups.map(group => `<section><strong>${escapeHtml(group.area || "Без цеха")}</strong><span>${escapeHtml([group.equipment, group.node].filter(Boolean).join(" — "))}</span></section>`).join("");
   const statusText = completion.complete
     ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
     : completion.awaitingApproval
@@ -11733,19 +11732,22 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   let previousPprArea = null;
-  const rowHtml = rows.map((row, index) => {
-    const scheduled = scheduledItems.length === 1 ? scheduledItems[0] : null;
-    const editable = canPlan && !window.PprPlanEditor.started(row);
-    const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
-    const equipmentName = row.equipment || scheduled?.equipment || "";
-    const nodeName = row.node || scheduled?.node || "";
-    const areaName = row.area || scheduled?.area || "";
-    const areaHeading = areaName && areaName !== previousPprArea
-      ? `<tr class="ppr-sheet-area-row"><th colspan="4">${escapeHtml(areaName)}</th></tr>`
+  let pprRowNumber = 0;
+  const rowHtml = window.PprPlanEditor.groupByTarget(rows, scheduledItems.length === 1 ? scheduledItems[0] : null).map(group => {
+    const areaHeading = group.area && group.area !== previousPprArea
+      ? `<tr class="ppr-sheet-area-row"><th colspan="4">${escapeHtml(group.area)}</th></tr>`
       : "";
-    previousPprArea = areaName;
-    return `
-    ${areaHeading}<tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
+    previousPprArea = group.area;
+    const targetHeading = `<tr class="ppr-sheet-equipment-row${group.rows.some(({ row }) => String(row.work || "").trim()) ? "" : " ppr-empty-target"}"><th colspan="4">${group.equipment || group.node ? `<strong>${escapeHtml(group.equipment || "Оборудование")}</strong>${group.node ? `<span>Узел: ${escapeHtml(group.node)}</span>` : ""}` : "Дополнительные работы"}</th></tr>`;
+    return areaHeading + targetHeading + group.rows.map(({ row }) => {
+      const index = pprRowNumber++;
+      const editable = canPlan && !window.PprPlanEditor.started(row);
+      const equipmentId = row.equipmentId || group.equipmentId || "";
+      const equipmentName = row.equipment || group.equipment || "";
+      const nodeName = row.node || group.node || "";
+      const areaName = row.area || group.area || "";
+      return `
+      <tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
         <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" maxlength="4000" aria-label="Работа ${index + 1}" placeholder="${editable ? "Опишите работу" : "—"}" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
@@ -11763,8 +11765,9 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </div>
         <strong class="ppr-sheet-print-mark">${row.mark === "done" ? "✓" : row.mark === "na" ? "−" : ""}</strong>
       </td>
-    </tr>
-  `;
+      </tr>
+    `;
+    }).join("");
   }).join("");
   return `
     <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}" data-ppr-autofill-needed="${scheduledItems.length > 0 && !completion.active}">
@@ -11775,7 +11778,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </div>
         <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
-      ${scheduleNames.length ? `<p class="ppr-sheet-equipment"><strong>По графику:</strong> ${escapeHtml(scheduleNames.join("; "))}</p>` : ""}
+      ${scheduleGroups.length ? `<div class="ppr-sheet-equipment"><b>По графику</b><div>${scheduleHtml}</div></div>` : ""}
       <div class="ppr-sheet-table-wrap"><p class="no-print">✓ — выполнено · − — не требуется</p>
         <table class="ppr-sheet-table">
           <thead>
@@ -13834,22 +13837,14 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       const isWorkComplete = work => work.mark === "done" || work.mark === "na";
       const completed = item.works.filter(isWorkComplete).length;
       const performers = [...new Set(item.works.map(work => work.markedByName).filter(Boolean))];
-      const equipmentGroups = new Map();
-      item.works.forEach(work => {
-        const equipment = work.equipment || "Оборудование";
-        const key = `${equipment}\u0000${work.node || ""}`;
-        const group = equipmentGroups.get(key) || { equipment, node: work.node || "", total: 0, completed: 0 };
-        group.total += 1;
-        if (isWorkComplete(work)) group.completed += 1;
-        equipmentGroups.set(key, group);
-      });
-      const equipmentSummary = [...equipmentGroups.values()].map(group => `
+      const equipmentGroups = window.PprPlanEditor.groupByTarget(item.works);
+      const equipmentSummary = equipmentGroups.map(group => `
         <div class="engineer-ppr-equipment">
-          <span>${escapeHtml(group.equipment)}${group.node ? ` · ${escapeHtml(group.node)}` : ""}</span>
-          <strong>${group.completed}/${group.total}</strong>
+          <span><small>${escapeHtml(group.area || "Без цеха")}</small>${escapeHtml(group.equipment || "Оборудование")}${group.node ? ` · ${escapeHtml(group.node)}` : ""}</span>
+          <strong>${group.rows.filter(({ row }) => isWorkComplete(row)).length}/${group.rows.length}</strong>
         </div>
       `).join("");
-      const workDetails = item.works.map(work => `
+      const workDetails = equipmentGroups.flatMap(group => group.rows.map(({ row }) => row)).map(work => `
         <li>
           <span class="engineer-ppr-work-mark">${work.mark === "done" ? "✓" : work.mark === "na" ? "−" : "○"}</span>
           <span>${escapeHtml(work.work || "Работа не указана")}${work.markedByName ? ` <small>— ${escapeHtml(work.markedByName)}</small>` : ""}</span>

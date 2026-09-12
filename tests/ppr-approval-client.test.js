@@ -61,6 +61,25 @@ function approval(name = "Серверный инженер") {
   return { date, approvedAt: "2026-09-08T14:00:00Z", approvedByName: name, approvedByRole: "engineer", lockedAt: "2026-09-08T14:00:00Z", updatedAt: "2026-09-08T14:00:00Z", rows: [{ id: "r", work: "Осмотр", mark: "done", resolutionComment: "Серверная запись" }] };
 }
 
+test("PPR rows are grouped by shop, equipment and node without mutating their saved order", () => {
+  const context = vm.createContext({ window: {} });
+  vm.runInContext(moduleSource, context);
+  const rows = [
+    { id: "paint", area: "Покрасочный цех", equipmentId: 4, equipment: "Печь", node: "Горелка" },
+    { id: "press-b", area: "Прессовый участок", equipmentId: 2, equipment: "Пресс", node: "Насос" },
+    { id: "press-a", area: "Прессовый участок", equipmentId: 2, equipment: "Пресс", node: "Гидравлика" },
+    { id: "blank" }
+  ];
+  const groups = context.window.PprPlanEditor.groupByTarget(rows);
+  assert.deepEqual(plain(groups.map(group => [group.area, group.equipment, group.node, group.rows.map(item => item.row.id)])), [
+    ["Покрасочный цех", "Печь", "Горелка", ["paint"]],
+    ["Прессовый участок", "Пресс", "Гидравлика", ["press-a"]],
+    ["Прессовый участок", "Пресс", "Насос", ["press-b"]],
+    ["", "", "", ["blank"]]
+  ]);
+  assert.deepEqual(rows.map(row => row.id), ["paint", "press-b", "press-a", "blank"]);
+});
+
 for (const status of [503, 401]) test(`failed approval (${status}) preserves drafts and historical signatures without locking or queueing`, async () => {
   const h = harness(async () => { throw Object.assign(Error("unavailable"), { status }); });
   const before = plain(h.context.state), button = h.button();

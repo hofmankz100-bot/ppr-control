@@ -2116,7 +2116,7 @@ test("engineer PPR report groups completed work compactly", () => {
   assert.match(reportSource, /class="engineer-ppr-progress">\$\{completed\}\/\$\{item\.works\.length\}/);
   assert.match(reportSource, /<summary>Показать работы<\/summary>/);
   assert.match(reportSource, /const performers = \[\.\.\.new Set/);
-  assert.match(reportSource, /const equipmentGroups = new Map/);
+  assert.match(reportSource, /const equipmentGroups = window\.PprPlanEditor\.groupByTarget\(item\.works\)/);
   assert.doesNotMatch(reportSource, /Работы и исполнители/);
   assert.match(styles, /\.engineer-ppr-status\.accepted/);
   assert.match(styles, /html\[data-theme="dark"\] \.engineer-ppr-progress/);

@@ -4,6 +4,21 @@
   const approvalRequests = new Set();
   const keyFor = row => JSON.stringify([String(row.equipmentId || ""), String(row.node || "")]);
   const started = row => Boolean(row.mark || row.markedAt || String(row.resolutionComment || "").trim());
+  function groupByTarget(items = [], fallback = null) {
+    const groups = new Map();
+    items.forEach((item, index) => {
+      const hasTarget = ["area", "equipment", "node"].some(field => String(item?.[field] || "").trim());
+      const target = hasTarget ? item : (fallback || item || {});
+      const group = { area: String(target.area || "").trim(), equipmentId: target.equipmentId || "", equipment: String(target.equipment || "").trim(), node: String(target.node || "").trim() };
+      const key = JSON.stringify([group.area, String(group.equipmentId), group.equipment, group.node]);
+      if (!groups.has(key)) groups.set(key, { ...group, rows: [] });
+      groups.get(key).rows.push({ row: item, index });
+    });
+    const compare = (left, right) => String(left || "").localeCompare(String(right || ""), "ru");
+    return [...groups.values()].sort((left, right) =>
+      Number(!left.area && !left.equipment && !left.node) - Number(!right.area && !right.equipment && !right.node)
+      || compare(left.area, right.area) || compare(left.equipment, right.equipment) || compare(left.node, right.node));
+  }
   const messages = {
     ppr_plan_conflict: "Перечень уже изменён другим сотрудником. Ваш текст оставлен на экране. Скопируйте нужные правки, отмените редактирование и откройте его заново.",
     ppr_template_conflict: "Шаблон уже изменён в другом листе. Ваши правки оставлены на экране. Откройте редактирование заново после проверки.",
@@ -152,5 +167,5 @@
       }));
     });
   }
-  root.PprPlanEditor = { get: date => drafts.get(date), approvalPending: date => approvalRequests.has(date), serverApprovalFields, started, controls, rowControls, bind };
+  root.PprPlanEditor = { get: date => drafts.get(date), approvalPending: date => approvalRequests.has(date), groupByTarget, serverApprovalFields, started, controls, rowControls, bind };
 })(window);

@@ -4,9 +4,25 @@
 .ppr-sheet-work .ppr-plan-remove { margin:4px 6px; font-size:13px; }
 .ppr-sheet-work select { width:calc(100% - 12px); margin:4px 6px; min-height:44px; }
 .ppr-sheet-print-text { display:none; }
+.ppr-sheet-equipment > b { display:block;margin-bottom:7px;color:inherit; }
+.ppr-sheet-equipment > div { display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px; }
+.ppr-sheet-equipment section { display:grid;gap:2px;padding:7px 9px;border:1px solid #c7d3db;border-radius:8px;background:#f7fafc; }
+.ppr-sheet-equipment section strong { color:#17394d;font-size:12px; }
+.ppr-sheet-equipment section span { overflow-wrap:anywhere; }
+.ppr-sheet-table .ppr-sheet-equipment-row th { padding:6px 8px;background:#e2edf3 !important;text-align:left; }
+.ppr-sheet-equipment-row strong { margin-right:8px; }
+.ppr-sheet-equipment-row span { color:#496878;font-weight:700; }
+html[data-theme="dark"] .ppr-sheet-equipment section { border-color:#35505d;background:#182a33; }
+html[data-theme="dark"] .ppr-sheet-equipment section strong,
+html[data-theme="dark"] .ppr-sheet-equipment-row span { color:#b9d1dc; }
+html[data-theme="dark"] .ppr-sheet-table .ppr-sheet-equipment-row th { background:#182a33 !important; }
+.engineer-ppr-equipment span small { display:block;color:#637985;font-size:10px;font-weight:800; }
+@media (max-width:620px) { .ppr-sheet-equipment > div { grid-template-columns:1fr; } }
 @media print {
   .ppr-maintenance-sheet .ppr-empty-row { display:none !important; }
+  .ppr-maintenance-sheet .ppr-empty-target { display:none !important; }
   .ppr-maintenance-sheet textarea { display:none !important; }
   .ppr-maintenance-sheet .ppr-sheet-print-text { display:block !important; white-space:pre-wrap; overflow-wrap:anywhere; padding:6px; }
   .ppr-maintenance-sheet .no-print { display:none !important; }
+  .ppr-sheet-equipment section { border-color:#111;background:#fff; }
 }
