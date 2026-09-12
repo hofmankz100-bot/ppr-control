@@ -197,12 +197,14 @@ function scheduledItemsForDate(catalog, date, today = date) {
   });
 }
 
-function buildAutofillRows(date, scheduledItems) {
+function buildAutofillRows(date, scheduledItems, templates = {}) {
   const rows = [];
   scheduledItems.forEach((scheduled, index) => {
-    nodeReminderItems(scheduled.node, scheduled.equipment).forEach((work, workIndex) => {
+    const template = templates[JSON.stringify([String(scheduled.equipmentId), scheduled.node])];
+    const works = template?.works?.length ? template.works : nodeReminderItems(scheduled.node, scheduled.equipment);
+    works.forEach((work, workIndex) => {
       const clean = String(work || "").trim();
-      if (!clean || rows.some(row => row.work === clean)) return;
+      if (!clean || (!template && rows.some(row => row.work === clean && row.equipmentId === scheduled.equipmentId && row.node === scheduled.node))) return;
       rows.push({ id: `${date}-auto-${index + 1}-${workIndex + 1}`, work: clean, mark: "", equipmentId: scheduled.equipmentId, equipment: scheduled.equipment, node: scheduled.node, area: scheduled.area, autoFilled: true });
     });
   });
@@ -210,23 +212,48 @@ function buildAutofillRows(date, scheduledItems) {
   return rows;
 }
 
-function generatePprSheet({ catalog, previous, date, force = false, now = new Date().toISOString() }) {
+function pprSheetReadyForApproval(sheet) {
+  const active = (sheet?.rows || []).filter(row => String(row?.work || "").trim());
+  return !sheet?.approvedAt && active.length > 0 && active.every(row => ["done", "na"].includes(row.mark));
+}
+
+function reconcilePprApprovalRequest(sheet, previous, now = new Date().toISOString()) {
+  if (!sheet) return "";
+  // Accepted sheets are history: preserve their saved request/signature fields.
+  if (sheet.approvedAt) return previous?.approvedAt ? "" : "clear";
+  if (pprSheetReadyForApproval(sheet)) {
+    const alreadyRequested = pprSheetReadyForApproval(previous) && previous?.approvalRequestedAt;
+    sheet.approvalRequestedAt = alreadyRequested || now;
+    return alreadyRequested ? "" : "notify";
+  }
+  if (sheet.approvalRequestedAt) sheet.approvalRequestedAt = "";
+  return previous?.approvalRequestedAt ? "clear" : "";
+}
+
+function finalizedAutofill(sheet, previous, changed, now) {
+  if (!sheet || sheet.approvedAt) return { sheet, changed };
+  const next = { ...sheet };
+  reconcilePprApprovalRequest(next, previous, now);
+  return { sheet: next, changed: changed || next.approvalRequestedAt !== previous?.approvalRequestedAt };
+}
+
+function generatePprSheet({ catalog, templates = {}, previous, date, force = false, now = new Date().toISOString() }) {
   if (!validDate(date)) throw new Error("ppr_date_invalid");
   // Opening a day is idempotent: a worker never replaces saved work, marks or
   // approvals, and a concurrent engineer edit wins before this transaction.
-  if (previous && (previous.approvedAt || (!force && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))))) return { sheet: previous, changed: false };
+  if (previous && (previous.approvedAt || previous.explicitPlan || previous.rows?.some(row => row.mark || row.markedAt || String(row.resolutionComment || "").trim()) || (!force && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))))) return finalizedAutofill(previous, previous, false, now);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
   const scheduledItems = scheduledItemsForDate(catalog, date, today);
-  if (!scheduledItems.length) return { sheet: previous || null, changed: false };
+  if (!scheduledItems.length) return finalizedAutofill(previous || null, previous, false, now);
   const sheet = {
     ...(previous || {}), id: previous?.id || `ppr-sheet:${date}`, date,
-    rows: buildAutofillRows(date, scheduledItems).map(row => ({ ...row, updatedAt: now, workUpdatedAt: now, markUpdatedAt: now, resolutionUpdatedAt: now })), createdAt: previous?.createdAt || now,
+    rows: buildAutofillRows(date, scheduledItems, templates).map(row => ({ ...row, updatedAt: now, workUpdatedAt: now, markUpdatedAt: now, resolutionUpdatedAt: now })), createdAt: previous?.createdAt || now,
     updatedAt: now, updatedByName: "Система", autofillInitialized: true, autofillMode: "template", autofilledAt: now,
     plannedByName: "Система", plannedByRole: "system", plannedAt: now, plannedAutomatically: true,
     approvalRequestedAt: "",
     autofilledFor: scheduledItems.map(({ equipmentId, equipment, node, area }) => ({ equipmentId, equipment, node, area }))
   };
-  return { sheet, changed: true };
+  return finalizedAutofill(sheet, previous, true, now);
 }
 
-module.exports = { EQUIPMENT, nodeReminderItems, recommendedMaintenanceForDate, scheduledItemsForDate, buildAutofillRows, generatePprSheet, validDate };
+module.exports = { EQUIPMENT, equipmentForPlan, nodeReminderItems, recommendedMaintenanceForDate, scheduledItemsForDate, buildAutofillRows, generatePprSheet, validDate, pprSheetReadyForApproval, reconcilePprApprovalRequest };

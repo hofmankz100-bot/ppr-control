@@ -19,9 +19,9 @@
   <link rel="icon" href="icon.svg?v=176" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png?v=176">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.min.css?v=v789-server-recovery-1">
-  <link rel="stylesheet" href="modules/production-work-ui.css?v=v789-server-recovery-1">
-  <link rel="stylesheet" href="modules/mobile-dialogs.css?v=v789-server-recovery-1">
+  <link rel="stylesheet" href="styles.min.css?v=v824-bounded-mirrors-ppr-calendar">
+  <link rel="stylesheet" href="modules/repeat-failures.css?v=v824-bounded-mirrors-ppr-calendar">
+  <link rel="stylesheet" href="modules/ppr-plan-editor.css?v=v824-bounded-mirrors-ppr-calendar">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -108,6 +108,17 @@
           <button type="button" id="alertCounter"><span>Предупреждения</span><strong>0</strong></button>
           <button type="button" id="directorOpenButton" hidden><span id="directorOpenLabel">Админ</span> <strong id="directorBadge">0</strong></button>
         </div>
+        <section id="equipmentSearch" class="equipment-search" aria-label="Поиск и фильтр оборудования" hidden>
+          <label class="equipment-search-field" for="equipmentSearchInput">
+            <span>Найти оборудование</span>
+            <div><input id="equipmentSearchInput" type="search" autocomplete="off" placeholder="Название, участок или узел" aria-controls="equipmentList"><button type="button" data-equipment-search-clear aria-label="Очистить поиск" hidden>×</button></div>
+          </label>
+          <div class="equipment-search-filters" role="group" aria-label="Показать оборудование">
+            <button type="button" data-equipment-filter="all" aria-pressed="true">Все</button>
+            <button type="button" data-equipment-filter="attention" aria-pressed="false">Требуют внимания <span data-equipment-attention-count>0</span></button>
+          </div>
+          <span class="equipment-search-count" data-equipment-search-count role="status" aria-live="polite"></span>
+        </section>
         <div id="equipmentList" class="equipment-list"></div>
       </section>
 
@@ -208,12 +219,16 @@
   <script src="modules/compressor.js?v=327-ppr-autofill-refresh"></script>
   <script src="modules/shgrp.js?v=327-ppr-autofill-refresh"></script>
   <script src="modules/receiver.js?v=288-print-request-pages"></script>
-  <script src="modules/comments.js?v=288-print-request-pages"></script>
-  <script src="modules/director.js?v=288-print-request-pages"></script>
-  <script src="modules/print-assets.js?v=v789-server-recovery-1"></script>
-  <script src="modules/device-cache-policy.js?v=v789-server-recovery-1"></script>
-  <script src="modules/production-work-ui.js?v=v789-server-recovery-1"></script>
-  <script src="app.min.js?v=v789-server-recovery-1"></script>
+  <script src="modules/comments.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/repeat-failures.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/aggregate-journal-view.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/director.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/print-assets.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/equipment-search.js?v=1"></script>
+  <script src="modules/device-cache-policy.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/photo-compression.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="modules/ppr-plan-editor.js?v=v824-bounded-mirrors-ppr-calendar"></script>
+  <script src="app.min.js?v=v824-bounded-mirrors-ppr-calendar"></script>
 </body>
 </html>
 

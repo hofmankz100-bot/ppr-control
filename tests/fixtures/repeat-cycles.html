@@ -1,0 +1,27 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проверка циклов — только тестовые данные</title>
+<link rel="stylesheet" href="/styles.min.css"><link rel="stylesheet" href="/modules/repeat-failures.css">
+<style>body{padding:16px;background:#12212b;color:#eee}#notice{min-height:36px}#report{overflow:auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #64748b;padding:10px;vertical-align:top}textarea{color:#111;background:#fff}button{cursor:pointer}#records{margin-top:16px}#records p{padding:6px}</style>
+<h2>Тестовый отчёт повторных поломок</h2><p>Изолированная проверка. Производственные данные не используются.</p>
+<button id="newPair">Добавить две новые поломки №1</button><p id="notice" role="status"></p><div id="report"></div><div id="records"></div>
+<script src="/modules/repeat-failures.js"></script><script>
+let state; const rf = window.PPRModules.repeatFailures;
+const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const report = document.getElementById('report');
+const notice = text => document.getElementById('notice').textContent = text;
+async function apiJson(url, options) { const response = await fetch(url, { ...options, headers: {'content-type':'application/json'} }); const result = await response.json(); if (!response.ok) throw new Error(result.error); return result; }
+function render() {
+  const groups = rf.buildAnalysis(state.downtimes, {workers:[]}, state.catalog).repeatedBreakdowns;
+  report.innerHTML = '<table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Выполнено</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>' + groups.map(group => {
+    const saved = rf.groupMeasures(group,state.catalog);
+    return `<tr><td>${rf.measuresCell(group,saved,false,true,escapeHtml)}</td><td>${escapeHtml(group.equipment)}</td><td>${rf.completionCell(group,saved,false,true,escapeHtml)}</td><td>${group.count}</td><td>${group.downtimeMs / 60000} мин</td><td>№${group.manualCode}<br>${escapeHtml(group.name)}</td></tr>`;
+  }).join('') + '</tbody></table>';
+  document.getElementById('records').innerHTML = state.downtimes.map(item => `<p>${escapeHtml(item.text)}: №${item.repeatFailureCode} · ${rf.isClosed(item) ? '🔒 Закреплено' : 'Доступно для группировки'}</p>`).join('');
+  rf.bindMeasures(report, { apiJson, nextActionId:()=>crypto.randomUUID(), clientId:'local-test',
+    runButtonOperation:async(button,fn)=>{if(button.disabled)return;button.disabled=true;try{await fn();}catch(error){notice(error.message);}finally{button.disabled=false;}},
+    mergeRealtimePatch: patch=>{if(patch.catalog)state.catalog=patch.catalog;if(patch.downtimes)for(const row of patch.downtimes){const index=state.downtimes.findIndex(item=>item.id===row.id);state.downtimes[index]=row;}},
+    setRealtimeStateVersion:()=>{},persist:()=>{},showAppToast:notice,isCurrent:()=>true,render });
+}
+document.getElementById('newPair').onclick = async()=>{state=await apiJson('/new-pair',{method:'POST'});render();};
+fetch('/state').then(response=>response.json()).then(data=>{state=data;render();});
+</script></html>

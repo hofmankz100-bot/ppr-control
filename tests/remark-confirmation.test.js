@@ -780,7 +780,7 @@ test("new catalog nodes are registered atomically with a permanent QR identity",
   const server = fs.readFileSync(path.join(root, "server", "admin-equipment-maintenance-route.js"), "utf8");
   assert.match(client, /async function addNodeName\(equipmentId, value\)/);
   assert.match(client, /\/api\/admin\/equipment\/node-add/);
-  assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true \}\)/);
+  assert.match(client, /mergeRemoteState\(result\.state, \{ preferRemote: true, serverPprApprovals: true \}\)/);
   assert.match(client, /\.\.\.override,[\s\S]*id: eq\.id,[\s\S]*name: override\.name \|\| eq\.name/);
   assert.match(server, /pathname === "\/api\/admin\/equipment\/node-add"/);
   assert.match(server, /catalogItem\.nodeCreatedAt\[nodeIndex\]/);
@@ -854,13 +854,13 @@ test("maintenance work can be auto-filled from renamed equipment and node names,
   assert.match(server, /rawItem\.nodeOperationalPauses/);
 });
 
-test("the planned maintenance sheet auto-fills its work rows and keeps every row editable", () => {
+test("the planned maintenance sheet auto-fills and uses explicit plan editing", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const { generatePprSheet } = require("../server/ppr-autofill");
   assert.match(source, /async function ensurePprSheetAutofill\(/);
   assert.match(source, /\/api\/ppr-sheet\/generate/);
   assert.match(source, /function renderPprMaintenanceSheet\([\s\S]*?const sheet = pprSheetRecord\(date\)/);
-  assert.match(source, /data-autofill-ppr-sheet/);
+  assert.match(fs.readFileSync(path.join(root, "modules/ppr-plan-editor.js"), "utf8"), /data-autofill-ppr-sheet/);
   assert.match(source, /textarea data-ppr-work-input=/);
   assert.match(source, /input\.addEventListener\("input"/);
   assert.doesNotMatch(source, /function pprAutofillEngineer\(/);
@@ -903,12 +903,14 @@ test("aggregate journal prints as complete landscape A4 pages", () => {
   assert.match(source, /page-break-inside: avoid/);
   assert.match(source, /class="print-sheet continuous"/);
   assert.match(source, /allSheets\.slice\(1\)/);
-  assert.match(source, /querySelectorAll\("\.no-print, \.aggregate-sheet-print"\)\.forEach\(node => node\.remove\(\)\)/);
-  assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction \{ display: none !important; \}/);
+  assert.match(source, /querySelectorAll\("\.no-print, \.aggregate-sheet-print, \.repeat-failure-badge"\)\.forEach\(node => node\.remove\(\)\)/);
+  assert.match(source, /\.aggregate-sheet-print, \.no-print, \.aggregate-correction, \.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
   assert.match(source, /standard-aggregate-journal-sheet/);
   assert.match(source, /data-mobile-label="Оборудование и узел"/);
-  assert.match(source, /aggregate-mobile-record-carousel/);
-  assert.match(source, /sourceRows\.forEach\(row =>/);
+  const journalView = fs.readFileSync(path.join(root, "modules/aggregate-journal-view.js"), "utf8");
+  assert.match(source, /aggregateJournalView\.buildMobileCards/);
+  assert.match(journalView, /aggregate-mobile-record-carousel/);
+  assert.match(journalView, /sourceRows\.forEach\(row =>/);
   assert.match(styles, /standard-aggregate-journal-sheet \.aggregate-journal-table td::before/);
   assert.match(styles, /scroll-snap-type: x mandatory/);
   assert.match(styles, /#aggregateJournalScreen \.aggregate-print-actions/);
@@ -1229,7 +1231,7 @@ test("uploaded photos are served and production keeps a PostgreSQL fallback", as
   assert.match(source, /const stored = await readPhotoFromPostgres\(fileName\)/);
   assert.match(source, /photo_storage_unavailable/);
   assert.doesNotMatch(source, /externalizePhotosInValue/);
-  assert.match(appSource, /if \(!\/\^image\\\/\/i\.test\(String\(file\.type \|\| ""\)\)\)/);
+  assert.match(appSource, /await window\.PprPhotoCompression\.read\(file\)/);
   assert.match(appSource, /dataset\.photoRetry/);
   assert.match(appSource, /storedPhotoUrls = serialized\.match\(\/\\\/api\\\/photos/);
   assert.match(appSource, /new Set\(storedPhotoUrls\.map/);
@@ -1716,16 +1718,16 @@ test("PPR resolution drafts survive background rerenders before a mark is submit
   assert.match(server, /row\.draftByName = name/);
   assert.doesNotMatch(server, /if \(!row \|\| row\.mark \|\| !String\(row\.work/);
   assert.match(source, /function mergePprSheetRowsLocal\(currentRows = \[\], incomingRows = \[\]\)/);
-  assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets\)/);
+  assert.match(source, /mergePprSheetsLocal\(state\.pprSheets, remote\.pprSheets, true\)/);
   assert.doesNotMatch(source, /state\.pprSheets = preferRemote\s*\? \{ \.\.\.\(remote\.pprSheets/);
   assert.match(server, /function mergePprSheetsByFreshness\(current = \{\}, incoming = \{\}\)/);
   assert.match(server, /db\.pprSheets = mergePprSheetsByFreshness\(db\.pprSheets, body\.pprSheets\)/);
   assert.match(source, /function mergePprRowFieldsLocal\(currentRow, incomingRow\)/);
-  assert.match(source, /row\.workUpdatedAt = changedAt/);
+  assert.match(fs.readFileSync(path.join(root, "server/ppr-plan.js"), "utf8"), /workUpdatedAt: now/);
   assert.match(source, /row\.resolutionUpdatedAt = row\.draftUpdatedAt/);
   assert.match(server, /function mergePprRowFields\(currentRow, incomingRow\)/);
   assert.match(server, /row\.markUpdatedAt = now/);
-  assert.match(source, /row\.markUpdatedAt = changedAt/);
+  assert.match(source, /row\.markUpdatedAt = new Date/);
   assert.match(server, /incomingTime >= savedTime/);
 });
 
@@ -1880,7 +1882,7 @@ test("administration keeps four primary tabs and only useful technical tools", (
 
 test("worker rating is calculated and displayed separately for each calendar month", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(appSource, /ratingMonth: todayISO\(\)\.slice\(0, 7\)/);
+  assert.match(appSource, /ratingMonth: PPRModules\.director\.calendarMonth\(new Date\(\)\)/);
   assert.match(appSource, /id="workerRatingMonth" type="month"/);
   assert.match(appSource, /function workerRatingStats\(period = current\.ratingMonth/);
   assert.match(appSource, /workerRatingPointMap\(year, monthIndex\)/);
@@ -2175,11 +2177,11 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
 
 test("saved PPR templates repair known replacement-character damage", () => {
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(serverSource, /function repairKnownEncodingDamageServer/);
-  assert.match(serverSource, /колон\\uFFFD\+ы/);
-  assert.match(serverSource, /Object\.values\(db\.pprSheets \|\| \{\}\)/);
-  assert.match(serverSource, /repairField\(row, "work"\)/);
-  assert.match(serverSource, /item\.reminders\[nodeIndex\] = lines\.map/);
+  assert.doesNotMatch(serverSource, /function repairKnownEncodingDamageServer/);
+  assert.match(serverSource, /text-integrity"\)\.repairStoredText\(db\)/);
+  const { recoverText } = require("../server/text-integrity");
+  const text = "Осмотреть раму, колонны, направляющие, крепления и рабочую зону.";
+  assert.equal(recoverText(text.replace("колонны", "колон��ы"), [text]), text);
 });
 
 test("annual PPR marks nodes scheduled in multiple months", () => {

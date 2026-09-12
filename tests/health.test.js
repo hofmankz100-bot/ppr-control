@@ -3,6 +3,41 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { buildHealthPayload } = require("../server/health");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+test("health reads committed counters without cloning a working snapshot", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const route = source.slice(source.indexOf('  if (pathname === "/api/health" && req.method === "GET") {'), source.indexOf('  if (pathname === "/api/client-error" && req.method === "POST") {'));
+  const state = {
+    targetedCleanupVersions: { productionRequestDedup20260820: { removed: 4 }, removeTestInstalledParts20260819v3: { removed: 2 } },
+    catalog: { equipment: { gas: { nodes: ["one", "two"] } } }
+  };
+  for (const postgres of [true, false]) {
+    let fileReads = 0;
+    let response;
+    const context = {
+      pathname: "/api/health", req: { method: "GET" }, res: {},
+      postgresState: postgres ? state : null,
+      readDbFile() { fileReads += 1; return state; },
+      readDb() { throw new Error("Health must not clone the full working state"); },
+      storageStatus: { mode: "postgres-degraded" },
+      compatibleClient: false, clientVersion: "", SERVER_VERSION: "test", CLIENT_PROTOCOL_VERSION: "1",
+      wss: null, wsServers: [], sseClients: new Set(), realtimeStateVersion: () => "state:1", GAS_QR_EQUIPMENT_ID: "gas",
+      realtimePatchHistory: [], realtimeHistory: { bytes: 0 },
+      buildHealthPayload,
+      sendJson(_res, status, payload) { response = { status, payload }; }
+    };
+    vm.runInNewContext(`(function () { ${route} })()`, context);
+    assert.equal(fileReads, postgres ? 0 : 1);
+    assert.equal(response.status, 503);
+    assert.equal(response.payload.ok, false);
+    assert.equal(response.payload.productionRequestDuplicatesRemoved, 4);
+    assert.equal(response.payload.testInstalledPartRecordsRemoved, 2);
+    assert.equal(response.payload.gasQrNodeCount, 2);
+  }
+});
 
 test("health cannot report success when authoritative writes are not confirmed", () => {
   assert.equal(buildHealthPayload({ storage: { mode: "postgres-degraded" } }).ok, false);
@@ -29,6 +64,8 @@ test("health payload preserves the public API contract", () => {
   });
 
   assert.deepEqual(payload, {
+    memory: payload.memory,
+    realtimeCache: { entries: 0, bytes: 0 },
     ok: true,
     version: "v-compatible",
     latestVersion: "v-current",

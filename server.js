@@ -3,17 +3,25 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const zlib = require("zlib");
+const zlib = require("zlib"); const { isDeepStrictEqual } = require("node:util");
 const QRCode = require("qrcode");
 const webPush = require("web-push");
+const { PUSH_TIMEOUT_MS, createPushSnapshot, pushParticipants, pushRemarks, pushSheet } = require("./server/push-snapshot");
 const { compressBackupPayload, decodeBackupPayload } = require("./server/backup-codec");
 const { buildHealthPayload } = require("./server/health");
 const { createStaticHandler } = require("./server/static-files");
 const { loadEnvFile } = require("./server/env");
 const { createStateTransactions } = require("./server/state-transactions");
+const { initializeWithPrimaryRetry } = require("./server/startup-retry");
+const { createPostgresCluster } = require("./server/postgres-cluster"); const { compareReplicaVersions } = require("./server/postgres-leader");
+const { createRuntimePostgresFailover } = require("./server/runtime-postgres-failover"); const { isTransientPostgresConnectionError } = require("./server/postgres-errors");
 const { createApiDispatcher } = require("./server/api-dispatcher");
 const { createPostgresStateStore } = require("./server/postgres-state-store");
-const { broadcastWebSockets, attachWebSocketServer } = require("./server/realtime-clients");
+const { seedEmptyPostgresReplicas } = require("./server/replica-seed");
+const { syncPostgresPhotos } = require("./server/replica-photo-sync");
+const { broadcastWebSockets, attachWebSocketServer, authorizeWebSocket, sendServerEvent } = require("./server/realtime-clients");
+const { createRealtimeAuth } = require("./server/realtime-auth");
+const { createRealtimeHistory } = require("./server/realtime-history"); const { getLatestMonitoringSnapshot, monitoringAlertsNeedWrite, setLatestMonitoringSnapshot } = require("./server/monitoring-state");
 const { createAdminUserPermissionsRoute } = require("./server/admin-user-permissions-route");
 const { createAdminUserSessionsRoute } = require("./server/admin-user-sessions-route");
 const { createAdminUserAccessRoute } = require("./server/admin-user-access-route");
@@ -35,6 +43,7 @@ const { createAdminRatingRoute } = require("./server/admin-rating-route");
 const { createAdminEquipmentQrRoute } = require("./server/admin-equipment-qr-route");
 const { createAdminEquipmentConfigRoute } = require("./server/admin-equipment-config-route");
 const { createAdminEquipmentMaintenanceRoute } = require("./server/admin-equipment-maintenance-route");
+const remarkDeduplication = require("./server/remark-deduplication"); const { handleRepeatFailureGroupRoute, preserveRepeatFailureMetadata } = require("./server/repeat-failure-group-route");
 const {
   ADMIN_PERMISSION_KEYS,
   activeUserPermission,
@@ -47,9 +56,7 @@ try {
 } catch {
   WebSocketServer = null;
 }
-
 const root = __dirname;
-
 loadEnvFile(root);
 
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
@@ -64,12 +71,14 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v789-server-recovery-1";
+const SERVER_VERSION = "v824-bounded-mirrors-ppr-calendar"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
-  // Keep the two immediately preceding PWA versions valid while installed
-  // phones replace their service-worker cache in the background.
+  "v786-photo-memory-3",
+  "v786-reliable-daily-work-2",
+  "v786-restored-recovery-1",
+  "v789-server-recovery-1",
   "v697-stable-catalog-1",
   "v698-startup-performance-1",
   "v699-stable-qr-token-1",
@@ -148,10 +157,10 @@ let dailyPostgresBackup = null;
 let localBackupPendingState = null;
 let localBackupTimer = null;
 let storageStatus = { mode: "json" };
-let postgresClusterStatus = { active: "", nodes: [] };
-let postgresRecoveryTimer = null;
-let postgresRefreshTimer = null;
-let postgresRefreshActive = false;
+let storageReady = false;
+const startupController = new AbortController();
+let postgresClusterStatus = { active: "", nodes: [] }, postgresRecoveryTimer = null, postgresRecoveryActive = false;
+let postgresRefreshTimer = null, postgresRefreshActive = false, postgresFailoverManager = null;
 const stateTransactions = createStateTransactions({
   async begin() {
     if (postgresStateStore) {
@@ -165,20 +174,21 @@ const stateTransactions = createStateTransactions({
     };
   },
   committed: () => postgresState || readDbFile(),
-  snapshot: () => postgresStateStore ? postgresStateStore.snapshot() : readDbFile(),
+  snapshot: () => postgresStateStore ? postgresStateStore.sharedSnapshot() : readDbFile(),
   publish(state, { changed }) {
     if (changed) publicStateResponseCache = { version: "", data: null, gzip: null };
     if (postgresStateStore) {
       postgresState = state;
-      scheduleLocalBackup(state);
-      storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
+      if (changed && LOCAL_STATE_MIRROR_ENABLED) scheduleLocalBackup(state);
+      storageStatus = { ...storageStatus, mode: "postgres-cluster", table: "ppr_settings", key: "full_state", lastWriteAt: new Date().toISOString(), cluster: postgresClusterStatus };
       if (changed) saveDailyPostgresBackup(state).catch(error => warnServerDiagnostic("postgres.daily-backup", error));
     }
   },
   onTransactionError(error) {
-    if (postgresStateStore && error.statusCode === 503) storageStatus = {
-      ...storageStatus, mode: "postgres-degraded", error: "Authoritative database write was not confirmed", retrying: false
-    };
+    if (postgresStateStore && error.statusCode === 503) {
+      storageStatus = { ...storageStatus, mode: "postgres-degraded", error: "Authoritative database write was not confirmed", retrying: true };
+      postgresFailoverManager?.schedule();
+    }
   },
   onEffectError: error => warnServerDiagnostic("state.after-commit", error)
 });
@@ -619,44 +629,6 @@ function archiveAndRemoveCraneBeamData(db) {
   return true;
 }
 
-function repairKnownEncodingDamageServer(db) {
-  const repair = value => String(value || "")
-    .replace(/колон\uFFFD+ы/giu, "колонны")
-    .replace(/КОЛОН\uFFFD+Ы/gu, "КОЛОННЫ");
-  let repaired = 0;
-  const repairField = (target, field) => {
-    if (!target || typeof target[field] !== "string" || !target[field].includes("\uFFFD")) return;
-    const next = repair(target[field]);
-    if (next === target[field]) return;
-    target[field] = next;
-    repaired += 1;
-  };
-  Object.values(db.pprSheets || {}).forEach(sheet => {
-    (Array.isArray(sheet?.rows) ? sheet.rows : []).forEach(row => repairField(row, "work"));
-  });
-  Object.values(db.catalog?.equipment || {}).forEach(item => {
-    repairField(item, "name");
-    repairField(item, "area");
-    if (Array.isArray(item?.nodes)) item.nodes = item.nodes.map(value => {
-      const next = repair(value);
-      if (next !== value) repaired += 1;
-      return next;
-    });
-    Object.entries(item?.reminders || {}).forEach(([nodeIndex, lines]) => {
-      if (!Array.isArray(lines)) return;
-      item.reminders[nodeIndex] = lines.map(value => {
-        const next = repair(value);
-        if (next !== value) repaired += 1;
-        return next;
-      });
-    });
-  });
-  if (repaired) {
-    db.targetedCleanupVersions ||= {};
-    db.targetedCleanupVersions.encodingDamageRepair20260831 = { at: new Date().toISOString(), repaired };
-  }
-  return repaired;
-}
 
 function removeAugust19TestInstalledPartRecords(db) {
   const cleanupKey = "removeTestInstalledParts20260819v3";
@@ -713,9 +685,10 @@ function normalizeDb(db) {
   db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
   db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
+  db.archivedDuplicateRemarks = Array.isArray(db.archivedDuplicateRemarks) ? db.archivedDuplicateRemarks : [];
   restoreQrWalkChecksFromJournal(db);
   db.targetedCleanupVersions = db.targetedCleanupVersions && typeof db.targetedCleanupVersions === "object" ? db.targetedCleanupVersions : {};
-  repairKnownEncodingDamageServer(db);
+  require("./server/text-integrity").repairStoredText(db);
   db.remarkDeletionTombstones = db.remarkDeletionTombstones && typeof db.remarkDeletionTombstones === "object" ? db.remarkDeletionTombstones : {};
   removeReturnedLegacyWarningsServer(db);
   applyRemarkDeletionTombstonesServer(db);
@@ -897,7 +870,9 @@ function savePhotoDataUrl(dataUrl = "") {
   const hash = crypto.createHash("sha1").update(bytes).digest("hex");
   const fileName = `${hash}.${ext}`;
   const file = path.join(photosDir, fileName);
-  if (!fs.existsSync(file)) fs.writeFileSync(file, bytes);
+  // PostgreSQL is canonical. Populate its cache on GET, after persistence, so
+  // re-uploading an original cannot put a larger copy over an optimized alias.
+  if (!postgresPool && !fs.existsSync(file)) fs.writeFileSync(file, bytes);
   const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
   return { url: `/api/photos/${fileName}`, fileName, mimeType, bytes };
 }
@@ -908,7 +883,8 @@ async function persistPhotoToPostgres(fileName, mimeType, bytes) {
     `INSERT INTO ppr_photos(file_name, mime_type, payload, updated_at)
      VALUES ($1, $2, $3, now())
      ON CONFLICT(file_name) DO UPDATE
-     SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()`,
+     SET mime_type = EXCLUDED.mime_type, payload = EXCLUDED.payload, updated_at = now()
+     WHERE octet_length(ppr_photos.payload) >= octet_length(EXCLUDED.payload)`,
     [fileName, mimeType, bytes]
   );
   await postgresPool.flushMirrors?.();
@@ -942,7 +918,8 @@ async function readPhotoFromPostgres(fileName) {
       if (index !== postgresPool.activeIndex) {
         await postgresPool.query(
           `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,now())
-           ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=now()`,
+           ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=now()
+           WHERE octet_length(ppr_photos.payload) > octet_length(EXCLUDED.payload)`,
           [fileName, row.mime_type, row.payload]
         );
         await postgresPool.flushMirrors?.();
@@ -955,49 +932,6 @@ async function readPhotoFromPostgres(fileName) {
   return null;
 }
 
-async function seedEmptyPostgresReplicas(nodes, sourceIndex) {
-  const source = nodes[sourceIndex];
-  if (!source) return;
-  const tableSpecs = [
-    {
-      table: "ppr_photos",
-      select: "SELECT file_name, mime_type, payload, updated_at FROM ppr_photos",
-      insert: `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
-        ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at`,
-      values: row => [row.file_name, row.mime_type, row.payload, row.updated_at]
-    },
-    {
-      table: "ppr_admin_backups",
-      select: "SELECT backup_id,label,payload,payload_gzip,checksum,created_by,created_at FROM ppr_admin_backups",
-      insert: `INSERT INTO ppr_admin_backups(backup_id,label,payload,payload_gzip,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7)
-        ON CONFLICT(backup_id) DO NOTHING`,
-      values: row => [row.backup_id, row.label, row.payload ? JSON.stringify(row.payload) : null, row.payload_gzip || null, row.checksum, row.created_by, row.created_at]
-    },
-    {
-      table: "ppr_admin_archives",
-      select: "SELECT archive_id,label,payload,checksum,created_by,created_at FROM ppr_admin_archives",
-      insert: `INSERT INTO ppr_admin_archives(archive_id,label,payload,checksum,created_by,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6)
-        ON CONFLICT(archive_id) DO NOTHING`,
-      values: row => [row.archive_id, row.label, JSON.stringify(row.payload), row.checksum, row.created_by, row.created_at]
-    }
-  ];
-  for (const target of nodes) {
-    if (target === source || !target.healthy) continue;
-    for (const spec of tableSpecs) {
-      try {
-        const count = await target.pool.query(`SELECT count(*)::int AS count FROM ${spec.table}`);
-        if (Number(count.rows[0]?.count || 0) > 0) continue;
-        const rows = await source.pool.query(spec.select);
-        for (const row of rows.rows) await target.pool.query(spec.insert, spec.values(row));
-      } catch (error) {
-        target.healthy = false;
-        target.error = String(error.message || error);
-        target.lastErrorAt = new Date().toISOString();
-        break;
-      }
-    }
-  }
-}
 
 async function compressLegacyBackupTables(queryable) {
   if (!queryable?.query) return 0;
@@ -1017,8 +951,11 @@ async function compressLegacyBackupTables(queryable) {
   let converted = 0;
   for (const table of ["ppr_admin_backups", "ppr_state_backups"]) {
     const idColumn = table === "ppr_admin_backups" ? "backup_id" : "backup_date";
-    const legacy = await queryable.query(`SELECT ${idColumn} AS id, payload FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
-    for (const row of legacy.rows) {
+    const legacy = await queryable.query(`SELECT ${idColumn} AS id FROM ${table} WHERE payload IS NOT NULL AND payload_gzip IS NULL ORDER BY created_at ASC`);
+    for (const { id } of legacy.rows) {
+      const resultRow = await queryable.query(`SELECT ${idColumn} AS id, payload FROM ${table} WHERE ${idColumn}=$1 AND payload IS NOT NULL AND payload_gzip IS NULL`, [id]);
+      const row = resultRow.rows[0];
+      if (!row) continue;
       const compressed = compressBackupPayload(row.payload);
       const result = await queryable.query(`UPDATE ${table} SET payload_gzip=$1, payload=NULL WHERE ${idColumn}=$2 AND payload IS NOT NULL`, [compressed, row.id]);
       converted += Number(result.rowCount || 0);
@@ -1029,44 +966,46 @@ async function compressLegacyBackupTables(queryable) {
 
 async function recoverPostgresReplicas() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2) return;
-  const sourceIndex = 0;
+  const sourceIndex = Math.max(0, postgresPool.nodes.findIndex(node => node.name === storageStatus.authoritative));
   const source = postgresPool.nodes[sourceIndex];
   if (!source) return;
   for (let index = 0; index < postgresPool.nodes.length; index += 1) {
     if (index === sourceIndex) continue;
     const target = postgresPool.nodes[index];
+    if (!target.healthy && Date.parse(target.nextRecoveryAt || "") > Date.now()) continue;
     const wasHealthy = Boolean(target.healthy);
     try {
       await target.pool.query("SELECT 1");
-      if (!wasHealthy) await postgresStateStore.prepareMirror(target);
+      const recoveryNeeded = !wasHealthy || !target.healthy;
+      // Record this probe before awaiting preparation: a newer background
+      // mirror failure must remain unhealthy and trigger the next recovery.
       target.healthy = true;
+      if (recoveryNeeded) await postgresStateStore.prepareMirror(target);
       target.error = "";
       target.lastSuccessAt = new Date().toISOString();
-      if (!wasHealthy) {
+      target.recoveryFailures = 0; target.nextRecoveryAt = "";
+      if (recoveryNeeded) {
         await compressLegacyBackupTables(target.pool);
-        const current = await source.pool.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
-        if (current.rows[0]?.payload) {
-          await target.pool.query(
-            `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
-             ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
-             WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-            [JSON.stringify(current.rows[0].payload), current.rows[0].state_revision, current.rows[0].updated_at]
-          );
+        const current = await source.pool.query("SELECT payload::text AS payload_text,state_revision,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+        if (current.rows[0]?.payload_text) {
+          const targetState = await target.pool.query("SELECT state_revision::text,date_trunc('milliseconds',updated_at)::text AS updated_at FROM ppr_settings WHERE setting_key='full_state' LIMIT 1");
+          if (compareReplicaVersions(current.rows[0], targetState.rows[0]) === "copy") {
+            await target.pool.query(
+              `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at) VALUES('full_state',$1::jsonb,$2,$3)
+               ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
+               WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
+              [current.rows[0].payload_text, current.rows[0].state_revision, current.rows[0].updated_at]
+            );
+          }
         }
-        const photos = await source.pool.query("SELECT file_name,mime_type,payload,updated_at FROM ppr_photos");
-        for (const row of photos.rows) {
-          await target.pool.query(
-            `INSERT INTO ppr_photos(file_name,mime_type,payload,updated_at) VALUES($1,$2,$3,$4)
-             ON CONFLICT(file_name) DO UPDATE SET mime_type=EXCLUDED.mime_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at
-             WHERE ppr_photos.updated_at < EXCLUDED.updated_at`,
-            [row.file_name, row.mime_type, row.payload, row.updated_at]
-          );
-        }
+        await syncPostgresPhotos(source.pool, target.pool);
       }
     } catch (error) {
       target.healthy = false;
       target.error = String(error.message || error);
       target.lastErrorAt = new Date().toISOString();
+      target.recoveryFailures = Number(target.recoveryFailures || 0) + 1;
+      target.nextRecoveryAt = new Date(Date.now() + Math.min(30 * 60 * 1000, Math.max(30000, Number(process.env.PG_RECOVERY_INTERVAL_MS || 30000)) * (2 ** Math.min(6, target.recoveryFailures - 1)))).toISOString();
     }
   }
   postgresClusterStatus = postgresPool.status();
@@ -1076,7 +1015,11 @@ async function recoverPostgresReplicas() {
 function startPostgresRecoveryMonitor() {
   if (!postgresPool?.nodes?.length || postgresPool.nodes.length < 2 || postgresRecoveryTimer) return;
   postgresRecoveryTimer = setInterval(() => {
-    recoverPostgresReplicas().catch(error => console.warn(`PostgreSQL recovery check failed: ${error.message}`));
+    if (postgresRecoveryActive) return;
+    postgresRecoveryActive = true;
+    recoverPostgresReplicas()
+      .catch(error => console.warn(`PostgreSQL recovery check failed: ${error.message}`))
+      .finally(() => { postgresRecoveryActive = false; });
   }, Math.max(15000, Number(process.env.PG_RECOVERY_INTERVAL_MS || 30000)));
   postgresRecoveryTimer.unref?.();
 }
@@ -1088,6 +1031,7 @@ async function initializeStorage() {
     const db = readDbFile();
     archiveAndRemoveCraneBeamData(db);
     removeDuplicateProductionRequests(db);
+    dedupeDuplicateRemarkEntriesServer(db);
     removeObsoletePressNoMaterialNodes(db);
     reconcilePendingRemarkDowntimes(db);
     reconcileMissingShgrpQrChecksServer(db);
@@ -1095,44 +1039,22 @@ async function initializeStorage() {
     storageStatus = { mode: "json" };
     return storageStatus;
   }
-  try {
+  let openingPool = null; try {
     const { Pool } = require("pg");
     const sslMode = String(process.env.PGSSL || process.env.PGSSLMODE || "").trim().toLowerCase();
     const useSsl = ["1", "true", "require", "verify-ca", "verify-full"].includes(sslMode);
-    const nodes = configured.map(item => ({
-      ...item,
-      healthy: false,
-      error: "",
-      pool: new Pool({
-        connectionString: item.connectionString,
-        ssl: useSsl || /(?:neon\.tech|supabase\.(?:co|com)|pooler\.supabase\.com)/i.test(item.connectionString)
-          ? { rejectUnauthorized: false }
-          : false,
-        max: Number(process.env.PG_POOL_SIZE || 5),
-        connectionTimeoutMillis: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
-        idleTimeoutMillis: 30000
-      })
-    }));
-    const pool = new MultiPostgres(nodes, {
+    const automaticFailoverEnabled = !["0", "false", "off", "no"].includes(String(process.env.PPR_AUTOMATIC_STATE_FAILOVER || "true").trim().toLowerCase());
+    const { leader, nodes, pool } = await createPostgresCluster(configured, {
+      Pool,
+      MultiPostgres,
+      allowFailover: automaticFailoverEnabled,
+      useSsl,
+      poolSize: Number(process.env.PG_POOL_SIZE || 2),
+      connectTimeoutMs: Math.max(2000, Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000)),
       onStatus: status => { postgresClusterStatus = status; if (storageStatus.cluster) storageStatus.cluster = status; },
-      onPoolError: (error, nodeName) => {
-        console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`);
-      }
+      onPoolError: (error, nodeName) => console.warn(`PostgreSQL pool ${nodeName} connection error: ${String(error?.message || error)}`)
     });
-    await Promise.allSettled(nodes.map(async node => {
-      try {
-        await node.pool.query("SELECT now()");
-        node.healthy = true;
-        node.lastSuccessAt = new Date().toISOString();
-      } catch (error) {
-        node.error = String(error.message || error);
-        node.lastErrorAt = new Date().toISOString();
-      }
-    }));
-    if (!nodes[0].healthy) {
-      await Promise.allSettled(nodes.map(node => node.pool.end()));
-      throw new Error("Authoritative PostgreSQL database is unavailable; automatic state failover is disabled");
-    }
+    openingPool = pool; if (leader.failedOver) console.warn(`PostgreSQL automatic state failover selected ${leader.selected.name} at revision ${leader.revision}`);
     postgresClusterStatus = pool.status();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ppr_settings (
@@ -1185,19 +1107,21 @@ async function initializeStorage() {
     `);
     await pool.flushMirrors();
     pool.activeIndex = 0;
-    const stateStore = createPostgresStateStore(pool, {
+    const stateStoreOptions = {
       normalize: normalizeDb,
       legacySkipUnavailable: String(process.env.PPR_STATE_LEGACY_SKIP_UNAVAILABLE || "").split(",").map(name => name.trim()).filter(Boolean),
-      onExternalState(state) {
-        postgresState = structuredClone(state);
+      onExternalState(state, sourceStore) { if (sourceStore !== postgresStateStore) return;
+        postgresState = state;
         publicStateResponseCache = { version: "", data: null, gzip: null };
         broadcastState("postgres-instance", "", publicState(state));
       },
       onMirrorError: (error, name) => warnServerDiagnostic(`postgres.mirror.${name}`, error)
-    });
+    };
+    const stateStore = createPostgresStateStore(pool, stateStoreOptions);
     postgresState = await stateStore.initialize(() => readDbFile(), state => {
       archiveAndRemoveCraneBeamData(state);
       removeDuplicateProductionRequests(state);
+      dedupeDuplicateRemarkEntriesServer(state);
       removeObsoletePressNoMaterialNodes(state);
       removeKnownFalseDowntimes(state);
       purgeRemovedEquipmentData(state);
@@ -1206,13 +1130,35 @@ async function initializeStorage() {
       return state;
     });
     postgresStateStore = stateStore;
-    writeDbFile(postgresState);
+    if (LOCAL_STATE_MIRROR_ENABLED) writeDbFile(postgresState);
     await seedEmptyPostgresReplicas(nodes, 0);
     postgresClusterStatus = pool.status();
     postgresPool = pool;
-    storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state", cluster: postgresClusterStatus };
-    return storageStatus;
+    storageStatus = { mode: "postgres-cluster", table: "ppr_settings", key: "full_state",
+      authoritative: nodes[0]?.name || "", configuredPrimary: configured[0]?.name || "",
+      automaticFailover: automaticFailoverEnabled, failedOverAtStartup: leader.failedOver,
+      selectedRevision: leader.revision === null ? null : String(leader.revision), cluster: postgresClusterStatus };
+    postgresFailoverManager = createRuntimePostgresFailover({
+      nodes,
+      allowFailover: automaticFailoverEnabled,
+      getMinimumRevision: () => postgresStateStore.failoverRevision(),
+      canPromote: () => !postgresStateStore.hasActiveTransactions(),
+      createStore: createPostgresStateStore,
+      storeOptions: stateStoreOptions,
+      onStatus: status => { postgresClusterStatus = status; storageStatus.cluster = status; },
+      onPromote({ node, revision, state, store }) {
+        postgresStateStore = store; postgresState = normalizeDb(state);
+        pool.activeIndex = Math.max(0, pool.nodes.findIndex(candidate => candidate === node));
+        postgresClusterStatus = pool.status(); storageStatus = { ...storageStatus, mode: "postgres-cluster",
+          authoritative: node.name, selectedRevision: String(revision), failedOverAtRuntime: true,
+          retrying: false, error: "", cluster: postgresClusterStatus };
+        console.warn(`PostgreSQL runtime state failover selected ${node.name} at revision ${revision}`);
+      },
+      onError: error => { storageStatus = { ...storageStatus, retrying: false }; warnServerDiagnostic("postgres.failover", error); }
+    });
+    openingPool = null; return storageStatus;
   } catch (error) {
+    if (openingPool) await openingPool.end().catch(() => {}); if (!error.code && isTransientPostgresConnectionError(error)) error.code = "PPR_PRIMARY_PROBE_UNAVAILABLE";
     console.error(`Authoritative PostgreSQL startup failed: ${error.message}`);
     throw error;
   }
@@ -1448,10 +1394,9 @@ function latestLocalBackupAt() {
   } catch { return ""; }
 }
 
-async function systemMonitoringSnapshot() {
+async function systemMonitoringSnapshot(adminConfig = normalizedAdminConfig(readDb().adminConfig)) {
   const checkedAt = new Date().toISOString();
   const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
-  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
   const memoryLimitMb = Math.max(128, Number(process.env.MEMORY_ALERT_MB || adminConfig.monitoring.memoryAlertMb));
   const databaseLimitMb = Math.max(100, Number(process.env.DATABASE_SIZE_LIMIT_MB || adminConfig.monitoring.databaseSizeLimitMb));
   const snapshot = {
@@ -1505,8 +1450,7 @@ async function systemMonitoringSnapshot() {
   return snapshot;
 }
 
-function monitoringAlertSpecs(snapshot) {
-  const adminConfig = normalizedAdminConfig(readDb().adminConfig);
+function monitoringAlertSpecs(snapshot, adminConfig = normalizedAdminConfig(readDb().adminConfig)) {
   const specs = [];
   if (!snapshot.postgres.connected && postgresPool) specs.push({ type: "postgres_unavailable", severity: "critical", title: "PostgreSQL недоступен", message: snapshot.postgres.error || "Сервер не смог подключиться к базе данных." });
   const usage = Number(snapshot.postgres.usagePercent || 0);
@@ -1549,8 +1493,9 @@ function systemReadinessReport(db, monitoring, backups = []) {
 }
 
 async function refreshSystemMonitoring() {
-  const snapshot = await systemMonitoringSnapshot();
-  const specs = monitoringAlertSpecs(snapshot);
+  const adminConfig = normalizedAdminConfig(stateTransactions.baseline().adminConfig); const snapshot = await systemMonitoringSnapshot(adminConfig);
+  setLatestMonitoringSnapshot(snapshot); const specs = monitoringAlertSpecs(snapshot, adminConfig); const committed = stateTransactions.baseline();
+  if (!monitoringAlertsNeedWrite(committed, specs)) return { snapshot, alerts: (committed.adminAlerts || []).slice(0, 200) };
   await enqueueStateWrite(async () => {
     const db = readDb();
     const now = snapshot.checkedAt;
@@ -1573,10 +1518,9 @@ async function refreshSystemMonitoring() {
       }
     }
     db.adminAlerts = (db.adminAlerts || []).slice(0, 500);
-    db.systemMonitor = snapshot;
     writeDb(db, { action: "state_sync", user: { id: "system", name: "Система", role: "system" } });
   });
-  return { snapshot, alerts: (readDb().adminAlerts || []).slice(0, 200) };
+  return { snapshot, alerts: (stateTransactions.baseline().adminAlerts || []).slice(0, 200) };
 }
 
 function adminDiagnosticWithin(promise, fallback, timeoutMs = 2500) {
@@ -1837,13 +1781,23 @@ function monthlyCsvRows(db, month) {
   return rows;
 }
 
-function createManualBackup(label = "manual") {
-  flushLocalBackup();
-  ensureDb();
+function createManualBackup(label = "manual", sourceDb = null) {
+  // The local mirror may be disabled in PostgreSQL mode. Back up the current
+  // transaction snapshot (or the explicit admin snapshot), never that mirror.
+  const contents = JSON.stringify(sourceDb || readDb());
   fs.mkdirSync(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupFile = path.join(backupDir, `db_backup_${safeFileName(label)}_${stamp}.json`);
-  fs.copyFileSync(dbFile, backupFile);
+  const backupFile = path.join(backupDir, `db_backup_${safeFileName(label)}_${stamp}_${crypto.randomBytes(4).toString("hex")}.json`);
+  const temporary = `${backupFile}.tmp`;
+  try {
+    const descriptor = fs.openSync(temporary, "wx", 0o600);
+    try { fs.writeFileSync(descriptor, contents); fs.fsyncSync(descriptor); }
+    finally { fs.closeSync(descriptor); }
+    fs.renameSync(temporary, backupFile);
+  } catch (error) {
+    try { fs.unlinkSync(temporary); } catch {}
+    throw error;
+  }
   pruneOldBackups(30);
   return backupFile;
 }
@@ -1907,7 +1861,7 @@ async function createAdminBackup(label = "manual", actorName = "Админист
   const cleanLabel = String(label || "Ручная копия").trim().slice(0, 200) || "Ручная копия";
   const automatic = isAutomaticBackupLabel(cleanLabel);
   const checksum = backupChecksum(payload);
-  const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel);
+  const localFile = createManualBackup(automatic ? `automatic_${cleanLabel}` : cleanLabel, payload);
   if (!postgresPool) id = path.basename(localFile);
   if (postgresPool) {
     const compressed = compressBackupPayload(payload);
@@ -2408,11 +2362,11 @@ function ensurePushConfig(db) {
   return false;
 }
 
-async function pushDbSnapshot() {
-  return enqueueStateWrite(async () => {
+async function pushDbSnapshot(select) {
+  return enqueueStateWrite(() => {
     const db = readDb();
     if (ensurePushConfig(db)) writeDb(db, { action: "push_config_created" });
-    return structuredClone(db);
+    return select(db);
   });
 }
 
@@ -2425,118 +2379,121 @@ async function removeExpiredPushSubscriptions(expired) {
   });
 }
 
-async function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
-  if (stateTransactions.defer(() => sendRemarkPushNotifications(...arguments))) return;
-  if (!added) return;
-  const db = await pushDbSnapshot();
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(item => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(db, item, remark)));
-  if (!subscriptions.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async item => {
-    try {
-      const payload = {
-        type: "remark",
-        title: "ALKZ — новое замечание",
-        body: added === 1 ? "Поступило новое замечание" : `Новых замечаний: ${added}`,
-        badgeCount: personalNotificationCountServer(db, item),
-        url,
-        entityId,
-        tag: `remark:${entityId}`
-      };
-      await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
-      else console.error(`Push notification failed: ${error?.message || error}`);
+function sendRemarkPushNotifications(added, total, origin = "", url = "/?view=remarks", entityId = "general", newRemarks = []) {
+  newRemarks = pushRemarks(newRemarks);
+  if (stateTransactions.defer(() => sendRemarkPushNotifications(added, total, origin, url, entityId, newRemarks))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    if (!added) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db,
+      (view, item) => (!origin || item.clientId !== origin) && newRemarks.some(remark => subscriptionMatchesRemarkServer(view, item, remark)),
+      personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async item => {
+      try {
+        const payload = {
+          type: "remark",
+          title: "ALKZ — новое замечание",
+          body: added === 1 ? "Поступило новое замечание" : `Новых замечаний: ${added}`,
+          badgeCount: item.badgeCount,
+          url,
+          entityId,
+          tag: `remark:${entityId}`
+        };
+        await webPush.sendNotification(item.subscription, await localizedPushPayloadServer(payload, item), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(item.subscription?.endpoint);
+        else console.error(`Push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(item => !expired.has(item.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function sendPprApprovalPushNotifications(db, sheet, origin = "") {
-  if (stateTransactions.defer(() => sendPprApprovalPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && engineerPermissionRoleServer(entry.profile) === "engineer"
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
-  const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
-      const payload = {
-        type: "ppr-approval",
-        title: "ALKZ — ППР выполнен",
-        body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
-        badgeCount: personalNotificationCountServer(db, entry),
-        url: "/?view=requests",
-        entityId,
-        tag: `ppr-approval:${entityId}`
-      };
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`PPR approval push failed: ${error?.message || error}`);
+function sendPprApprovalPushNotifications(sheet, origin = "") {
+  sheet = pushSheet(sheet, true);
+  if (stateTransactions.defer(() => sendPprApprovalPushNotifications(sheet, origin))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && engineerPermissionRoleServer(entry.profile) === "engineer"
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const activeRows = (sheet.rows || []).filter(row => String(row?.work || "").trim());
+    const equipment = [...new Set(activeRows.map(row => row.equipment).filter(Boolean))].join(", ");
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+        const payload = {
+          type: "ppr-approval",
+          title: "ALKZ — ППР выполнен",
+          body: `${equipment || "Плановые работы"}: требуется подтверждение инженера`,
+          badgeCount: entry.badgeCount,
+          url: "/?view=requests",
+          entityId,
+          tag: `ppr-approval:${entityId}`
+        };
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 86400, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`PPR approval push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function clearPprApprovalPushNotifications(db, sheet, origin = "") {
-  if (stateTransactions.defer(() => clearPprApprovalPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && engineerPermissionRoleServer(entry.profile) === "engineer"
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, JSON.stringify({
-        type: "ppr-approval-cleared",
-        badgeCount: personalNotificationCountServer(db, entry),
-        clearTag: `ppr-approval:${entityId}`,
-        silentUpdate: true
-      }), { TTL: 300, urgency: "normal" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`PPR approval clear push failed: ${error?.message || error}`);
+function clearPprApprovalPushNotifications(sheet, origin = "") {
+  sheet = pushSheet(sheet);
+  if (stateTransactions.defer(() => clearPprApprovalPushNotifications(sheet, origin))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && engineerPermissionRoleServer(entry.profile) === "engineer"
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const entityId = sheet.id || `ppr-sheet:${sheet.date}`;
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        await webPush.sendNotification(entry.subscription, JSON.stringify({
+          type: "ppr-approval-cleared",
+          badgeCount: entry.badgeCount,
+          clearTag: `ppr-approval:${entityId}`,
+          silentUpdate: true
+        }), { TTL: 300, urgency: "normal", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`PPR approval clear push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
 function resolutionUserKeyServer(user = {}) {
@@ -2569,23 +2526,9 @@ function resolutionParticipantsServer(item = {}) {
     .filter(participant => participant.key && !seen.has(participant.key) && seen.add(participant.key));
 }
 
-function isDowntimeCommentEntryServer(entry = {}) {
-  const text = String(entry.text || "").trim();
-  return entry.type === "downtime" || text.startsWith("Пуск:") || text.startsWith("Стоп:");
-}
 
-function stableRemarkIdServer(entry = {}) {
-  if (entry.id) return String(entry.id);
-  const source = [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo]
-    .map(value => String(value || ""))
-    .join("\u0001");
-  let hash = 2166136261;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `remark:${String(entry.at || "legacy")}:${(hash >>> 0).toString(36)}`;
-}
+const isDowntimeCommentEntryServer = remarkDeduplication.isDowntimeEntry;
+const stableRemarkIdServer = remarkDeduplication.stableRemarkId;
 
 const REMARK_COLLABORATION_FIELDS_SERVER = [
   "resolutionParticipants", "resolutionUpdates", "resolutionEvents", "resolutionStartedAt",
@@ -2597,46 +2540,16 @@ const REMARK_COLLABORATION_FIELDS_SERVER = [
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
   "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
-  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds"
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "collaborationActionReceipts"
 ];
 
+
 function ensureRemarkEntriesServer(item = {}) {
-  const entries = (Array.isArray(item.commentLog) ? item.commentLog : [])
-    .filter(entry => entry && !isDowntimeCommentEntryServer(entry) && String(entry.text || entry.photo || "").trim());
-  entries.forEach(entry => {
-    entry.id ||= stableRemarkIdServer(entry);
-    if (typeof entry.resolved !== "boolean") entry.resolved = Boolean(item.resolved);
-  });
-  const legacyTarget = entries.find(entry => !entry.resolved);
-  if (legacyTarget && REMARK_COLLABORATION_FIELDS_SERVER.some(field => item[field] !== undefined)) {
-    REMARK_COLLABORATION_FIELDS_SERVER.forEach(field => {
-      if (legacyTarget[field] === undefined && item[field] !== undefined) legacyTarget[field] = item[field];
-      delete item[field];
-    });
-  }
-  return entries;
+  return remarkDeduplication.ensureRemarkEntries(item, REMARK_COLLABORATION_FIELDS_SERVER);
 }
 
 function syncItemRemarkSummaryServer(item = {}) {
-  const entries = ensureRemarkEntriesServer(item);
-  if (!entries.length) return;
-  const allResolved = entries.every(entry => entry.resolved);
-  item.resolved = allResolved;
-  if (!allResolved) {
-    item.resolvedAt = "";
-    item.confirmedAt = "";
-    return;
-  }
-  const latest = entries.slice().sort((a, b) => String(b.resolvedAt || "").localeCompare(String(a.resolvedAt || "")))[0] || {};
-  item.resolvedAt = latest.resolvedAt || item.resolvedAt || "";
-  item.resolvedByName = latest.resolvedByName || item.resolvedByName || "";
-  item.resolvedByRole = latest.resolvedByRole || item.resolvedByRole || "";
-  item.resolvedComment = latest.resolvedComment || item.resolvedComment || "";
-  item.resolvedPhoto = latest.resolvedPhoto || item.resolvedPhoto || "";
-  item.resolvedDurationMs = Number(latest.resolvedDurationMs || item.resolvedDurationMs || 0);
-  item.confirmedAt = latest.confirmedAt || item.confirmedAt || "";
-  item.confirmedByName = latest.confirmedByName || item.confirmedByName || "";
-  item.confirmedByRole = latest.confirmedByRole || item.confirmedByRole || "";
+  return remarkDeduplication.syncItemSummary(item, REMARK_COLLABORATION_FIELDS_SERVER);
 }
 
 function approvedResolutionUsersServer(db) {
@@ -2899,8 +2812,7 @@ function pendingPprCountForSubscription(db, subscriptionEntry) {
   return Object.values(db.pprSheets || {}).filter(sheet =>
     sheet
     && sheet.approvalRequestedAt
-    && !sheet.approvedAt
-    && (sheet.rows || []).some(row => String(row?.work || "").trim())
+    && require("./server/ppr-autofill").pprSheetReadyForApproval(sheet)
   ).length;
 }
 
@@ -2969,135 +2881,135 @@ function syncPushProfilesForUser(db, user = {}) {
 }
 
 
-async function sendResolutionPushNotifications(db, participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
-  if (stateTransactions.defer(() => sendResolutionPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  const targetParticipants = Array.isArray(participants) ? participants : [];
-  if (!targetParticipants.length) return;
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    const badgeCount = personalNotificationCountServer(db, entry);
-    const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
-    try {
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Resolution push notification failed: ${error?.message || error}`);
+function sendResolutionPushNotifications(participants, origin, title, body, url = "/?view=remarks", entityId = "general") {
+  participants = pushParticipants(participants);
+  if (stateTransactions.defer(() => sendResolutionPushNotifications(participants, origin, title, body, url, entityId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const targetParticipants = Array.isArray(participants) ? participants : [];
+    if (!targetParticipants.length) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      const badgeCount = entry.badgeCount;
+      const payload = { type: "remark", title, body, badgeCount, url, entityId, tag: `remark:${entityId}` };
+      try {
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Resolution push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function clearRemarkPushNotifications(db, participants, origin, entityId = "general") {
-  if (stateTransactions.defer(() => clearRemarkPushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  const targetParticipants = Array.isArray(participants) ? participants : [];
-  if (!targetParticipants.length) return;
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      await webPush.sendNotification(entry.subscription, JSON.stringify({
-        type: "remark-cleared",
-        badgeCount: personalNotificationCountServer(db, entry),
-        clearTag: `remark:${entityId}`,
-        silentUpdate: true
-      }), { TTL: 300, urgency: "normal" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Remark clear push failed: ${error?.message || error}`);
+function clearRemarkPushNotifications(participants, origin, entityId = "general") {
+  participants = pushParticipants(participants);
+  if (stateTransactions.defer(() => clearRemarkPushNotifications(participants, origin, entityId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const targetParticipants = Array.isArray(participants) ? participants : [];
+    if (!targetParticipants.length) return;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) =>
+      (!origin || entry.clientId !== origin)
+      && targetParticipants.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+    , personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        await webPush.sendNotification(entry.subscription, JSON.stringify({
+          type: "remark-cleared",
+          badgeCount: entry.badgeCount,
+          clearTag: `remark:${entityId}`,
+          silentUpdate: true
+        }), { TTL: 300, urgency: "normal", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Remark clear push failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
-async function sendDowntimePushNotifications(db, title, body, origin = "", participants = null, downtimeId = "") {
-  if (stateTransactions.defer(() => sendDowntimePushNotifications(...arguments))) return;
-  db = await pushDbSnapshot();
-  ensurePushConfig(db);
-  const subscriptions = db.pushNotifications.subscriptions || [];
-  const requested = Array.isArray(participants) ? participants : null;
-  const downtime = (db.downtimes || []).find(item => String(item?.id || "") === String(downtimeId || ""));
-  const targets = subscriptions.filter(entry =>
-    (!origin || entry.clientId !== origin)
-    && (
-      requested
-        ? requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
-        : (() => {
-            const role = permissionBaseRoleServer(entry.profile?.role);
-            if (["engineer", "editor"].includes(role)) return true;
-            if (role === "shop") return Boolean(downtime?.area && userHasAreaServer(entry.profile, downtime.area));
-            const author = {
-              id: downtime?.authorId,
-              employeeId: downtime?.authorEmployeeId,
-              phone: downtime?.authorPhone,
-              name: downtime?.authorName,
-              role: downtime?.authorRole
-            };
-            if (resolutionUserKeyServer(author) === resolutionUserKeyServer(entry.profile || {})) return true;
-            return (Array.isArray(downtime?.participants) ? downtime.participants : [])
-              .some(participant => subscriptionMatchesResolutionParticipant(entry, participant));
-          })()
-    )
-  );
-  if (!targets.length) return;
-  webPush.setVapidDetails(
-    "https://ppr-control-ramazan.onrender.com",
-    db.pushNotifications.vapid.publicKey,
-    db.pushNotifications.vapid.privateKey
-  );
-  const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
-  const expired = new Set();
-  await Promise.allSettled(targets.map(async entry => {
-    try {
-      const payload = {
-        type: "downtime",
-        title,
-        body,
-        badgeCount: personalNotificationCountServer(db, entry),
-        url: targetUrl,
-        entityId: downtimeId || "general",
-        tag: `downtime:${downtimeId || "general"}`
-      };
-      await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high" });
-    } catch (error) {
-      if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
-      else console.error(`Downtime push notification failed: ${error?.message || error}`);
+function sendDowntimePushNotifications(title, body, origin = "", participants = null, downtimeId = "") {
+  participants = Array.isArray(participants) ? pushParticipants(participants) : null;
+  if (stateTransactions.defer(() => sendDowntimePushNotifications(title, body, origin, participants, downtimeId))) return Promise.resolve();
+  // End the synchronous argument frame before awaiting network delivery.
+  return (async () => {
+    const requested = Array.isArray(participants) ? participants : null;
+    const { vapid, targets } = await pushDbSnapshot(db => createPushSnapshot(db, (view, entry) => {
+      const downtime = (view.downtimes || []).find(item => String(item?.id || "") === String(downtimeId || ""));
+      return (!origin || entry.clientId !== origin)
+      && (
+        requested
+          ? requested.some(participant => subscriptionMatchesResolutionParticipant(entry, participant))
+          : (() => {
+              const role = permissionBaseRoleServer(entry.profile?.role);
+              if (["engineer", "editor"].includes(role)) return true;
+              if (role === "shop") return Boolean(downtime?.area && userHasAreaServer(entry.profile, downtime.area));
+              const author = {
+                id: downtime?.authorId,
+                employeeId: downtime?.authorEmployeeId,
+                phone: downtime?.authorPhone,
+                name: downtime?.authorName,
+                role: downtime?.authorRole
+              };
+              if (resolutionUserKeyServer(author) === resolutionUserKeyServer(entry.profile || {})) return true;
+              return (Array.isArray(downtime?.participants) ? downtime.participants : [])
+                .some(participant => subscriptionMatchesResolutionParticipant(entry, participant));
+            })()
+      )
+    }, personalNotificationCountServer));
+    if (!targets.length) return;
+    webPush.setVapidDetails(
+      "https://ppr-control-ramazan.onrender.com",
+      vapid.publicKey,
+      vapid.privateKey
+    );
+    const targetUrl = downtimeId ? `/?downtime=${encodeURIComponent(downtimeId)}` : "/?view=downtime";
+    const expired = new Set();
+    await Promise.allSettled(targets.map(async entry => {
+      try {
+        const payload = {
+          type: "downtime",
+          title,
+          body,
+          badgeCount: entry.badgeCount,
+          url: targetUrl,
+          entityId: downtimeId || "general",
+          tag: `downtime:${downtimeId || "general"}`
+        };
+        await webPush.sendNotification(entry.subscription, await localizedPushPayloadServer(payload, entry), { TTL: 3600, urgency: "high", timeout: PUSH_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) expired.add(entry.subscription?.endpoint);
+        else console.error(`Downtime push notification failed: ${error?.message || error}`);
+      }
+    }));
+    if (expired.size) {
+      await removeExpiredPushSubscriptions(expired);
     }
-  }));
-  if (expired.size) {
-    db.pushNotifications.subscriptions = subscriptions.filter(entry => !expired.has(entry.subscription?.endpoint));
-    await removeExpiredPushSubscriptions(expired);
-  }
+  })();
 }
 
 function hasMeaningfulCheckKindServer(item) {
@@ -3557,6 +3469,21 @@ function attendanceRoleAllowed(user = {}) {
   return ATTENDANCE_WORKER_ROLES.has(String(user.role || ""));
 }
 
+function remarkActionFingerprintServer(action, actor = {}, body = {}) {
+  return remarkDeduplication.actionFingerprint(action, actor, body, resolutionUserKeyServer);
+}
+
+const repeatedRemarkActionReceiptServer = remarkDeduplication.repeatedActionReceipt;
+
+function attendanceUserEligible(user = {}) {
+  return Boolean(
+    attendanceUserKey(user)
+    && String(user.role || "").trim()
+    && user.approved !== false
+    && user.pendingApproval !== true
+  );
+}
+
 function attendanceCanMonitor(user = {}) {
   return String(user.role || "") === "editor" || engineerPermissionRoleServer(user) === "engineer";
 }
@@ -3640,28 +3567,7 @@ function attendanceSessionPublic(item = {}) {
   };
 }
 
-const requestBodies = new WeakMap();
-function readBody(req) {
-  if (requestBodies.has(req)) return requestBodies.get(req);
-  const result = new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", chunk => {
-      body += chunk;
-      if (body.length > 25_000_000) {
-        reject(new Error("Body too large"));
-        req.destroy();
-      }
-    });
-    req.on("end", () => {
-      try { resolve(body ? JSON.parse(body) : {}); }
-      catch { reject(new Error("Bad JSON")); }
-    });
-    req.on("error", reject);
-    req.on("aborted", () => reject(new Error("Request aborted")));
-  });
-  requestBodies.set(req, result);
-  return result;
-}
+const readBody = require("./server/json-body").createJsonBodyReader();
 
 function mergeObjectRecords(current = {}, incoming = {}) {
   const next = { ...(current || {}) };
@@ -3725,24 +3631,18 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
   return next;
 }
 
-function mergeRemarkHistoryItems(current = [], incoming = [], identity = item => String(item?.id || "")) {
-  const map = new Map();
-  for (const item of [...(Array.isArray(current) ? current : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-    if (!item || typeof item !== "object") continue;
-    const key = identity(item);
-    if (!key) continue;
-    map.set(key, { ...(map.get(key) || {}), ...item });
-  }
-  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
-}
 
-function remarkDecisionTime(entry = {}) {
-  return Math.max(
-    Date.parse(entry.confirmedAt || "") || 0,
-    Date.parse(entry.resolutionReturnedAt || "") || 0,
-    Date.parse(entry.resolutionSubmittedAt || "") || 0,
-    Date.parse(entry.commentEditedAt || "") || 0
-  );
+
+const normalizedRemarkDuplicateValue = remarkDeduplication.normalizeValue; const dedupeRemarkHistoryItemsServer = remarkDeduplication.dedupeHistoryItems;
+const mergeRemarkHistoryItems = remarkDeduplication.mergeHistoryItems;
+const remarkDecisionTime = remarkDeduplication.decisionTime;
+
+function dedupeRemarkListServer(entries = []) {
+  return remarkDeduplication.dedupeRemarkList(entries, { resolutionUserKey: resolutionUserKeyServer });
+}
+function dedupeDuplicateRemarkEntriesServer(db = {}) {
+  return remarkDeduplication.dedupeDatabase(db, { stableRemarkId: stableRemarkIdServer, isDowntimeEntry: isDowntimeCommentEntryServer,
+    resolutionUserKey: resolutionUserKeyServer, syncItemSummary: syncItemRemarkSummaryServer, remarkDeletionKey: remarkDeletionKeyServer });
 }
 
 function mergeCommentLogs(current = [], incoming = []) {
@@ -3754,7 +3654,7 @@ function mergeCommentLogs(current = [], incoming = []) {
     if (brokenText && brokenName) return;
     const key = String(entry.id || "") || [entry.at, entry.type, entry.role, entry.name, entry.text, entry.photo].map(value => String(value || "")).join("\u0001");
     const previous = map.get(key) || {};
-    const next = { ...previous, ...entry };
+    const next = fromIncoming ? preserveRepeatFailureMetadata(previous, { ...previous, ...entry }) : { ...previous, ...entry };
     const previousDecisionTime = remarkDecisionTime(previous);
     const incomingDecisionTime = remarkDecisionTime(entry);
     const preservePreviousDecision = fromIncoming && previousDecisionTime > 0 && previousDecisionTime >= incomingDecisionTime;
@@ -3771,9 +3671,19 @@ function mergeCommentLogs(current = [], incoming = []) {
       next.resolved = false;
       ["resolvedAt", "resolvedByKey", "resolvedByName", "resolvedByRole", "resolvedComment", "resolvedPhoto"].forEach(field => delete next[field]);
     }
-    next.resolutionEvents = mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents);
-    next.resolutionUpdates = mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionEvents = dedupeRemarkHistoryItemsServer(
+      mergeRemarkHistoryItems(previous.resolutionEvents, entry.resolutionEvents),
+      "event"
+    );
+    next.resolutionUpdates = dedupeRemarkHistoryItemsServer(
+      mergeRemarkHistoryItems(previous.resolutionUpdates, entry.resolutionUpdates),
+      "update"
+    );
     next.commentEditHistory = mergeRemarkHistoryItems(previous.commentEditHistory, entry.commentEditHistory);
+    next.collaborationActionReceipts = mergeRemarkHistoryItems(
+      previous.collaborationActionReceipts,
+      entry.collaborationActionReceipts
+    ).slice(-100);
     next.resolutionParticipants = mergeRemarkHistoryItems(
       previous.resolutionParticipants,
       entry.resolutionParticipants,
@@ -3802,7 +3712,8 @@ function mergeCommentLogs(current = [], incoming = []) {
   };
   (Array.isArray(current) ? current : []).forEach(entry => mergeEntry(entry, false));
   (Array.isArray(incoming) ? incoming : []).forEach(entry => mergeEntry(entry, true));
-  return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  return dedupeRemarkListServer(Array.from(map.values()))
+    .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
 
 function mergeCheckRecord(current = {}, incoming = {}) {
@@ -3929,7 +3840,7 @@ function mergeArrayById(current = [], incoming = []) {
     if (!item || !item.id) continue;
     if (String(item.id).includes("\uFFFD")) continue;
     const currentItem = map.get(item.id) || {};
-    const nextItem = { ...currentItem, ...sanitizeIncomingValue(currentItem, item) };
+    const nextItem = preserveRepeatFailureMetadata(currentItem, { ...currentItem, ...sanitizeIncomingValue(currentItem, item) });
     if (currentItem.endedAt && !item.endedAt) {
       nextItem.endedAt = currentItem.endedAt;
       nextItem.updatedAt = currentItem.updatedAt || currentItem.endedAt;
@@ -3991,22 +3902,19 @@ function rejectRepeatedAdminMutation(req, res, pathname) {
 let wss = null;
 const wsServers = [];
 const sseClients = new Set();
+const realtimeAuth = createRealtimeAuth({ readState: () => storageStatus.mode === "postgres-degraded" ? {} : (postgresState || readDbFile()),
+  readAuthSnapshot: () => postgresStateStore ? postgresStateStore.authSnapshot() : readDbFile(), authenticatedUser,
+  onError: error => warnServerDiagnostic("realtime.authentication", error) });
 const realtimeInstanceId = crypto.randomBytes(8).toString("hex");
 let realtimeStateCounter = 0;
-const realtimePatchHistory = [];
-const REALTIME_PATCH_HISTORY_LIMIT = 1000;
+const realtimeHistory = createRealtimeHistory();
+const realtimePatchHistory = realtimeHistory.entries;
 
 function realtimeStateVersion() {
   return `${realtimeInstanceId}:${realtimeStateCounter}`;
 }
 
-function sendSse(res, payload) {
-  try {
-    res.write(typeof payload === "string" ? payload : `data: ${JSON.stringify(payload)}\n\n`);
-  } catch {
-    sseClients.delete(res);
-  }
-}
+function sendSse(res, payload, authorize = realtimeAuth.validator()) { sendServerEvent(sseClients, res, payload, authorize); }
 
 function broadcastState(origin = "server", actionId = "", state = publicState(), partial = false) {
   const transaction = stateTransactions.current();
@@ -4019,15 +3927,13 @@ function broadcastState(origin = "server", actionId = "", state = publicState(),
   payload.stateVersion = realtimeStateVersion();
   if (transaction) transaction.realtimeVersion = payload.stateVersion;
   if (transaction?.superseded) { payload.state = publicState(postgresState); payload.partial = false; }
-  realtimePatchHistory.push({ counter: realtimeStateCounter, payload });
-  if (realtimePatchHistory.length > REALTIME_PATCH_HISTORY_LIMIT) {
-    realtimePatchHistory.splice(0, realtimePatchHistory.length - REALTIME_PATCH_HISTORY_LIMIT);
-  }
   const message = JSON.stringify(payload);
-  broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error));
-  const sseMessage = `data: ${JSON.stringify(payload)}\n\n`;
+  realtimeHistory.add(realtimeStateCounter, payload, message);
+  const authorize = realtimeAuth.validator();
+  broadcastWebSockets(wsServers, message, error => warnServerDiagnostic("websocket.broadcast", error), authorize);
+  const sseMessage = `data: ${message}\n\n`;
   for (const client of sseClients) {
-    sendSse(client, sseMessage);
+    sendSse(client, sseMessage, authorize);
   }
   };
   if (!stateTransactions.defer(publish)) publish();
@@ -4443,10 +4349,18 @@ function mergePprRows(currentRows = [], incomingRows = []) {
 function mergePprSheetsByFreshness(current = {}, incoming = {}) {
   const merged = mergeObjectRecordsByFreshness(current, incoming);
   for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
+    if (current?.[date]?.approvedAt) { merged[date] = current[date]; continue; }
     if (!current?.[date] || !incoming?.[date]) continue;
-    merged[date] = { ...merged[date], rows: mergePprRows(current[date].rows, incoming[date].rows) };
+    const removedRowIds = [...new Set([...(current[date].removedRowIds || []), ...(incoming[date].removedRowIds || [])])];
+    merged[date] = { ...merged[date], removedRowIds, rows: mergePprRows(current[date].rows, incoming[date].rows).filter(row => !removedRowIds.includes(String(row.id))) };
   }
   return merged;
+}
+
+function reconcilePprApprovalRequests(db, dates, origin = "") {
+  require("./server/ppr-plan").reconcilePprApprovalRequests(db.pprSheets, stateTransactions.baseline().pprSheets, dates, {
+    origin, notify: sendPprApprovalPushNotifications, clear: clearPprApprovalPushNotifications,
+    onError: error => warnServerDiagnostic("ppr.approval-notification", error) });
 }
 
 function remarkDeletionKeyServer(recordKey, remarkId) {
@@ -4738,6 +4652,7 @@ const handleAdminDashboardRoute = createAdminDashboardRoute({
   dataIntegrityReport,
   getPostgresConnected: () => Boolean(postgresPool),
   getStorageMode: () => storageStatus.mode,
+  getSystemMonitoringSnapshot: getLatestMonitoringSnapshot,
   listAdminArchives,
   listAdminBackups,
   normalizedAdminConfig,
@@ -4839,6 +4754,7 @@ const handleAdminEquipmentMaintenanceRoute = createAdminEquipmentMaintenanceRout
 });
 
 const handleApi = createApiDispatcher({
+  sendJson,
   stateTransactions,
   handleApiTransaction,
   readBody,
@@ -4884,6 +4800,14 @@ async function handleApiTransaction(req, res, pathname, url) {
     req.authUser = authUser;
   }
 
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    const body = await readBody(req);
+    const previous = pathname === "/api/state" && req.method === "PUT" ? readDb() : undefined;
+    if (require("./server/text-integrity").requestContainsInvalidText(body, previous)) {
+      sendJson(res, 422, { ok: false, error: "В тексте есть повреждённые символы. Обновите приложение; если ошибка осталась, исправьте текст перед сохранением.", code: "text_encoding_invalid" });
+      return true;
+    }
+  }
   if (rejectRepeatedAdminMutation(req, res, pathname)) return true;
 
   if (await handleAdminStorageRoute(req, res, pathname)) return true;
@@ -4991,7 +4915,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       : [];
     const people = monitor
       ? [...(db.users || [])
-        .filter(user => attendanceRoleAllowed(user) && user.approved !== false && user.pendingApproval !== true)
+        .filter(attendanceUserEligible)
         .map(user => {
           const session = activeAttendanceSession(db, user, now);
           return {
@@ -5103,8 +5027,8 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/attendance/scan" && req.method === "POST") {
-    if (!attendanceRoleAllowed(req.authUser)) {
-      sendJson(res, 403, { ok: false, error: "attendance_role_not_required" });
+    if (!attendanceUserEligible(req.authUser)) {
+      sendJson(res, 403, { ok: false, error: "attendance_user_not_eligible" });
       return true;
     }
     const body = await readBody(req).catch(() => ({}));
@@ -5164,7 +5088,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       }
       if (action === "grant") {
         const user = (db.users || []).find(item => attendanceUserKey(item) === userKey);
-        if (!user || !attendanceRoleAllowed(user)) return { error: "attendance_user_not_found" };
+        if (!user || !attendanceUserEligible(user)) return { error: "attendance_user_not_found" };
         const now = Date.now();
         const existing = activeAttendanceSession(db, user, now);
         if (existing) return { session: attendanceSessionPublic(existing), alreadyActive: true };
@@ -5197,9 +5121,7 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
-  const attendanceMutationExempt = pathname.startsWith("/api/push/")
-    || pathname === "/api/client-error"
-    || pathname === "/api/remark-collaboration";
+  const attendanceMutationExempt = pathname.startsWith("/api/push/") || pathname === "/api/client-error" || pathname === "/api/remark-collaboration" || pathname === "/api/repeat-failure-group";
   if (
     attendanceRoleAllowed(req.authUser)
     && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
@@ -5217,8 +5139,8 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/push/public-key" && req.method === "GET") {
-    const db = await pushDbSnapshot();
-    sendJson(res, 200, { ok: true, publicKey: db.pushNotifications.vapid.publicKey });
+    const publicKey = await pushDbSnapshot(db => db.pushNotifications.vapid.publicKey);
+    sendJson(res, 200, { ok: true, publicKey });
     return true;
   }
 
@@ -5328,7 +5250,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         url: "/",
         entityId: `test:${targetId}`,
         tag: `push-test:${targetId}:${Date.now()}`
-      }, entry), { TTL: 300, urgency: "high" });
+      }, entry), { TTL: 300, urgency: "high", timeout: PUSH_TIMEOUT_MS });
       sendJson(res, 200, { ok: true });
     } catch (error) {
       if (error?.statusCode === 404 || error?.statusCode === 410) {
@@ -5341,6 +5263,7 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/events" && req.method === "GET") {
+    res.pprAuth = realtimeAuth.capture(req, req.authUser);
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-store",
@@ -5355,6 +5278,7 @@ async function handleApiTransaction(req, res, pathname, url) {
   }
 
   if (pathname === "/api/health" && req.method === "GET") {
+    const committedState = postgresState || readDbFile();
     sendJson(res, storageStatus.mode === "postgres-degraded" ? 503 : 200, buildHealthPayload({
       compatibleClient,
       clientVersion,
@@ -5365,9 +5289,10 @@ async function handleApiTransaction(req, res, pathname, url) {
       websocketClients: wsServers.reduce((sum, instance) => sum + instance.clients.size, 0),
       eventClients: sseClients.size,
       stateVersion: realtimeStateVersion(),
-      productionRequestDuplicatesRemoved: readDb().targetedCleanupVersions?.productionRequestDedup20260820?.removed,
-      testInstalledPartRecordsRemoved: readDb().targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
-      gasQrNodeCount: readDb().catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
+      realtimeCache: { entries: realtimePatchHistory.length, bytes: realtimeHistory.bytes },
+      productionRequestDuplicatesRemoved: committedState.targetedCleanupVersions?.productionRequestDedup20260820?.removed,
+      testInstalledPartRecordsRemoved: committedState.targetedCleanupVersions?.removeTestInstalledParts20260819v3?.removed,
+      gasQrNodeCount: committedState.catalog?.equipment?.[GAS_QR_EQUIPMENT_ID]?.nodes?.length
     }));
     return true;
   }
@@ -5920,6 +5845,15 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/admin/text-integrity" && req.method === "GET") {
+    if (req.authUser?.role !== "editor") { sendJson(res, 403, { ok: false, error: "admin_required" }); return true; }
+    const integrity = require("./server/text-integrity"), db = readDb();
+    const backupId = String(url.searchParams.get("backupId") || "");
+    const backup = backupId ? await readAdminBackupPayload(backupId) : null;
+    sendJson(res, 200, { ok: true, ...integrity.textIntegrityReport(db), backupId,
+      backupValid: backup?.valid || false, suggestions: backup?.valid ? integrity.backupTextSuggestions(db, backup.payload) : [] });
+    return true;
+  }
   if (pathname === "/api/export/all" && req.method === "GET") {
     if (req.authUser?.role !== "editor") {
       sendJson(res, 403, { ok: false, error: "admin_required" });
@@ -6180,11 +6114,12 @@ async function handleApiTransaction(req, res, pathname, url) {
     const result = await enqueueStateWrite(async () => {
       // Validation operates on a detached snapshot, including in PostgreSQL mode.
       // A rejected section must not partly mutate the shared in-memory state.
-      const db = structuredClone(readDb());
+      const previousDb = stateTransactions.baseline();
+      const db = readDb();
       let policy;
       try {
         policy = require("./server/state-mutation-policy").sanitizeStateMutation({
-          previous: db, incoming: incomingState, user: req.authUser,
+          previous: previousDb, incoming: incomingState, user: req.authUser,
           canAccessEquipment: nodeMutationAccessServer, hasArea: userHasAreaServer
         });
       } catch (error) {
@@ -6192,8 +6127,8 @@ async function handleApiTransaction(req, res, pathname, url) {
         return { actionId: String(incomingState.actionId || ""), error: error.code, section: error.section };
       }
       const body = policy.body;
-      const beforeState = JSON.stringify(publicState(db));
-      const beforeRemarkKeys = openRemarkKeysServer(db);
+      const beforeState = publicState(previousDb);
+      const beforeRemarkKeys = openRemarkKeysServer(previousDb);
       const authenticatedRole = String(req.authUser?.role || "");
       const catalogRole = permissionBaseRoleServer(authenticatedRole);
       const individualEquipmentEdit = activeUserPermission(req.authUser, "equipmentEdit");
@@ -6329,6 +6264,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (acceptOperational) {
         db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, body.checks));
         purgeClosedWithoutScoreRemarksServer(db);
+        dedupeDuplicateRemarkEntriesServer(db);
         if (body.walkShiftCleanupVersion) db.checks = compactCheckRecordsServer(db.checks);
       }
       db.catalog.equipment = mergedCatalog;
@@ -6339,6 +6275,7 @@ async function handleApiTransaction(req, res, pathname, url) {
         db.weldingJournal = mergeObjectRecordsByFreshness(db.weldingJournal, body.weldingJournal);
         db.turningJournal = mergeObjectRecordsByFreshness(db.turningJournal, body.turningJournal);
         db.pprSheets = mergePprSheetsByFreshness(db.pprSheets, body.pprSheets);
+        reconcilePprApprovalRequests(db, Object.keys(body.pprSheets || {}), body.clientId || "api");
         db.annualPpr = mergeObjectRecordsByFreshness(db.annualPpr, body.annualPpr);
         db.journalDueSince = { ...(db.journalDueSince || {}), ...(body.journalDueSince || {}) };
         db.auditHistory = mergeArrayById(db.auditHistory, body.auditHistory);
@@ -6359,9 +6296,9 @@ async function handleApiTransaction(req, res, pathname, url) {
           if (found) newRemarks.push(found);
         }
       });
-      const changed = beforeState !== JSON.stringify(afterState);
+      const changed = !isDeepStrictEqual(beforeState, afterState);
       if (changed) writeDb(db, { action: "state_put_merge", actionId, clientId: String(body.clientId || ""), user: req.authUser });
-      return { actionId, changed, ignoredSections: policy.ignoredSections, patch: changedStatePatch(JSON.parse(beforeState), afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
+      return { actionId, changed, ignoredSections: policy.ignoredSections, patch: changedStatePatch(beforeState, afterState), fullState: afterState, origin: body.clientId || "api", cleared: body.clearRecordedData === true, newRemarkCount, openRemarkCount: afterRemarkKeys.size, newRemarks };
     });
     if (result.error) {
       const status = ["admin_required", "state_mutation_forbidden"].includes(result.error) ? 403 : result.error === "state_reset_mismatch" ? 409 : 400;
@@ -6386,6 +6323,32 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
+  if (pathname === "/api/ppr-sheet/plan" && ["GET", "POST"].includes(req.method)) {
+    const role = permissionBaseRoleServer(String(req.authUser?.role || ""));
+    if (!["engineer", "editor"].includes(role)) { sendJson(res, 403, { ok: false, error: "ppr_action_forbidden" }); return true; }
+    const body = req.method === "GET" ? { date: new URL(req.url, "http://localhost").searchParams.get("date") } : await readBody(req);
+    const { validDate } = require("./server/ppr-autofill");
+    if (!validDate(String(body.date || ""))) { sendJson(res, 400, { ok: false, error: "ppr_date_invalid" }); return true; }
+    const { planSnapshot, savePlan } = require("./server/ppr-plan");
+    const result = req.method === "GET" ? planSnapshot(readDb(), body.date) : await enqueueStateWrite(async () => {
+      const db = readDb();
+      const saved = savePlan(db, body, { name: req.authUser.name, role });
+      if (!saved.error) {
+        reconcilePprApprovalRequests(db, [body.date], body.clientId || "api");
+        writeDb(db, { action: "ppr_plan_save", date: body.date, actionId: String(body.actionId || ""), user: { name: req.authUser.name, role } });
+      }
+      return saved;
+    });
+    if (result.error) { sendJson(res, result.error === "ppr_sheet_not_found" ? 404 : 409, { ok: false, error: result.error }); return true; }
+    if (req.method === "GET") sendJson(res, 200, { ok: true, ...result });
+    else {
+      const patch = { pprSheets: { [body.date]: result.sheet } };
+      const stateVersion = broadcastState(String(body.clientId || "api"), String(body.actionId || ""), patch, true);
+      sendJson(res, 200, { ok: true, state: patch, stateVersion });
+    }
+    return true;
+  }
+
   if (pathname === "/api/ppr-sheet/generate" && req.method === "POST") {
     const body = await readBody(req);
     const date = String(body.date || "").trim();
@@ -6404,10 +6367,11 @@ async function handleApiTransaction(req, res, pathname, url) {
     // Replacing existing unapproved work requires the planner's explicit action.
     const result = await enqueueStateWrite(async () => {
       const db = readDb();
-      const generated = generatePprSheet({ catalog: db.catalog, previous: db.pprSheets?.[date], date, force });
+      const generated = generatePprSheet({ catalog: db.catalog, templates: db.pprWorkTemplates, previous: db.pprSheets?.[date], date, force });
       if (generated.changed) {
         db.pprSheets ||= {};
         db.pprSheets[date] = generated.sheet;
+        reconcilePprApprovalRequests(db, [date], body.clientId || "api");
         writeDb(db, { action: "ppr_sheet_generated", actionId: String(body.actionId || ""), clientId: String(body.clientId || ""), user: req.authUser, date });
       }
       return generated;
@@ -6444,8 +6408,6 @@ async function handleApiTransaction(req, res, pathname, url) {
       if (sheet.approvedAt) return { error: "ppr_sheet_locked" };
       sheet.rows = Array.isArray(sheet.rows) ? sheet.rows : [];
       const now = new Date().toISOString();
-      let notifyEngineers = false;
-      let clearEngineerApproval = false;
       if (action === "draft") {
         const row = sheet.rows.find(item => String(item?.id || "") === rowId);
         if (!row || !String(row.work || "").trim()) return { error: "ppr_row_invalid" };
@@ -6474,35 +6436,23 @@ async function handleApiTransaction(req, res, pathname, url) {
         row.resolutionUpdatedAt = now;
         row.markUpdatedAt = now;
         row.updatedAt = now;
-        row.equipmentId = String(body.equipmentId || row.equipmentId || "").slice(0, 80);
-        row.equipment = String(body.equipment || row.equipment || "").slice(0, 300);
-        row.node = String(body.node || row.node || "").slice(0, 300);
-        row.area = String(body.area || row.area || "").slice(0, 300);
-        const activeRows = sheet.rows.filter(item => String(item?.work || "").trim());
-        if (
-          activeRows.length
-          && activeRows.every(item => ["done", "na"].includes(item.mark))
-          && !sheet.approvalRequestedAt
-        ) {
-          sheet.approvalRequestedAt = now;
-          notifyEngineers = true;
-        }
+        Object.assign(row, require("./server/ppr-plan").legacyMarkTarget({ ...sheet, date }, row, db.catalog, now));
       } else if (action === "add-row") {
+        if (sheet.explicitPlan) return { error: "ppr_sheet_locked" };
         sheet.rows.push({ id: rowId || `${date}-work-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, work: "", mark: "" });
       } else if (action === "approve") {
-        const activeRows = sheet.rows.filter(row => String(row?.work || "").trim());
-        if (!activeRows.length || !activeRows.every(row => ["done", "na"].includes(row.mark))) return { error: "ppr_sheet_not_ready" };
+        if (!require("./server/ppr-autofill").pprSheetReadyForApproval(sheet)) return { error: "ppr_sheet_not_ready" };
         sheet.approvedAt = now;
         sheet.approvedByName = name;
         sheet.approvedByRole = role;
         sheet.lockedAt = now;
-        clearEngineerApproval = true;
       }
       sheet.updatedAt = now;
       sheet.updatedByName = name;
       const actionId = String(body.actionId || "");
+      reconcilePprApprovalRequests(db, [date], body.clientId || "api");
       writeDb(db, { action: `ppr_sheet_${action}`, actionId, clientId: String(body.clientId || ""), user: body.user || null, date, rowId });
-      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, notifyEngineers, clearEngineerApproval, sheet };
+      return { actionId, origin: body.clientId || "api", patch: { pprSheets: { [date]: sheet } }, sheet };
     });
     if (result.error) {
       const status = result.error === "ppr_sheet_locked" ? 409 : result.error === "ppr_sheet_not_found" ? 404 : 400;
@@ -6510,16 +6460,6 @@ async function handleApiTransaction(req, res, pathname, url) {
       return true;
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
-    if (result.notifyEngineers) {
-      sendPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
-        console.error(`PPR approval push delivery failed: ${error?.message || error}`);
-      });
-    }
-    if (result.clearEngineerApproval) {
-      clearPprApprovalPushNotifications(readDb(), result.sheet, result.origin).catch(error => {
-        console.error(`PPR approval clear delivery failed: ${error?.message || error}`);
-      });
-    }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch });
     return true;
   }
@@ -6586,13 +6526,15 @@ async function handleApiTransaction(req, res, pathname, url) {
     }
     const stateVersion = broadcastState(result.origin, result.actionId, result.patch, true);
     if (result.notifyParticipants.length) {
-      sendDowntimePushNotifications(readDb(), "Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants, result.downtime.id).catch(error => {
+      sendDowntimePushNotifications("Простой закрыт", `${result.equipment}: оборудование запущено`, result.origin, result.notifyParticipants, result.downtime.id).catch(error => {
         console.error(`Downtime close push delivery failed: ${error?.message || error}`);
       });
     }
     sendJson(res, 200, { ok: true, actionId: result.actionId, stateVersion, state: result.patch, downtime: result.downtime });
     return true;
   }
+
+  if (await handleRepeatFailureGroupRoute(req, res, pathname, { readBody, sendJson, enqueueStateWrite, readDb, activeUserPermission, nodeMutationAccessServer, ensureRemarkEntriesServer, resolutionUserKeyServer, writeDb, broadcastState, realtimeStateVersion })) return true;
 
   if (pathname === "/api/remark-collaboration" && req.method === "POST") {
     const body = await readBody(req);
@@ -6618,12 +6560,32 @@ async function handleApiTransaction(req, res, pathname, url) {
       const remarkId = String(body.remarkId || "").trim();
       const remarks = ensureRemarkEntriesServer(item);
       const remark = remarks.find(entry => entry.id === remarkId);
-      if (!remark || (remark.resolved && action !== "admin-edit-resolved")) return { error: "remark_not_open" };
+      if (!remark) return { error: "remark_not_open" };
       const registeredActor = req.authUser || (db.users || []).find(user => resolutionUserKeyServer(user) === requestedActor.key);
       if (!registeredActor || registeredActor.approved === false || registeredActor.pendingApproval === true || (!req.authUser && !samePermissionRoleServer(registeredActor.role, requestedActor.role))) {
         return { error: "remark_actor_invalid" };
       }
       const actor = sanitizeResolutionParticipant(registeredActor);
+      const actionId = String(body.actionId || "").trim().slice(0, 160);
+      const actionFingerprint = remarkActionFingerprintServer(action, actor, body);
+      const repeatedReceipt = repeatedRemarkActionReceiptServer(remark, actionId, actionFingerprint);
+      const repeatedExactAction = actionId && String(repeatedReceipt?.id || "") === actionId;
+      if (repeatedReceipt && (repeatedExactAction || !remark.resolved)) {
+        return {
+          actionId,
+          duplicate: true,
+          changed: false,
+          origin: body.clientId || "api",
+          patch: { checks: { [recordKey]: record } },
+          notifyParticipants: [],
+          clearParticipants: [],
+          pushTitle: "",
+          pushBody: "",
+          remarkId,
+          recordKey
+        };
+      }
+      if (remark.resolved && action !== "admin-edit-resolved") return { error: "remark_not_open" };
       if (
         process.env.NODE_ENV !== "test"
         && action !== "start"
@@ -6641,7 +6603,6 @@ async function handleApiTransaction(req, res, pathname, url) {
         const now = new Date().toISOString();
         item.updatedAt = now;
         record.updatedAt = now;
-        const actionId = String(body.actionId || "");
         writeDb(db, {
           action: "remark_deleted",
           actionId,
@@ -7216,11 +7177,16 @@ async function handleApiTransaction(req, res, pathname, url) {
       } else {
         remark.resolutionParticipants = participants;
       }
+      if (!deleteWithoutScore && actionId) {
+        remark.collaborationActionReceipts = mergeRemarkHistoryItems(
+          remark.collaborationActionReceipts,
+          [{ id: actionId, action, actorKey: actor.key, fingerprint: actionFingerprint, at: now }]
+        ).slice(-100);
+      }
       syncItemRemarkSummaryServer(item);
       item.updatedAt = now;
       record.updatedAt = now;
       const changed = before !== JSON.stringify(record);
-      const actionId = String(body.actionId || "");
       if (changed) writeDb(db, { action: deleteWithoutScore ? "remark_deleted_without_score" : `remark_collaboration_${action}`, actionId, clientId: String(body.clientId || ""), user: actor, recordKey, remarkId, reason: deleteWithoutScore ? String(body.reason || "").trim().slice(0, 2000) : "" });
       const patch = {
         checks: { [recordKey]: record },
@@ -7233,6 +7199,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       };
       return {
         actionId,
+        duplicate: false,
         changed,
         origin: body.clientId || "api",
         patch,
@@ -7256,16 +7223,16 @@ async function handleApiTransaction(req, res, pathname, url) {
       : realtimeStateVersion();
     if (result.changed && result.notifyParticipants.length) {
       const remarkUrl = `/?record=${encodeURIComponent(result.recordKey)}&remark=${encodeURIComponent(result.remarkId)}`;
-      sendResolutionPushNotifications(readDb(), result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
+      sendResolutionPushNotifications(result.notifyParticipants, result.origin, result.pushTitle, result.pushBody, remarkUrl, result.remarkId).catch(error => {
         console.error(`Resolution push delivery failed: ${error?.message || error}`);
       });
     }
     if (result.changed && result.clearParticipants?.length) {
-      clearRemarkPushNotifications(readDb(), result.clearParticipants, result.origin, result.remarkId).catch(error => {
+      clearRemarkPushNotifications(result.clearParticipants, result.origin, result.remarkId).catch(error => {
         console.error(`Remark clear push delivery failed: ${error?.message || error}`);
       });
     }
-    sendJson(res, 200, { ok: true, actionId: result.actionId, changed: result.changed, stateVersion, state: result.patch });
+    sendJson(res, 200, { ok: true, actionId: result.actionId, duplicate: result.duplicate === true, changed: result.changed, stateVersion, state: result.patch });
     return true;
   }
 
@@ -7290,15 +7257,20 @@ async function handleApiTransaction(req, res, pathname, url) {
       const before = JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
       db.checks ||= {};
       db.checks = compactCheckRecords(mergeCheckRecordsByFreshness(db.checks, { [recordKey]: body.record }));
+      const remarkDeduplication = dedupeDuplicateRemarkEntriesServer(db);
       const nodeDowntimes = Array.isArray(body.downtimes)
         ? body.downtimes.filter(item => Number(item?.equipmentId) === equipmentId && Number(item?.nodeIndex) === nodeIndex)
         : [];
       db.downtimes = mergeArrayById(db.downtimes, nodeDowntimes);
+      const affectedCheckKeys = [...new Set([recordKey, ...remarkDeduplication.affectedRecordKeys])];
       const patch = {
-        checks: db.checks[recordKey] ? { [recordKey]: db.checks[recordKey] } : {},
+        checks: Object.fromEntries(affectedCheckKeys.filter(key => db.checks[key]).map(key => [key, db.checks[key]])),
+        ...(remarkDeduplication.affectedRecordKeys.length ? { replaceCheckKeys: affectedCheckKeys } : {}),
         downtimes: db.downtimes || []
       };
-      const changed = before !== JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] });
+      const changed = before !== JSON.stringify({ record: db.checks?.[recordKey] || null, downtimes: db.downtimes || [] })
+        || remarkDeduplication.removed > 0
+        || remarkDeduplication.historyRemoved > 0;
       const actionId = String(body.actionId || "");
       if (changed) {
         writeDb(db, {
@@ -7347,7 +7319,7 @@ async function handleApiTransaction(req, res, pathname, url) {
       const item = result.newDowntimes[0];
       const title = item.type === "production" ? "Производственный простой" : "Аварийная остановка";
       const bodyText = `${item.equipment || item.node || "Оборудование"}: ${item.comment || "без причины"}`;
-      sendDowntimePushNotifications(readDb(), title, bodyText, result.origin, null, item.id).catch(error => {
+      sendDowntimePushNotifications(title, bodyText, result.origin, null, item.id).catch(error => {
         console.error(`Downtime push delivery failed: ${error?.message || error}`);
       });
     }
@@ -7646,15 +7618,10 @@ function createHttpsServer() {
 
 const httpsServer = createHttpsServer();
 
-async function websocketAuthenticated(req) {
-  try { return Boolean(await stateTransactions.view(() => authenticatedUser(req))); }
-  catch (error) { warnServerDiagnostic("websocket.authentication", error); return false; }
-}
-
 if (WebSocketServer) {
   for (const endpoint of [server, qrServer, httpsServer].filter(Boolean)) {
     wsServers.push(attachWebSocketServer(WebSocketServer, endpoint, {
-      authenticate: websocketAuthenticated,
+      authenticate: realtimeAuth.authenticate, validator: realtimeAuth.validator,
       stateVersion: realtimeStateVersion,
       onError: error => warnServerDiagnostic("websocket.connection", error)
     }));
@@ -7663,8 +7630,10 @@ if (WebSocketServer) {
 }
 
 const heartbeatTimer = setInterval(() => {
+  const authorize = realtimeAuth.validator();
   for (const wsServer of wsServers) {
     for (const ws of wsServer.clients) {
+      if (!authorizeWebSocket(ws, authorize, error => warnServerDiagnostic("websocket.authentication", error))) continue;
       if (ws.isAlive === false) {
         try { ws.terminate(); } catch (error) { warnServerDiagnostic("websocket.terminate", error); }
         continue;
@@ -7674,19 +7643,23 @@ const heartbeatTimer = setInterval(() => {
     }
   }
   for (const client of sseClients) {
-    sendSse(client, { type: "ping", time: new Date().toISOString() });
+    sendSse(client, { type: "ping", time: new Date().toISOString() }, authorize);
   }
 }, 15000);
 const systemMonitorTimer = setInterval(() => {
+  if (!storageReady) return;
   refreshSystemMonitoring().catch(error => console.warn(`System monitoring failed: ${error.message}`));
 }, 5 * 60 * 1000);
 systemMonitorTimer.unref?.();
 const automaticBackupTimer = setInterval(() => {
+  if (!storageReady) return;
   runAutomaticBackupIfDue(false, "Система").catch(error => console.warn(`Automatic backup failed: ${error.message}`));
 }, 10 * 60 * 1000);
 automaticBackupTimer.unref?.();
 
 async function shutdown() {
+  storageReady = false;
+  startupController.abort();
   clearInterval(heartbeatTimer);
   clearInterval(systemMonitorTimer);
   clearInterval(automaticBackupTimer);
@@ -7707,9 +7680,15 @@ async function shutdown() {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-initializeStorage()
+initializeWithPrimaryRetry(initializeStorage, {
+  signal: startupController.signal,
+  onRetry: ({ attempt, attempts, delayMs }) => console.warn(`No verified PostgreSQL state is ready (startup attempt ${attempt}/${attempts}); retrying in ${delayMs / 1000}s`)
+})
   .then(async storage => {
+    if (startupController.signal.aborted) return;
+    storageReady = true;
     await enqueueStateWrite(restoreOrdinaryNodesAfterCraneRemoval).catch(error => console.warn(`Ordinary node recovery failed: ${error.message}`));
+    if (startupController.signal.aborted) return;
     startPostgresRecoveryMonitor();
     if (postgresStateStore) {
       postgresRefreshTimer = setInterval(async () => {
@@ -7742,6 +7721,7 @@ initializeStorage()
     }
   })
   .catch(error => {
+    if (startupController.signal.aborted) return;
     console.error(`Server startup failed: ${error.stack || error.message}`);
     process.exit(1);
   });

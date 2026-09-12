@@ -1,15 +1,21 @@
 "use strict";
 
 const { isDeepStrictEqual } = require("node:util");
+const { createLatestMirrorQueue } = require("./latest-mirror-queue");
 
 // full_state has one authoritative database. Cross-database mirrors are backups;
 // promoting one automatically after an uncertain commit can lose acknowledged work.
-function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [] } = {}) {
+function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [], mirrorQueryTimeoutMs = 35000, mirrorStatementTimeoutMs = 30000 } = {}) {
   const primary = pool.nodes?.[0]?.pool || pool;
-  const mirrorJobs = new Set();
+  const mirrorQueues = new Map();
+  if (![mirrorQueryTimeoutMs, mirrorStatementTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error("Mirror timeouts must be positive integer milliseconds");
   const fencedMirrors = new Set();
   let knownRevision = 0n;
   let knownState = null;
+  // Process-local floor for runtime promotion. Include a COMMIT whose reply may
+  // be lost; a new store must not forget work already observed by this process.
+  let failoverRevision = 0n;
+  let activeTransactions = 0;
 
   function primaryStatus(error) {
     if (typeof pool.markSuccess !== "function" || typeof pool.markFailure !== "function") return;
@@ -26,7 +32,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     } catch (error) { primaryStatus(error); throw error; }
   }
 
-  function checkout(queryable) {
+  function checkout(queryable, queryTimeoutMs = 0) {
     return new Promise((resolve, reject) => queryable.connect((error, client) => {
       if (error) {
         if (queryable === primary) primaryStatus(error);
@@ -44,11 +50,33 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
       // Attach inside the connect callback, before even a Promise continuation:
       // a socket can fail immediately after pg-pool hands out the client.
       client.on("error", onError);
-      resolve({
-        async query(sql, params) {
+      function release() {
+        if (released) return;
+        released = true;
+        try { client.release(connectionError || releaseError); }
+        finally { client.removeListener("error", onError); }
+      }
+      async function query(sql, params) {
           if (connectionError) throw connectionError;
           try {
-            const result = await client.query(sql, params);
+            const running = client.query(sql, params);
+            const result = queryTimeoutMs ? await new Promise((resolveQuery, rejectQuery) => {
+              const timer = setTimeout(() => {
+                connectionError ||= Object.assign(new Error("PostgreSQL mirror query deadline exceeded"), { code: "PPR_MIRROR_QUERY_TIMEOUT" });
+                // pg-pool release(error) removes this checked-out client; pg's
+                // Client.end destroys the socket when a query is still active.
+                // Merely timing out a Promise/query callback would leave SQL live.
+                try { release(); } catch (error) { releaseError = error; }
+                rejectQuery(connectionError);
+              }, queryTimeoutMs);
+              Promise.resolve(running).then(value => {
+                clearTimeout(timer);
+                resolveQuery(value);
+              }, error => {
+                clearTimeout(timer);
+                rejectQuery(error);
+              });
+            }) : await running;
             // An error event can race a response, including the COMMIT response.
             if (connectionError) throw connectionError;
             if (queryable === primary) primaryStatus();
@@ -57,27 +85,46 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
             if (queryable === primary) primaryStatus(connectionError || error);
             throw connectionError || error;
           }
-        },
+      }
+      resolve({
+        query,
         async rollback() {
           if (connectionError) return;
-          try { await client.query("ROLLBACK"); }
+          try { await (queryTimeoutMs ? query("ROLLBACK") : client.query("ROLLBACK")); }
           catch (error) { releaseError = error; throw error; }
         },
-        release() {
-          if (released) return;
-          released = true;
-          try { client.release(connectionError || releaseError); }
-          finally { client.removeListener("error", onError); }
-        }
+        release
       });
     }));
   }
 
   function observe(state, revision, external = false) {
-    if (revision <= knownRevision) return;
+    if (revision > failoverRevision) failoverRevision = revision;
+    if (knownState && revision <= knownRevision) return;
     knownRevision = revision;
-    knownState = structuredClone(state);
-    if (external) onExternalState(structuredClone(state));
+    // State transaction snapshots are immutable after commit. Reusing that
+    // canonical object avoids retaining a second full copy of the database.
+    knownState = state;
+    if (external) onExternalState(knownState, store);
+  }
+
+  async function loadSnapshot(shared = false) {
+    try {
+      // Validate freshness on the authoritative database for every read. Most
+      // requests can avoid transferring the large JSONB value when it has not
+      // changed; failures must never authorize a request from a stale cache.
+      const current = await primaryQuery("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
+      if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+      if (knownState && BigInt(current.rows[0].state_revision) === knownRevision) {
+        return shared ? knownState : structuredClone(knownState);
+      }
+      const result = await primaryQuery("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'");
+      if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+      const state = normalize(result.rows[0].payload);
+      const revision = BigInt(result.rows[0].state_revision);
+      observe(state, revision, true);
+      return shared ? knownState : structuredClone(knownState);
+    } catch (error) { error.statusCode = 503; throw error; }
   }
 
   async function installRevisionFence(client) {
@@ -94,16 +141,19 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   }
 
   async function prepareMirror(node) {
+    const queue = mirrorQueue(node);
+    await queue.pause();
     fencedMirrors.delete(node);
-    const client = await checkout(node.pool);
+    const client = await checkout(node.pool, mirrorQueryTimeoutMs);
     try {
       await client.query("BEGIN");
       await client.query("SET LOCAL lock_timeout = '8s'");
-      await client.query("SET LOCAL statement_timeout = '30s'");
+      await client.query("SELECT set_config('statement_timeout',$1,true)", [String(mirrorStatementTimeoutMs)]);
       await client.query("ALTER TABLE ppr_settings ADD COLUMN IF NOT EXISTS state_revision bigint NOT NULL DEFAULT 0");
       await installRevisionFence(client);
       await client.query("COMMIT");
       fencedMirrors.add(node);
+      queue.resume();
     } catch (error) {
       try { await client.rollback(); } catch {}
       throw error;
@@ -131,27 +181,51 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     }
   }
 
-  function mirror(state, revision, updatedAt) {
-    for (const node of (pool.nodes || []).slice(1)) {
-      if (!node.healthy) continue;
-      const job = Promise.resolve().then(() => node.pool.query(
+  function mirrorQueue(node) {
+    if (!mirrorQueues.has(node)) mirrorQueues.set(node, createLatestMirrorQueue({
+      async write({ serializedState, revision, updatedAt }) {
+        const client = await checkout(node.pool, mirrorQueryTimeoutMs);
+        try {
+          await client.query("BEGIN");
+          await client.query("SET LOCAL lock_timeout = '8s'");
+          await client.query("SELECT set_config('statement_timeout',$1,true)", [String(mirrorStatementTimeoutMs)]);
+          await client.query(
         `INSERT INTO ppr_settings(setting_key,payload,state_revision,updated_at)
          VALUES ('full_state',$1::jsonb,$2::bigint,$3)
          ON CONFLICT(setting_key) DO UPDATE SET payload=EXCLUDED.payload,
            state_revision=EXCLUDED.state_revision,updated_at=EXCLUDED.updated_at
          WHERE ppr_settings.state_revision < EXCLUDED.state_revision`,
-        [JSON.stringify(state), revision, updatedAt]
-      )).catch(error => { node.healthy = false; onMirrorError(error, node.name); })
-        .finally(() => mirrorJobs.delete(job));
-      mirrorJobs.add(job);
-    }
+            [serializedState, revision.toString(), updatedAt]
+          );
+          await client.query("COMMIT");
+        } catch (error) {
+          try { await client.rollback(); } catch {}
+          throw error;
+        } finally { client.release(); }
+      },
+      onError(error) { node.healthy = false; onMirrorError(error, node.name); }
+    }));
+    return mirrorQueues.get(node);
+  }
+
+  function mirror(serializedState, revision, updatedAt) {
+    // Called only after primary COMMIT. Every item is a complete authoritative
+    // version, not a delta: skipping intermediate pending revisions preserves
+    // cumulative state, including intentional edits/deletions in the latest one.
+    const snapshot = { serializedState, revision: BigInt(revision), updatedAt };
+    for (const node of (pool.nodes || []).slice(1)) mirrorQueue(node).enqueue(snapshot, Boolean(node.healthy));
   }
 
   async function open(initialState, adoptLegacy = false) {
     const client = await lockedClient(adoptLegacy);
     let finished = false;
     try {
-      let result = await client.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE");
+      // Ordinary writes lock only the small revision column first. The cached
+      // canonical snapshot is already immutable; re-downloading and reparsing
+      // the entire JSONB document for every mutation needlessly multiplies RSS.
+      let result = await client.query(adoptLegacy
+        ? "SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE"
+        : "SELECT state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state' FOR UPDATE");
       if (adoptLegacy && !result.rows.length) {
         const cutover = await client.query("SELECT 1 FROM ppr_settings WHERE setting_key='durable_state_cutover'");
         if (cutover.rows.length) throw new Error("Authoritative PostgreSQL full_state is missing after cutover; explicit recovery is required");
@@ -195,27 +269,42 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         );
       }
       if (!result.rows.length) throw new Error("Authoritative PostgreSQL full_state is missing; explicit recovery is required");
-      const state = normalize(legacyState || result.rows[0].payload);
       const originalRevision = BigInt(result.rows[0].state_revision);
-      if (!adoptLegacy) observe(state, originalRevision, true);
+      let state;
+      if (!adoptLegacy && knownState && originalRevision === knownRevision) {
+        state = knownState;
+      } else if (!adoptLegacy) {
+        const current = await client.query("SELECT payload,state_revision,updated_at FROM ppr_settings WHERE setting_key='full_state'");
+        if (!current.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
+        state = normalize(current.rows[0].payload);
+        observe(state, BigInt(current.rows[0].state_revision), true);
+      } else {
+        state = normalize(legacyState || result.rows[0].payload);
+      }
       return {
         state,
         async commit(nextState) {
           try {
             let saved;
+            let serializedState;
             if (nextState) {
+              serializedState = JSON.stringify(nextState);
               saved = await client.query(
                 `UPDATE ppr_settings SET payload=$1::jsonb,state_revision=state_revision+1,updated_at=clock_timestamp()
                  WHERE setting_key='full_state' RETURNING state_revision,updated_at`,
-                [JSON.stringify(nextState)]
+                [serializedState]
               );
               if (saved.rowCount !== 1) throw new Error("Authoritative PostgreSQL full_state disappeared");
+              const pendingRevision = BigInt(saved.rows[0].state_revision);
+              if (pendingRevision > failoverRevision) failoverRevision = pendingRevision;
             }
             await client.query("COMMIT");
             finished = true;
             const revision = saved ? BigInt(saved.rows[0].state_revision) : originalRevision;
             observe(nextState || state, revision);
-            if (saved) mirror(nextState, saved.rows[0].state_revision, saved.rows[0].updated_at);
+            // Reuse the primary payload for every mirror. Previously each
+            // replica created its own multi-megabyte JSON string concurrently.
+            if (saved) mirror(serializedState, saved.rows[0].state_revision, saved.rows[0].updated_at);
             return { superseded: revision < knownRevision, latestState: revision < knownRevision ? structuredClone(knownState) : null };
           } catch (error) {
             error.statusCode = 503;
@@ -234,8 +323,21 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     }
   }
 
-  return {
-    begin: () => open(),
+  const store = {
+    failoverRevision: () => failoverRevision,
+    hasActiveTransactions: () => activeTransactions > 0,
+    async begin() {
+      activeTransactions += 1;
+      try {
+        const session = await open();
+        let released = false;
+        return { ...session, release() {
+          if (released) return;
+          released = true;
+          try { session.release(); } finally { activeTransactions -= 1; }
+        } };
+      } catch (error) { activeTransactions -= 1; throw error; }
+    },
     prepareMirror,
     async authSnapshot() {
       try {
@@ -250,20 +352,31 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         };
       } catch (error) { error.statusCode = 503; throw error; }
     },
-    async snapshot() {
+    async attendanceSnapshot() {
       try {
-        const result = await primaryQuery("SELECT payload,state_revision FROM ppr_settings WHERE setting_key='full_state'");
+        const result = await primaryQuery(`SELECT payload->'users' AS users,
+          payload->'authSessions' AS auth_sessions,
+          payload->'attendanceSessions' AS attendance_sessions,
+          payload->'attendanceConfig' AS attendance_config
+          FROM ppr_settings WHERE setting_key='full_state'`);
         if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
-        const state = normalize(result.rows[0].payload);
-        const revision = BigInt(result.rows[0].state_revision);
-        observe(state, revision, true);
-        return state;
+        return {
+          users: Array.isArray(result.rows[0].users) ? result.rows[0].users : [],
+          authSessions: Array.isArray(result.rows[0].auth_sessions) ? result.rows[0].auth_sessions : [],
+          attendanceSessions: Array.isArray(result.rows[0].attendance_sessions) ? result.rows[0].attendance_sessions : [],
+          attendanceConfig: result.rows[0].attendance_config && typeof result.rows[0].attendance_config === "object"
+            ? result.rows[0].attendance_config : {}
+        };
       } catch (error) { error.statusCode = 503; throw error; }
     },
+    snapshot: () => loadSnapshot(false),
+    // Server request views clone this object exactly once before exposing it to
+    // handlers. Callers that need mutation isolation should use snapshot().
+    sharedSnapshot: () => loadSnapshot(true),
     async refresh() {
       const result = await primaryQuery("SELECT state_revision FROM ppr_settings WHERE setting_key='full_state'");
       if (!result.rows[0]) throw new Error("Authoritative PostgreSQL full_state is missing");
-      if (BigInt(result.rows[0].state_revision) > knownRevision) await this.snapshot();
+      if (BigInt(result.rows[0].state_revision) > knownRevision) await loadSnapshot(true);
     },
     async initialize(seed, migrate = value => value) {
       await primaryQuery("ALTER TABLE ppr_settings ADD COLUMN IF NOT EXISTS state_revision bigint NOT NULL DEFAULT 0");
@@ -285,8 +398,11 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
         throw error;
       } finally { session.release(); }
     },
-    async flushMirrors() { await Promise.allSettled([...mirrorJobs]); }
+    async flushMirrors() {
+      return Promise.allSettled([...mirrorQueues.values()].map(queue => queue.flush()));
+    }
   };
+  return store;
 }
 
 module.exports = { createPostgresStateStore };

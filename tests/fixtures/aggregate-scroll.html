@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>Проверка прокрутки журнала</title>
+<style>
+body{margin:0;font:16px Arial;background:#eef2f6}header{position:fixed;top:0;left:0;right:0;z-index:2;background:white;padding:12px}button{padding:10px}#journal{padding:120px 12px 100px}.aggregate-journal-sheet{margin:20px 0;padding:12px;background:white}.aggregate-journal-table-wrap{height:300px;overflow:auto}table{border-collapse:collapse;width:2400px}td{border:1px solid #999;height:120px;padding:12px}.aggregate-mobile-record-view{display:none}
+@media(max-width:680px){.aggregate-mobile-record-view{display:block}.aggregate-mobile-record-carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}.aggregate-mobile-record-card{flex:0 0 100%;scroll-snap-align:start}.aggregate-mobile-record-card td{display:block;box-sizing:border-box;width:100%}}
+</style>
+<header><button id="test">Проверить сохранение и фоновые обновления</button><output id="result">Ожидание проверки</output></header><div id="journal"></div>
+<script src="/modules/aggregate-journal-view.js"></script>
+<script>
+const list=document.querySelector("#journal"), result=document.querySelector("#result");
+function raw(){list.innerHTML=Array.from({length:6},(_,sheet)=>'<section class="aggregate-journal-sheet standard-aggregate-journal-sheet"><h2>Лист № '+(sheet+1)+'</h2><div class="aggregate-journal-table-wrap"><table><tbody>'+Array.from({length:10},(_,i)=>'<tr data-journal-row="'+sheet+':'+i+'"><td>Запись '+(i+1)+' — тестовая неисправность</td><td>Название и номер</td></tr>').join('')+'</tbody></table></div></section>').join('');PPRModules.aggregateJournalView.buildMobileCards(list);}
+function render(){const restore=PPRModules.aggregateJournalView.capturePosition(list,"test:2026-08");raw();restore();}
+const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+render();
+document.querySelector("#test").onclick=async()=>{
+  const mobile=matchMedia("(max-width:680px)").matches;
+  const selector=mobile?".aggregate-mobile-record-carousel":".aggregate-journal-table-wrap";
+  const index=mobile?0:4;
+  let target=list.querySelectorAll(selector)[index];
+  target.scrollTop=mobile?0:457;target.scrollLeft=mobile?target.clientWidth*4:140;
+  window.scrollTo(0,mobile?160:1400);await frames();
+  const expected={top:target.scrollTop,left:target.scrollLeft,y:window.scrollY};
+  raw();await frames();
+  const reproduced=list.querySelectorAll(selector)[index].scrollLeft!==expected.left;
+  target=list.querySelectorAll(selector)[index];target.scrollTop=expected.top;target.scrollLeft=expected.left;window.scrollTo(0,expected.y);await frames();
+  let ok=reproduced;
+  for(let i=0;i<4;i++){render();await frames();const now=list.querySelectorAll(selector)[index];ok=ok&&Math.abs(now.scrollTop-expected.top)<2&&Math.abs(now.scrollLeft-expected.left)<2&&Math.abs(window.scrollY-expected.y)<2;}
+  result.textContent=(ok?"PASS":"FAIL")+" · "+(mobile?"телефон, карточка 5":"компьютер, лист 5")+" · сохранение и 3 обновления · "+JSON.stringify(expected);
+};
+</script>

@@ -10,6 +10,7 @@ const { createIsolatedServerEnv } = require("../tools/testing/isolated-env");
 
 const root = path.resolve(__dirname, "..");
 const APP_VERSION = fs.readFileSync(path.join(root, "app.js"), "utf8").match(/const APP_VERSION = "([^"]+)"/)?.[1] || "";
+const SERVER_VERSION = fs.readFileSync(path.join(root, "server.js"), "utf8").match(/const SERVER_VERSION = "([^"]+)"/)?.[1] || "";
 const CLIENT_PROTOCOL_VERSION = "1";
 
 function passwordHash(password) {
@@ -154,13 +155,14 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(legacyRefreshPage.status, 200);
     assert.match(await legacyRefreshPage.text(), /Устанавливаем обновление/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": APP_VERSION } })).status, 401);
+    assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v789-server-recovery-1" } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-old" } })).status, 426);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v-future-ui", "x-client-protocol": CLIENT_PROTOCOL_VERSION } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v275-reliable-forced-update" } })).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { "x-app-version": "v273-required-client-update" } })).status, 401);
     const compatibleHealth = await fetch(`${baseUrl}/api/health`, { headers: { "x-app-version": "v275-reliable-forced-update" } }).then(response => response.json());
     assert.equal(compatibleHealth.version, "v275-reliable-forced-update");
-    assert.equal(compatibleHealth.latestVersion, APP_VERSION);
+    assert.equal(compatibleHealth.latestVersion, SERVER_VERSION);
     assert.notEqual((await fetch(`${baseUrl}/api/auth/session`, { headers: { "x-app-version": "v-old" } })).status, 426);
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {

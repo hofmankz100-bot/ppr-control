@@ -21,6 +21,7 @@ function createHarness(database = {}) {
     dataIntegrityReport: () => ({ healthy: true, fixableCount: 0, issues: [] }),
     getPostgresConnected: () => true,
     getStorageMode: () => "postgres-cluster",
+    getSystemMonitoringSnapshot: () => database.liveSystemMonitor || null,
     listAdminArchives: async () => { calls.push("archives"); return [{ id: "archive-1" }]; },
     listAdminBackups: async () => { calls.push("backups"); return [{ id: "backup-1" }]; },
     normalizedAdminConfig: value => ({ companyName: value?.companyName || "Factory" }),
@@ -80,6 +81,24 @@ test("storage tab reports the largest state sections without returning their con
   assert.equal(responses[0].payload.storageBreakdown[0].section, "checks");
   assert.equal(typeof responses[0].payload.storageBreakdown[0].sizeBytes, "number");
   assert.equal("value" in responses[0].payload.storageBreakdown[0], false);
+});
+
+test("admin dashboard prefers live monitoring without a state write", async () => {
+  const database = {
+    adminTrash: [], users: [], adminAlerts: [], adminConfig: {},
+    systemMonitor: { checkedAt: "persisted", postgres: { connected: false } },
+    liveSystemMonitor: { checkedAt: "live", node: { memoryMb: 234 }, postgres: { connected: true, mode: "postgres-cluster" } }
+  };
+  const { handler, responses } = createHarness(database);
+  await handler(
+    { method: "GET", authUser: { role: "editor" } },
+    {},
+    "/api/admin/maintenance",
+    new URL("https://example.test/api/admin/maintenance?tab=monitoring")
+  );
+  assert.equal(responses[0].payload.monitoring.checkedAt, "live");
+  assert.equal(responses[0].payload.monitoring.node.memoryMb, 234);
+  assert.equal(responses[0].payload.postgres.connected, true);
 });
 
 test("admin dashboard summarizes broadcast recipients and read receipts", async () => {

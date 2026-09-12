@@ -7,6 +7,8 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { EventEmitter } = require("node:events");
 const multiPostgres = require("../multi-postgres");
+const { createPostgresCluster } = require("../server/postgres-cluster");
+const { isTransientPostgresConnectionError } = require("../server/postgres-errors");
 
 test("startup handles an idle pool error while another database probe is still pending", async () => {
   const pools = [];
@@ -31,6 +33,8 @@ test("startup handles an idle pool error while another database probe is still p
     process: { env: { DATABASE_URL: "postgres://primary.invalid/test", NEON_DATABASE_URL: "postgres://replica.invalid/test" } },
     storageStatus: { mode: "json" },
     postgresClusterStatus: null,
+    createPostgresCluster,
+    isTransientPostgresConnectionError,
     console: { warn: message => warnings.push(message), error() {} },
     require(name) {
       if (name === "pg") return { Pool: FakePool };

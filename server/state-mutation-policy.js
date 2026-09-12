@@ -2,6 +2,7 @@
 
 const { isDeepStrictEqual } = require("node:util");
 const { ROLE_PERMISSION_BASE, activeUserPermission } = require("./permissions");
+const { reconcilePprApprovalRequest } = require("./ppr-autofill");
 
 const clone = value => value === undefined ? undefined : structuredClone(value);
 const object = value => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -129,15 +130,17 @@ function sanitizeStateMutation({ previous, incoming, user, canAccessEquipment, h
     const oldRows = new Map((old?.rows || []).map(row => [String(row.id), row]));
     const rows = new Map([...oldRows].map(([id, row]) => [id, clone(row)]));
     let changed = false;
-    for (const rawRow of Array.isArray(raw.rows) ? raw.rows : []) {
+    for (let rawRow of Array.isArray(raw.rows) ? raw.rows : []) {
       const id = String(rawRow?.id || "");
       if (!id) continue;
+      if (old?.removedRowIds?.includes(id) || (old?.explicitPlan && !oldRows.has(id))) continue;
       const saved = oldRows.get(id);
+      rawRow = require("./ppr-label-repair").preservePprLabels(rawRow, saved);
       if (!saved && !planner) { ignored.add("pprSheets"); continue; }
       const row = clone(saved || { id, work: "", mark: "" });
       const planFields = ["work", "equipmentId", "equipment", "node", "area", "autoFilled"];
       const planChange = !same(pick(saved, planFields), { ...pick(saved, planFields), ...pick(rawRow, planFields) });
-      if (planChange && planner && (!saved || (Date.parse(rawRow.workUpdatedAt || rawRow.updatedAt || raw.updatedAt) || 0) >= (Date.parse(saved.workUpdatedAt || saved.updatedAt || "") || 0))) {
+      if (planChange && planner && !old?.explicitPlan && !require("./ppr-plan").started(saved || {}) && (!saved || (Date.parse(rawRow.workUpdatedAt || rawRow.updatedAt || raw.updatedAt) || 0) >= (Date.parse(saved.workUpdatedAt || saved.updatedAt || "") || 0))) {
         Object.assign(row, pick(rawRow, planFields), { workUpdatedAt: now, mark: "", markedAt: "", markedByName: "", markedByRole: "", markUpdatedAt: now });
         sheet.plannedByName = actor.name; sheet.plannedByRole = role; sheet.plannedAt = now; sheet.plannedAutomatically = false;
         changed = true;
@@ -168,8 +171,7 @@ function sanitizeStateMutation({ previous, incoming, user, canAccessEquipment, h
       if (!same(pick(sheet, fields), { ...pick(sheet, fields), ...requested })) { Object.assign(sheet, requested); changed = true; }
     }
     if (changed) { sheet.updatedAt = now; sheet.updatedByName = actor.name; }
-    const active = sheet.rows.filter(row => String(row.work || "").trim());
-    if (active.length && active.every(row => ["done", "na"].includes(row.mark))) sheet.approvalRequestedAt ||= now;
+    reconcilePprApprovalRequest(sheet, old, now);
     // Approval/locking and their actor can only originate in ppr-sheet/action.
     if (["approvedAt", "approvedByName", "approvedByRole", "lockedAt"].some(field => raw[field] && raw[field] !== old?.[field])) ignored.add("pprSheets");
     return sheet;

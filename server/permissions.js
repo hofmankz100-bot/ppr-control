@@ -31,6 +31,7 @@ const ADMIN_PERMISSION_KEYS = new Set([
   "remarkMultiClose",
   "remarkDefer",
   "aggregateJournalCorrect",
+  "repeatFailureGroup",
   "remarkGlobalConfirm"
 ]);
 

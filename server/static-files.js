@@ -25,7 +25,7 @@ const publicRootFiles = new Set([
 function isPublicStaticPath(relativePath = "") {
   const normalized = String(relativePath).split(path.sep).join("/");
   if (publicRootFiles.has(normalized)) return true;
-  if (normalized === "modules/production-work-ui.css" || normalized === "modules/mobile-dialogs.css") return true;
+  if (["modules/repeat-failures.css", "modules/ppr-plan-editor.css"].includes(normalized)) return true;
   if (/^modules\/[A-Za-z0-9._-]+\.js$/.test(normalized)) return true;
   return normalized === "node_modules/jsqr/dist/jsQR.js"
     || normalized === "node_modules/html2canvas/dist/html2canvas.min.js"

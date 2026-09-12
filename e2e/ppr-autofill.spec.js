@@ -27,6 +27,8 @@ test("opening a calendar day creates a server plan for an operator and only a pl
   await expect(sheet.locator("[data-autofill-ppr-sheet]")).toHaveCount(0);
   expect(generationRequests.some(request => request.date === date && !request.force)).toBe(true);
   const saved = (await readState(page)).pprSheets[date];
+  expect((await page.request.get(`${app.baseURL}/api/ppr-sheet/plan?date=${date}`, { headers: { "x-client-protocol": "1" } })).status()).toBe(403);
+  expect((await page.request.post(`${app.baseURL}/api/ppr-sheet/plan`, { headers: { "x-client-protocol": "1" }, data: { date, rows: [] } })).status()).toBe(403);
   expect(saved.plannedByName).toBe("Система");
   expect(saved.plannedByRole).toBe("system");
   expect(saved.rows.some(row => row.work && row.autoFilled)).toBe(true);
@@ -49,22 +51,25 @@ test("opening a calendar day creates a server plan for an operator and only a pl
     await engineerOverlay.locator(`[data-ppr-day-date="${date}"]`).click();
     const engineerSheet = engineerOverlay.locator(`[data-ppr-sheet-date="${date}"]`);
     const firstWork = engineerSheet.locator("[data-ppr-work-input]").first();
+    await expect(firstWork).toHaveAttribute("readonly", "");
+    await engineerSheet.locator("[data-ppr-plan-edit]").click();
     await expect(firstWork).toBeEditable();
     await firstWork.fill("Ручной перечень инженера для проверки восстановления шаблона");
     await firstWork.blur();
-    await expect.poll(async () => (await readState(engineer)).pprSheets[date].rows[0].work).toBe("Ручной перечень инженера для проверки восстановления шаблона");
-    const generation = engineer.waitForResponse(response => new URL(response.url()).pathname === "/api/ppr-sheet/generate" && response.request().postDataJSON()?.force === true);
+    expect((await readState(engineer)).pprSheets[date].rows[0].work).toBe(saved.rows[0].work);
     engineer.once("dialog", async dialog => {
       expect(dialog.type()).toBe("confirm");
-      expect(dialog.message()).toContain("Заменить перечень работ шаблоном");
+      expect(dialog.message()).toContain("Заменить незавершённые работы");
       await dialog.accept();
     });
     await engineerSheet.locator("[data-autofill-ppr-sheet]").click();
-    const response = await generation;
+    const save = engineer.waitForResponse(response => new URL(response.url()).pathname === "/api/ppr-sheet/plan" && response.request().method() === "POST");
+    await engineerSheet.locator("[data-ppr-plan-save]").click();
+    const response = await save;
     expect(response.status()).toBe(200);
-    const restored = (await response.json()).sheet;
-    expect(restored.plannedByName).toBe("Система");
-    expect(restored.rows.map(row => row.work)).toEqual(saved.rows.map(row => row.work));
+    const restored = (await response.json()).state.pprSheets[date];
+    expect(restored.plannedByName).toBe(app.users.engineer.name);
+    expect(restored.rows.map(row => row.work)).toEqual(saved.rows.filter(row => row.work).map(row => row.work));
     await expect(firstWork).toHaveValue(saved.rows[0].work);
     expect(engineerErrors).toEqual([]);
   } finally {

@@ -21,6 +21,7 @@ function createAdminDashboardRoute(dependencies = {}) {
     dataIntegrityReport,
     getPostgresConnected,
     getStorageMode,
+    getSystemMonitoringSnapshot = () => null,
     listAdminArchives,
     listAdminBackups,
     normalizedAdminConfig,
@@ -44,9 +45,12 @@ function createAdminDashboardRoute(dependencies = {}) {
     const needsBackups = requestedTab === "all" || ["backups", "report", "guide", "storage", "automation"].includes(requestedTab);
     const needsArchives = requestedTab === "all" || ["archives", "guide", "storage"].includes(requestedTab);
     const storageMode = getStorageMode();
-    const monitoringSnapshot = db.systemMonitor && typeof db.systemMonitor === "object"
-      ? db.systemMonitor
-      : { node: { online: true }, api: {}, postgres: { connected: getPostgresConnected(), mode: storageMode || "json" } };
+    const liveMonitoringSnapshot = getSystemMonitoringSnapshot();
+    const monitoringSnapshot = liveMonitoringSnapshot && typeof liveMonitoringSnapshot === "object"
+      ? liveMonitoringSnapshot
+      : db.systemMonitor && typeof db.systemMonitor === "object"
+        ? db.systemMonitor
+        : { node: { online: true }, api: {}, postgres: { connected: getPostgresConnected(), mode: storageMode || "json" } };
     const monitoringResult = { snapshot: monitoringSnapshot, alerts: (db.adminAlerts || []).slice(0, 200) };
     const postgres = {
       connected: Boolean(monitoringSnapshot.postgres?.connected),

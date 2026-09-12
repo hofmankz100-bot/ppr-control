@@ -825,6 +825,7 @@
   let language = loadLanguage();
   let saveTimer = 0;
   let activeDraftOwnerKey = "";
+  let sectionSelectorVisible = false;
   let instructionStoreIsAdmin = false;
   const instructionRecords = new Map();
   const serverAcknowledgedInstructionIds = new Set();
@@ -3430,6 +3431,82 @@
   function sectionSelectorHtml() {
     // The complete permit structure is always present on screen.
     return "";
+    /* legacy section picker
+    return `
+      <section
+        class="work-permit-section-constructor no-print">
+
+        <div class="work-permit-constructor-heading">
+          <div>
+            ${i18n(
+              "optionalSections",
+              "h2"
+            )}
+
+            ${i18n(
+              "optionalSectionsHint",
+              "p"
+            )}
+          </div>
+
+          <button
+            id="workPermitOpenSectionSelector"
+            type="button">
+
+            ＋ ${escapeHtml(text("addSection"))}
+          </button>
+        </div>
+
+        <div
+          id="workPermitSectionSelector"
+          class="work-permit-section-selector"
+          hidden>
+
+          <div class="work-permit-section-options">
+            ${OPTIONAL_SECTION_IDS
+              .map(sectionId => `
+                <label>
+                  <input
+                    type="checkbox"
+                    value="${escapeHtml(sectionId)}"
+                    data-optional-section-checkbox>
+
+                  <span
+                    data-optional-section-title="${escapeHtml(sectionId)}">
+                    ${escapeHtml(
+                      optionalSectionTitle(
+                        sectionId
+                      )
+                    )}
+                  </span>
+                </label>
+              `)
+              .join("")}
+          </div>
+
+          <div class="work-permit-section-selector-actions">
+            <button
+              id="workPermitAddSelectedSections"
+              type="button">
+
+              ${escapeHtml(
+                text(
+                  "addSelectedSections"
+                )
+              )}
+            </button>
+
+            <button
+              id="workPermitCloseSectionSelector"
+              type="button">
+
+              ${escapeHtml(text("close"))}
+            </button>
+          </div>
+        </div>
+      </section>
+    `;
+    */
   }
 
   function sectionElement(sectionId) {
@@ -3585,6 +3662,56 @@
           checkbox.disabled = active;
         }
       });
+  }
+
+  function setSectionSelectorVisible(
+    visible
+  ) {
+    sectionSelectorVisible =
+      Boolean(visible);
+
+    const selector =
+      screen.querySelector(
+        "#workPermitSectionSelector"
+      );
+
+    if (selector) {
+      selector.hidden =
+        !sectionSelectorVisible;
+    }
+  }
+
+  function addSelectedOptionalSections() {
+    const selected = [
+      ...screen.querySelectorAll(
+        "[data-optional-section-checkbox]:checked"
+      )
+    ];
+
+    selected.forEach(checkbox => {
+      const sectionId =
+        checkbox.value;
+
+      setOptionalSectionVisible(
+        sectionId,
+        true,
+        false
+      );
+
+      if (
+        dynamicRows[sectionId]
+      ) {
+        renderDynamicRows(
+          sectionId
+        );
+      }
+    });
+
+    updateRelatedProducerFields();
+
+    setSectionSelectorVisible(false);
+    updateOptionalSectionsUi();
+    saveDraft(true);
   }
 
   function removeOptionalSection(
@@ -6614,6 +6741,41 @@
         }
       }
     );
+
+    screen
+      .querySelector(
+        "#workPermitOpenSectionSelector"
+      )
+      ?.addEventListener(
+        "click",
+        () => {
+          setSectionSelectorVisible(
+            !sectionSelectorVisible
+          );
+        }
+      );
+
+    screen
+      .querySelector(
+        "#workPermitCloseSectionSelector"
+      )
+      ?.addEventListener(
+        "click",
+        () => {
+          setSectionSelectorVisible(
+            false
+          );
+        }
+      );
+
+    screen
+      .querySelector(
+        "#workPermitAddSelectedSections"
+      )
+      ?.addEventListener(
+        "click",
+        addSelectedOptionalSections
+      );
 
     screen
       .querySelector(

@@ -61,7 +61,7 @@ function fixture({ postgres = true } = {}) {
     rejectRepeatedAdminMutation: () => false,
     attendanceRoleAllowed: () => false,
     sendJson(res, status, body) { res.status = status; res.body = body; },
-    sendPublicState(res, state) { assert.equal(state.checks.retainedWork, true); res.status = 200; },
+    sendPublicState(res) { res.status = 200; },
     fs: { promises: { async readFile() {
       observed.fileReads += 1;
       observed.heldViews.push(transactions.read());
@@ -145,11 +145,11 @@ test("an unavailable or missing primary state fails closed for photos without st
   assert.equal(app.observed.fullReads, 0);
 });
 
-test("auth projection is limited to photo GET; regular state reads keep their complete snapshot", async () => {
+test("state reads authenticate with a small fresh projection instead of cloning working records", async () => {
   const app = fixture();
   assert.equal((await app.request("/api/state")).status, 200);
-  assert.equal(app.observed.fullReads, 1);
-  assert.equal(app.observed.authReads, 0);
+  assert.equal(app.observed.fullReads, 0);
+  assert.equal(app.observed.authReads, 1);
 });
 
 test("JSON photo authorization also projects its freshly read users and sessions", async () => {

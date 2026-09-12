@@ -23,7 +23,7 @@ test("confirmed resolutions create monthly installed-parts journal entries", () 
 });
 
 test("installed-parts journal always opens on the current month", () => {
-  assert.match(app, /function installedPartJournalRows\(equipmentId, month = todayISO\(\)\.slice\(0, 7\)\)/);
-  assert.match(app, /function openInstalledPartJournal\(eq\) \{\s*let month = todayISO\(\)\.slice\(0, 7\);/);
+  assert.match(app, /function installedPartJournalRows\(equipmentId, month = PPRModules\.director\.calendarMonth\(new Date\(\)\)\)/);
+  assert.match(app, /function openInstalledPartJournal\(eq\) \{\s*let month = PPRModules\.director\.calendarMonth\(new Date\(\)\);/);
   assert.doesNotMatch(app, /function openInstalledPartJournal\(eq\) \{\s*let month = selectedJournalMonth\(\);/);
 });

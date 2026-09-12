@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v789-server-recovery-1";
+const APP_VERSION = "v824-bounded-mirrors-ppr-calendar";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -295,6 +295,7 @@ function canCloseRemarksForEmployees(user = authenticatedProfile || profile || {
 function canDeferRemarks(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "remarkDefer"); }
 function canConfirmRemarksAcrossShops(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || (permissionBaseRole(user?.role || "") === "engineer" && activeUserPermission(user, "remarkGlobalConfirm")); }
 function canCorrectAggregateJournal(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "aggregateJournalCorrect"); }
+function canManageRepeatFailureGroups(user = authenticatedProfile || profile || {}) { return permissionBaseRole(user?.role || "") === "editor" || activeUserPermission(user, "repeatFailureGroup"); }
 
 function canEditAnnualPpr() {
   if (isEditorSession()) return true;
@@ -389,6 +390,9 @@ let sessionValidationState = "pending";
 let sessionRefreshPromise = null;
 let networkResumePromise = null;
 let sessionRetryTimer = null;
+let pendingApprovalPollTimer = null;
+let pendingApprovalPollOwner = "";
+let pendingApprovalPollGeneration = 0;
 let attendanceStatus = null;
 let attendanceRefreshTimer = null;
 applyWorkCleanFromUrl();
@@ -548,14 +552,14 @@ let current = {
   returnToRemarkListAfterResolve: false,
   scrollToDowntimeNode: null,
   scrollToMainComment: false,
-  downtimeMonth: new Date().getMonth(),
-  downtimeYear: new Date().getFullYear(),
-  engineerReportMonth: todayISO().slice(0, 7),
-  ratingYear: new Date().getFullYear(),
-  ratingMonth: todayISO().slice(0, 7),
+  downtimeMonth: dateYearMonth(new Date()).month,
+  downtimeYear: dateYearMonth(new Date()).year,
+  engineerReportMonth: PPRModules.director.calendarMonth(new Date()),
+  ratingYear: dateYearMonth(new Date()).year,
+  ratingMonth: PPRModules.director.calendarMonth(new Date()),
   selectedDowntimeArea: "",
   selectedAggregateArea: "",
-  journalMonth: todayISO().slice(0, 7),
+  journalMonth: PPRModules.director.calendarMonth(new Date()),
   aggregateRepairEquipmentId: 0,
   qrWalkJournalDate: todayISO(),
   qrWalkJournalGroup: "technical",
@@ -1410,6 +1414,9 @@ async function runButtonOperation(button, handler, text = "В ожидании..
     if (requestId) pendingRequestIds.delete(requestId);
     console.error("Request action failed", error);
     const actionErrors = {
+      repeat_failure_group_closed: "Мероприятия выполнены: этот список закрыт. Его записи нельзя переносить. Новым записям можно поставить тот же номер — они попадут в отдельный список.",
+      repeat_failure_measures_required: "Сначала сохраните мероприятия. Для закрытия группы нужны хотя бы две записи.",
+      repeat_failure_measures_stale: "Мероприятия изменены другим сотрудником. Обновите отчёт и проверьте текст перед закрытием.",
       remark_actor_invalid: "Сервер не подтвердил учётную запись сотрудника. Выйдите из приложения и войдите снова.",
       remark_not_open: "Это замечание уже закрыто или было обновлено. Откройте список предупреждений заново.",
       remark_awaiting_confirmation: "Работа уже передана на подтверждение.",
@@ -1602,6 +1609,7 @@ async function refreshAttendanceStatus({ renderProfileBar = true } = {}) {
   try {
     attendanceStatus = await apiJson("/api/attendance/status", { timeout: 8000 });
     if (renderProfileBar) renderProfile();
+    if (attendanceStatus?.canEdit === true) flushQrWalkQueue();
     return attendanceStatus;
   } catch {
     return attendanceStatus;
@@ -1623,10 +1631,6 @@ async function handleIncomingAttendanceQrFromUrl() {
   params.delete("attendance");
   const cleanQuery = params.toString();
   history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
-  if (!attendanceRequired()) {
-    window.alert("Этот QR предназначен для рабочих должностей.");
-    return true;
-  }
   try {
     const result = await apiJson("/api/attendance/scan", {
       method: "POST",
@@ -1883,7 +1887,7 @@ async function openAttendancePanel() {
     return;
   }
   const workerOptions = status.isAdmin
-    ? loadUsers().filter(user => ATTENDANCE_WORKER_ROLES.has(String(user.role || ""))).map(user =>
+    ? loadUsers().filter(user => String(user.role || "").trim() && user.approved !== false && user.pendingApproval !== true).map(user =>
       `<option value="${escapeHtml(String(user.id || user.employeeId || user.phone || ""))}">${escapeHtml(user.name || "Сотрудник")} — ${escapeHtml(ROLE_ACCESS[user.role]?.label || user.role || "")}</option>`
     ).join("")
     : "";
@@ -2078,15 +2082,20 @@ function mergePprSheetRowsLocal(currentRows = [], incomingRows = []) {
   });
 }
 
-function mergePprSheetsLocal(current = {}, incoming = {}) {
+function mergePprSheetsLocal(current = {}, incoming = {}, serverApprovals = false) {
   const merged = mergeObjectByFreshnessLocal(current, incoming);
   for (const date of new Set([...Object.keys(current || {}), ...Object.keys(incoming || {})])) {
     if (!current?.[date] || !incoming?.[date]) continue;
     merged[date] = {
       ...merged[date],
-      rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows)
+      removedRowIds: [...new Set([...(current[date].removedRowIds || []), ...(incoming[date].removedRowIds || [])])],
+      rows: mergePprSheetRowsLocal(current[date].rows, incoming[date].rows).filter(row => !current[date].removedRowIds?.includes(String(row.id)) && !incoming[date].removedRowIds?.includes(String(row.id)))
     };
   }
+  // Only verified server sheets reconcile signatures; offline cache merges do not.
+  if (serverApprovals) Object.entries(incoming || {}).forEach(([date, sheet]) => {
+    if (sheet && typeof sheet === "object") merged[date] = { ...merged[date], ...window.PprPlanEditor.serverApprovalFields(sheet) };
+  });
   return merged;
 }
 
@@ -2099,6 +2108,40 @@ function mergeRemarkHistoryItemsLocal(current = [], incoming = [], identity = it
     map.set(key, { ...(map.get(key) || {}), ...item });
   }
   return Array.from(map.values()).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+}
+
+function remarkHistorySignatureLocal(item = {}, kind = "event") {
+  const normalize = value => String(value || "").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+  const photo = String(item.photo || "");
+  const photoIdentity = photo ? `${photo.length}:${photo.slice(0, 48)}:${photo.slice(-48)}` : "";
+  const fields = kind === "update"
+    ? [item.actorKey, item.name, item.role, item.text, photoIdentity]
+    : [item.action, item.actorKey, item.name, item.role, item.targetKey, item.targetName,
+        (item.targetKeys || []).join(","), item.reason, (item.recipientKeys || []).join(",")];
+  return fields.map(normalize).join("\u0001");
+}
+
+function dedupeRemarkHistoryItemsLocal(items = [], kind = "event") {
+  const result = [];
+  const groups = new Map();
+  for (const item of (Array.isArray(items) ? items : []).filter(value => value && typeof value === "object")
+    .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")))) {
+    const signature = remarkHistorySignatureLocal(item, kind);
+    const candidates = groups.get(signature) || [];
+    const duplicateIndex = candidates.find(index => {
+      const leftMs = Date.parse(result[index]?.at || "");
+      const rightMs = Date.parse(item.at || "");
+      return Number.isFinite(leftMs) && Number.isFinite(rightMs) && Math.abs(leftMs - rightMs) <= 120000;
+    });
+    if (duplicateIndex !== undefined) {
+      result[duplicateIndex] = { ...result[duplicateIndex], ...item, id: result[duplicateIndex].id || item.id };
+      continue;
+    }
+    candidates.push(result.length);
+    groups.set(signature, candidates);
+    result.push(item);
+  }
+  return result;
 }
 
 function remarkDecisionTimeLocal(entry = {}) {
@@ -2128,8 +2171,18 @@ function mergeCommentLogsLocal(current = [], incoming = []) {
         if (previous[field] !== undefined) next[field] = previous[field];
       });
     }
-    next.resolutionEvents = mergeRemarkHistoryItemsLocal(previous.resolutionEvents, entry.resolutionEvents);
-    next.resolutionUpdates = mergeRemarkHistoryItemsLocal(previous.resolutionUpdates, entry.resolutionUpdates);
+    next.resolutionEvents = dedupeRemarkHistoryItemsLocal(
+      mergeRemarkHistoryItemsLocal(previous.resolutionEvents, entry.resolutionEvents),
+      "event"
+    );
+    next.resolutionUpdates = dedupeRemarkHistoryItemsLocal(
+      mergeRemarkHistoryItemsLocal(previous.resolutionUpdates, entry.resolutionUpdates),
+      "update"
+    );
+    next.collaborationActionReceipts = mergeRemarkHistoryItemsLocal(
+      previous.collaborationActionReceipts,
+      entry.collaborationActionReceipts
+    ).slice(-100);
     next.resolutionParticipants = mergeRemarkHistoryItemsLocal(
       previous.resolutionParticipants,
       entry.resolutionParticipants,
@@ -2235,7 +2288,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   // PPR rows can contain a phone draft that has not reached the server yet.
   // Merge them row-by-row even during a full refresh so a stale empty server
   // snapshot cannot erase newer local work.
-  state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {});
+  state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {}, options.serverPprApprovals === true);
   state.annualPpr = preferRemote
     ? { ...(remote.annualPpr || {}) }
     : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
@@ -2277,7 +2330,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
   if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
-  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets);
+  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets, true);
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
@@ -2323,7 +2376,7 @@ function handleRealtimeMessage(data) {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
     if (msg.partial) mergeRealtimePatch(msg.state || {});
     else {
-      mergeRemoteState(msg.state || {}, { preferRemote: true });
+      mergeRemoteState(msg.state || {}, { preferRemote: true, serverPprApprovals: true });
       remoteStateHydrated = true;
     }
     if (msg.origin === CLIENT_ID) {
@@ -2504,7 +2557,7 @@ async function loadRemoteState() {
       const localResetAtBeforeMerge = String(state.operationalResetAt || "");
       const remoteResetAt = String(remote.operationalResetAt || "");
       rememberRemoteStateBaseline(remote);
-      mergeRemoteState(remote, { preferRemote: true });
+      mergeRemoteState(remote, { preferRemote: true, serverPprApprovals: true });
       const sameOperationalPeriod = !remoteResetAt || localResetAtBeforeMerge === remoteResetAt;
       if (sameOperationalPeriod) {
         const recoveredChecks = {};
@@ -2602,6 +2655,8 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
 
 async function loadRemoteUsers() {
   if (loadRemoteUsers.promise) return loadRemoteUsers.promise;
+  const approvalPollGeneration = pendingApprovalPollGeneration;
+  const approvalProfileKey = isProfileWaitingApproval() ? resolutionUserKey(profile) : "";
   loadRemoteUsers.promise = (async () => {
   try {
     const notificationKeysBeforeUpdate = appNotificationTrackingReady ? currentAppNotificationKeys() : null;
@@ -2611,14 +2666,15 @@ async function loadRemoteUsers() {
       const nextUsers = JSON.stringify(users);
       const usersChanged = previousUsers !== nextUsers;
       localStorage.setItem(USERS_KEY, nextUsers);
-      if (isProfileWaitingApproval()) {
+      if (approvalPollGeneration === pendingApprovalPollGeneration && approvalProfileKey
+        && isProfileWaitingApproval() && approvalProfileKey === resolutionUserKey(profile)) {
         const fresh = users.find(user =>
           (profile.id && user.id === profile.id) ||
           (profile.employeeId && user.employeeId === profile.employeeId) ||
           (profile.phone && user.phone === profile.phone)
         );
         if (fresh?.approved === true && fresh?.pendingApproval !== true) {
-          localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false }));
+          localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, ...fresh, approved: true, pendingApproval: false, registrationPending: false }));
           await finishAuthOnCurrentPage();
           return;
         }
@@ -2773,7 +2829,7 @@ async function saveRemoteState() {
     }
     localStorage.removeItem(`${STORE_KEY}-clear-recorded`);
     localStorage.removeItem(`${STORE_KEY}-clear-confirm`);
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: !hasNewLocalChanges, serverPprApprovals: true });
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
     if (!hasNewLocalChanges && pendingRequestIds.size) {
       pendingRequestIds.clear();
@@ -3250,6 +3306,7 @@ async function registerEmployee(data) {
     method: "POST",
     body: JSON.stringify(data)
   });
+  stopPendingApprovalPolling();
   const pendingProfile = { ...result.user, registrationPending: true, approved: false, pendingApproval: true };
   localStorage.setItem(PROFILE_KEY, JSON.stringify(pendingProfile));
   return pendingProfile;
@@ -3267,6 +3324,7 @@ async function loginEmployee(identifier, password) {
     method: "POST",
     body: JSON.stringify({ identifier, password })
   });
+  stopPendingApprovalPolling();
   await requirePendingStateAuthor(result.user);
   if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
   remoteStateHydrated = false;
@@ -3284,15 +3342,14 @@ function updateConnectionStatus() {
     notice.setAttribute("role", "status");
     ui.profileBar?.before(notice);
   }
-  const pending = pendingQrWalkMarks().length + Number(localStorage.getItem(`${STORE_KEY}-pending`) === "1");
-  const other = pendingQrWalkMarks().filter(item => !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)).length;
-  notice.hidden = !isProfileReady() || (navigator.onLine && !pending);
-  notice.textContent = !navigator.onLine ? "Нет связи. Данные сохранены на устройстве; отправим после подключения."
-    : pending ? `Данные сохранены на устройстве. Ожидают отправки: ${pending}.` : "";
-  if (other) notice.textContent += ` Отметки другого сотрудника или без подтверждённого автора: ${other}. Они сохранены и автоматически не отправляются.`;
+  // Queue ownership and retries stay in the synchronization layer. Do not show
+  // its diagnostic counters to employees or discard records to clear a banner.
+  notice.hidden = !isProfileReady() || navigator.onLine;
+  notice.textContent = notice.hidden ? "" : "Нет связи. Новые записи сохраняются на устройстве.";
 }
 
 function rejectServerSession() {
+  stopPendingApprovalPolling();
   pendingStateOwner.captureLegacy(loadProfile());
   sessionValidationState = "signed-out";
   authenticatedProfile = profile = attendanceStatus = null;
@@ -3324,6 +3381,7 @@ async function restoreServerSession() {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
     profile = activeProfileFromSession(authenticatedProfile);
     sessionValidationState = "verified";
+    startPendingApprovalPolling();
     return true;
   } catch (error) {
     if (!error.pendingOwnerConflict && !window.PprDeviceCachePolicy.isSessionRejected(error) && window.PprDeviceCachePolicy.canRestoreCachedProfile(stored) && ROLE_ACCESS[stored.role]) {
@@ -3363,6 +3421,28 @@ function refreshAuthenticatedProfile() {
   return sessionRefreshPromise;
 }
 
+function stopPendingApprovalPolling() {
+  window.clearInterval(pendingApprovalPollTimer);
+  pendingApprovalPollTimer = null;
+  pendingApprovalPollOwner = "";
+  pendingApprovalPollGeneration += 1;
+}
+
+function startPendingApprovalPolling() {
+  if (!isProfileWaitingApproval()) { stopPendingApprovalPolling(); return; }
+  const owner = resolutionUserKey(profile);
+  if (pendingApprovalPollTimer !== null && pendingApprovalPollOwner === owner) return;
+  stopPendingApprovalPolling();
+  pendingApprovalPollOwner = owner;
+  pendingApprovalPollTimer = window.setInterval(() => {
+    if (!isProfileWaitingApproval() || resolutionUserKey(profile) !== owner) {
+      stopPendingApprovalPolling();
+      return;
+    }
+    loadRemoteUsers();
+  }, 5000);
+}
+
 async function finishAuthOnCurrentPage() {
   authenticatedProfile = loadProfile();
   profile = activeProfileFromSession(authenticatedProfile);
@@ -3371,10 +3451,11 @@ async function finishAuthOnCurrentPage() {
     ui.loginOverlay.hidden = false;
     ui.loginForm.hidden = true;
     ui.loginError.textContent = t("pendingApproval");
-    window.setInterval(loadRemoteUsers, 5000);
+    startPendingApprovalPolling();
     return;
   }
 
+  stopPendingApprovalPolling();
   if (!isProfileReady()) return;
 
   ui.loginOverlay.hidden = true;
@@ -3751,7 +3832,7 @@ async function saveNodeName(equipmentId, nodeIndex, value) {
     timeout: 60000,
     body: JSON.stringify({ equipmentId, nodeIndex, node: nextName })
   });
-  if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+  if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
   if (result?.ok !== true) return false;
   return true;
 }
@@ -3768,7 +3849,7 @@ async function addNodeName(equipmentId, value) {
       timeout: 60000,
       body: JSON.stringify({ equipmentId, equipment: eq.name, nodes: eq.nodes, node: clean })
     });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     return result?.ok === true;
   }
   const item = equipmentOverride(equipmentId);
@@ -3809,7 +3890,7 @@ async function deleteNodeName(equipmentId, nodeIndex) {
       timeout: 60000,
       body: JSON.stringify({ equipmentId, nodeIndex, equipment: eq.name, nodes: eq.nodes })
     });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     return result?.ok === true;
   }
   const item = equipmentOverride(equipmentId);
@@ -4064,6 +4145,7 @@ function renderProfile() {
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
+    stopPendingApprovalPolling();
     await removePushSubscriptionForLogout();
     await apiJson("/api/auth/logout", { method: "POST", timeout: 5000 }).catch(() => {});
     pendingStateOwner.captureLegacy(loadProfile());
@@ -4195,7 +4277,7 @@ function setupLogin() {
     ui.loginOverlay.hidden = false;
     ui.loginForm.hidden = true;
     ui.loginError.textContent = t("pendingApproval");
-    window.setInterval(loadRemoteUsers, 5000);
+    startPendingApprovalPolling();
     return;
   }
   ui.loginOverlay.hidden = isProfileReady();
@@ -4529,28 +4611,42 @@ function enqueuePendingQrWalkMark(payload) {
   savePendingQrWalkMarks(pending);
 }
 
+function isQrWalkAttendanceRequired(error) {
+  return Number(error?.status) === 403 && error?.data?.error === "attendance_required";
+}
+
 function isPermanentQrWalkError(error) {
-  return [400, 401, 403, 410, 426].includes(Number(error?.status));
+  return !isQrWalkAttendanceRequired(error) && [400, 401, 403, 410, 426].includes(Number(error?.status));
 }
 
 async function sendQrWalkPayload(payload) {
-  const result = await apiJson("/api/qr-walk/mark", {
-    method: "POST",
-    timeout: 12000,
-    idempotencyKey: String(payload.actionId || ""),
-    body: JSON.stringify(payload)
-  });
-  if (result?.recordKey && result?.record) {
-    mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+  try {
+    const result = await apiJson("/api/qr-walk/mark", {
+      method: "POST",
+      timeout: 12000,
+      idempotencyKey: String(payload.actionId || ""),
+      body: JSON.stringify(payload)
+    });
+    if (result?.recordKey && result?.record) {
+      mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
+    }
+    return result;
+  } catch (error) {
+    if (isQrWalkAttendanceRequired(error) && window.PprDeviceCachePolicy.queueItemOwnedBy(payload, authenticatedProfile)) {
+      // The scan stays queued until a fresh attendance response confirms access.
+      // Invalidating the cached grant also stops the flusher's network retry timer.
+      attendanceStatus = { ...attendanceStatus, canEdit: false };
+    }
+    throw error;
   }
-  return result;
 }
 
 let qrWalkQueueFlusher = null;
 function flushQrWalkQueue() {
   qrWalkQueueFlusher ||= window.PprDeviceCachePolicy.createQueueFlusher({
     read: pendingQrWalkMarks, write: savePendingQrWalkMarks, send: sendQrWalkPayload,
-    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady(),
+    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady()
+      && attendanceAllowsEditing() && attendanceStatus?.canEdit !== false,
     canSendItem: item => window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile),
     identity: item => item.actionId || qrWalkMarkIdentity(item),
     discard: error => {
@@ -4610,7 +4706,9 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
     }
     console.warn("QR save deferred until connection recovers", error);
     enqueuePendingQrWalkMark(payload);
-    showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
+    showQrSavedNotice(isQrWalkAttendanceRequired(error)
+      ? "QR отмечен на телефоне. Откройте смену через QR «Кто на работе», чтобы отправить отметку."
+      : "QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
     return "queued";
   }
 }
@@ -6204,7 +6302,7 @@ const REMARK_COLLABORATION_FIELDS = [
   "confirmationRequiredRole", "confirmationArea", "confirmedAt", "confirmedByKey",
   "confirmedByName", "confirmedByRole", "resolutionReturnedAt", "resolutionReturnedByKey",
   "resolutionReturnedByName", "resolutionReturnedByRole", "resolutionReturnReason",
-  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "closedForParticipants"
+  "resolutionDowntimeIds", "resolutionReturnedDowntimeIds", "closedForParticipants", "collaborationActionReceipts"
 ];
 
 function ensureRemarkEntries(item = {}) {
@@ -6276,26 +6374,38 @@ function appendResolutionCompletion(item) {
   item.resolutionCompletedParticipants = resolutionParticipants(item);
 }
 
+const remarkCollaborationRequests = new Map();
+
 async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, action, extra = {}) {
   const recordKey = key(equipmentId, nodeIndex, date);
   const equipmentArea = equipmentById(Number(equipmentId))?.area || "";
-  const result = await apiJson("/api/remark-collaboration", {
-    method: "POST",
-    timeout: 20000,
-    body: JSON.stringify({
-      actionId: nextActionId(),
-      clientId: CLIENT_ID,
-      key: recordKey,
-      action,
-      actor: resolutionActor(),
-      equipmentArea,
-      ...extra
-    })
-  });
-  if (result?.state) mergeRealtimePatch(result.state);
-  if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
-  persistStateLocally(state);
-  return result;
+  const requestKey = JSON.stringify([
+    recordKey, action, extra.remarkId || "", extra.participantKey || "",
+    extra.performerKey || "", extra.text || "", extra.reason || "", extra.partDescription || ""
+  ]);
+  if (remarkCollaborationRequests.has(requestKey)) return remarkCollaborationRequests.get(requestKey);
+  const actionId = nextActionId();
+  const request = (async () => {
+    const result = await apiJson("/api/remark-collaboration", {
+      method: "POST",
+      timeout: 20000,
+      body: JSON.stringify({
+        actionId,
+        clientId: CLIENT_ID,
+        key: recordKey,
+        action,
+        actor: resolutionActor(),
+        equipmentArea,
+        ...extra
+      })
+    });
+    if (result?.state) mergeRealtimePatch(result.state);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+    persistStateLocally(state);
+    return result;
+  })().finally(() => remarkCollaborationRequests.delete(requestKey));
+  remarkCollaborationRequests.set(requestKey, request);
+  return request;
 }
 
 async function askInstalledPartDetails() {
@@ -6770,46 +6880,11 @@ async function uploadPhotoDataUrl(dataUrl) {
   return result?.url || dataUrl;
 }
 
-function readPhotoFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      resolve("");
-      return;
-    }
-    if (!/^image\//i.test(String(file.type || ""))) {
-      reject(new Error("Выберите файл фотографии."));
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      reject(new Error("Фотография слишком большая. Максимальный исходный размер — 20 МБ."));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => {
-        const dataUrl = String(reader.result || "");
-        if (/^data:image\/(jpeg|jpg|png|webp);/i.test(dataUrl)) {
-          uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
-        } else {
-          reject(new Error("Этот формат фото не удалось прочитать. На iPhone выберите «Наиболее совместимый» или сделайте снимок камерой приложения."));
-        }
-      };
-      img.onload = () => {
-        const maxSide = 1200;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-        uploadPhotoDataUrl(dataUrl).then(resolve).catch(() => resolve(dataUrl));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+async function readPhotoFile(file) {
+  const dataUrl = await window.PprPhotoCompression.read(file);
+  if (!dataUrl) return "";
+  // Offline drafts retain only the compressed image, never the camera original.
+  return uploadPhotoDataUrl(dataUrl).catch(() => dataUrl);
 }
 
 document.addEventListener("error", event => {
@@ -7007,15 +7082,14 @@ function chooseDowntimeType() {
 }
 
 function monthRange(year, month) {
-  const start = new Date(year, month, 1, 0, 0, 0, 0);
-  const end = new Date(year, month + 1, 1, 0, 0, 0, 0);
-  return { start, end };
+  return PPRModules.director.calendarMonthRange(year, month);
 }
 
 function downtimeOverlapMs(item, year = current.downtimeYear, month = current.downtimeMonth) {
   const { start, end } = monthRange(year, month);
-  const itemStart = new Date(item.startedAt).getTime();
-  const itemEnd = item.endedAt ? new Date(item.endedAt).getTime() : Date.now();
+  const itemStart = PPRModules.director.calendarTimeMs(item.startedAt);
+  const itemEnd = item.endedAt ? PPRModules.director.calendarTimeMs(item.endedAt) : Date.now();
+  if (!Number.isFinite(itemStart) || !Number.isFinite(itemEnd)) return 0;
   const from = Math.max(itemStart, start.getTime());
   const to = Math.min(itemEnd, end.getTime());
   return Math.max(to - from, 0);
@@ -7947,8 +8021,7 @@ function weldingRecords() {
 }
 
 function weldingMonthKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? todayISO().slice(0, 7) : date.toISOString().slice(0, 7);
+  return PPRModules.director.calendarMonth(value);
 }
 
 function weldingPendingCount() {
@@ -7976,12 +8049,6 @@ function updateWeldingBadge() {
   const count = weldingPendingCount() + turningPendingCount();
   if (ui.weldingHomeBadge) ui.weldingHomeBadge.textContent = String(count);
   ui.weldingHomeButton?.classList.toggle("has-pending", (isProductionWorkerProfile() || isProductionEngineer()) && count > 0);
-}
-
-const productionWorkUi = window.PprProductionWorkUi.create(ui.weldingPanel);
-
-function productionDraftOwner() {
-  return `${weldingActor().id}:${profile?.role || ""}:${profile?.editorPreviewRole || ""}`;
 }
 
 function productionTabs(active) {
@@ -8050,7 +8117,7 @@ function isProductionParticipant(item, trade, actor = weldingActor()) {
   return productionParticipants(item, trade).some(person => person.id === actor.id);
 }
 
-async function joinProductionWork(item, trade) { return productionTransition(item, trade, async item => {
+function joinProductionWork(item, trade) {
   const actor = weldingActor();
   const allowed = trade === "welding" ? isWelderUser() : isTurnerUser();
   if (!allowed) return window.alert(trade === "welding" ? "Присоединиться может только сварщик." : "Присоединиться может только токарь.");
@@ -8058,55 +8125,30 @@ async function joinProductionWork(item, trade) { return productionTransition(ite
   const participants = productionParticipants(item, trade);
   if (participants.some(person => person.id === actor.id)) return;
   const next = { ...item, participants: [...participants, productionParticipant(actor)] };
-  productionSaveNotice(await saveProductionRecord(next, trade), "Вы присоединились к совместной работе.");
-}); }
+  if (trade === "welding") saveWeldingRecord(next);
+  else saveTurningRecord(next);
+  showAppToast("Вы присоединились к совместной работе.");
+}
 
 function productionPhotosHtml(item = {}) {
   const photos = [item.requestPhoto, item.resultPhoto].filter(Boolean);
-  return photos.length ? `<div class="production-work-photos">${photos.map((photo, index) => `<figure><img src="${photo}" loading="lazy" decoding="async" alt="${index ? "Фото результата" : "Фото к заявке"}"><figcaption>${index ? "Результат" : "К заявке"}</figcaption></figure>`).join("")}</div>` : "";
+  return photos.length ? `<div class="production-work-photos">${photos.map((photo, index) => `<figure><img src="${photo}" alt="${index ? "Фото результата" : "Фото к заявке"}"><figcaption>${index ? "Результат" : "К заявке"}</figcaption></figure>`).join("")}</div>` : "";
 }
 
-const productionSubmissions = new Set();
-async function productionTransition(item, trade, action) {
-  const key = `${trade}:${item.id}`, actorId = weldingActor().id;
-  if (productionSubmissions.has(key)) return;
-  productionSubmissions.add(key);
-  try {
-    if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") await publishStateNow();
-    if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") return showAppToast("Предыдущий шаг ещё не сохранён на сервере. Повторите после восстановления связи.", "error");
-    if (weldingActor().id !== actorId) return; const latest = state[`${trade}Journal`]?.[item.id];
-    if (!latest || latest.status !== item.status) return showAppToast("Заявка изменилась. Проверьте её текущий статус и повторите действие.", "error");
-    return await action(latest);
-  } catch (error) { showAppToast(error?.message || "Не удалось сохранить действие. Заполненные поля сохранены.", "error"); }
-  finally { productionSubmissions.delete(key); }
-}
-async function saveProductionRecord(record, trade, form) {
-  if (form && !productionWorkUi.isSubmissionCurrent(form, productionDraftOwner())) return null; const section = `${trade}Journal`;
-  state[section] ||= {};
-  state[section][record.id] = { ...record, updatedAt: new Date().toISOString() };
+function saveWeldingRecord(record) {
+  state.weldingJournal ||= {};
+  state.weldingJournal[record.id] = { ...record, updatedAt: new Date().toISOString() };
   saveState();
-  await publishStateNow();
-  const latest = state[section]?.[record.id];
-  const fields = ["status", "description", "requestType", "drawingNumber", "requestPhoto", "quantity", "dueDate", "material", "consumables", "jointPosition", "workComment", "resultPhoto", "blankSize", "machine", "operations", "madeQty", "goodQty", "rejectQty", "measurements", "rejectReason", "returnReason"];
-  const retained = latest && fields.every(key => !Object.hasOwn(record, key) || String(latest[key] || "") === String(record[key] || "")) && (!productionParticipants(record, trade).some(person => person.id === weldingActor().id) || isProductionParticipant(latest, trade));
-  if (!retained) { showAppToast("Сервер не применил изменение: заявка уже изменилась. Заполненные поля сохранены.", "error"); return null; }
-  if (form) productionWorkUi.resetForm(form);
   updateWeldingBadge();
-  if (current.view === "welding") renderWeldingJournal();
-  return { queued: localStorage.getItem(`${STORE_KEY}-pending`) === "1" };
+  renderWeldingJournal();
 }
-function productionSaveNotice(result, message) { if (result) showAppToast(result.queued ? "Сохранено на этом устройстве. Отправим после восстановления связи." : message); }
-async function saveWeldingRecord(record, form) { return saveProductionRecord(record, "welding", form); }
+
 function lockProductionRequestForm(form) {
   if (!form || form.dataset.submitting === "1") return null;
-  const key = `form:${weldingActor().id}:${form.id || form.closest('[data-welding-id], [data-turning-id]')?.dataset.weldingId || form.closest('[data-turning-id]')?.dataset.turningId}`;
-  if (productionSubmissions.has(key)) return null;
-  productionSubmissions.add(key); productionWorkUi.beginSubmission(form);
   form.dataset.submitting = "1";
   const button = form.querySelector('button[type="submit"]');
   if (button) setButtonBusy(button, true, "Отправляем...");
   return () => {
-    productionSubmissions.delete(key);
     delete form.dataset.submitting;
     if (button?.isConnected) setButtonBusy(button, false);
   };
@@ -8124,7 +8166,7 @@ async function createWeldingRequest(form) {
     const id = `welding:${Date.now()}:${Math.random().toString(16).slice(2, 8)}`;
     const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
     const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-    const saved = await saveWeldingRecord({
+    saveWeldingRecord({
       id,
       status: "new",
       requestType: String(data.get("requestType") || "order"),
@@ -8136,8 +8178,8 @@ async function createWeldingRequest(form) {
       createdByRole: actor.role,
       createdByPosition: actor.position,
       requestPhoto
-    }, form);
-    productionSaveNotice(saved, "Заявка на сварочные работы отправлена.");
+    });
+    showAppToast("Заявка на сварочные работы отправлена.");
   } catch {
     window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
   } finally {
@@ -8145,22 +8187,22 @@ async function createWeldingRequest(form) {
   }
 }
 
-async function acceptWeldingRequest(item) { return productionTransition(item, "welding", async item => {
+function acceptWeldingRequest(item) {
   if (!isWelderUser()) return window.alert("Принять заявку может только сотрудник с ролью или должностью сварщика.");
   if (item.status !== "new") return window.alert("Эта заявка уже принята другим сварщиком.");
   const actor = weldingActor();
-  const saved = await saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate, participants: [productionParticipant(actor)] });
-  if (!saved) return;
-  productionSaveNotice(saved, "Заявка принята в работу.");
-}); }
+  saveWeldingRecord({ ...item, status: "accepted", acceptedAt: new Date().toISOString(), welderId: actor.id, welderName: actor.name, welderRole: actor.role, welderPosition: actor.position, welderStamp: actor.stamp, welderCertificate: actor.certificate, participants: [productionParticipant(actor)] });
+  window.setTimeout(() => {
+    const card = ui.weldingPanel?.querySelector(`[data-welding-id="${CSS.escape(item.id)}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card?.querySelector("textarea[name='material']")?.focus({ preventScroll: true });
+  }, 80);
+}
 
 async function completeWeldingRequest(item, form) {
-  const unlock = lockProductionRequestForm(form);
-  if (!unlock) return;
-  try { return await productionTransition(item, "welding", async item => {
   const actor = weldingActor();
-  if (!(isWelderUser() && isProductionParticipant(item, "welding", actor)) && profile?.role !== "editor") {
-    return window.alert("Завершить работу может участник сварочной работы или администратор.");
+  if (!isWelderUser() || (item.welderId && item.welderId !== actor.id && profile?.role !== "editor")) {
+    return window.alert("Завершить работу может принявший её сварщик или администратор.");
   }
   const data = new FormData(form);
   const material = String(data.get("material") || "").trim();
@@ -8175,7 +8217,7 @@ async function completeWeldingRequest(item, form) {
   const participants = productionParticipants(item, "welding").map(person => person.id === actor.id
     ? { ...person, stamp: welderStamp, certificate: welderCertificate }
     : person);
-  const saved = await saveWeldingRecord({
+  saveWeldingRecord({
     ...item,
     status: "awaitingAcceptance",
     material: material.slice(0, 1000),
@@ -8190,26 +8232,26 @@ async function completeWeldingRequest(item, form) {
     welderCertificate: item.welderId === actor.id ? welderCertificate : (item.welderCertificate || actor.certificate),
     participants,
     resultPhoto
-  }, form);
-  productionSaveNotice(saved, productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
-  }); } finally { unlock(); }
+  });
+  showAppToast(productionWorkWasSelfRequested({ ...item, participants }, "welding") ? "Работа отправлена инженерам на подтверждение." : "Работа отправлена заявителю на приёмку.");
 }
 
-async function acceptCompletedWeldingWork(item) { return productionTransition(item, "welding", async item => {
+function acceptCompletedWeldingWork(item) {
   const actor = weldingActor();
   if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку подтверждает инженер." : "Принять работу может только её заявитель.");
   const engineerApproval = productionWorkWasSelfRequested(item, "welding");
-  const saved = await saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: engineerApproval ? "" : new Date().toISOString(), acceptedByRequesterId: engineerApproval ? "" : actor.id, acceptedByRequesterName: engineerApproval ? "" : actor.name, acceptedByEngineerAt: engineerApproval ? new Date().toISOString() : "", acceptedByEngineerId: engineerApproval ? actor.id : "", acceptedByEngineerName: engineerApproval ? actor.name : "" });
-  productionSaveNotice(saved, "Работа принята и внесена в журнал.");
-}); }
+  saveWeldingRecord({ ...item, status: "completed", acceptedByRequesterAt: engineerApproval ? "" : new Date().toISOString(), acceptedByRequesterId: engineerApproval ? "" : actor.id, acceptedByRequesterName: engineerApproval ? "" : actor.name, acceptedByEngineerAt: engineerApproval ? new Date().toISOString() : "", acceptedByEngineerId: engineerApproval ? actor.id : "", acceptedByEngineerName: engineerApproval ? actor.name : "" });
+  showAppToast("Работа принята и внесена в журнал.");
+}
 
-async function returnWeldingWork(item) { return productionTransition(item, "welding", async item => {
+function returnWeldingWork(item) {
   const actor = weldingActor();
   if (!canDecideProductionWork(item, "welding", actor)) return window.alert(productionWorkWasSelfRequested(item, "welding") ? "Самостоятельно выполненную заявку может вернуть инженер." : "Вернуть работу может только её заявитель.");
   const reason = window.prompt("Укажите, что необходимо исправить:")?.trim();
   if (!reason) return;
-  productionSaveNotice(await saveWeldingRecord({ ...item, status: "returned", returnedAt: new Date().toISOString(), returnedById: actor.id, returnedByName: actor.name, returnReason: reason.slice(0, 1000), completedAt: "" }), "Работа возвращена сварщику на доработку.");
-}); }
+  saveWeldingRecord({ ...item, status: "returned", returnedAt: new Date().toISOString(), returnedById: actor.id, returnedByName: actor.name, returnReason: reason.slice(0, 1000), completedAt: "" });
+  showAppToast("Работа возвращена сварщику на доработку.");
+}
 
 function weldingRecordCard(item) {
   const canAccept = item.status === "new" && isWelderUser();
@@ -8247,14 +8289,13 @@ function renderWeldingJournal() {
   if (current.productionTab === "turning") return renderTurningJournal();
   updateWeldingBadge();
   if (!ui.weldingPanel) return;
-  productionWorkUi.beforeRender(productionDraftOwner());
-  const month = current.weldingMonth || todayISO().slice(0, 7);
+  const month = current.weldingMonth || PPRModules.director.calendarMonth(new Date());
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
   ui.subtitle.textContent = "Сварочные работы";
   ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварщик и токарь</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
-    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
+    <form class="welding-request-form" id="weldingRequestForm"><h2>Новая заявка</h2><p class="welding-form-help">Заполните три коротких поля — дата, время и ваше имя добавятся автоматически.</p><div class="welding-form-grid">
       <label><span><b>1</b> Тип обращения</span><select name="requestType"><option value="order">Заказ</option><option value="drawing">По чертежу</option><option value="breakdown">Поломка в цеху</option></select></label>
       <label><span><b>2</b> Номер заказа или чертежа</span><input name="drawingNumber" inputmode="text" placeholder="Если номера нет — оставьте пустым"></label>
       <label class="wide"><span><b>3</b> Что нужно изготовить или отремонтировать</span><textarea name="description" required inputmode="text" placeholder="Например: изготовить кронштейн по чертежу № 15"></textarea></label>
@@ -8265,7 +8306,7 @@ function renderWeldingJournal() {
     <div class="welding-list">${records.length ? records.map(weldingRecordCard).join("") : `<div class="empty-state">Заявок на сварочные работы пока нет.</div>`}</div>`;
   ui.weldingPanel.querySelector("#weldingRequestForm")?.addEventListener("submit", event => { event.preventDefault(); createWeldingRequest(event.currentTarget); });
   bindProductionTabs();
-  ui.weldingPanel.querySelector("[data-welding-month]")?.addEventListener("change", event => { current.weldingMonth = event.currentTarget.value || todayISO().slice(0, 7); renderWeldingJournal(); });
+  ui.weldingPanel.querySelector("[data-welding-month]")?.addEventListener("change", event => { current.weldingMonth = event.currentTarget.value || PPRModules.director.calendarMonth(new Date()); renderWeldingJournal(); });
   ui.weldingPanel.querySelector("[data-welding-print]")?.addEventListener("click", () => printWeldingJournal(month));
   ui.weldingPanel.querySelectorAll("[data-welding-id]").forEach(card => {
     const item = state.weldingJournal?.[card.dataset.weldingId];
@@ -8275,10 +8316,9 @@ function renderWeldingJournal() {
     card.querySelector("[data-welding-requester-return]")?.addEventListener("click", () => returnWeldingWork(item));
     card.querySelector(".welding-complete-form")?.addEventListener("submit", event => { event.preventDefault(); completeWeldingRequest(item, event.currentTarget); });
   });
-  productionWorkUi.afterRender("welding");
 }
 
-function printWeldingJournal(month = todayISO().slice(0, 7)) {
+function printWeldingJournal(month = PPRModules.director.calendarMonth(new Date())) {
   const rows = weldingRecords().filter(item => item.status === "completed" && weldingMonthKey(item.completedAt) === month).sort((a,b) => String(a.completedAt).localeCompare(String(b.completedAt)));
   const win = window.open("", "_blank", "width=1400,height=900");
   if (!win) return window.alert("Разрешите всплывающие окна для печати журнала.");
@@ -8288,7 +8328,11 @@ function printWeldingJournal(month = todayISO().slice(0, 7)) {
   finalizeJournalPopup(win);
 }
 
-async function saveTurningRecord(record, form) { return saveProductionRecord(record, "turning", form); }
+function saveTurningRecord(record) {
+  state.turningJournal ||= {};
+  state.turningJournal[record.id] = { ...record, updatedAt: new Date().toISOString() };
+  saveState(); updateWeldingBadge(); renderTurningJournal();
+}
 
 async function createTurningRequest(form) {
   const data = new FormData(form), actor = weldingActor(), now = new Date().toISOString();
@@ -8299,8 +8343,8 @@ async function createTurningRequest(form) {
   try {
     const requestPhotoFile = form.querySelector('[name="requestPhoto"]')?.files?.[0];
     const requestPhoto = requestPhotoFile ? await readPhotoFile(requestPhotoFile) : "";
-    const saved = await saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto }, form);
-    productionSaveNotice(saved, "Заявка на токарные работы отправлена.");
+    saveTurningRecord({ id:`turning:${Date.now()}:${Math.random().toString(16).slice(2,8)}`, status:"new", requestType:String(data.get("requestType")||"manufacture"), description:description.slice(0,2000), drawingNumber:String(data.get("drawingNumber")||"").trim().slice(0,300), quantity:String(data.get("quantity")||"").trim().slice(0,100), dueDate:String(data.get("dueDate")||""), createdAt:now, createdById:actor.id, createdByName:actor.name, createdByRole:actor.role, requestPhoto });
+    showAppToast("Заявка на токарные работы отправлена.");
   } catch {
     window.alert("Не удалось отправить заявку. Проверьте фотографию и попробуйте ещё раз.");
   } finally {
@@ -8310,32 +8354,27 @@ async function createTurningRequest(form) {
 
 function turningTypeLabel(value) { return ({ manufacture:"Изготовление", restore:"Восстановление", drawing:"По чертежу", emergency:"Аварийный ремонт" })[value] || value || "—"; }
 
-async function acceptTurningRequest(item) { return productionTransition(item, "turning", async item => {
+function acceptTurningRequest(item) {
   if (!isTurnerUser()) return window.alert("Принять заявку может только сотрудник с ролью или должностью токаря.");
   if (item.status !== "new") return window.alert("Эта заявка уже принята другим токарем.");
   const actor=weldingActor();
-  const saved = await saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role, participants:[productionParticipant(actor)] });
-  if (!saved) return;
-  productionSaveNotice(saved, "Заявка принята в работу.");
-}); }
+  saveTurningRecord({ ...item, status:"accepted", acceptedAt:new Date().toISOString(), turnerId:actor.id, turnerName:actor.name, turnerRole:actor.role, participants:[productionParticipant(actor)] });
+  window.setTimeout(()=>{ const card=ui.weldingPanel?.querySelector(`[data-turning-id="${CSS.escape(item.id)}"]`); card?.scrollIntoView({behavior:"smooth",block:"start"}); card?.querySelector("textarea[name='material']")?.focus({preventScroll:true}); },80);
+}
 
 async function completeTurningRequest(item, form) {
-  const unlock = lockProductionRequestForm(form);
-  if (!unlock) return;
-  try { return await productionTransition(item, "turning", async item => {
   const actor=weldingActor();
   if (!isProductionParticipant(item, "turning", actor) && profile?.role !== "editor") return window.alert("Завершить работу может участник токарной работы или администратор.");
   const d=new FormData(form); const material=String(d.get("material")||"").trim(); const operations=String(d.get("operations")||"").trim();
   if (!material || !operations) return window.alert("Заполните материал и выполненные операции.");
   const resultPhotoFile = form.querySelector('[name="resultPhoto"]')?.files?.[0];
   const resultPhoto = resultPhotoFile ? await readPhotoFile(resultPhotoFile) : (item.resultPhoto || "");
-  const saved = await saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name, participants:productionParticipants(item,"turning"), resultPhoto }, form);
-  productionSaveNotice(saved, productionWorkWasSelfRequested(item,"turning")?"Работа отправлена инженерам на подтверждение.":"Работа отправлена заявителю на приёмку.");
-  }); } finally { unlock(); }
+  saveTurningRecord({ ...item, status:"awaitingAcceptance", material:material.slice(0,1000), blankSize:String(d.get("blankSize")||"").trim().slice(0,500), machine:String(d.get("machine")||"").trim().slice(0,300), operations:operations.slice(0,1500), madeQty:String(d.get("madeQty")||"").trim().slice(0,100), goodQty:String(d.get("goodQty")||"").trim().slice(0,100), rejectQty:String(d.get("rejectQty")||"").trim().slice(0,100), rejectReason:String(d.get("rejectReason")||"").trim().slice(0,1000), measurements:String(d.get("measurements")||"").trim().slice(0,2000), workComment:String(d.get("workComment")||"").trim().slice(0,2000), completedAt:new Date().toISOString(), turnerId:item.turnerId||actor.id, turnerName:item.turnerName||actor.name, participants:productionParticipants(item,"turning"), resultPhoto });
+  showAppToast(productionWorkWasSelfRequested(item,"turning")?"Работа отправлена инженерам на подтверждение.":"Работа отправлена заявителю на приёмку.");
 }
 
-async function acceptTurningWork(item) { return productionTransition(item,"turning",async item=>{ const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку подтверждает инженер.":"Принять работу может только её заявитель."); const engineerApproval=productionWorkWasSelfRequested(item,"turning"), now=new Date().toISOString(); const saved=await saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:engineerApproval?"":now,acceptedByRequesterId:engineerApproval?"":actor.id,acceptedByRequesterName:engineerApproval?"":actor.name,acceptedByEngineerAt:engineerApproval?now:"",acceptedByEngineerId:engineerApproval?actor.id:"",acceptedByEngineerName:engineerApproval?actor.name:""}); productionSaveNotice(saved,"Токарная работа принята и внесена в журнал."); }); }
-async function returnTurningWork(item) { return productionTransition(item,"turning",async item=>{ const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку может вернуть инженер.":"Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; productionSaveNotice(await saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}),"Работа возвращена токарю на доработку."); }); }
+function acceptTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку подтверждает инженер.":"Принять работу может только её заявитель."); const engineerApproval=productionWorkWasSelfRequested(item,"turning"), now=new Date().toISOString(); saveTurningRecord({...item,status:"completed",acceptedByRequesterAt:engineerApproval?"":now,acceptedByRequesterId:engineerApproval?"":actor.id,acceptedByRequesterName:engineerApproval?"":actor.name,acceptedByEngineerAt:engineerApproval?now:"",acceptedByEngineerId:engineerApproval?actor.id:"",acceptedByEngineerName:engineerApproval?actor.name:""}); showAppToast("Токарная работа принята и внесена в журнал."); }
+function returnTurningWork(item) { const actor=weldingActor(); if(!canDecideProductionWork(item,"turning",actor))return window.alert(productionWorkWasSelfRequested(item,"turning")?"Самостоятельно выполненную заявку может вернуть инженер.":"Вернуть работу может только её заявитель."); const reason=window.prompt("Укажите, что необходимо исправить:")?.trim(); if(!reason)return; saveTurningRecord({...item,status:"returned",returnedAt:new Date().toISOString(),returnedByName:actor.name,returnReason:reason.slice(0,1000),completedAt:""}); showAppToast("Работа возвращена токарю на доработку."); }
 
 function turningCard(item) {
   const actor=weldingActor();
@@ -8358,16 +8397,13 @@ function turningCard(item) {
 }
 
 function renderTurningJournal() {
-  if (!ui.weldingPanel) return;
-  productionWorkUi.beforeRender(productionDraftOwner());
-  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||todayISO().slice(0,7); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
+  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||PPRModules.director.calendarMonth(new Date()); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
   ui.subtitle.textContent="Токарные работы";
   ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку или присоединитесь к совместной работе.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label><label class="wide"><span><b>6</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x=>x.status==="completed").length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
-  bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||todayISO().slice(0,7);renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
-  productionWorkUi.afterRender("turning");
+  bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||PPRModules.director.calendarMonth(new Date());renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
 }
 
-function printTurningJournal(month=todayISO().slice(0,7)) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
+function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);
@@ -8489,11 +8525,11 @@ function aggregateJournalAreas(equipment = visibleEquipment()) {
 function selectedJournalMonth() {
   return /^\d{4}-\d{2}$/.test(String(current.journalMonth || ""))
     ? String(current.journalMonth)
-    : todayISO().slice(0, 7);
+    : PPRModules.director.calendarMonth(new Date());
 }
 
 function journalMonthMatches(value, month = selectedJournalMonth()) {
-  return String(value || "").slice(0, 7) === month;
+  return Boolean(month) && PPRModules.director.calendarMonth(value) === month;
 }
 
 function journalMonthLabel(month = selectedJournalMonth()) {
@@ -8507,7 +8543,7 @@ function journalMonthControlHtml() {
 
 function bindJournalMonthControl(root, render) {
   root?.querySelector("[data-journal-month]")?.addEventListener("change", event => {
-    current.journalMonth = event.currentTarget.value || todayISO().slice(0, 7);
+    current.journalMonth = event.currentTarget.value || PPRModules.director.calendarMonth(new Date());
     current.compressorSheetIndex = 0;
     current.gasSheetAIndex = 0;
     current.gasSheetBIndex = 0;
@@ -8530,6 +8566,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       if (isDowntimeCommentEntry(entry) || !String(entry?.text || "").trim()) return;
       items.push({
         id: `remark:${recordKey}:${entryIndex}`,
+        sourceType: "remark",
         recordKey,
         remarkId: entry.id || stableRemarkId(entry),
         kind: "Замечание",
@@ -8563,6 +8600,7 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
         commentEditedByName: entry.commentEditedByName || "",
         commentEditedByRole: entry.commentEditedByRole || "",
         commentEditHistory: Array.isArray(entry.commentEditHistory) ? entry.commentEditHistory : [],
+        ...PPRModules.repeatFailures.metadata(entry),
         durationMs: Number(entry.resolvedDurationMs || 0)
       });
     });
@@ -8576,6 +8614,8 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
     ) return;
     items.push({
       id: item.id,
+      sourceType: "downtime",
+      downtimeId: item.id,
       kind: "Поломка",
       equipmentId: item.equipmentId,
       nodeIndex: item.nodeIndex,
@@ -8591,10 +8631,11 @@ function aggregateJournalItems(area, equipmentFilterId = 0) {
       resolvedByName: item.closedByName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedComment: item.closeComment || "",
+      ...PPRModules.repeatFailures.metadata(item),
       durationMs: downtimeDurationMs(item)
     });
   });
-  return items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return PPRModules.comments.dedupeAggregateJournalItems(items);
 }
 
 function aggregateRemarkOptions(area = "") {
@@ -8633,7 +8674,7 @@ function aggregateJournalCount(area, equipmentId = 0) {
   return aggregateJournalItems(area, equipmentId).length;
 }
 
-function installedPartJournalRows(equipmentId, month = todayISO().slice(0, 7)) {
+function installedPartJournalRows(equipmentId, month = PPRModules.director.calendarMonth(new Date())) {
   const rows = [];
   Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
     const [rawEquipmentId, rawNodeIndex, date] = recordKey.split(":");
@@ -8661,13 +8702,13 @@ function installedPartJournalHtml(eq, month, printable = false) {
 }
 
 function openInstalledPartJournal(eq) {
-  let month = todayISO().slice(0, 7);
+  let month = PPRModules.director.calendarMonth(new Date());
   const overlay = document.createElement("div");
   overlay.className = "installed-part-journal-overlay";
   const render = () => {
     overlay.innerHTML = `<section class="installed-part-journal-dialog">${installedPartJournalHtml(eq, month)}</section>`;
     overlay.querySelector("[data-close-parts]")?.addEventListener("click", () => overlay.remove());
-    overlay.querySelector("[data-parts-month]")?.addEventListener("change", event => { month = event.currentTarget.value || todayISO().slice(0, 7); render(); });
+    overlay.querySelector("[data-parts-month]")?.addEventListener("change", event => { month = event.currentTarget.value || PPRModules.director.calendarMonth(new Date()); render(); });
     overlay.querySelector("[data-print-parts]")?.addEventListener("click", () => {
       const popup = window.open("", "_blank", "width=1200,height=900");
       if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
@@ -9850,7 +9891,7 @@ function openCreateEquipmentDialog() {
     runButtonOperation(button, async () => {
       const values = Object.fromEntries(new FormData(form).entries());
       const result = await apiJson("/api/admin/equipment/create", { method: "POST", timeout: 60000, body: JSON.stringify(values) });
-      if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+      if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
       if (!result?.ok) throw new Error(result?.error || "equipment_create_failed");
       close();
       renderEquipment();
@@ -9938,13 +9979,18 @@ function openCustomJournalEditor(eq) {
     const resultMode = overlay.querySelector("[data-journal-result-mode]").value;
     const frequency = overlay.querySelector("[data-journal-frequency]").value;
     const result = await apiJson("/api/admin/equipment/journal-schema", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, title, scope, journalNodeIndex, fieldsTiming, resultMode, frequency, columns: draft.columns }) });
-    if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+    if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
     if (!result?.ok) throw new Error(result?.error || "journal_schema_failed");
     close(); renderEquipment(); showAppToast("Структура журнала сохранена", "ok");
   }, "Сохраняется..."));
 }
 
+let equipmentSearchController = null;
+let equipmentSearchProfileKey = "";
+
 function renderEquipment() {
+  const searchContainer = document.querySelector("#equipmentSearch");
+  if (searchContainer) searchContainer.hidden = true;
   const activeWalkGroup = qrWalkGroup();
   if (isProductionWorkerProfile()) {
     ui.subtitle.textContent = "Сварщик и токарь";
@@ -9974,6 +10020,14 @@ function renderEquipment() {
     ui.equipmentList.innerHTML = `<div class="empty-state">Для вашей роли список оборудования закрыт. Откройте раздел заявок.</div>`;
     return;
   }
+  if (searchContainer && window.PPRModules?.createEquipmentSearch) {
+    equipmentSearchController ||= window.PPRModules.createEquipmentSearch(searchContainer);
+    const profileKey = `${profile?.id || profile?.employeeId || ""}:${profile?.role || ""}:${profile?.area || ""}`;
+    if (profileKey !== equipmentSearchProfileKey) equipmentSearchController.reset();
+    equipmentSearchProfileKey = profileKey;
+    searchContainer.hidden = false;
+  }
+  const searchableRows = [];
   const monthBar = document.createElement("div");
   monthBar.className = "equipment-month-bar";
   monthBar.innerHTML = `
@@ -10047,6 +10101,7 @@ function renderEquipment() {
       const shiftSummary = equipmentDaySummary(eq, activeShift.date, activeWalkGroup);
       const normalizeLabel = value => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
       const areaCaption = normalizeLabel(eq.area) === normalizeLabel(eq.name) ? "" : ` · ${escapeHtml(eq.area)}`;
+      searchableRows.push({ row: tr, text: [eq.name, eq.area, ...eq.nodes].join(" "), attention: Boolean(alert || equipmentDowntimeOpen || compressorJournalMissingToday || gasJournalMissingToday || (!equipmentOperationalPause && !shiftSummary.complete && shiftSummary.activeTotal > 0)) });
       tr.innerHTML = `
         <th class="node-name equipment-name equipment-journal-cell area-color-cell"${downtimeStyle}>
           <div class="equipment-row-tools">
@@ -10157,7 +10212,7 @@ function renderEquipment() {
         if (!password) return;
         runButtonOperation(event.currentTarget, async () => {
           const result = await apiJson("/api/admin/equipment/delete", { method: "POST", timeout: 60000, body: JSON.stringify({ equipmentId: eq.id, equipment: eq.name, area: eq.area, nodes: eq.nodes, builtIn: eq.created !== true, reason, password }) });
-          if (result?.state) mergeRemoteState(result.state, { preferRemote: true });
+          if (result?.state) mergeRemoteState(result.state, { preferRemote: true, serverPprApprovals: true });
           if (!result?.ok) throw new Error(result?.error || "equipment_delete_failed");
           renderEquipment();
           showAppToast("Оборудование перемещено в корзину", "ok");
@@ -10167,6 +10222,12 @@ function renderEquipment() {
     });
   wrap.append(table);
   ui.equipmentList.append(wrap);
+  const emptyMessage = document.createElement("div");
+  emptyMessage.className = "empty-state equipment-search-empty";
+  emptyMessage.hidden = true;
+  emptyMessage.textContent = "По выбранным условиям оборудования нет. Измените поиск или выберите «Все».";
+  ui.equipmentList.append(emptyMessage);
+  equipmentSearchController?.update(searchableRows, emptyMessage);
 }
 
 function equipmentDaySummary(eq, date, group = qrWalkGroup()) {
@@ -11887,14 +11948,23 @@ const pprSheetGenerationRequests = new Map();
 const pprSheetGenerationAttempts = new Map();
 
 async function ensurePprSheetAutofill(date, force = false) {
+  if (pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile)) return null;
   if (pprSheetGenerationRequests.has(date)) return pprSheetGenerationRequests.get(date);
+  const actor = resolutionUserKey(authenticatedProfile);
+  const before = JSON.stringify(state.pprSheets?.[date] || null);
   const operation = apiJson("/api/ppr-sheet/generate", {
     method: "POST", timeout: 15000,
     body: JSON.stringify({ date, force, clientId: CLIENT_ID, actionId: nextActionId() })
   }).then(result => {
+    if (pendingDeviceRestoreRequired || sessionValidationState !== "verified" || actor !== resolutionUserKey(authenticatedProfile) || !pendingStateOwner.owns(authenticatedProfile)) return null;
     if (result?.sheet) {
       state.pprSheets ||= {};
-      state.pprSheets[date] = result.sheet;
+      const currentSheet = state.pprSheets[date];
+      // A late generated plan must not replace restored or edited rows, even with a newer server timestamp.
+      state.pprSheets[date] = JSON.stringify(currentSheet || null) === before ? result.sheet : {
+        ...mergePprSheetsLocal({ [date]: currentSheet }, { [date]: result.sheet }, true)[date],
+        rows: currentSheet?.rows || [], removedRowIds: currentSheet?.removedRowIds || []
+      };
       persistStateLocally(state);
     }
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
@@ -11964,15 +12034,12 @@ async function publishPprSheetAction(date, action, details = {}) {
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const sheet = pprSheetRecord(date);
-  const savedRows = Array.isArray(sheet.rows) && sheet.rows.length ? sheet.rows : pprSheetDefaultRows(date);
-  const rows = [...savedRows];
-  while (rows.length < scheduledItems.length) {
-    rows.push({ id: `${date}-work-${rows.length + 1}`, work: "", mark: "" });
-  }
+  const draft = window.PprPlanEditor.get(date);
+  const rows = draft?.rows || (Array.isArray(sheet.rows) ? sheet.rows : pprSheetDefaultRows(date));
   const completion = pprSheetCompletion(date);
   const locked = Boolean(sheet.approvedAt);
-  const canPlan = canPlanPprSheet() && !locked;
-  const canMark = canMarkPprSheet() && !locked;
+  const canPlan = canPlanPprSheet() && !locked && Boolean(draft);
+  const canMark = canMarkPprSheet() && !locked && !draft;
   const scheduleNames = [...new Set(scheduledItems.map(item =>
     [item.equipment, item.node].filter(Boolean).join(" — ")
   ).filter(Boolean))];
@@ -11984,19 +12051,22 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   const rowHtml = rows.map((row, index) => {
-    const scheduled = scheduledItems[index] || (scheduledItems.length === 1 ? scheduledItems[0] : null);
+    const scheduled = scheduledItems.length === 1 ? scheduledItems[0] : null;
+    const editable = canPlan && !window.PprPlanEditor.started(row);
     const equipmentId = row.equipmentId || scheduled?.equipmentId || "";
     const equipmentName = row.equipment || scheduled?.equipment || "";
     const nodeName = row.node || scheduled?.node || "";
     const areaName = row.area || scheduled?.area || "";
     return `
-    <tr data-ppr-sheet-row="${escapeHtml(row.id)}">
+    <tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
-        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" aria-label="Работа ${index + 1}" placeholder="${canPlan ? "Опишите работу" : "—"}" ${canPlan ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" maxlength="4000" aria-label="Работа ${index + 1}" placeholder="${editable ? "Опишите работу" : "—"}" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
+        <span class="ppr-sheet-print-text" data-ppr-print-work>${escapeHtml(row.work || "")}</span>${canPlan ? window.PprPlanEditor.rowControls(date, row, escapeHtml) : ""}
       </td>
       <td class="ppr-sheet-resolution">
         <textarea data-ppr-resolution-input="${escapeHtml(row.id)}" rows="2" aria-label="Результат работы ${index + 1}" placeholder="${canMark ? "Результат или причина" : "—"}" ${canMark ? "" : "readonly"}>${escapeHtml(row.resolutionComment || "")}</textarea>
+        <span class="ppr-sheet-print-text" data-ppr-print-resolution>${escapeHtml(row.resolutionComment || "")}</span>
         ${row.markedByName ? `<small><strong>${escapeHtml(row.markedByName)}</strong> · ${escapeHtml(requestRoleLabel(row.markedByRole) || row.markedByRole || "")} · ${dateTimeHuman(row.markedAt)}</small>` : ""}
       </td>
       <td class="ppr-sheet-mark">
@@ -12036,9 +12106,8 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         ${sheet.plannedByName || sheet.updatedByName ? `<small>${sheet.plannedAutomatically ? "Автоплан" : "План составил"}: ${escapeHtml(sheet.plannedByName || sheet.updatedByName)}${sheet.plannedByRole === "system" ? "" : ` · ${escapeHtml(requestRoleLabel(sheet.plannedByRole) || sheet.plannedByRole || "")}`}${sheet.plannedAt || sheet.updatedAt ? ` · ${dateTimeHuman(sheet.plannedAt || sheet.updatedAt)}` : ""}</small>` : ""}
         ${sheet.approvedByName ? `<small>Принял: ${escapeHtml(sheet.approvedByName)} · ${dateTimeHuman(sheet.approvedAt)}</small>` : ""}
         ${!sheet.updatedByName ? `<small>Лист будет сохранён за этой датой и останется доступен в календаре.</small>` : ""}
-        ${canPlan ? `<button type="button" class="secondary no-print" data-autofill-ppr-sheet="${date}">Автозаполнить перечень работ</button>` : ""}
-        ${canPlan ? `<button type="button" class="secondary no-print" data-add-ppr-row="${date}">+ Добавить строку</button>` : ""}
-        ${completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}">Принять выполненные работы</button>` : ""}
+        ${window.PprPlanEditor.controls(date, canPlanPprSheet() && !locked)}
+        ${!draft && completion.awaitingApproval && canApprovePprSheet() ? `<button type="button" class="primary no-print" data-approve-ppr-sheet="${date}" ${window.PprPlanEditor.approvalPending(date) ? "disabled" : ""}>${window.PprPlanEditor.approvalPending(date) ? "Принимаем…" : "Принять выполненные работы"}</button>` : ""}
       </footer>
     </section>
   `;
@@ -12047,6 +12116,10 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
 function printPprMaintenanceSheet(date) {
   const sheet = document.querySelector(`[data-ppr-sheet-date="${date}"]`);
   if (!sheet) return;
+  sheet.querySelectorAll("[data-ppr-sheet-row]").forEach(row => {
+    row.classList.toggle("ppr-empty-row", !row.querySelector("[data-ppr-work-input]")?.value.trim());
+    row.querySelector("[data-ppr-print-resolution]").textContent = row.querySelector("[data-ppr-resolution-input]")?.value || "";
+  });
   const oldTitle = document.title;
   document.title = `Лист ППР ${date}`;
   document.body.classList.add("printing-ppr-sheet");
@@ -12216,10 +12289,18 @@ function shiftPprCalendar(monthDelta) {
 }
 
 function bindPprCalendarControls(container, rerender) {
+  window.PprPlanEditor.bind(container, { api: apiJson, canPlan: canPlanPprSheet, rerender, toast: showAppToast,
+    approval: { canApprove: canApprovePprSheet, getSheet: pprSheetRecord, completion: pprSheetCompletion,
+      publish: publishPprSheetAction, persist: () => persistStateLocally(state), setBusy: setButtonBusy },
+    publish: async (date, details) => {
+    const result = await apiJson("/api/ppr-sheet/plan", { method: "POST", timeout: 15000, body: JSON.stringify({ date, ...details, actionId: nextActionId(), clientId: CLIENT_ID }) });
+    if (result?.state) mergeRealtimePatch(result.state);
+    if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
+  } });
   container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
     const date = element.dataset.pprSheetDate;
     const sheet = pprSheetRecord(date);
-    if (!navigator.onLine || sessionValidationState !== "verified" || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
+    if (!navigator.onLine || pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile) || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
     if (Date.now() - (pprSheetGenerationAttempts.get(date) || 0) < 30000) return;
     pprSheetGenerationAttempts.set(date, Date.now());
     ensurePprSheetAutofill(date).then(result => { if (result?.sheet && container.isConnected) rerender(); }).catch(() => {
@@ -12241,37 +12322,6 @@ function bindPprCalendarControls(container, rerender) {
         const selected = container.querySelector(`[data-ppr-sheet-date="${button.dataset.pprDayDate}"]`) || container.querySelector(".ppr-selected-day");
         selected?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 60);
-    });
-  });
-  container?.querySelectorAll("[data-ppr-work-input]").forEach(input => {
-    input.addEventListener("input", () => {
-      const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
-      if (!date) return;
-      const sheet = pprSheetRecord(date, true);
-      let row = sheet.rows.find(item => item.id === input.dataset.pprWorkInput);
-      if (!row) {
-        row = { id: input.dataset.pprWorkInput, work: "", mark: "" };
-        sheet.rows.push(row);
-      }
-      const changedAt = new Date().toISOString();
-      if (row.work !== input.value && row.mark) {
-        row.mark = "";
-        row.markedByName = "";
-        row.markedByRole = "";
-        row.markedAt = "";
-        row.markUpdatedAt = changedAt;
-      }
-      row.work = input.value;
-      row.workUpdatedAt = changedAt;
-      row.updatedAt = row.workUpdatedAt;
-      row.equipmentId = input.dataset.pprEquipmentId || row.equipmentId || "";
-      row.equipment = input.dataset.pprEquipment || row.equipment || "";
-      row.node = input.dataset.pprNode || row.node || "";
-      row.area = input.dataset.pprArea || row.area || "";
-      sheet.plannedByName = profile?.name || sheet.plannedByName || "";
-      sheet.plannedByRole = profile?.role || sheet.plannedByRole || "";
-      sheet.plannedAt ||= new Date().toISOString();
-      touchPprSheet(sheet);
     });
   });
   container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
@@ -12309,6 +12359,7 @@ function bindPprCalendarControls(container, rerender) {
         sheet.rows.push(row);
       }
       row.resolutionComment = input.value;
+      input.closest("tr")?.querySelector("[data-ppr-print-resolution]")?.replaceChildren(input.value);
       row.draftUpdatedAt = new Date().toISOString();
       row.resolutionUpdatedAt = row.draftUpdatedAt;
       row.updatedAt = row.draftUpdatedAt;
@@ -12365,52 +12416,8 @@ function bindPprCalendarControls(container, rerender) {
       rerender();
     });
   });
-  container?.querySelectorAll("[data-add-ppr-row]").forEach(button => {
-    button.addEventListener("click", async () => {
-      const date = button.dataset.addPprRow;
-      const sheet = pprSheetRecord(date, true);
-      const row = { id: `${date}-work-${Date.now()}`, work: "", mark: "" };
-      sheet.rows.push(row);
-      touchPprSheet(sheet, false);
-      try {
-        await publishPprSheetAction(date, "add-row", { rowId: row.id });
-      } catch {
-        saveState();
-      }
-      rerender();
-    });
-  });
-  container?.querySelectorAll("[data-autofill-ppr-sheet]").forEach(button => {
-    button.addEventListener("click", () => {
-      const date = button.dataset.autofillPprSheet;
-      const selectedItems = pprCalendarMonthData(allEquipment()).itemsByDate[date] || [];
-      if (!selectedItems.length) return;
-      if (!window.confirm("Заменить перечень работ шаблоном по текущему графику? Внесённые отметки и комментарии этого листа будут очищены.")) return;
-      runButtonOperation(button, async () => { await ensurePprSheetAutofill(date, true); rerender(); }, "Загружается…");
-    });
-  });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
     button.addEventListener("click", () => printPprMaintenanceSheet(button.dataset.printPprSheet));
-  });
-  container?.querySelectorAll("[data-approve-ppr-sheet]").forEach(button => {
-    button.addEventListener("click", async () => {
-      if (!canApprovePprSheet()) return;
-      const date = button.dataset.approvePprSheet;
-      const sheet = pprSheetRecord(date, true);
-      const completion = pprSheetCompletion(date);
-      if (!completion.workersComplete) return;
-      sheet.approvedAt = new Date().toISOString();
-      sheet.approvedByName = profile?.name || "";
-      sheet.approvedByRole = profile?.role || "engineer";
-      sheet.lockedAt = sheet.approvedAt;
-      touchPprSheet(sheet, false);
-      try {
-        await publishPprSheetAction(date, "approve");
-      } catch {
-        saveState();
-      }
-      rerender();
-    });
   });
 }
 
@@ -12921,7 +12928,7 @@ function directorTodayDowntimeStats() {
 }
 
 function directorAnnualYear() {
-  return new Date().getFullYear();
+  return dateYearMonth(new Date()).year;
 }
 
 function directorMonthName(index) {
@@ -12950,19 +12957,12 @@ function directorAnnualEmptyMonths(year = directorAnnualYear()) {
 }
 
 function dateYearMonth(value) {
-  const ms = Date.parse(value || "");
-  if (!Number.isFinite(ms)) return null;
-  const date = new Date(ms);
-  return { year: date.getFullYear(), month: date.getMonth() };
+  const key = PPRModules.director.calendarMonth(value);
+  return key ? { year: Number(key.slice(0, 4)), month: Number(key.slice(5, 7)) - 1 } : null;
 }
 
 function downtimeOverlapMsForMonth(item, year, monthIndex) {
-  const startedAt = Date.parse(item?.startedAt || "");
-  const endedAt = item?.endedAt ? Date.parse(item.endedAt) : Date.now();
-  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return 0;
-  const monthStart = new Date(year, monthIndex, 1).getTime();
-  const monthEnd = new Date(year, monthIndex + 1, 1).getTime();
-  return Math.max(0, Math.min(endedAt, monthEnd) - Math.max(startedAt, monthStart));
+  return downtimeOverlapMs(item, year, monthIndex);
 }
 
 function annualRepairEvents(year = directorAnnualYear()) {
@@ -12988,10 +12988,15 @@ function annualRepairEvents(year = directorAnnualYear()) {
           name: event.targetName || "",
           at: event.at || ""
         }));
-      if (created?.year === year || resolved?.year === year || confirmed?.year === year || ratingReturns.some(event => dateYearMonth(event.at)?.year === year)) {
+      if (year === null || created?.year === year || resolved?.year === year || confirmed?.year === year || ratingReturns.some(event => dateYearMonth(event.at)?.year === year)) {
         events.push({
           type: "remark",
           resolutionKey: `remark:${recordKey}:${stableRemarkId(entry)}`,
+          sourceType: "remark",
+          sourceId: `remark:${recordKey}:${stableRemarkId(entry)}`,
+          equipmentId: Number(equipmentIdRaw),
+          recordKey,
+          remarkId: entry.id || stableRemarkId(entry),
           equipment: eq.name || "",
           area: eq.area || "",
           node: eq.nodes[Number(nodeIndexRaw)] || "",
@@ -13005,9 +13010,13 @@ function annualRepairEvents(year = directorAnnualYear()) {
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
           ratingParticipants: completedResolutionParticipants(entry),
+          correctedDefectText: entry.correctedDefectText || "",
+          correctedResolvedComment: entry.correctedResolvedComment || "",
           ratingReturns,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
+          ...PPRModules.repeatFailures.metadata(entry),
+          resolvedComment: entry.resolvedComment || "",
           text: entry.text || item.comment || ""
         });
       }
@@ -13018,20 +13027,27 @@ function annualRepairEvents(year = directorAnnualYear()) {
     if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     const resolved = dateYearMonth(item.endedAt || "");
-    if (created?.year !== year && resolved?.year !== year) return;
+    if (year !== null && created?.year !== year && resolved?.year !== year) return;
     events.push({
       type: "breakdown",
+      sourceType: "downtime",
+      sourceId: `downtime:${item.id || ""}`,
+      equipmentId: Number(item.equipmentId),
+      downtimeId: item.id || "",
       equipment: item.equipment || "",
       area: item.area || "",
       node: item.node || "",
       createdAt: item.startedAt || "",
       resolvedAt: item.endedAt || "",
       authorRole: item.authorRole || "",
+      authorName: item.authorName || "",
       resolvedByRole: item.closedByRole || "",
       resolvedByName: item.closedByName || "",
       ratingParticipants: Array.isArray(item.closedParticipants) ? item.closedParticipants : [],
       durationMs: downtimeDurationMs(item),
       open: !item.endedAt,
+      ...PPRModules.repeatFailures.metadata(item),
+      resolvedComment: item.closeComment || "",
       text: item.comment || ""
     });
   });
@@ -13048,12 +13064,12 @@ function directorAnnualStats(year = directorAnnualYear()) {
     if (resolved?.year === year) months[resolved.month].repairsClosed += 1;
     if (event.type === "breakdown" && created?.year === year) months[created.month].breakdowns += 1;
   });
-  const currentDate = new Date();
-  if (currentDate.getFullYear() === year) {
-    months[currentDate.getMonth()].openWorks = repairEvents.filter(event => event.type === "remark" && event.open && operationalItemEnabled(event, todayISO())).length;
+  const currentDate = dateYearMonth(new Date());
+  if (currentDate.year === year) {
+    months[currentDate.month].openWorks = repairEvents.filter(event => event.type === "remark" && event.open && operationalItemEnabled(event, todayISO())).length;
   }
   downtimes().forEach(item => {
-    if (!operationalItemEnabled(item, item.startedAt) || !operationalItemEnabled(item, todayISO())) return;
+    if (!operationalItemEnabled(item, item.startedAt)) return;
     const created = dateYearMonth(item.startedAt || "");
     if (created?.year === year) {
       months[created.month].stops += 1;
@@ -13609,10 +13625,8 @@ function openWorkerRatingLedger(workerKey) {
   modal.querySelectorAll("[data-close-rating-ledger]").forEach(button => button.addEventListener("click", () => modal.remove()));
 }
 
-function workerRatingStats(period = current.ratingMonth || todayISO().slice(0, 7)) {
-  const [parsedYear, parsedMonth] = String(period || "").split("-").map(Number);
-  const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
-  const monthIndex = Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth - 1 : new Date().getMonth();
+function workerRatingStats(period = current.ratingMonth || PPRModules.director.calendarMonth(new Date())) {
+  const { year, month: monthIndex } = parseMonthKey(period);
   const inSelectedMonth = value => {
     const parsed = dateYearMonth(value);
     return parsed?.year === year && parsed.month === monthIndex;
@@ -13960,13 +13974,10 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
   `;
 }
 
-function parseMonthKey(monthKey = current.engineerReportMonth || todayISO().slice(0, 7)) {
-  const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
-  const now = new Date();
-  if (!match) return { year: now.getFullYear(), month: now.getMonth(), key: todayISO().slice(0, 7) };
-  const year = Number(match[1]);
-  const month = Math.min(Math.max(Number(match[2]) - 1, 0), 11);
-  return { year, month, key: `${year}-${String(month + 1).padStart(2, "0")}` };
+function parseMonthKey(monthKey = current.engineerReportMonth || PPRModules.director.calendarMonth(new Date())) {
+  const key = PPRModules.director.calendarMonth(`${String(monthKey || "")}-01`) || PPRModules.director.calendarMonth(new Date());
+  const [year, month] = key.split("-").map(Number);
+  return { year, month: month - 1, key };
 }
 
 function monthDisplayName(monthKey = current.engineerReportMonth) {
@@ -13976,50 +13987,9 @@ function monthDisplayName(monthKey = current.engineerReportMonth) {
 
 
 function engineerAnnualAnalysis(year) {
-  const events = annualRepairEvents(year);
-  const repeatedMap = new Map();
-  events
-    .filter(event => ["remark", "breakdown"].includes(event.type))
-    .forEach(event => {
-      const created = dateYearMonth(event.createdAt);
-      if (created?.year !== year) return;
-      const key = `${event.area || ""}|${event.equipment || ""}|${event.node || ""}`;
-      const item = repeatedMap.get(key) || {
-        area: event.area || "",
-        equipment: event.equipment || "",
-        node: event.node || "",
-        count: 0,
-        breakdowns: 0,
-        remarks: 0,
-        downtimeMs: 0,
-        lastAt: "",
-        texts: []
-      };
-      item.count += 1;
-      if (event.type === "breakdown") {
-        item.breakdowns += 1;
-        item.downtimeMs += Number(event.durationMs || 0);
-      } else {
-        item.remarks += 1;
-      }
-      if (String(event.createdAt || "") > String(item.lastAt || "")) item.lastAt = event.createdAt || "";
-      if (event.text && item.texts.length < 3) item.texts.push(event.text);
-      repeatedMap.set(key, item);
-    });
-  const repeatedBreakdowns = [...repeatedMap.values()]
-    .filter(item => item.count >= 2)
-    .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"))
-    .slice(0, 10);
+  const events = annualRepairEvents(null);
   const annualStats = directorAnnualStats(year);
-  const employeeRating = annualStats.workers
-    .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
-    .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
-    .slice(0, 12);
-  return {
-    year,
-    repeatedBreakdowns,
-    employeeRating
-  };
+  return { ...PPRModules.repeatFailures.buildAnalysis(events, annualStats, state.catalog), year };
 }
 
 function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
@@ -14291,15 +14261,17 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
   );
   const repeatRows = engineerReportRows(
     annual.repeatedBreakdowns,
-    "Повторных поломок и повторных замечаний за год не выявлено",
+    "Нет повторов, отмеченных вручную. Укажите одинаковый номер у двух или более записей агрегатного журнала.",
     item => `
       <tr>
-        <td>${escapeHtml(item.area || "-")}</td>
+        <td>${PPRModules.repeatFailures.measuresCell(item, PPRModules.repeatFailures.groupMeasures(item, state.catalog), printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
         <td>${escapeHtml(item.equipment || "-")}</td>
-        <td>${escapeHtml(item.node || "-")}</td>
-        <td>${item.count}</td>
+        <td>${PPRModules.repeatFailures.completionCell(item, PPRModules.repeatFailures.groupMeasures(item, state.catalog), printable, canManageRepeatFailureGroups(), escapeHtml)}</td>
+        <td>${printable
+          ? item.count
+          : `<button type="button" class="repeat-breakdown-count-button" data-open-repeat-breakdown="${escapeHtml(encodeURIComponent(item.groupKey))}" data-repeat-year="${annual.year}" aria-label="Открыть ${item.count} повторных поломок">${item.count}</button>`}</td>
         <td>${escapeHtml(durationText(item.downtimeMs))}</td>
-        <td>${escapeHtml(item.texts[0] || "Проверить причину повторения")}</td>
+        <td>${item.manualCode ? `<b class="repeat-breakdown-manual-code">№${escapeHtml(item.manualCode)}</b><br>` : ""}${escapeHtml(item.name || item.texts[0] || "Название не указано")}</td>
       </tr>
     `
   );
@@ -14341,7 +14313,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
       </div>
       <div class="engineer-report-year-strip">
-        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за ${annual.year}</span></div>
+        <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за весь период</span></div>
         <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер по выполненным работам${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
       </div>
       <section class="engineer-report-note">
@@ -14369,8 +14341,8 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Событий</th><th>Простой</th><th>Вывод</th></tr></thead><tbody>${problemRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>5. Анализ повторных поломок за ${annual.year}</h3>
-        <table><thead><tr><th>Участок</th><th>Оборудование</th><th>Узел</th><th>Повторов</th><th>Простой</th><th>Комментарий</th></tr></thead><tbody>${repeatRows}</tbody></table>
+        <h3>5. Повторные поломки за весь период</h3>
+        <table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Выполнено</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
         <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
@@ -14401,8 +14373,18 @@ function renderEngineerReport() {
     ui.engineerReportPanel.innerHTML = `<div class="engineer-factory-index public-factory-index">${directorFactoryAnalyticsGraphHtml()}</div>`;
     return;
   }
-  if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || todayISO().slice(0, 7);
+  if (ui.engineerReportMonth) ui.engineerReportMonth.value = current.engineerReportMonth || PPRModules.director.calendarMonth(new Date());
   ui.engineerReportPanel.innerHTML = engineerMonthlyReportHtml(current.engineerReportMonth);
+  PPRModules.repeatFailures.bindMeasures(ui.engineerReportPanel, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderEngineerReport, isCurrent: () => current.view === "engineerReport" });
+  ui.engineerReportPanel.querySelectorAll("[data-open-repeat-breakdown]").forEach(button => {
+    button.addEventListener("click", () => {
+      const year = Number(button.dataset.repeatYear);
+      const groupKey = decodeURIComponent(button.dataset.openRepeatBreakdown || "");
+      const group = engineerAnnualAnalysis(year).repeatedBreakdowns.find(item => item.groupKey === groupKey);
+      if (!group) return showAppToast("Группа повторных поломок не найдена.", "error");
+      PPRModules.repeatFailures.openJournal(group, null, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup });
+    });
+  });
 }
 
 function printEngineerMonthlyReport(monthKey = current.engineerReportMonth) {
@@ -15048,7 +15030,7 @@ function adminUserDetailsHtml(user = {}, users = []) {
   const summary = user.operationalSummary || { linked: {}, sessions: [], history: [] };
   const linked = summary.linked || {};
   const labels = [["qrWalks","QR-обходы"],["remarks","Замечания"],["requests","Заявки"],["downtimes","Простои"],["pprSheets","ППР"],["workPermits","Наряды-допуски"]];
-  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["remarkDefer","Указывать причину неустранения"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
+  const permissions = [["qrJournalView","Просмотр QR-журнала"],["equipmentEdit","Редактирование оборудования"],["annualPprEdit","Редактирование годового графика ППР"],["instructionEdit","Редактирование инструкций"],["journalPrint","Печать журналов"],["remarkMultiClose","Закрытие замечаний за нескольких сотрудников"],["remarkDefer","Указывать причину неустранения"],["aggregateJournalCorrect","Исправление записей агрегатного журнала"],["repeatFailureGroup","Группировка повторных поломок"],["remarkGlobalConfirm","Подтверждение замечаний всех цехов"]]; const active = permissions.filter(([key]) => activeUserPermission(user,key)).map(([key]) => key); const expiry = Object.values(user.permissionOverrides || {}).find(item => item?.expiresAt)?.expiresAt || "";
   const permissionsHtml = `<form class="admin-user-permissions no-print" data-user-permissions-form="${escapeHtml(user.id || "")}"><strong>Индивидуальные права</strong><div>${permissions.map(([key,label]) => `<label><input type="checkbox" name="permissions" value="${key}" ${active.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div><label><span>Действуют до (пусто — постоянно)</span><input name="expiresAt" type="datetime-local" value="${expiry ? escapeHtml(new Date(expiry).toISOString().slice(0,16)) : ""}"></label><div><button type="submit">Сохранить права</button><select name="copySource"><option value="">Копировать от сотрудника…</option>${users.filter(item => item.id && item.id !== user.id).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.employeeId || "Сотрудник")}</option>`).join("")}</select><button type="button" data-copy-user-permissions>Копировать</button><button type="button" class="secondary" data-reset-user-permissions>По роли</button></div></form>`;
   const linkedHtml = summary.lightweight ? "" : `<div class="admin-user-linked">${labels.map(([key,label]) => `<span><b>${Number(linked[key] || 0)}</b>${label}</span>`).join("")}</div>`;
   return `<details class="admin-user-details"><summary>Карточка сотрудника · активных сеансов ${Number(summary.activeSessions || 0)}</summary><div class="admin-user-summary"><span><b>Последний вход</b>${user.loginDiagnostics?.lastLoginAt ? escapeHtml(dateTimeHuman(user.loginDiagnostics.lastLoginAt)) : "Нет данных"}</span><span><b>Последняя активность</b>${summary.lastActivityAt ? escapeHtml(dateTimeHuman(summary.lastActivityAt)) : "Нет данных"}</span></div>${permissionsHtml}${linkedHtml}${summary.sessions?.length ? `<div class="admin-user-sessions"><strong>Активные устройства</strong>${summary.sessions.map(item => `<span><b>${escapeHtml(item.userAgent || "Неизвестный браузер")}</b><small>${escapeHtml(item.ip || "IP не определён")} · до ${escapeHtml(dateTimeHuman(item.expiresAt))}</small></span>`).join("")}</div>` : `<div class="empty-state">Активных сеансов нет.</div>`}${summary.history?.length ? `<div class="admin-user-history"><strong>Последние действия</strong>${summary.history.slice(0,10).map(item => `<span><time>${escapeHtml(dateTimeHuman(item.at))}</time><b>${escapeHtml(adminAuditActionLabel(item.action))}</b></span>`).join("")}</div>` : ""}${Number(summary.activeSessions || 0) && user.role !== "editor" ? `<button type="button" class="danger no-print" data-access-end-sessions="${escapeHtml(user.id || "")}">Завершить все сеансы</button>` : ""}<small>Связанные исторические документы при удалении сотрудника сохраняются.</small></details>`;
@@ -15527,6 +15509,8 @@ function renderAggregateJournal() {
   const repairMode = profile?.role === "editor"
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
   const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
+  const repeatFailureGroupingEnabled = canManageRepeatFailureGroups();
+  const restoreJournalPosition = PPRModules.aggregateJournalView.capturePosition(ui.aggregateJournalList, JSON.stringify([selectedEquipment?.id, selectedArea, selectedJournalMonth()]));
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
   for (let i = 0; i < Math.max(items.length, 1); i += AGGREGATE_JOURNAL_ROWS_PER_SHEET) {
@@ -15586,11 +15570,21 @@ function renderAggregateJournal() {
               ? `${item.closedWithoutScoreByName}${noScoreCloserRole ? ` (${noScoreCloserRole})` : ""}`
               : noScoreCloserRole;
             return `
-              <tr class="${item.resolved ? "" : "open"}">
+              <tr class="${item.resolved ? "" : "open"}" data-journal-row="${escapeHtml(item.id)}">
                 <td data-mobile-label="№">${rowNumber}</td>
                 <td data-mobile-label="Оборудование и узел">${escapeHtml(item.equipment)}<br>${escapeHtml(item.node)}</td>
                 <td data-mobile-label="Дата осмотра">${dateTimeHuman(item.at)}</td>
-                <td data-mobile-label="Неисправность">${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}</td>
+                <td data-mobile-label="Неисправность">
+                  ${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}
+                  ${item.repeatFailureCode && (!repeatFailureGroupingEnabled || PPRModules.repeatFailures.isClosed(item, state.catalog)) ? `<span class="repeat-failure-badge no-print">№${escapeHtml(item.repeatFailureCode)}${PPRModules.repeatFailures.isClosed(item, state.catalog) ? " · 🔒 Мероприятия выполнены" : ""}</span>` : ""}
+                  ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
+                  ${repeatFailureGroupingEnabled && !PPRModules.repeatFailures.isClosed(item, state.catalog) ? `<span class="repeat-failure-editor no-print">
+                    <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер группы одинаковой неисправности" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="№">
+                    <input type="text" maxlength="120" aria-label="Название поломки" data-repeat-failure-name value="" placeholder="${escapeHtml(item.repeatFailureName || "Название поломки")}" title="Укажите название один раз; для существующего номера оно подставится автоматически">
+                    <button type="button" class="mini-action" title="Сохранить номер" aria-label="Сохранить номер" data-save-repeat-failure="${escapeHtml(item.id)}">✓</button>
+                    ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" title="Снять номер" aria-label="Снять номер" data-clear-repeat-failure="${escapeHtml(item.id)}">×</button>` : ""}
+                  </span>` : ""}
+                </td>
                 <td data-mobile-label="Осмотр выполнил">${escapeHtml(author)}</td>
                 <td data-mobile-label="Дата ремонта">${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
                 <td data-mobile-label="Выполненные работы">${escapeHtml(item.closedWithoutScore
@@ -15637,25 +15631,7 @@ function renderAggregateJournal() {
       </div>
     `).join("")}
   `;
-  ui.aggregateJournalList.classList.remove("mobile-record-carousel-active");
-  if (window.matchMedia?.("(max-width: 680px)")?.matches) {
-    const sourceRows = [...ui.aggregateJournalList.querySelectorAll(".standard-aggregate-journal-sheet tbody tr")];
-    if (sourceRows.length) {
-      const mobileSection = document.createElement("section");
-      mobileSection.className = "aggregate-mobile-record-view no-print";
-      mobileSection.innerHTML = `<div class="mobile-journal-swipe-title"><strong>Записи журнала</strong><span>Свайп влево или вправо</span></div><div class="aggregate-mobile-record-carousel"></div>`;
-      const carousel = mobileSection.querySelector(".aggregate-mobile-record-carousel");
-      sourceRows.forEach(row => {
-        const card = document.createElement("article");
-        card.className = `aggregate-mobile-record-card ${row.classList.contains("open") ? "open" : ""}`;
-        [...row.children].forEach(cell => card.append(cell.cloneNode(true)));
-        card.querySelectorAll(".no-print, .aggregate-correction").forEach(node => node.remove());
-        carousel.append(card);
-      });
-      ui.aggregateJournalList.querySelector(".aggregate-journal-sheet")?.before(mobileSection);
-      ui.aggregateJournalList.classList.add("mobile-record-carousel-active");
-    }
-  }
+  PPRModules.aggregateJournalView.buildMobileCards(ui.aggregateJournalList);
   ui.aggregateJournalList.querySelector("[data-print-aggregate-journal]")?.addEventListener("click", () => printAggregateJournal(journalName));
   bindJournalMonthControl(ui.aggregateJournalList, renderAggregateJournal);
   ui.aggregateJournalList.querySelector("[data-toggle-aggregate-repair]")?.addEventListener("click", () => {
@@ -15720,6 +15696,8 @@ function renderAggregateJournal() {
       renderAggregateJournal();
     }, "Сохраняем..."));
   });
+  PPRModules.repeatFailures.bindAggregateEditors(ui.aggregateJournalList, items, { runButtonOperation, apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderAggregateJournal });
+  restoreJournalPosition();
 }
 
 function printAggregateJournal(area, selectedSheetIndex = null) {
@@ -15734,7 +15712,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
   let pages = "";
   if (Number.isInteger(selectedSheetIndex)) {
     const selected = sheets[0].cloneNode(true);
-    selected.querySelectorAll(".no-print, .aggregate-sheet-print").forEach(node => node.remove());
+    selected.querySelectorAll(".no-print, .aggregate-sheet-print, .repeat-failure-badge").forEach(node => node.remove());
     pages = `<section class="print-sheet">${selected.innerHTML}</section>`;
   } else {
     const continuous = allSheets[0].cloneNode(true);
@@ -15744,7 +15722,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
     });
     const sheetNumber = continuous.querySelector(".aggregate-sheet-head span");
     if (sheetNumber) sheetNumber.textContent = "Автоматическая разбивка по заполнению страниц";
-    continuous.querySelectorAll(".no-print, .aggregate-sheet-print").forEach(node => node.remove());
+    continuous.querySelectorAll(".no-print, .aggregate-sheet-print, .repeat-failure-badge").forEach(node => node.remove());
     pages = `<section class="print-sheet continuous">${continuous.innerHTML}</section>`;
   }
   popup.document.write(`<!doctype html>
@@ -15761,7 +15739,7 @@ function printAggregateJournal(area, selectedSheetIndex = null) {
           .print-sheet:last-of-type { break-after: auto; page-break-after: auto; }
           .print-sheet.continuous { min-height: 0; break-after: auto; page-break-after: auto; }
           .aggregate-sheet-head { display: flex; justify-content: space-between; gap: 8mm; margin: 0 0 3mm; border-bottom: 1.5px solid #000; padding-bottom: 2mm; font-size: 10pt; }
-          .aggregate-sheet-print, .no-print, .aggregate-correction { display: none !important; }
+          .aggregate-sheet-print, .no-print, .aggregate-correction, .repeat-failure-editor, .repeat-failure-badge { display: none !important; }
           .aggregate-journal-table-wrap { width: 100%; overflow: visible; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           thead { display: table-header-group; }
@@ -16034,7 +16012,7 @@ ui.globalReminderOverlay?.addEventListener("click", event => {
 document.querySelectorAll("[data-mobile-view]").forEach(button => {
   button.addEventListener("click", () => {
     const target = button.dataset.mobileView;
-    if (!canShowMobileView(target) || target === "attendance") return;
+    if (!canShowMobileView(target)) return;
     if (target === "home") {
       document.body.classList.remove("mobile-profile-focus");
       if (current.view !== homeViewForProfile(profile?.role)) goBack();
@@ -16070,13 +16048,13 @@ ui.workerRatingButton?.addEventListener("click", () => {
 });
 
 ui.workerRatingMonth?.addEventListener("change", () => {
-  current.ratingMonth = ui.workerRatingMonth.value || todayISO().slice(0, 7);
-  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || new Date().getFullYear();
+  current.ratingMonth = ui.workerRatingMonth.value || PPRModules.director.calendarMonth(new Date());
+  current.ratingYear = Number(current.ratingMonth.slice(0, 4)) || dateYearMonth(new Date()).year;
   renderWorkerRating();
 });
 
 ui.engineerReportMonth?.addEventListener("change", () => {
-  current.engineerReportMonth = ui.engineerReportMonth.value || todayISO().slice(0, 7);
+  current.engineerReportMonth = ui.engineerReportMonth.value || PPRModules.director.calendarMonth(new Date());
   renderEngineerReport();
 });
 

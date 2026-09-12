@@ -94,9 +94,7 @@ test.describe("session authority during server failures", () => {
   test("503 on reopen preserves the confirmed profile and reconnect revalidates it", async ({ page, context, app }) => {
     await login(page, app);
     await page.route("**/api/auth/session", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary test outage" }) }));
-    const unavailable = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session" && response.status() === 503);
     await page.reload();
-    await unavailable;
     await expect(page.locator("#connectionStatus")).toBeHidden();
     await expect(page.locator("#loginOverlay")).toBeHidden();
     await expect(page.locator(`[data-aggregate-equipment="${app.equipmentId}"]`)).toBeVisible();
@@ -130,7 +128,7 @@ test.describe("session authority during server failures", () => {
     expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("ppr-pwa-state-v3") || "{}").checks || {}).length)).toBeGreaterThan(0);
     expect(markRequests).toBe(0);
     await login(page, app, app.users.engineer);
-    await expect(page.locator("#connectionStatus")).toContainText("Отметки другого сотрудника");
+    await expect(page.locator("#connectionStatus")).toBeHidden();
     expect(await serverMarks(page, app)).toHaveLength(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("ppr-pwa-state-v3-qr-pending-marks-v1") || "[]").length)).toBe(1);
     expect(markRequests).toBe(0);

@@ -65,12 +65,21 @@ test("permanent attendance QR unlocks a worker for one shift and admin can close
     role: "welder",
     approved: true
   };
+  const engineer = {
+    id: "attendance-engineer",
+    name: "Test Engineer",
+    employeeId: "engineer-1",
+    phone: "77000000003",
+    passwordHash: passwordHash("engineer-password"),
+    role: "engineer",
+    approved: true
+  };
   fs.writeFileSync(path.join(dataDir, "db.json"), JSON.stringify({
     checks: {},
     requests: {},
     catalog: { equipment: {} },
     downtimes: [],
-    users: [editor, worker]
+    users: [editor, worker, engineer]
   }));
   const port = await reservePort();
   const qrPort = await reservePort();
@@ -100,6 +109,7 @@ test("permanent attendance QR unlocks a worker for one shift and admin can close
 
     const editorCookie = await login(baseUrl, editor.employeeId, "editor-password");
     const workerCookie = await login(baseUrl, worker.employeeId, "worker-password");
+    const engineerCookie = await login(baseUrl, engineer.employeeId, "engineer-password");
 
     let status = await api(baseUrl, "/api/attendance/status", workerCookie);
     assert.deepEqual(await status.json().then(value => ({ required: value.required, canEdit: value.canEdit })), {
@@ -165,11 +175,25 @@ test("permanent attendance QR unlocks a worker for one shift and admin can close
       body: JSON.stringify({ checks: {} })
     })).status, 200);
 
+    const engineerScan = await api(baseUrl, "/api/attendance/scan", engineerCookie, {
+      method: "POST",
+      body: JSON.stringify({ token })
+    });
+    assert.equal(engineerScan.status, 200);
+    const engineerStatus = await api(baseUrl, "/api/attendance/status", engineerCookie);
+    assert.deepEqual(await engineerStatus.json().then(value => ({ required: value.required, canEdit: value.canEdit, onDuty: Boolean(value.session) })), {
+      required: false,
+      canEdit: true,
+      onDuty: true
+    });
+
     const monitor = await api(baseUrl, "/api/attendance/status", editorCookie);
     const monitorData = await monitor.json();
     assert.equal(monitorData.isPrimaryAdminEngineer, true);
-    assert.equal(monitorData.onDuty[0].name, worker.name);
+    assert.equal(monitorData.onDuty.some(person => person.name === worker.name), true);
+    assert.equal(monitorData.onDuty.some(person => person.name === engineer.name), true);
     assert.equal(monitorData.people.find(person => person.userKey === worker.id).onDuty, true);
+    assert.equal(monitorData.people.find(person => person.userKey === engineer.id).onDuty, true);
     assert.equal(monitorData.people.find(person => person.role === "contractor").name, "Contract Worker");
     assert.equal(monitorData.attendanceQrEnabled, true);
 

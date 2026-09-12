@@ -52,12 +52,16 @@ test("generated plans use a system signer and retain manual work, marks and appr
   assert.equal(generated.sheet.plannedByRole, "system");
   assert.deepEqual(generatePprSheet({ catalog: {}, previous: generated.sheet, date, now }), { sheet: generated.sheet, changed: false });
   for (const previous of [{ rows: [{ id: "manual", work: "Keep manually planned work", mark: "done", markedByName: "Worker" }] }, { rows: [], approvedAt: now, approvedByName: "Engineer" }]) {
-    assert.deepEqual(generatePprSheet({ catalog: {}, previous, date, now }), { sheet: previous, changed: false });
+    const result = generatePprSheet({ catalog: {}, previous, date, now });
+    assert.deepEqual(result.sheet.rows, previous.rows);
+    if (previous.approvedAt) assert.deepEqual(result, { sheet: previous, changed: false });
+    else assert.deepEqual(result, { sheet: { ...previous, approvalRequestedAt: now }, changed: true });
   }
   const reset = generatePprSheet({ catalog: {}, previous: { approvalRequestedAt: now, rows: [{ id: "manual", work: "Manual", mark: "done", resolutionComment: "Done" }] }, date, now, force: true });
-  assert.equal(reset.changed, true);
-  assert.ok(reset.sheet.rows.every(row => !row.mark && !row.resolutionComment));
-  assert.equal(reset.sheet.approvalRequestedAt, "");
+  assert.equal(reset.changed, false);
+  assert.equal(reset.sheet.rows[0].mark, "done");
+  assert.equal(reset.sheet.rows[0].resolutionComment, "Done");
+  assert.equal(reset.sheet.approvalRequestedAt, now);
   const approved = { rows: [], approvedAt: now };
   assert.deepEqual(generatePprSheet({ catalog: {}, previous: approved, date, now, force: true }), { sheet: approved, changed: false });
   assert.equal(generatePprSheet({ catalog: {}, date: "2026-09-06", now }).changed, false);

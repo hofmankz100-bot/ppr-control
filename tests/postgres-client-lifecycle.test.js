@@ -18,7 +18,7 @@ function fixture(afterQuery = () => {}) {
         async query(sql, params) {
           this.queries.push(sql);
           let result = { rows: [] };
-          if (sql.includes("FOR UPDATE")) result = { rows: [structuredClone(persisted)] };
+          if (sql.includes("FOR UPDATE") || sql.startsWith("SELECT payload,state_revision")) result = { rows: [structuredClone(persisted)] };
           if (sql.startsWith("UPDATE ppr_settings")) {
             staged = { payload: JSON.parse(params[0]), state_revision: String(BigInt(persisted.state_revision) + 1n) };
             result = { rowCount: 1, rows: [{ state_revision: staged.state_revision, updated_at: new Date() }] };

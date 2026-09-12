@@ -1,20 +1,24 @@
-const CACHE_NAME = "ppr-v789-server-recovery-1-hotfix1";
+const CACHE_NAME = "ppr-v824-bounded-mirrors-ppr-calendar";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.min.css?v=v789-server-recovery-1",
+  "./styles.min.css?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/repeat-failures.css?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/ppr-plan-editor.css?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/ppr-plan-editor.js?v=v824-bounded-mirrors-ppr-calendar",
   "./modules/compressor.js?v=327-ppr-autofill-refresh",
   "./modules/shgrp.js?v=327-ppr-autofill-refresh",
   "./modules/receiver.js?v=288-print-request-pages",
-  "./modules/comments.js?v=288-print-request-pages",
-  "./modules/director.js?v=288-print-request-pages",
-  "./modules/print-assets.js?v=v789-server-recovery-1",
-  "./modules/device-cache-policy.js?v=v789-server-recovery-1",
-  "./modules/production-work-ui.js?v=v789-server-recovery-1",
-  "./modules/production-work-ui.css?v=v789-server-recovery-1",
-  "./modules/mobile-dialogs.css?v=v789-server-recovery-1",
-  "./app.min.js?v=v789-server-recovery-1",
-  "./node_modules/jsqr/dist/jsQR.js?v=v789-server-recovery-1",
+  "./modules/comments.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/repeat-failures.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/aggregate-journal-view.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/director.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/print-assets.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/equipment-search.js?v=1",
+  "./modules/device-cache-policy.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./modules/photo-compression.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./app.min.js?v=v824-bounded-mirrors-ppr-calendar",
+  "./node_modules/jsqr/dist/jsQR.js?v=v824-bounded-mirrors-ppr-calendar",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
@@ -82,23 +86,32 @@ self.addEventListener("notificationclick", event => {
         return;
       }
       await self.clients.openWindow(targetUrl);
-    } catch (error) {
-      console.warn("Notification click failed", error);
-    }
+    } catch {}
   })());
 });
 
 self.addEventListener("push", event => {
-  let payload = {};
-  try { payload = event.data?.json?.() || {}; } catch { payload = { body: event.data?.text?.() || "" }; }
-  const title = payload.title || "ППР Контроль";
-  const options = {
-    body: payload.body || "Новое уведомление",
-    icon: payload.icon || "/icon-192.png",
-    badge: payload.badge || "/icon-192.png",
-    tag: payload.tag || `ppr-${Date.now()}`,
-    data: payload.data || {},
-    renotify: true
-  };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil((async () => {
+    let payload = {};
+    try { payload = event.data?.json() || {}; } catch {}
+    const count = Math.max(0, Number(payload.badgeCount) || 0);
+    try {
+      if (count > 0 && "setAppBadge" in self.navigator) await self.navigator.setAppBadge(count);
+      else if ("clearAppBadge" in self.navigator) await self.navigator.clearAppBadge();
+    } catch {}
+    if (payload.clearTag) {
+      const notifications = await self.registration.getNotifications({ tag: payload.clearTag });
+      notifications.forEach(notification => notification.close());
+      if (payload.silentUpdate) return;
+    }
+    await self.registration.showNotification(payload.title || "ALKZ — новое замечание", {
+      body: payload.body || "Поступило новое замечание",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: payload.tag || `${payload.type || "notice"}:${payload.entityId || "general"}`,
+      renotify: true,
+      silent: false,
+      data: { url: payload.url || "/" }
+    });
+  })());
 });
