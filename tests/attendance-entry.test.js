@@ -57,10 +57,12 @@ test("scan window reports when the browser refuses to close it", () => {
 
 test("attendance token stays in the URL until the scan succeeds", () => {
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const submitStart = app.indexOf("async function submitAttendanceScan");
   const start = app.indexOf("async function handleIncomingAttendanceQrFromUrl");
   const end = app.indexOf("\nfunction showAttendanceScanConfirmation", start);
+  const submit = app.slice(submitStart, start);
   const handler = app.slice(start, end);
-  assert.ok(handler.indexOf("await apiJson") < handler.indexOf("clearAttendanceTokenFromUrl()"));
-  assert.match(handler, /attendanceEntry\?\.announce\(result\.session\)/);
-  assert.match(handler, /scanEntry: true/);
+  assert.ok(submit.indexOf("await apiJson") < submit.indexOf("clearAttendanceTokenFromUrl()"));
+  assert.match(submit, /attendanceEntry\?\.announce\(result\.session\)/);
+  assert.match(handler, /submitAttendanceScan\(token, \{ clearUrl: true, scanEntry: true \}\)/);
 });

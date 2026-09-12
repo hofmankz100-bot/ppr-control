@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v841-journal-acceptance-linkage";
+const APP_VERSION = "v842-mobile-attendance-camera";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1507,24 +1507,29 @@ function startAttendanceRefresh({ immediate = true } = {}) {
   }, 30000);
 }
 
+async function submitAttendanceScan(token, { clearUrl = false, scanEntry = false } = {}) {
+  const result = await apiJson("/api/attendance/scan", {
+    method: "POST",
+    body: JSON.stringify({ token })
+  });
+  if (clearUrl) clearAttendanceTokenFromUrl();
+  await refreshAttendanceStatus();
+  window.PPRModules.attendanceEntry?.announce(result.session);
+  showAttendanceScanConfirmation({
+    alreadyActive: result.alreadyActive,
+    startedAt: result.session?.startedAt,
+    expiresAt: result.session?.expiresAt,
+    scanEntry
+  });
+  return result;
+}
+
 async function handleIncomingAttendanceQrFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("attendance");
   if (!token) return false;
   try {
-    const result = await apiJson("/api/attendance/scan", {
-      method: "POST",
-      body: JSON.stringify({ token })
-    });
-    clearAttendanceTokenFromUrl();
-    await refreshAttendanceStatus();
-    window.PPRModules.attendanceEntry?.announce(result.session);
-    showAttendanceScanConfirmation({
-      alreadyActive: result.alreadyActive,
-      startedAt: result.session?.startedAt,
-      expiresAt: result.session?.expiresAt,
-      scanEntry: true
-    });
+    await submitAttendanceScan(token, { clearUrl: true, scanEntry: true });
   } catch (error) {
     window.alert(error.status === 410
       ? "QR-код уже обновился. Отсканируйте новый код на рабочем компьютере."
@@ -1558,6 +1563,52 @@ function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "",
     });
   });
   window.setTimeout(close, 12000);
+}
+
+function attendanceTokenFromScannedValue(value = "") {
+  try {
+    const url = new URL(String(value || ""), window.location.origin);
+    if (!/^https?:$/.test(url.protocol)) return "";
+    return url.searchParams.get("attendance") || "";
+  } catch {
+    return "";
+  }
+}
+
+async function scanAttendanceQrInsideApp(button = ui.attendanceHomeButton) {
+  if (!attendanceRequired()) return openAttendancePanel();
+  if (attendanceAllowsEditing()) {
+    showAttendanceScanConfirmation({
+      alreadyActive: true,
+      startedAt: attendanceStatus?.session?.startedAt,
+      expiresAt: attendanceStatus?.session?.expiresAt
+    });
+    return;
+  }
+  setButtonBusy(button, true, "Открываем камеру...");
+  try {
+    const scanned = await scanNodeQrCode(null, null, null, {
+      title: "Открытие смены",
+      openingMessage: "Открываем встроенную камеру. Наведите её на QR для отметки.",
+      cameraMessage: "Наведите камеру на QR для открытия смены.",
+      invalidMessage: "Это не QR для открытия смены. Наведите камеру на общий QR отметки.",
+      applyValue(value) {
+        const attendanceToken = attendanceTokenFromScannedValue(value);
+        return attendanceToken ? { attendanceToken } : false;
+      }
+    });
+    if (!scanned?.attendanceToken) return;
+    await submitAttendanceScan(scanned.attendanceToken);
+  } catch (error) {
+    window.alert(error.status === 410
+      ? "QR-код уже обновился. Отсканируйте новый код на рабочем компьютере."
+      : (error.message || "Не удалось открыть смену."));
+  } finally {
+    if (button?.isConnected) {
+      setButtonBusy(button, false);
+      placeSingleAttendanceButton();
+    }
+  }
 }
 
 function attendanceTokenFromUrl() {
@@ -1763,7 +1814,7 @@ async function refreshAttendanceQr() {
     qrImage.hidden = false;
     const printButton = modal.querySelector("[data-attendance-print]");
     if (printButton) printButton.hidden = false;
-    if (countdown) countdown.textContent = "Постоянный QR — распечатайте и разместите у входа";
+    if (countdown) countdown.textContent = "Штатные сканируют через «Открыть смену» в ППР, наёмные — обычной камерой телефона.";
   } catch (error) {
     if (countdown) countdown.textContent = error.message || "Не удалось обновить QR.";
   }
@@ -1822,7 +1873,7 @@ async function openAttendancePanel() {
     if (!qrImage?.src) return;
     const printWindow = window.open("", "_blank", "width=760,height=900");
     if (!printWindow) return window.alert("Разрешите всплывающие окна, чтобы распечатать QR.");
-    printWindow.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR для отметки</title><style>body{font-family:Arial,sans-serif;text-align:center;margin:40px}h1{font-size:28px}img{width:min(80vw,560px);height:auto}p{font-size:18px;color:#475569}@media print{button{display:none}}</style></head><body><h1>QR для отметки на работе</h1><img src="${escapeHtml(qrImage.src)}" alt="QR для отметки"><p>Отсканируйте камерой телефона</p><button onclick="window.print()">Печать</button></body></html>`);
+    printWindow.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QR для отметки</title><style>body{font-family:Arial,sans-serif;text-align:center;margin:40px}h1{font-size:28px}img{width:min(80vw,560px);height:auto}p{font-size:18px;color:#475569}@media print{button{display:none}}</style></head><body><h1>QR для отметки на работе</h1><img src="${escapeHtml(qrImage.src)}" alt="QR для отметки"><p><strong>Штатные сотрудники:</strong> ППР Контроль → «Открыть смену».<br><strong>Наёмные сотрудники без приложения:</strong> обычная камера телефона.</p><button onclick="window.print()">Печать</button></body></html>`);
     printWindow.document.close();
   });
   modal.querySelector("[data-attendance-config]")?.addEventListener("click", async () => {
@@ -3629,7 +3680,7 @@ function renderProfile() {
   if (!ui.profileBar) return;
   if (ui.factoryStatusButton) ui.factoryStatusButton.hidden = !isProfileReady();
   if (ui.attendanceHomeButton) {
-    ui.attendanceHomeButton.hidden = !(isProfileReady() && (profile?.role === "editor" || hasEngineerInboxAccess()));
+    ui.attendanceHomeButton.hidden = !(isProfileReady() && (attendanceRequired() || profile?.role === "editor" || hasEngineerInboxAccess()));
   }
   document.body.classList.toggle("editor-profile", profile?.role === "editor");
   document.body.classList.toggle("editor-preview-profile", isEditorSession() && profile?.role !== "editor");
@@ -3712,6 +3763,7 @@ function renderProfile() {
     requestAppNotificationPermission(event.currentTarget);
   });
   ui.profileBar.querySelector("#openDirectorControlButton")?.addEventListener("click", () => show("directorControl"));
+  placeSingleAttendanceButton();
   ui.profileBar.querySelector("#changeUserButton")?.addEventListener("click", async () => {
     if (!window.confirm("Точно выйти из профиля?")) return;
     stopPendingApprovalPolling();
@@ -4768,11 +4820,20 @@ function printEquipmentQrCodes(eq) {
   win.document.close();
 }
 
-async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) {
+async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl, scannerOptions = {}) {
   const hasExpectedNode = expectedEquipmentId !== null && expectedEquipmentId !== undefined && expectedNodeIndex !== null && expectedNodeIndex !== undefined;
   const expected = { equipmentId: Number(expectedEquipmentId), nodeIndex: Number(expectedNodeIndex) };
   let overlay = null;
-  const applyScannedValue = value => {
+  const applyScannedValue = (value, feedbackEl = null) => {
+    if (typeof scannerOptions.applyValue === "function") {
+      const result = scannerOptions.applyValue(value);
+      if (!result) {
+        const message = scannerOptions.invalidMessage || "Этот QR не подходит.";
+        if (feedbackEl) feedbackEl.textContent = message;
+        if (statusEl) statusEl.textContent = message;
+      }
+      return result;
+    }
     const parsed = resolveNodeQrTarget(parseNodeQrPayload(value));
     if (!parsed) {
       if (statusEl) statusEl.textContent = "QR код не распознан";
@@ -4868,7 +4929,7 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
       }
       await video.play();
       video.hidden = false;
-      if (messageEl) messageEl.textContent = "Наведите камеру на QR. После считывания можно идти дальше.";
+      if (messageEl) messageEl.textContent = scannerOptions.cameraMessage || "Наведите камеру на QR. После считывания можно идти дальше.";
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       return await new Promise(resolve => {
@@ -4898,12 +4959,12 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               const value = await detectQrOnCanvas(canvas, scanPass++);
               if (value) {
-                const applied = applyValue(value);
+                const applied = applyValue(value, messageEl);
                 if (applied) {
                   confirmQrScanFeedback();
                   return finish(applied);
                 }
-                if (messageEl) messageEl.textContent = statusEl?.textContent || "Этот QR не подходит. Наведите камеру на нужный код.";
+                if (messageEl) messageEl.textContent = scannerOptions.invalidMessage || statusEl?.textContent || "Этот QR не подходит. Наведите камеру на нужный код.";
               }
             } catch (error) {
               reportCaughtClientError("qr.camera-frame", error, 60000);
@@ -5057,10 +5118,10 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
           finish(false);
           return;
         }
-        finish(applyScannedValue(value));
+        finish(applyScannedValue(value, messageEl));
       } catch (error) {
         reportCaughtClientError("qr.photo-read", error, 60000);
-        if (messageEl) messageEl.textContent = "Фото не удалось прочитать. Попробуйте ближе или откройте QR обычной камерой.";
+        if (messageEl) messageEl.textContent = "Фото не удалось прочитать. Попробуйте ближе или перезапустите встроенный сканер.";
         finish(false);
       }
     }, { once: true });
@@ -5072,9 +5133,9 @@ async function scanNodeQrCode(expectedEquipmentId, expectedNodeIndex, statusEl) 
   overlay.className = "qr-scan-overlay";
   overlay.innerHTML = `
     <div class="qr-scan-panel">
-      <strong>Сканирование QR</strong>
+      <strong>${escapeHtml(scannerOptions.title || "Сканирование QR")}</strong>
       <video playsinline muted hidden></video>
-      <span class="qr-scan-message">Открываем камеру. Наведите на QR узла.</span>
+      <span class="qr-scan-message">${escapeHtml(scannerOptions.openingMessage || "Открываем камеру. Наведите на QR узла.")}</span>
       <div class="qr-scan-actions">
         <button type="button" data-qr-torch hidden>Включить фонарик</button>
         <button type="button" data-qr-photo>Сфотографировать QR</button>
@@ -7869,13 +7930,19 @@ function isUserEditingForm() {
 
 function restoreBackgroundScroll(view, scrollX, scrollY) {
   if (current.view !== view) return;
-  const restore = () => {
-    if (current.view === view) window.scrollTo({ left: scrollX, top: scrollY, behavior: "auto" });
+  let expectedX = window.scrollX;
+  let expectedY = window.scrollY;
+  const restore = (initial = false) => {
+    if (current.view !== view) return false;
+    if (!initial && (Math.abs(window.scrollX - expectedX) > 1 || Math.abs(window.scrollY - expectedY) > 1)) return false;
+    window.scrollTo({ left: scrollX, top: scrollY, behavior: "auto" });
+    expectedX = window.scrollX;
+    expectedY = window.scrollY;
+    return true;
   };
-  restore();
+  restore(true);
   window.requestAnimationFrame(() => {
-    restore();
-    window.requestAnimationFrame(restore);
+    if (restore()) window.requestAnimationFrame(restore);
   });
 }
 
@@ -15009,7 +15076,7 @@ function goBack() {
 ui.back?.addEventListener("click", goBack);
 
 ui.factoryStatusButton?.addEventListener("click", () => show("engineerReport"));
-ui.attendanceHomeButton?.addEventListener("click", openAttendancePanel);
+ui.attendanceHomeButton?.addEventListener("click", event => scanAttendanceQrInsideApp(event.currentTarget));
 ui.weldingHomeButton?.addEventListener("click", () => show("welding"));
 
 ui.qrWalkButton?.addEventListener("click", async () => {
@@ -15222,18 +15289,19 @@ function placeSingleAttendanceButton() {
   const mobileNav = document.querySelector(".mobile-nav");
   const quickNav = document.querySelector("#equipmentScreen .quick-nav");
   if (!button || !mobileNav || !quickNav) return;
+  const workerEntry = attendanceRequired();
+  const attendanceActive = workerEntry && attendanceAllowsEditing();
+  const label = workerEntry ? (attendanceActive ? "Смена открыта" : "Открыть смену") : "Кто на работе";
+  const icon = workerEntry ? (attendanceActive ? "✓" : "📷") : "👥";
+  button.classList.toggle("attendance-entry-active", attendanceActive);
   if (window.matchMedia("(max-width: 680px)").matches) {
-    if (button.dataset.layout !== "mobile") {
-      button.innerHTML = '<span aria-hidden="true">👥</span><small>Кто на работе</small>';
-      button.dataset.layout = "mobile";
-    }
+    button.innerHTML = `<span aria-hidden="true">${icon}</span><small>${label}</small>`;
+    button.dataset.layout = "mobile";
     if (button.parentElement !== mobileNav) mobileNav.prepend(button);
     return;
   }
-  if (button.dataset.layout !== "desktop") {
-    button.innerHTML = '<span>Кто на работе</span><strong aria-hidden="true">👥</strong>';
-    button.dataset.layout = "desktop";
-  }
+  button.innerHTML = `<span>${label}</span><strong aria-hidden="true">${icon}</strong>`;
+  button.dataset.layout = "desktop";
   if (button.parentElement !== quickNav) quickNav.append(button);
 }
 

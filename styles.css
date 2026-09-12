@@ -3990,10 +3990,10 @@ body.editor-profile #directorOpenButton.request-alert {
 @media(max-width:680px){.production-work-tabs{grid-template-columns:1fr}.turning-qty-grid{grid-template-columns:1fr}.production-worker-home{padding:18px}}
 .production-work-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 14px;padding:6px;border-radius:14px;background:#e7eef2}.production-work-tabs button{min-height:48px;border:0;border-radius:10px;background:transparent;color:#334155;font-weight:800}.production-work-tabs button.active{background:#fff;color:#0f5268;box-shadow:0 3px 10px rgba(15,23,42,.12)}.production-work-tabs b{display:inline-grid;place-items:center;min-width:24px;height:24px;margin-left:5px;border-radius:999px;background:#dbe8ed;color:#14324a}
 .turning-qty-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.production-worker-home{display:grid;gap:18px;padding:24px;border-radius:20px;background:linear-gradient(135deg,#14324a,#147d78);color:#fff;box-shadow:0 12px 30px rgba(20,50,74,.2)}.production-worker-home h1{margin:4px 0 8px}.production-worker-home p{max-width:620px;margin:0;line-height:1.5;opacity:.9}.production-worker-home button{min-height:54px;background:#fff;color:#14324a;font-weight:900}
-body.production-worker-profile .quick-nav>button:not(.welding-home-button),body.production-worker-profile .global-reminder-button{display:none!important}body.production-worker-profile .quick-nav{grid-template-columns:minmax(0,1fr)!important}
-body.production-worker-profile #workerRatingButton,body.production-worker-profile #engineerReportButton,body.production-worker-profile #factoryStatusButton,body.production-worker-profile #attendanceHomeButton,body.production-worker-profile .app-notification-prompt{display:none!important}
-body.forklift-driver-profile .quick-nav>button:not(#qrWalkButton),body.forklift-driver-profile .global-reminder-button,body.forklift-driver-profile #workerRatingButton,body.forklift-driver-profile #engineerReportButton,body.forklift-driver-profile #factoryStatusButton,body.forklift-driver-profile #attendanceHomeButton,body.forklift-driver-profile .app-notification-prompt{display:none!important}
-body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!important}
+body.production-worker-profile .quick-nav>button:not(.welding-home-button):not(#attendanceHomeButton),body.production-worker-profile .global-reminder-button{display:none!important}body.production-worker-profile .quick-nav{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}
+body.production-worker-profile #workerRatingButton,body.production-worker-profile #engineerReportButton,body.production-worker-profile #factoryStatusButton,body.production-worker-profile .app-notification-prompt{display:none!important}
+body.forklift-driver-profile .quick-nav>button:not(#qrWalkButton):not(#attendanceHomeButton),body.forklift-driver-profile .global-reminder-button,body.forklift-driver-profile #workerRatingButton,body.forklift-driver-profile #engineerReportButton,body.forklift-driver-profile #factoryStatusButton,body.forklift-driver-profile .app-notification-prompt{display:none!important}
+body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}
 .aggregate-comment-editor{display:block;margin-top:7px;padding-top:6px;border-top:1px dashed #94a3b8;color:#475569;white-space:normal}.aggregate-correction{margin-top:8px;text-align:left}.aggregate-correction summary{cursor:pointer;font-weight:800;color:#0f5268}.aggregate-correction label{display:grid;gap:4px;margin-top:8px;font-size:12px}.aggregate-correction textarea,.aggregate-correction select{box-sizing:border-box;width:100%;min-height:38px;padding:7px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.aggregate-correction textarea{min-height:62px;resize:vertical}.aggregate-correction p{font-size:11px;line-height:1.35;color:#475569;white-space:normal}
 .aggregate-corrected-comment{display:block;margin-top:7px;padding:6px;border-left:3px solid #0284c7;background:#f0f9ff;color:#0c4a6e;white-space:pre-wrap}.aggregate-corrected-comment b,.aggregate-corrected-comment small{display:block}.aggregate-corrected-comment small{margin-top:4px;color:#475569;font-size:10px}
 @keyframes weldingPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.025);filter:brightness(1.18)}}
@@ -5052,6 +5052,7 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
 }
 
 .qr-scan-panel button {
+  min-height: 44px;
   border: 0;
   border-radius: 8px;
   background: #14324a;
@@ -5782,6 +5783,7 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:minmax(0,1fr)!impo
 }
 .attendance-badge.active { background: #dcfce7; color: #166534; }
 .attendance-badge.locked { background: #fee2e2; color: #991b1b; }
+.attendance-home-button.attendance-entry-active { background: #dcfce7; color: #166534; }
 .attendance-modal {
   position: fixed;
   inset: 0;
@@ -7610,7 +7612,7 @@ textarea:disabled {
     display: none !important;
   }
 
-  .mobile-nav [data-mobile-view="attendance"] {
+  .mobile-nav #attendanceHomeButton {
     order: 1;
     grid-column: 1;
   }

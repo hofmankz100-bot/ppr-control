@@ -1809,11 +1809,12 @@ test("mobile navigation reuses one attendance button instead of the removed requ
   assert.equal((html.match(/id="attendanceHomeButton"/g) || []).length, 1);
   assert.doesNotMatch(html, /data-mobile-view="requestCreate"/);
   assert.doesNotMatch(html, /data-mobile-view="requests"/);
-  assert.match(html, /id="attendanceHomeButton"[^>]*data-mobile-view="attendance"/);
+  assert.match(html, /id="attendanceHomeButton"/);
+  assert.doesNotMatch(html, /id="attendanceHomeButton"[^>]*data-mobile-view/);
   assert.match(client, /function placeSingleAttendanceButton\(\)/);
   assert.match(client, /mobileNav\.prepend\(button\)/);
   assert.match(client, /quickNav\.append\(button\)/);
-  assert.match(styles, /\.mobile-nav \[data-mobile-view="attendance"\]/);
+  assert.match(styles, /\.mobile-nav #attendanceHomeButton/);
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
@@ -1999,7 +2000,7 @@ test("mobile users use the single main warnings button", () => {
   assert.doesNotMatch(htmlSource, /data-mobile-view="requests"/);
   assert.match(clientSource, /if \(view === "requests"\) return isProfileReady\(\)/);
   assert.doesNotMatch(clientSource, /data-mobile-remark-count|mobileRemarkCount/);
-  assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="attendance"\][\s\S]*?grid-column:\s*1/);
+  assert.match(stylesSource, /\.mobile-nav #attendanceHomeButton[\s\S]*?grid-column:\s*1/);
 });
 
 test("director private messaging is removed while admin employee approval remains", () => {
