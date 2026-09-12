@@ -72,7 +72,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v831-dead-code-cleanup";
+const APP_VERSION = "v832-deep-code-audit";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -386,11 +386,6 @@ function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.themeMode = mode;
   if (persist) localStorage.setItem(THEME_KEY, mode);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111b21" : "#14324a");
-  document.querySelectorAll("[data-theme-toggle]").forEach(button => {
-    button.textContent = resolved === "dark" ? "☀" : "☾";
-    button.setAttribute("aria-label", resolved === "dark" ? "Включить светлую тему" : "Включить тёмную тему");
-    button.setAttribute("title", resolved === "dark" ? "Светлая тема" : "Тёмная тема");
-  });
   document.querySelectorAll("[data-theme-mode]").forEach(select => { select.value = mode; });
 }
 
@@ -2924,7 +2919,6 @@ function applyLanguage() {
   ui.back?.setAttribute("aria-label", t("back"));
   ui.back?.setAttribute("title", t("back"));
   setText('[data-mobile-view="home"] small', t("home"));
-  setText('[data-mobile-view="requests"] small', t("remarks"));
   setText('[data-mobile-view="downtime"] small', t("downtime"));
   setText('[data-mobile-view="profile"] small', t("profile"));
   const alertCounterLabel = document.querySelector("#alertCounter span");
@@ -7229,13 +7223,6 @@ function updateRoleBadges() {
     button.classList.toggle("has-count", waiting > 0);
     button.setAttribute("aria-disabled", quickButton && !canEnter ? "true" : "false");
   });
-  const mobileRemarkButton = document.querySelector('[data-mobile-view="requests"]');
-  mobileRemarkButton?.classList.toggle("request-alert", personalCount > 0);
-  const mobileRemarkCount = mobileRemarkButton?.querySelector("[data-mobile-remark-count]");
-  if (mobileRemarkCount) {
-    mobileRemarkCount.textContent = personalCount;
-    mobileRemarkCount.hidden = personalCount === 0;
-  }
   if (ui.workerRatingButton) ui.workerRatingButton.hidden = !canOpenView("workerRating");
   if (ui.engineerReportButton) ui.engineerReportButton.hidden = true;
 }
@@ -7351,7 +7338,7 @@ function openAllRemarkCards() {
       </header>
       <div class="request-archive-dialog-list open-remarks-list">
         ${targets.map((target, index) => `
-          <article class="open-remark-item ${target.deferred ? "deferred-remark" : target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}" data-open-remark-id="${escapeHtml(target.remarkId)}">
+          <article class="open-remark-item ${target.deferred ? "deferred-remark" : target.pendingConfirmation ? "pending-confirmation" : target.returnedToRework ? "returned-rework" : ""}">
             <header>
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
               <span class="open-remark-status">${target.deferred ? "Причина записана" : target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
@@ -9241,9 +9228,7 @@ function renderCompressorJournal(area = COMPRESSOR_JOURNAL_AREA) {
         showAppToast("Запись уже зафиксирована и недоступна для редактирования.", "error");
         return;
       }
-      const shiftCell = ui.aggregateJournalList.querySelector(`[data-compressor-shift="${CSS.escape(rowId)}"]`);
       const blowCell = ui.aggregateJournalList.querySelector(`[data-compressor-blow="${CSS.escape(rowId)}"]`);
-      if (shiftCell) shiftCell.textContent = savedRow.shiftTime || "После фиксации";
       if (blowCell) blowCell.textContent = savedRow.blowTime || "После фиксации";
       markCompressorJournalDateDraftInView(area, savedRow.date, rowId);
       ui.aggregateJournalList.querySelectorAll(`[data-compressor-date="${CSS.escape(savedRow.date)}"]`).forEach(row => row.classList.toggle("print-empty-day", !compressorJournalDateHasFilledRow(area, savedRow.date)));
@@ -10249,7 +10234,7 @@ function renderNodeWalkthrough(eq) {
         <small class="comment-owner">${escapeHtml(sameCommentAuthor(item) && ownerText ? ownerText : `Новый комментарий: ${currentAuthorText}`)}</small>
         <textarea data-node-comment="${index}" rows="2" placeholder="${sameCommentAuthor(item) ? "Напишите замечание по узлу" : "Новое замечание по узлу"}" ${canEditThisComment ? "" : "disabled"}>${escapeHtml(item.nodeDraftText || commentInputValue(item))}</textarea>
         <input data-node-comment-photo="${index}" type="file" accept="image/*" capture="environment" ${canEditThisComment ? "" : "disabled"}>
-        <div class="photo-preview node-photo-preview" data-node-comment-preview="${index}">
+        <div class="photo-preview node-photo-preview">
           ${item.commentPhoto && sameCommentAuthor(item) ? `<img src="${item.commentPhoto}" alt="Фото комментария">${canEditThisComment ? `<button type="button" data-clear-node-photo="comment" data-node-index="${index}">Удалить фото</button>` : ""}` : ""}
         </div>
         <div class="node-walk-actions node-comment-actions">
@@ -10416,23 +10401,6 @@ function renderNodeWalkthrough(eq) {
         else renderNodeWalkthrough(equipmentById(eq.id));
         showAppToast("Предупреждение удалено без начисления баллов.", "ok");
       }, "Удаляем..."));
-      card.querySelector("[data-remark-confirm]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-        if (!window.confirm("Подтвердить, что предупреждение действительно устранено?")) return;
-        await publishRemarkCollaborationAction(eq.id, index, current.date, "confirm", { remarkId });
-        if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
-        else renderNodeWalkthrough(equipmentById(eq.id));
-      }, "Подтверждаем..."));
-      card.querySelector("[data-remark-return]")?.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-        const reason = window.prompt("Что необходимо доработать?");
-        if (reason === null) return;
-        if (!String(reason).trim()) {
-          window.alert("Напишите причину возврата на доработку.");
-          return;
-        }
-        await publishRemarkCollaborationAction(eq.id, index, current.date, "return", { remarkId, reason: String(reason).trim() });
-        if (current.returnToRemarkListAfterResolve) returnToOpenRemarkCards();
-        else renderNodeWalkthrough(equipmentById(eq.id));
-      }, "Возвращаем..."));
     });
     row.querySelector("[data-node-comment]").addEventListener("input", event => {
       if (!canEditComment(item)) return;
@@ -10507,12 +10475,10 @@ function renderNodeWalkthrough(eq) {
       }
       event.target.value = "";
       const submitButton = row.querySelector(`[data-node-submit-comment="${index}"]`);
-      const fixedButton = row.querySelector(`[data-node-fixed="${index}"]`);
       if (submitButton) {
         submitButton.disabled = true;
         submitButton.textContent = "Загрузка фото...";
       }
-      if (fixedButton) fixedButton.disabled = true;
       nodePhotoProcessing = (async () => {
         try {
           liveItem.commentPhoto = await readPhotoFile(file);
@@ -14847,15 +14813,6 @@ function renderAggregateJournal() {
   });
   ui.aggregateJournalList.querySelectorAll("[data-print-aggregate-sheet]").forEach(button => {
     button.addEventListener("click", () => printAggregateJournal(journalName, Number(button.dataset.printAggregateSheet)));
-  });
-  ui.aggregateJournalList.querySelectorAll("[data-admin-close-legacy-remark]").forEach(button => {
-    button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {
-      const recordKey = event.currentTarget.dataset.adminCloseLegacyRemark || "";
-      const remarkId = event.currentTarget.dataset.remarkId || "";
-      const [equipmentId, nodeIndex, date] = recordKey.split(":");
-      await publishRemarkCollaborationAction(Number(equipmentId), Number(nodeIndex), date, "admin-close", { remarkId });
-      renderAggregateJournal();
-    }, "Закрываем..."));
   });
   ui.aggregateJournalList.querySelectorAll("[data-admin-repair-legacy-remark]").forEach(button => {
     button.addEventListener("click", event => runButtonOperation(event.currentTarget, async () => {

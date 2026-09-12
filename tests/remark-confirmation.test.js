@@ -1581,7 +1581,7 @@ test("collaborative resolution UI batches checked participants and shows every r
   const permissionsSource = fs.readFileSync(path.join(root, "server", "permissions.js"), "utf8");
   assert.match(permissionsSource, /RESOLUTION_EXECUTOR_ROLES/);
   assert.match(serverSource, /action === "admin-close"/);
-  assert.match(appSource, /data-admin-close-legacy-remark/);
+  assert.doesNotMatch(appSource, /data-admin-close-legacy-remark/);
   assert.match(appSource, /data-toggle-aggregate-repair/);
   assert.match(appSource, /repairMode && item\.kind === "Замечание" && !item\.resolved/);
   assert.match(appSource, /current\.aggregateRepairEquipmentId = 0/);
@@ -1989,7 +1989,7 @@ test("mobile users use the single main warnings button", () => {
   assert.match(htmlSource, /id="alertCounter"[\s\S]*?Предупреждения/);
   assert.doesNotMatch(htmlSource, /data-mobile-view="requests"/);
   assert.match(clientSource, /if \(view === "requests"\) return isProfileReady\(\)/);
-  assert.match(clientSource, /mobileRemarkCount\.textContent = personalCount/);
+  assert.doesNotMatch(clientSource, /data-mobile-remark-count|mobileRemarkCount/);
   assert.match(stylesSource, /\.mobile-nav \[data-mobile-view="attendance"\][\s\S]*?grid-column:\s*1/);
 });
 
