@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v836-kpi-points-linked";
+const APP_VERSION = "v837-kpi-points-audit";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -12398,7 +12398,6 @@ function emptyWorkerRating(role, name) {
     reactionDurations: [],
     repairDurations: [],
     points: 0,
-    efficiency: 0,
     planPercent: 0,
     emergencyPercent: 0,
     pprPercent: 0,
@@ -12409,7 +12408,6 @@ function emptyWorkerRating(role, name) {
 const WORK_RATING_POINTS = Object.freeze({
   journal: 2,
   qrShift: 3,
-  qrMonthly: 5,
   ppr: 5,
   pprPress: 6,
   remark: 10,
@@ -12589,6 +12587,7 @@ function workerRatingLedger(year, monthIndex, workerKey) {
 function workerRatingLedgerTypeLabel(type = "") {
   return ({
     remark: "Замечания",
+    "self-remark-bonus": "Бонусы",
     breakdown: "Аварийные простои",
     qr: "QR-обходы",
     ppr: "ППР",
@@ -12762,12 +12761,6 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const pprPercent = workTotal ? Math.round((worker.plannedDone + worker.qrDone) / workTotal * 100) : 0;
     const points = Number(annualPoints.get(worker.key) || 0);
-    const efficiency = Math.min(100, Math.round(
-      (planPercent * 0.45)
-      + (Math.min(worker.closed, 40) / 40 * 25)
-      + (Math.min(worker.qrDone, 120) / 120 * 20)
-      + (avgRepairMs ? Math.max(0, 10 - Math.min(avgRepairMs / 3600000 / 24 * 10, 10)) : 0)
-    ));
     const achievements = [];
     if (worker.breakdownClosed >= 3) achievements.push("Аварийный мастер");
     if (worker.remarksFound >= 5) achievements.push("Внимательный обход");
@@ -12776,10 +12769,10 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("Без просрочек");
     if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("Быстрый ремонт");
     if (worker.installs >= 5) achievements.push("Монтажник");
-    return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, pprPercent, points, efficiency, achievements };
+    return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, pprPercent, points, achievements };
   });
 
-  list.sort((a, b) => b.points - a.points || b.efficiency - a.efficiency || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
+  list.sort((a, b) => b.points - a.points || b.planPercent - a.planPercent || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
   list.forEach((worker, index) => worker.place = index + 1);
 
   const bestMechanic = list.find(worker => isElectromechanicRole(worker.role)) || null;
@@ -12800,8 +12793,8 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
 
 function workerRatingBand(worker) {
   if (worker.place === 1) return "gold";
-  if (worker.efficiency >= 85) return "green";
-  if (worker.efficiency >= 65) return "yellow";
+  if (worker.planPercent >= 85) return "green";
+  if (worker.planPercent >= 65) return "yellow";
   return "red";
 }
 
@@ -12919,7 +12912,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <section class="worker-rating-explain">
         <strong>Как понимать рейтинг:</strong>
         <span>Журнал — 2, общий QR-обход за смену — 3, ППР — 5 (пресс 6).</span>
-        <span>Принятое предупреждение — 10 (пресс 15), аварийный простой — 20 (пресс 30).</span>
+        <span>Принятое предупреждение — 10 (пресс 15), аварийный простой — 20 (пресс 30), сам обнаружил и устранил — дополнительно 5.</span>
         <span>Производственная остановка баллов не даёт. Возврат на доработку снимает 1 балл с отправителя, максимум 2 за работу.</span>
         <span>КПД качества = (закрыто − повторные ремонты) / (закрыто + просрочено). Каждый повторный ремонт снижает КПД своего исполнителя.</span>
         <span>При совместном устранении каждый зафиксированный участник получает полные баллы после подтверждения.</span>

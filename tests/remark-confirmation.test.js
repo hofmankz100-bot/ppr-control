@@ -594,9 +594,13 @@ test("the rating uses the agreed simple values and accepted-work rules", () => {
   assert.match(source, /breakdown:\s*20/);
   assert.match(source, /breakdownPress:\s*30/);
   assert.match(source, /returnPenalty:\s*-1/);
+  assert.doesNotMatch(source, /qrMonthly:/);
   assert.match(source, /if \(event\.confirmedAt && inPeriod\(event\.confirmedAt\)\)/);
   assert.match(source, /Number\(penaltiesByWorker\.get\(key\) \|\| 0\) >= 2/);
   assert.match(source, /if \(item\.type === "production"\) return/);
+  assert.match(source, /"self-remark-bonus": "Бонусы"/);
+  assert.match(source, /if \(worker\.planPercent >= 85\) return "green"/);
+  assert.doesNotMatch(source, /worker\.efficiency|const efficiency =/);
 });
 
 test("every signed-in role sees only the factory reliability graph while engineer roles see the detailed report", () => {
