@@ -61,7 +61,9 @@ function createStaticHandler({ root, contentTypes, securityHeaders, zlib }) {
       const extension = path.extname(file).toLowerCase();
       const contentType = contentTypes[extension] || "application/octet-stream";
       const versioned = Boolean(requestUrl.searchParams.get("v"));
-      const cacheControl = pathname === "/" || extension === ".html"
+      const cacheControl = cleanPath === "sw.js"
+        ? "no-store, no-cache, must-revalidate"
+        : pathname === "/" || extension === ".html"
         ? cleanPath === "update.html" ? "no-store" : "no-cache"
         : versioned
           ? "public, max-age=31536000, immutable"

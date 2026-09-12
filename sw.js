@@ -1,24 +1,26 @@
-const CACHE_NAME = "ppr-v843-session-login-stability";
+const APP_VERSION = "v844-automatic-safe-update";
+const CACHE_NAME = `ppr-${APP_VERSION}`;
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.min.css?v=v843-session-login-stability",
-  "./modules/repeat-failures.css?v=v843-session-login-stability",
-  "./modules/ppr-plan-editor.css?v=v843-session-login-stability",
-  "./modules/ppr-plan-editor.js?v=v843-session-login-stability",
-  "./modules/compressor.js?v=v843-session-login-stability",
-  "./modules/shgrp.js?v=v843-session-login-stability",
-  "./modules/comments.js?v=v843-session-login-stability",
-  "./modules/repeat-failures.js?v=v843-session-login-stability",
-  "./modules/aggregate-journal-view.js?v=v843-session-login-stability",
-  "./modules/director.js?v=v843-session-login-stability",
-  "./modules/print-assets.js?v=v843-session-login-stability",
+  "./styles.min.css?v=v844-automatic-safe-update",
+  "./modules/repeat-failures.css?v=v844-automatic-safe-update",
+  "./modules/ppr-plan-editor.css?v=v844-automatic-safe-update",
+  "./modules/ppr-plan-editor.js?v=v844-automatic-safe-update",
+  "./modules/compressor.js?v=v844-automatic-safe-update",
+  "./modules/shgrp.js?v=v844-automatic-safe-update",
+  "./modules/comments.js?v=v844-automatic-safe-update",
+  "./modules/repeat-failures.js?v=v844-automatic-safe-update",
+  "./modules/aggregate-journal-view.js?v=v844-automatic-safe-update",
+  "./modules/director.js?v=v844-automatic-safe-update",
+  "./modules/print-assets.js?v=v844-automatic-safe-update",
   "./modules/equipment-search.js?v=1",
-  "./modules/device-cache-policy.js?v=v843-session-login-stability",
-  "./modules/photo-compression.js?v=v843-session-login-stability",
-  "./modules/attendance-entry.js?v=v843-session-login-stability",
-  "./app.min.js?v=v843-session-login-stability",
-  "./node_modules/jsqr/dist/jsQR.js?v=v843-session-login-stability",
+  "./modules/device-cache-policy.js?v=v844-automatic-safe-update",
+  "./modules/photo-compression.js?v=v844-automatic-safe-update",
+  "./modules/attendance-entry.js?v=v844-automatic-safe-update",
+  "./modules/app-updater.js?v=v844-automatic-safe-update",
+  "./app.min.js?v=v844-automatic-safe-update",
+  "./node_modules/jsqr/dist/jsQR.js?v=v844-automatic-safe-update",
   "./manifest.json",
   "./icon.svg",
   "./icon-180.png",
@@ -33,12 +35,13 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    windows.forEach(client => client.postMessage({ type: "ppr-update-ready", version: APP_VERSION }));
+  })());
 });
 
 self.addEventListener("fetch", event => {

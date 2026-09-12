@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v843-session-login-stability";
+const APP_VERSION = "v844-automatic-safe-update";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1422,29 +1422,28 @@ function apiJson(url, options = {}) {
   return promise;
 }
 
-function showRequiredClientUpdate(requiredVersion = "") {
-  if (document.querySelector(".required-update-overlay")) return;
-  closeAttendancePanel();
-  const overlay = document.createElement("div");
-  overlay.className = "required-update-overlay";
-  overlay.innerHTML = `<section class="required-update-card" role="alertdialog" aria-modal="true">
-    <div class="required-update-icon">↻</div>
-    <span>ОБЯЗАТЕЛЬНОЕ ОБНОВЛЕНИЕ</span>
-    <h1>Обновите приложение</h1>
-    <p>Эта версия устарела и больше не может сохранять данные. Обновление займёт несколько секунд.</p>
-    ${requiredVersion ? `<small>Новая версия: ${escapeHtml(requiredVersion)}</small>` : ""}
-    <button type="button" data-required-update>Обновить сейчас</button>
-    <div data-required-update-status></div>
-  </section>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector("[data-required-update]")?.addEventListener("click", async event => {
-    const button = event.currentTarget;
-    const status = overlay.querySelector("[data-required-update-status]");
-    setButtonBusy(button, true, "Обновляем…");
-    if (status) status.textContent = "Открываем безопасную страницу обновления…";
-    const target = requiredVersion || APP_VERSION;
-    window.location.replace(`/update.html?target=${encodeURIComponent(target)}&refresh=${Date.now()}`);
+let clientUpdater = null;
+
+function safeForAutomaticClientUpdate() {
+  const profileHome = !isProfileReady() || current.view === homeViewForProfile(profile?.role);
+  const anotherDialogOpen = [...document.querySelectorAll('[role="dialog"]:not([hidden]), [role="alertdialog"]:not([hidden])')]
+    .some(element => !element.closest(".required-update-overlay"));
+  return profileHome && !anotherDialogOpen && !isUserEditingForm() && !authSubmissionInFlight
+    && !remoteSaveInFlight && userApprovalDrafts.size === 0;
+}
+
+function requiredClientUpdater() {
+  clientUpdater ||= window.PPRModules.appUpdater.create({
+    currentVersion: APP_VERSION,
+    isSafeToInstall: safeForAutomaticClientUpdate,
+    beforeShow: closeAttendancePanel,
+    onError: error => reportCaughtClientError("service-worker.update", error, 300000)
   });
+  return clientUpdater;
+}
+
+function showRequiredClientUpdate(requiredVersion = "") {
+  requiredClientUpdater().request(requiredVersion || "latest");
 }
 
 async function checkRequiredClientVersion() {
@@ -15450,14 +15449,11 @@ document.addEventListener("focusout", () => {
     if (backgroundRenderPending && !isUserEditingForm() && userApprovalDrafts.size === 0) scheduleRender();
   }, 800);
 });
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    refreshStaleAssetCache();
-    navigator.serviceWorker.register("/sw.js")
-      .then(registration => registration.update())
-      .catch(() => {});
-  });
-}
+window.addEventListener("load", () => {
+  refreshStaleAssetCache();
+  requiredClientUpdater().startServiceWorkerUpdates()
+    .catch(error => reportCaughtClientError("service-worker.register", error, 300000));
+});
 
 setupTheme();
 placeSingleAttendanceButton();
