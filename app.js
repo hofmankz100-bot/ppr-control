@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v827-repeat-kpd";
+const APP_VERSION = "v828-repeat-repairs-kpd";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -13574,7 +13574,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>Журнал — 2, общий QR-обход за смену — 3, ППР — 5 (пресс 6).</span>
         <span>Принятое предупреждение — 10 (пресс 15), аварийный простой — 20 (пресс 30).</span>
         <span>Производственная остановка баллов не даёт. Возврат на доработку снимает 1 балл с отправителя, максимум 2 за работу.</span>
-        <span>КПД качества = (закрыто − повторы) / (закрыто + просрочено). Повтор снижает КПД исполнителя предыдущего ремонта.</span>
+        <span>КПД качества = (закрыто − повторные ремонты) / (закрыто + просрочено). Каждый повторный ремонт снижает КПД своего исполнителя.</span>
         <span>При совместном устранении каждый зафиксированный участник получает полные баллы после подтверждения.</span>
       </section>
       <section class="worker-rating-list">

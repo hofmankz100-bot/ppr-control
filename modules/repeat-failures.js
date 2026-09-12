@@ -188,7 +188,7 @@
     const groups = new Map();
     events.forEach(event => {
       const code = String(event?.repeatFailureCode || "").trim();
-      if (!/^[1-9]\d{0,5}$/.test(code) || !Number.isFinite(Date.parse(event.createdAt || ""))) return;
+      if (!/^[1-9]\d{0,5}$/.test(code)) return;
       const cycle = String(event.repeatFailureCycleId || (event.repeatFailureClosedAt ? `legacy-closed:${event.repeatFailureClosedAt}` : "open"));
       const key = `${Number(event.equipmentId) || 0}|${code}|${cycle}`;
       if (!groups.has(key)) groups.set(key, []);
@@ -197,15 +197,11 @@
     const counts = new Map();
     groups.forEach(group => {
       if (group.length < 2) return;
-      group.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || String(a.sourceId || a.id || "").localeCompare(String(b.sourceId || b.id || "")));
-      for (let index = 1; index < group.length; index += 1) {
-        const previous = group[index - 1];
-        const repeated = group[index];
-        const resolvedAt = Date.parse(previous.resolvedAt || "");
-        if (!Number.isFinite(resolvedAt) || resolvedAt > Date.parse(repeated.createdAt) || !inPeriod(previous.resolvedAt)) continue;
-        const participants = String(previous.resolvedByName || "").trim()
-          ? [{ role: previous.resolvedByRole, name: previous.resolvedByName }]
-          : (Array.isArray(previous.ratingParticipants) ? previous.ratingParticipants : []);
+      group.forEach(event => {
+        if (!event.resolvedAt || !inPeriod(event.resolvedAt)) return;
+        const participants = String(event.resolvedByName || "").trim()
+          ? [{ role: event.resolvedByRole, name: event.resolvedByName }]
+          : (Array.isArray(event.ratingParticipants) ? event.ratingParticipants : []);
         const seen = new Set();
         participants.forEach(person => {
           if (!eligibleRole(person?.role) || !String(person?.name || "").trim()) return;
@@ -214,7 +210,7 @@
           seen.add(key);
           counts.set(key, Number(counts.get(key) || 0) + 1);
         });
-      }
+      });
     });
     return counts;
   }
