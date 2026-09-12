@@ -916,7 +916,7 @@ async function openStorageDiagnostics() {
   modal.innerHTML = `<section><header><div><strong>Память и проверка мусора</strong><span>Проверяем без удаления...</span></div><button type="button" data-close-storage-diagnostics>×</button></header></section>`;
   document.body.append(modal);
   const close = () => modal.remove();
-  modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
+  modal.addEventListener("click", event => event.target.closest?.("[data-close-storage-diagnostics]") && close());
   try {
     const result = await apiJson("/api/admin/storage-status", { timeout: 15000 });
     const github = result.github || {};
@@ -947,10 +947,8 @@ async function openStorageDiagnostics() {
       </div>
       <p class="storage-diagnostics-note">${escapeHtml(result.billing?.githubLfs || "")}<br>${escapeHtml(result.billing?.render || "")}</p>
     `;
-    modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
   } catch {
     modal.querySelector("section").innerHTML = `<header><strong>Память и проверка мусора</strong><button type="button" data-close-storage-diagnostics>×</button></header><p class="empty-state">Не удалось выполнить проверку. Данные не изменены.</p>`;
-    modal.querySelector("[data-close-storage-diagnostics]")?.addEventListener("click", close);
   }
 }
 
