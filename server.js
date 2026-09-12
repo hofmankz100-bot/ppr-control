@@ -818,7 +818,7 @@ function readDbFile() {
   ensureDb();
   try {
     return normalizeDb(JSON.parse(fs.readFileSync(dbFile, "utf8")));
-  } catch (error) {
+  } catch {
     try {
       const brokenFile = `${dbFile}.broken-${Date.now()}`;
       if (fs.existsSync(dbFile)) fs.renameSync(dbFile, brokenFile);

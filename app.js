@@ -5389,7 +5389,7 @@ function promptCompressorQrDecision(parsed) {
           ? "Осмотр компрессора сохранён. Замечание добавлено в предупреждения."
           : "Осмотр компрессора сохранён: заземлено, утечек нет.");
         finish(values.hasRemark ? "comment-saved" : "continue");
-      } catch (error) {
+      } catch {
         submitting = false;
         setButtonBusy(event.currentTarget, false);
         if (errorEl) errorEl.textContent = "Не удалось сохранить осмотр. Проверьте связь и повторите.";
@@ -10370,7 +10370,7 @@ function renderNodeWalkthrough(eq) {
         renderNodeWalkthrough(equipmentById(eq.id));
         await publishNodeUpdateNow(eq.id, index, current.date);
         renderNodeWalkthrough(equipmentById(eq.id));
-      } catch (error) {
+      } catch {
         scheduleRemoteRetry();
       } finally {
         if (button.isConnected) setButtonBusy(button, false);
