@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v830-remove-work-permit"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v831-dead-code-cleanup"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -2601,14 +2601,6 @@ const DEFAULT_EQUIPMENT_AREAS_SERVER = Object.freeze({
   "20": "Резерв"
 });
 
-const DEFAULT_EQUIPMENT_REFERENCE_SERVER = Object.freeze(Object.fromEntries(
-  Object.entries(DEFAULT_EQUIPMENT_AREAS_SERVER).map(([id, area]) => [id, {
-    id: Number(id),
-    name: id === "1" ? "Пресс 2400 EGE" : id === "2" ? "Пресс 1540 EGE" : area,
-    area,
-    nodes: []
-  }])
-));
 
 function qrWalkCatalogItemServer(db, equipmentId) {
   const saved = db.catalog?.equipment?.[String(equipmentId)];
@@ -3103,7 +3095,6 @@ function sendPublicState(res, db) {
   res.end(data);
 }
 
-const TRANSLATE_LANGS = new Set(["ru", "kk", "uz", "en"]);
 
 function normalizeTranslateText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -3422,18 +3413,6 @@ function authenticatedUser(req, db = readDb(), allowPending = false) {
   return user;
 }
 
-function requireAuthenticated(req, res, roles = null) {
-  const user = authenticatedUser(req);
-  if (!user) {
-    sendJson(res, 401, { ok: false, error: "authentication_required" });
-    return null;
-  }
-  if (Array.isArray(roles) && !roles.includes(user.role)) {
-    sendJson(res, 403, { ok: false, error: "permission_denied" });
-    return null;
-  }
-  return user;
-}
 
 function attendanceUserKey(user = {}) {
   return String(user.id || user.employeeId || user.phone || "").trim();
@@ -3607,7 +3586,7 @@ function mergeObjectRecordsByFreshness(current = {}, incoming = {}) {
 
 
 
-const normalizedRemarkDuplicateValue = remarkDeduplication.normalizeValue; const dedupeRemarkHistoryItemsServer = remarkDeduplication.dedupeHistoryItems;
+const dedupeRemarkHistoryItemsServer = remarkDeduplication.dedupeHistoryItems;
 const mergeRemarkHistoryItems = remarkDeduplication.mergeHistoryItems;
 const remarkDecisionTime = remarkDeduplication.decisionTime;
 

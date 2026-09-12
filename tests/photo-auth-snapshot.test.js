@@ -11,7 +11,7 @@ const { createPostgresStateStore } = require("../server/postgres-state-store");
 const { createApiDispatcher } = require("../server/api-dispatcher");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-const authCode = source.slice(source.indexOf("function parseCookies("), source.indexOf("function requireAuthenticated("));
+const authCode = source.slice(source.indexOf("function parseCookies("), source.indexOf("function attendanceUserKey("));
 const routeCode = source.slice(source.indexOf("async function handleApiTransaction("), source.indexOf("const serveStatic ="));
 const token = "photo-test-session";
 const photoPath = `/api/photos/${"a".repeat(40)}.jpg`;

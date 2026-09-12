@@ -1820,7 +1820,9 @@ test("annual PPR schedule is desktop-only and follows the live equipment catalog
   assert.match(appSource, /allEquipment\(\)[\s\S]*flatMap\(eq => eq\.nodes\.map/);
   assert.match(appSource, /function annualPprAutomaticPlan\(eq, node, year\)/);
   assert.match(appSource, /recommendedMaintenanceForDate\(eq, date\)/);
-  assert.match(appSource, /isNodeCheckedForGroup\(rec, "technical"\)/);
+  assert.match(appSource, /function annualPprAcceptedToForMonth\(year, row, month\)/);
+  assert.match(appSource, /sheet\?\.approvedAt[\s\S]*sheet\?\.approvedByName/);
+  assert.match(appSource, /Array\.isArray\(sheet\.autofilledFor\)/);
   assert.match(appSource, /openAnnualPprSchedule\(initialYear = new Date\(\)\.getFullYear\(\)\)/);
   assert.match(appSource, /\["ТО", "ТР", "АР"\]\.filter\(type => types\.has\(type\)\)\.join\(" "\)/);
   assert.match(appSource, /@page\{size:A4 landscape/);
@@ -1908,20 +1910,14 @@ test("annual PPR can be downloaded or shared as an A4 landscape PDF", () => {
   assert.doesNotMatch(appSource, /clone\.style\.left = "-20000px"/);
 });
 
-test("annual PPR records equipment replacement and commissioning with printable Kazakhstan act fields", () => {
+test("annual PPR opens the live maintenance sheets without a detached acts editor", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const stylesSource = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-  assert.match(appSource, /ANNUAL_PPR_TYPES = \["", "ТО", "КР"\]/);
-  assert.match(appSource, /function openAnnualPprActs\(/);
-  assert.match(appSource, /приказ МФ РК № 562/i);
-  assert.match(appSource, /name="manufacturer"/);
-  assert.match(appSource, /name="serialNumber"/);
-  assert.match(appSource, /name="passportNumber"/);
-  assert.match(appSource, /name="requiredWorks"/);
-  assert.match(appSource, /function printAnnualPprActsTogether\(/);
-  assert.match(appSource, /application\/msword;charset=utf-8/);
-  assert.match(appSource, /Скачать комплект Word/);
-  assert.match(stylesSource, /\.annual-ppr-act-columns/);
+  assert.match(appSource, /function openAnnualPprEquipmentMonth\(/);
+  assert.match(appSource, /annual-ppr-node-progress-dialog/);
+  assert.match(appSource, /renderPprMaintenanceSheet\(item\.date, item\.scheduledItems\)/);
+  assert.doesNotMatch(appSource, /ANNUAL_PPR_TYPES|function openAnnualPprActs\(|function printAnnualPprActsTogether\(/);
+  assert.doesNotMatch(stylesSource, /\.annual-ppr-act-columns|\.annual-ppr-act-dialog/);
 });
 
 test("downtime chart legend shows monthly breakdown and production stop counters", () => {
@@ -2145,7 +2141,7 @@ test("deleted warnings cannot return from a stale device", () => {
 test("annual PPR groups nodes by equipment and shows monthly completed counters", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const tableStart = clientSource.indexOf("function annualPprTableHtml");
-  const tableEnd = clientSource.indexOf("function saveAnnualPprRow", tableStart);
+  const tableEnd = clientSource.indexOf("function printAnnualPprSchedule", tableStart);
   const tableSource = clientSource.slice(tableStart, tableEnd);
   assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
   assert.match(clientSource, /<th>Цех \/ оборудование<\/th>/);

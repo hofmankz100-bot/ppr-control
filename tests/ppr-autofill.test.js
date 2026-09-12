@@ -21,7 +21,7 @@ function browserPlanningFunctions() {
     body("const DEFAULT_NODES =", "const STORE_KEY ="),
     body("function nodeReminderItems(", "function renderRequests()"),
     body("function isPprWorkday(", "function directorRecommendedMaintenance(eq"),
-    body("function recommendedMaintenanceForDate(", "const ANNUAL_PPR_TYPES"),
+    body("function recommendedMaintenanceForDate(", "function annualPprYearRecord("),
     "const COMPRESSOR_JOURNAL_AREA = 'Компрессорная'; const GAS_JOURNAL_AREA = 'Газовое хозяйство';",
     "function addDaysISO(date, days) { const value = new Date(date); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0,10); }",
     "globalThis.planning = { EQUIPMENT, nodeReminderItems, recommendedMaintenanceForDate };"

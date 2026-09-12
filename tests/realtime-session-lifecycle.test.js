@@ -10,7 +10,7 @@ const { EventEmitter } = require("node:events");
 const { createRealtimeAuth } = require("../server/realtime-auth");
 const { attachWebSocketServer, broadcastWebSockets, authorizeWebSocket, sendServerEvent, MAX_BUFFERED_BYTES } = require("../server/realtime-clients");
 const source = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8").replace(/\r\n/g, "\n");
-const authCode = source.slice(source.indexOf("function parseCookies("), source.indexOf("function requireAuthenticated("));
+const authCode = source.slice(source.indexOf("function parseCookies("), source.indexOf("function attendanceUserKey("));
 const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const tokenHash = token => crypto.createHash("sha256").update(token).digest("hex");
