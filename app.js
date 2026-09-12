@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v824-bounded-mirrors-ppr-calendar";
+const APP_VERSION = "v826-compact-ui";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -110,20 +110,9 @@ const PPR_RECOMMENDED_START_DATE = "2026-06-22";
 const ASSET_CACHE_VERSION_KEY = "ppr-asset-cache-version";
 const AGGREGATE_JOURNAL_ROWS_PER_SHEET = 10;
 const LANGUAGE_KEY = "ppr-user-language-v1";
-const TRANSLATION_CACHE_KEY = "ppr-translation-cache-v2";
-const TRANSLATION_SOURCE_LANG = "ru";
-const AUTO_TRANSLATION_TARGET_LANG = "uz";
-const translatedNodeOriginals = new WeakMap();
-const translatedTextNodes = new Set();
-const translatedAttributeTargets = new Set();
-const translationMemoryCache = new Map(loadTranslationCacheEntries());
-let translationTimer = null;
-let translationRunId = 0;
-let translationCacheSaveTimer = null;
 const LANGUAGES = {
   ru: "Русский",
-  kk: "Қазақша",
-  uz: "O‘zbekcha"
+  kk: "Қазақша"
 };
 const I18N = {
   ru: {
@@ -209,48 +198,6 @@ const I18N = {
     remarks: "Ескертулер",
     director: "Директорлық",
     aggregateJournal: "Агрегат журналы"
-  },
-  uz: {
-    appTitle: "PPR nazorati",
-    equipment: "Uskunalar",
-    home: "Bosh sahifa",
-    requests: "Arizalar",
-    downtime: "To‘xtashlar",
-    profile: "Profil",
-    reminders: "PPR jadvali",
-    todayControl: "Rejali xizmat ko‘rsatish",
-    close: "Yopish",
-    back: "Orqaga",
-    loginTitle: "Xodim kirishi",
-    registerTitle: "Xodimni ro‘yxatdan o‘tkazish",
-    loginTab: "Kirish",
-    registerTab: "Ro‘yxatdan o‘tish",
-    fullName: "F.I.Sh.",
-    fullNamePlaceholder: "To‘liq ismni kiriting",
-    identifier: "Tabel raqami yoki telefon",
-    employeeId: "Tabel raqami",
-    employeeIdPlaceholder: "Tabel raqamini kiriting",
-    phone: "Telefon",
-    password: "Parol",
-    passwordPlaceholder: "Kamida 6 ta belgi",
-    loginButton: "Kirish",
-    registerButton: "Ro‘yxatdan o‘tishni yuborish",
-    loginHint: "Tabel raqami yoki telefon va parolni kiriting.",
-    registerHint: "Rol va uchastkani tekshiruvdan so‘ng admin belgilaydi.",
-    loginFailed: "Kirish amalga oshmadi.",
-    registerFailed: "Ro‘yxatdan o‘tishni yuborib bo‘lmadi.",
-    pendingApproval: "Ro‘yxatdan o‘tish adminga yuborildi. Tasdiqlangandan so‘ng tizimga kiring.",
-    language: "Til",
-    changeRole: "Rolni almashtirish",
-    viewMode: "Ko‘rish rejimi",
-    commonControl: "Umumiy nazorat",
-    clearRecords: "Yozuvlarni tozalash",
-    logout: "Chiqish",
-    createRequest: "Ariza yaratish",
-    workPermit: "Ishga ruxsatnoma",
-    remarks: "Ogohlantirishlar",
-    director: "Direktor bo‘limi",
-    aggregateJournal: "Agregat jurnali"
   }
 };
 const DOWNTIME_COLORS = [
@@ -1628,20 +1575,19 @@ async function handleIncomingAttendanceQrFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("attendance");
   if (!token) return false;
-  params.delete("attendance");
-  const cleanQuery = params.toString();
-  history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
   try {
     const result = await apiJson("/api/attendance/scan", {
       method: "POST",
       body: JSON.stringify({ token })
     });
+    clearAttendanceTokenFromUrl();
     await refreshAttendanceStatus();
-    const until = attendanceTime(result.session?.expiresAt);
+    window.PPRModules.attendanceEntry?.announce(result.session);
     showAttendanceScanConfirmation({
       alreadyActive: result.alreadyActive,
       startedAt: result.session?.startedAt,
-      expiresAt: result.session?.expiresAt
+      expiresAt: result.session?.expiresAt,
+      scanEntry: true
     });
   } catch (error) {
     window.alert(error.status === 410
@@ -1651,7 +1597,7 @@ async function handleIncomingAttendanceQrFromUrl() {
   return true;
 }
 
-function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "", expiresAt = "", displayName = "" } = {}) {
+function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "", expiresAt = "", displayName = "", scanEntry = false } = {}) {
   document.querySelector(".attendance-scan-confirmation")?.remove();
   navigator.vibrate?.(alreadyActive ? [80] : [100, 70, 160]);
   const overlay = document.createElement("div");
@@ -1662,11 +1608,19 @@ function showAttendanceScanConfirmation({ alreadyActive = false, startedAt = "",
     <h2>${escapeHtml(displayName || profile?.name || "Сотрудник")}</h2>
     <p>${alreadyActive ? "Повторная отметка не требуется." : `Вы отмечены на работе в ${escapeHtml(attendanceTime(startedAt))}.`}</p>
     <strong>Редактирование доступно до ${escapeHtml(attendanceTime(expiresAt))}</strong>
-    <button type="button">Продолжить работу</button>
+    <button type="button">${scanEntry ? "Закрыть эту вкладку" : "Продолжить работу"}</button>
   </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
-  overlay.querySelector("button")?.addEventListener("click", close);
+  overlay.querySelector("button")?.addEventListener("click", () => {
+    if (!scanEntry) return close();
+    const closeScanWindow = window.PPRModules.attendanceEntry?.closeScanWindow;
+    if (!closeScanWindow) return close();
+    closeScanWindow(() => {
+      const hint = overlay.querySelector("p");
+      if (hint) hint.textContent = "Смена отмечена. Теперь эту вкладку можно закрыть вручную.";
+    });
+  });
   window.setTimeout(close, 12000);
 }
 
@@ -3026,279 +2980,8 @@ function saveProfileLanguage(language) {
   render();
 }
 
-function translationRoot() {
-  if (ui.loginOverlay && !ui.loginOverlay.hidden) return ui.loginOverlay;
-  return document.querySelector(".app-shell") || document.querySelector(".view.active") || document.body;
-}
-
-function isTranslatableText(value) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length < 2 || text.length > 1200) return false;
-  if (/^[\d\s.,:;()+\-/%№#]+$/.test(text)) return false;
-  return /[A-Za-zА-Яа-яЁёІіҢңҒғҚқҰұҮүӨөӘәҺһЎўҚқҒғҲҳ]/.test(text);
-}
-
-function looksLikeMojibake(value) {
-  const text = String(value || "");
-  const fragments = [
-    "\u0420\u045f", "\u0420\u0452", "\u0420\u2019", "\u0420\u045c", "\u0420\u040e",
-    "\u0420\u2014", "\u0420\u00b0", "\u0420\u00b5", "\u0420\u0451", "\u0420\u0455",
-    "\u0420\u0491", "\u0420\u00b6", "\u0420\u00bb", "\u0420\u0458", "\u0420\u0405",
-    "\u0420\u0457", "\u0421\u0452", "\u0421\u0403", "\u0421\u201a", "\u0421\u2021",
-    "\u0421\u2030", "\u0421\u2020", "\u0421\u040a", "\u0421\u2039", "\u0421\u040f",
-    "\u00d0", "\u00d1"
-  ];
-  return fragments.some(fragment => text.includes(fragment));
-}
-
-const MANUAL_CONTENT_TRANSLATION_SELECTOR = [
-  ".aggregate-journal-list",
-  ".aggregate-journal-sheet",
-  ".checklist-table",
-  ".node-walk-row",
-  ".director-users",
-  ".equipment-card",
-  ".calendar-grid",
-  ".downtime-card",
-  ".downtime-chart",
-  ".downtime-details",
-  ".comment-history",
-  ".comment-entry",
-  ".comment-owner",
-  ".comment-resolution-detail",
-  ".request-list",
-  ".request-author",
-  ".request-history",
-  ".director-info-list",
-  ".audit-history-panel",
-  ".director-users",
-  ".request-text",
-  ".manual-text",
-  "[data-no-translate]"
-].join(", ");
-
-function shouldSkipTranslationElement(el) {
-  if (!el || el.nodeType !== 1) return false;
-  if (el.closest?.("[hidden], [aria-hidden='true'], .view:not(.active)")) return true;
-  if (el.closest?.("script, style, textarea, input, pre")) return true;
-  if (el.closest?.(MANUAL_CONTENT_TRANSLATION_SELECTOR)) return true;
-  return false;
-}
-
-function collectTextNodesForTranslation(root) {
-  const nodes = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!isTranslatableText(node.nodeValue)) return NodeFilter.FILTER_REJECT;
-      if (shouldSkipTranslationElement(node.parentElement)) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-  return nodes;
-}
-
-function collectAttributeTargetsForTranslation(root) {
-  const attrs = ["title", "aria-label", "placeholder"];
-  const targets = [];
-  root.querySelectorAll("*").forEach(el => {
-    if (shouldSkipTranslationElement(el) && el.tagName !== "INPUT") return;
-    attrs.forEach(attr => {
-      const value = el.getAttribute(attr);
-      if (isTranslatableText(value)) targets.push({ el, attr, value });
-    });
-  });
-  return targets;
-}
-
-function attrOriginalKey(attr) {
-  return `i18nOriginal${attr.replace(/(^|-)([a-z])/g, (_, __, letter) => letter.toUpperCase())}`;
-}
-
-function loadTranslationCacheEntries() {
-  try {
-    const raw = localStorage.getItem(TRANSLATION_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) {
-      const clean = parsed.filter(entry =>
-        Array.isArray(entry)
-        && entry.length === 2
-        && !looksLikeMojibake(entry[0])
-        && !looksLikeMojibake(entry[1])
-      );
-      if (clean.length !== parsed.length) localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify(clean));
-      return clean;
-    }
-  } catch {
-    localStorage.removeItem(TRANSLATION_CACHE_KEY);
-  }
-  return [];
-}
-
-function translationCacheKey(target, text) {
-  return `${target}\u0001${text}`;
-}
-
-function getCachedTranslation(target, text) {
-  return translationMemoryCache.get(translationCacheKey(target, text)) || "";
-}
-
-function setCachedTranslation(target, text, translated) {
-  if (!target || !text || !translated) return;
-  if (looksLikeMojibake(text) || looksLikeMojibake(translated)) return;
-  const key = translationCacheKey(target, text);
-  if (translationMemoryCache.has(key)) translationMemoryCache.delete(key);
-  translationMemoryCache.set(key, translated);
-  while (translationMemoryCache.size > 2500) {
-    const oldest = translationMemoryCache.keys().next().value;
-    translationMemoryCache.delete(oldest);
-  }
-  clearTimeout(translationCacheSaveTimer);
-  translationCacheSaveTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify([...translationMemoryCache.entries()]));
-    } catch {}
-  }, 700);
-}
-
-function userTextWithRussianHtml(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const target = currentLanguage();
-  const cached = target === AUTO_TRANSLATION_TARGET_LANG ? getCachedTranslation(target, text) : "";
-  return `<span class="user-text-original" data-user-text-localized="${escapeHtml(encodeURIComponent(text))}" data-no-translate>${escapeHtml(cached || text)}</span>`;
-}
-
-async function translateUserTextsForCurrentProfile() {
-  const targets = [...document.querySelectorAll("[data-user-text-localized]")];
-  if (!targets.length) return;
-  const targetLanguage = currentLanguage();
-  if (targetLanguage !== AUTO_TRANSLATION_TARGET_LANG) {
-    targets.forEach(el => {
-      try {
-        el.textContent = decodeURIComponent(el.dataset.userTextLocalized || "").trim();
-      } catch {}
-    });
-    return;
-  }
-  const byText = new Map();
-  targets.forEach(el => {
-    try {
-      const text = decodeURIComponent(el.dataset.userTextLocalized || "").trim();
-      if (text) {
-        if (!byText.has(text)) byText.set(text, []);
-        byText.get(text).push(el);
-      }
-    } catch {}
-  });
-  const missing = [...byText.keys()].filter(text => !getCachedTranslation(targetLanguage, text));
-  if (missing.length) {
-    try {
-      const response = await apiJson("/api/translate", { method: "POST", body: JSON.stringify({ texts: missing, target: targetLanguage }) });
-      Object.entries(response?.translations || {}).forEach(([source, translated]) => setCachedTranslation(targetLanguage, source, translated));
-    } catch {}
-  }
-  byText.forEach((elements, text) => {
-    const translated = getCachedTranslation(targetLanguage, text) || text;
-    elements.forEach(el => {
-      el.textContent = translated;
-    });
-  });
-}
-
-function restoreTranslatedPage(root = document.body) {
-  translatedTextNodes.forEach(node => {
-    if (!node.isConnected) {
-      translatedTextNodes.delete(node);
-      return;
-    }
-    if (root && !root.contains(node.parentElement)) return;
-    const original = translatedNodeOriginals.get(node);
-    if (original) node.nodeValue = original;
-  });
-  translatedAttributeTargets.forEach(item => {
-    const { el, attr } = item || {};
-    if (!el?.isConnected) {
-      translatedAttributeTargets.delete(item);
-      return;
-    }
-    if (root && !root.contains(el)) return;
-    const key = attrOriginalKey(attr);
-    const original = el.dataset?.[key];
-    if (original) el.setAttribute(attr, original);
-  });
-}
-
-async function translateVisiblePage(force = false) {
-  const target = currentLanguage();
-  const root = translationRoot();
-  if (!root || target !== AUTO_TRANSLATION_TARGET_LANG) {
-    if (translatedTextNodes.size || translatedAttributeTargets.size) restoreTranslatedPage(root || document.body);
-    return;
-  }
-  restoreTranslatedPage(root);
-  const runId = ++translationRunId;
-  const textNodes = collectTextNodesForTranslation(root);
-  const attrTargets = collectAttributeTargetsForTranslation(root);
-  const originals = [];
-  textNodes.forEach(node => {
-    const original = force ? String(node.nodeValue || "").replace(/\s+/g, " ").trim() : (translatedNodeOriginals.get(node) || String(node.nodeValue || "").replace(/\s+/g, " ").trim());
-    translatedNodeOriginals.set(node, original);
-    translatedTextNodes.add(node);
-    originals.push(original);
-  });
-  attrTargets.forEach(targetItem => {
-    const key = attrOriginalKey(targetItem.attr);
-    if (!targetItem.el.dataset[key]) targetItem.el.dataset[key] = targetItem.value;
-    translatedAttributeTargets.add(targetItem);
-    originals.push(targetItem.el.dataset[key] || targetItem.value);
-  });
-  const texts = [...new Set(originals.filter(isTranslatableText))].slice(0, 700);
-  if (!texts.length) return;
-  try {
-    const translations = {};
-    const missingTexts = [];
-    texts.forEach(text => {
-      const cached = getCachedTranslation(target, text);
-      if (cached) translations[text] = cached;
-      else missingTexts.push(text);
-    });
-    for (let i = 0; i < missingTexts.length; i += 200) {
-      const response = await apiJson("/api/translate", {
-        method: "POST",
-        timeout: 8000,
-        body: JSON.stringify({ target, texts: missingTexts.slice(i, i + 200) })
-      });
-      Object.entries(response?.translations || {}).forEach(([source, translated]) => {
-        translations[source] = translated;
-        setCachedTranslation(target, source, translated);
-      });
-    }
-    if (runId !== translationRunId || currentLanguage() !== target) return;
-    textNodes.forEach(node => {
-      const original = translatedNodeOriginals.get(node) || String(node.nodeValue || "").replace(/\s+/g, " ").trim();
-      const translated = translations[original];
-      if (translated && translated !== original) node.nodeValue = String(node.nodeValue || "").replace(original, translated);
-    });
-    attrTargets.forEach(({ el, attr, value }) => {
-      const original = el.dataset?.[attrOriginalKey(attr)] || value;
-      const translated = translations[original];
-      if (translated && translated !== original) el.setAttribute(attr, translated);
-    });
-  } catch {
-    // Offline or translation service unavailable: keep original text.
-  }
-}
-
-function queueTranslateVisiblePage(force = false) {
-  clearTimeout(translationTimer);
-  if (currentLanguage() !== AUTO_TRANSLATION_TARGET_LANG) {
-    if (translatedTextNodes.size || translatedAttributeTargets.size) {
-      restoreTranslatedPage(translationRoot() || document.body);
-    }
-    return;
-  }
-  translationTimer = window.setTimeout(() => translateVisiblePage(force), force ? 20 : 120);
+function canonicalUserTextHtml(value) {
+  return escapeHtml(String(value || "").trim());
 }
 
 async function registerEmployee(data) {
@@ -4224,7 +3907,6 @@ function setupLogin() {
       localStorage.setItem(LANGUAGE_KEY, event.currentTarget.value);
       applyLanguage();
       setAuthMode(authMode);
-      queueTranslateVisiblePage(true);
     });
   }
   const setAuthMode = mode => {
@@ -4243,7 +3925,6 @@ function setupLogin() {
     ui.authHint.textContent = registering ? t("registerHint") : t("loginHint");
     ui.loginError.textContent = "";
     applyLanguage();
-    queueTranslateVisiblePage(true);
   };
   document.querySelectorAll("[data-auth-mode]").forEach(button => button.addEventListener("click", () => setAuthMode(button.dataset.authMode)));
   ui.loginForm.addEventListener("submit", async event => {
@@ -4286,7 +3967,6 @@ function setupLogin() {
     flushPendingClientErrors();
   }
   applyLanguage();
-  queueTranslateVisiblePage(true);
 }
 
 function todayISO() {
@@ -6692,13 +6372,13 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         </div>
         <span class="remark-card-status">${cardStatus}</span>
       </header>
-      <p class="remark-card-text">${userTextWithRussianHtml(entry.text || "")}</p>
+      <p class="remark-card-text">${canonicalUserTextHtml(entry.text || "")}</p>
       ${entry.photo ? `<img class="remark-card-photo" src="${entry.photo}" alt="Фото замечания">` : ""}
       ${resolved ? `
         <div class="comment-resolution-detail">
           <strong>${entry.closedWithoutScore ? `Закрыто без баллов${closedForParticipantsText(entry) ? ` за: ${escapeHtml(closedForParticipantsText(entry))}` : ""}` : `Устранили: ${escapeHtml(completedBy)}`}</strong>
           <span>${escapeHtml(dateTimeHuman(entry.resolvedAt || ""))}</span>
-          ${entry.resolvedComment ? `<p>${userTextWithRussianHtml(entry.resolvedComment)}</p>` : ""}
+          ${entry.resolvedComment ? `<p>${canonicalUserTextHtml(entry.resolvedComment)}</p>` : ""}
           ${entry.resolvedPhoto ? `<img src="${entry.resolvedPhoto}" alt="Фото устранения">` : ""}
           <small>Подтвердил: ${escapeHtml(confirmedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(entry.confirmedAt || ""))}</small>
         </div>
@@ -6710,7 +6390,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
           </div>
           <div class="comment-resolution-detail pending">
             <strong>Устранили: ${escapeHtml(submittedParticipants)}</strong>
-            ${entry.resolutionSubmittedComment ? `<p>${userTextWithRussianHtml(entry.resolutionSubmittedComment)}</p>` : ""}
+            ${entry.resolutionSubmittedComment ? `<p>${canonicalUserTextHtml(entry.resolutionSubmittedComment)}</p>` : ""}
             ${entry.resolutionSubmittedPhoto ? `<img src="${entry.resolutionSubmittedPhoto}" alt="Фото устранения для подтверждения">` : ""}
           </div>
           <p class="remark-confirmation-who">Подтверждает: <strong>${escapeHtml(remarkConfirmationLabel(entry, eq))}</strong></p>
@@ -6723,7 +6403,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
         ${returnedToRework ? `
           <div class="remark-returned-notice">
             <strong>Возвращено на доработку</strong>
-            <p>${userTextWithRussianHtml(entry.resolutionReturnReason || "Требуется доработка")}</p>
+            <p>${canonicalUserTextHtml(entry.resolutionReturnReason || "Требуется доработка")}</p>
             <small>${escapeHtml(entry.resolutionReturnedByName || "Ответственный сотрудник")} · ${escapeHtml(dateTimeHuman(entry.resolutionReturnedAt || ""))}</small>
           </div>
         ` : ""}
@@ -6763,7 +6443,7 @@ function remarkCardHtml(eq, item, nodeIndex, entry, entryIndex) {
                 <div class="resolution-update">
                   <strong>${escapeHtml(resolutionUpdateAuthor(update))}</strong>
                   <small>${escapeHtml(dateTimeHuman(update.at || ""))}</small>
-                  <p>${userTextWithRussianHtml(update.text || "")}</p>
+                  <p>${canonicalUserTextHtml(update.text || "")}</p>
                   ${update.photo ? `<img src="${update.photo}" alt="Фото выполненной работы">` : ""}
                 </div>
               `).join("")}
@@ -7227,8 +6907,8 @@ function downtimeJournalTableHtml(items, startIndex = 0, interactive = true) {
         <td>${escapeHtml(row.startedAt)}</td>
         <td>${escapeHtml(row.endedAt)}</td>
         <td>${escapeHtml(row.duration)}</td>
-        <td>${userTextWithRussianHtml(row.reason)}</td>
-        <td>${userTextWithRussianHtml(row.work)}</td>
+        <td>${canonicalUserTextHtml(row.reason)}</td>
+        <td>${canonicalUserTextHtml(row.work)}</td>
         <td>${escapeHtml(row.author)}</td>
         <td>${escapeHtml(row.performers)}</td>
         <td>${escapeHtml(row.confirmer)}</td>
@@ -7825,16 +7505,16 @@ function openAllRemarkCards() {
               <span><strong>Карточка ${index + 1} · ${escapeHtml(target.equipmentName)}</strong><small>${escapeHtml(target.areaName)} · ${escapeHtml(target.nodeName)} · ${escapeHtml(dateTimeHuman(target.at || target.date))}</small></span>
               <span class="open-remark-status">${target.deferred ? "Причина записана" : target.pendingConfirmation ? "Ждёт подтверждения" : target.returnedToRework ? "Возвращено" : "Открыто"}</span>
             </header>
-            <p>${userTextWithRussianHtml(target.text)}</p>
-            ${target.deferred ? `<div class="open-remark-defer-summary"><strong>Причина неустранения</strong><p>${userTextWithRussianHtml(target.deferReason)}</p><small>${escapeHtml(target.deferredByName || "Сотрудник с доступом")}${target.deferredAt ? ` · ${escapeHtml(dateTimeHuman(target.deferredAt))}` : ""}</small></div>` : ""}
+            <p>${canonicalUserTextHtml(target.text)}</p>
+            ${target.deferred ? `<div class="open-remark-defer-summary"><strong>Причина неустранения</strong><p>${canonicalUserTextHtml(target.deferReason)}</p><small>${escapeHtml(target.deferredByName || "Сотрудник с доступом")}${target.deferredAt ? ` · ${escapeHtml(dateTimeHuman(target.deferredAt))}` : ""}</small></div>` : ""}
             ${target.pendingConfirmation ? `
               <div class="open-remark-confirmation-summary">
                 <strong>Устранил: ${escapeHtml(target.submittedBy || "Сотрудник")} · ${escapeHtml(dateTimeHuman(target.submittedAt))}</strong>
-                <p>${userTextWithRussianHtml(target.submittedComment)}</p>
+                <p>${canonicalUserTextHtml(target.submittedComment)}</p>
                 <small>Подтверждает: ${escapeHtml(target.confirmationLabel)}</small>
               </div>
             ` : target.returnedToRework ? `
-              <div class="open-remark-return-summary"><strong>Комментарий возврата</strong><p>${userTextWithRussianHtml(target.returnReason)}</p></div>
+              <div class="open-remark-return-summary"><strong>Комментарий возврата</strong><p>${canonicalUserTextHtml(target.returnReason)}</p></div>
             ` : ""}
             <footer>
               <small>${escapeHtml(target.author)}</small>
@@ -7917,7 +7597,6 @@ function openAllRemarkCards() {
   }));
   document.body.classList.add("open-remarks-open");
   document.body.append(overlay);
-  translateUserTextsForCurrentProfile();
   closeButton?.focus();
 }
 
@@ -8514,8 +8193,6 @@ function render() {
     ui.subtitle.textContent = window.PprWorkPermit?.subtitle() || t("workPermit");
   }
   applyLanguage();
-  translateUserTextsForCurrentProfile();
-  queueTranslateVisiblePage();
 }
 
 function aggregateJournalAreas(equipment = visibleEquipment()) {
@@ -8698,7 +8375,7 @@ function installedPartJournalRows(equipmentId, month = PPRModules.director.calen
 function installedPartJournalHtml(eq, month, printable = false) {
   const rows = installedPartJournalRows(eq.id, month);
   return `<div class="installed-part-journal-head"><div><h2>Журнал установленных запчастей</h2><p>${escapeHtml(eq.name)} · ${escapeHtml(eq.area)} · ${escapeHtml(journalMonthLabel(month))}</p></div>${printable ? "" : `<label>Месяц <input type="month" data-parts-month value="${escapeHtml(month)}"></label><button type="button" data-print-parts>Печатать журнал</button><button type="button" class="secondary" data-close-parts>Закрыть</button>`}</div>
-    <div class="installed-part-journal-list">${rows.length ? rows.map((row, index) => `<article class="installed-part-entry"><header><strong>№ ${index + 1} · ${escapeHtml(dateTimeHuman(row.date))}</strong><span>${escapeHtml(row.node)}</span></header><p><b>Исходное замечание:</b> ${userTextWithRussianHtml(row.remark)}</p><p><b>Выполненная работа:</b> ${userTextWithRussianHtml(row.work)}</p><p><b>Установленная запчасть:</b> ${userTextWithRussianHtml(row.description)}</p><p><b>Установили:</b> ${escapeHtml(row.performers || "—")} · <b>Подтвердил:</b> ${escapeHtml(row.confirmedBy || "—")}${row.confirmedAt ? ` · ${escapeHtml(dateTimeHuman(row.confirmedAt))}` : ""}</p>${row.photos.length ? `<div class="installed-part-photos">${row.photos.map(photo => `<img src="${photo}" alt="Фото установленной запчасти">`).join("")}</div>` : ""}</article>`).join("") : `<div class="empty-state">За выбранный месяц установленных запчастей нет.</div>`}</div>`;
+    <div class="installed-part-journal-list">${rows.length ? rows.map((row, index) => `<article class="installed-part-entry"><header><strong>№ ${index + 1} · ${escapeHtml(dateTimeHuman(row.date))}</strong><span>${escapeHtml(row.node)}</span></header><p><b>Исходное замечание:</b> ${canonicalUserTextHtml(row.remark)}</p><p><b>Выполненная работа:</b> ${canonicalUserTextHtml(row.work)}</p><p><b>Установленная запчасть:</b> ${canonicalUserTextHtml(row.description)}</p><p><b>Установили:</b> ${escapeHtml(row.performers || "—")} · <b>Подтвердил:</b> ${escapeHtml(row.confirmedBy || "—")}${row.confirmedAt ? ` · ${escapeHtml(dateTimeHuman(row.confirmedAt))}` : ""}</p>${row.photos.length ? `<div class="installed-part-photos">${row.photos.map(photo => `<img src="${photo}" alt="Фото установленной запчасти">`).join("")}</div>` : ""}</article>`).join("") : `<div class="empty-state">За выбранный месяц установленных запчастей нет.</div>`}</div>`;
 }
 
 function openInstalledPartJournal(eq) {
@@ -10783,7 +10460,7 @@ function renderNodeWalkthrough(eq) {
         ${downtimeCommentEntries.map(entry => `
           <div class="comment-entry downtime-comment-entry">
             <strong>${escapeHtml(commentEntryAuthor(entry))}</strong>
-            <p>${userTextWithRussianHtml(entry.text)}</p>
+            <p>${canonicalUserTextHtml(entry.text)}</p>
           </div>
         `).join("")}
       </div>
@@ -11235,7 +10912,6 @@ function renderRequests() {
   updateRoleBadges();
   list.innerHTML = "";
   applyLanguage();
-  queueTranslateVisiblePage();
 }
 
 function directorTodayWalk(eq, group = "technical") {
@@ -11729,14 +11405,20 @@ function openAnnualPprEquipmentMonth(year, equipmentId, month) {
 function annualPprTableHtml(year) {
   const rows = annualPprEquipmentRows(year);
   const months = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+  const areas = new Map();
+  rows.forEach(row => {
+    const area = String(row.eq.area || "Без цеха");
+    if (!areas.has(area)) areas.set(area, []);
+    areas.get(area).push(row);
+  });
   return `<table class="annual-ppr-table">
     <colgroup><col style="width:28%">${months.map(() => `<col style="width:6%">`).join("")}</colgroup>
-    <thead><tr><th>Оборудование / участок</th>${months.map(month => `<th>${month}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
+    <thead><tr><th>Цех / оборудование</th>${months.map(month => `<th>${month}</th>`).join("")}</tr></thead>
+    <tbody>${[...areas.entries()].map(([area, areaRows]) => `<tr class="annual-ppr-area-row"><th colspan="13">${escapeHtml(area)}</th></tr>${areaRows.map(row => `<tr data-annual-ppr-equipment="${row.eq.id}"><td class="annual-ppr-equipment-name"><strong>${escapeHtml(row.eq.name)}</strong><small>${row.nodes.length} узлов</small></td>${Array.from({ length: 12 }, (_, monthIndex) => {
       const month = monthIndex + 1;
       const progress = row.months[month];
       return `<td class="annual-ppr-fact annual-ppr-clickable-month annual-ppr-progress-cell" data-open-ppr-month="${month}" title="Открыть листы ППР"><strong>${progress.done} / ${progress.total}</strong><small>листов ППР</small></td>`;
-    }).join("")}</tr>`).join("")}</tbody>
+    }).join("")}</tr>`).join("")}`).join("")}</tbody>
   </table>`;
 }
 
@@ -11758,7 +11440,7 @@ function saveAnnualPprRow(rowElement, year) {
 function printAnnualPprSchedule(overlay, year) {
   const clone = annualPprOutputClone(overlay);
   if (!clone) return;
-  const rowCount = Math.max(1, clone.querySelectorAll(".annual-ppr-table tbody tr").length);
+  const rowCount = Math.max(1, clone.querySelectorAll(".annual-ppr-table tbody tr:not(.annual-ppr-area-row)").length);
   clone.style.setProperty("--annual-ppr-row-height", `${Math.max(4.8, Math.min(9, 135 / rowCount)).toFixed(2)}mm`);
   const popup = window.open("", "_blank", "width=1500,height=900");
   if (!popup) return window.alert("Разрешите всплывающие окна для печати годового графика ППР.");
@@ -12050,6 +11732,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     : completion.active
       ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
+  let previousPprArea = null;
   const rowHtml = rows.map((row, index) => {
     const scheduled = scheduledItems.length === 1 ? scheduledItems[0] : null;
     const editable = canPlan && !window.PprPlanEditor.started(row);
@@ -12057,8 +11740,12 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     const equipmentName = row.equipment || scheduled?.equipment || "";
     const nodeName = row.node || scheduled?.node || "";
     const areaName = row.area || scheduled?.area || "";
+    const areaHeading = areaName && areaName !== previousPprArea
+      ? `<tr class="ppr-sheet-area-row"><th colspan="4">${escapeHtml(areaName)}</th></tr>`
+      : "";
+    previousPprArea = areaName;
     return `
-    <tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
+    ${areaHeading}<tr class="${String(row.work || "").trim() ? "" : "ppr-empty-row"}" data-ppr-sheet-row="${escapeHtml(row.id)}">
       <td class="ppr-sheet-number">${index + 1}</td>
       <td class="ppr-sheet-work">
         <textarea data-ppr-work-input="${escapeHtml(row.id)}" data-ppr-equipment-id="${escapeHtml(equipmentId)}" data-ppr-equipment="${escapeHtml(equipmentName)}" data-ppr-node="${escapeHtml(nodeName)}" data-ppr-area="${escapeHtml(areaName)}" rows="2" maxlength="4000" aria-label="Работа ${index + 1}" placeholder="${editable ? "Опишите работу" : "—"}" ${editable ? "" : "readonly"}>${escapeHtml(row.work || "")}</textarea>
@@ -12571,7 +12258,7 @@ function rolePersonalMessageHtml(message) {
         </header>
         <div class="role-personal-resolution">
           <strong>Выполненные работы</strong>
-          <p>${userTextWithRussianHtml(message.text)}</p>
+          <p>${canonicalUserTextHtml(message.text)}</p>
           <small>Подтверждение доступно всем инженерам. Засчитывается первый ответ.</small>
         </div>
         <div class="role-personal-actions">
@@ -12593,13 +12280,13 @@ function rolePersonalMessageHtml(message) {
       </header>
       <div class="role-personal-warning">
         <strong>Предупреждение</strong>
-        <p>${userTextWithRussianHtml(message.originalText || "Без текста")}</p>
+        <p>${canonicalUserTextHtml(message.originalText || "Без текста")}</p>
         ${message.originalPhoto ? `<img src="${message.originalPhoto}" alt="Фото предупреждения">` : ""}
       </div>
       ${invited ? `
         <div class="role-personal-resolution invited">
           <strong>Совместное устранение</strong>
-          <p>${userTextWithRussianHtml(message.text || "Откройте карточку и приступите к устранению замечания")}</p>
+          <p>${canonicalUserTextHtml(message.text || "Откройте карточку и приступите к устранению замечания")}</p>
         </div>
         <div class="role-personal-actions">
           <button type="button" data-personal-remark-open-node>Открыть и присоединиться</button>
@@ -12607,7 +12294,7 @@ function rolePersonalMessageHtml(message) {
       ` : submitted ? `
         <div class="role-personal-resolution">
           <strong>Устранил: ${escapeHtml(message.submittedBy)}</strong>
-          <p>${userTextWithRussianHtml(message.submittedComment || "Работа передана на подтверждение")}</p>
+          <p>${canonicalUserTextHtml(message.submittedComment || "Работа передана на подтверждение")}</p>
           ${message.submittedPhoto ? `<img src="${message.submittedPhoto}" alt="Фото устранения">` : ""}
           <small>Подтверждает: ${escapeHtml(message.confirmationLabel)}</small>
         </div>
@@ -12620,7 +12307,7 @@ function rolePersonalMessageHtml(message) {
       ` : `
         <div class="role-personal-return-reason">
           <strong>Комментарий к возврату</strong>
-          <p>${userTextWithRussianHtml(message.text)}</p>
+          <p>${canonicalUserTextHtml(message.text)}</p>
         </div>
         <div class="role-personal-actions">
           <button type="button" data-personal-remark-open-node>Перейти в узел и доработать</button>
@@ -12886,7 +12573,7 @@ function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
         <span class="traffic-dot"></span>
         <div>
           <strong>${escapeHtml(remark.equipment)}${remark.node ? ` · ${escapeHtml(remark.node)}` : ""}</strong>
-          <p>${userTextWithRussianHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
+          <p>${canonicalUserTextHtml(entry?.text || remark.item?.comment || "Текст замечания отсутствует")}</p>
           <small>${dateHuman(remark.date)}${author ? ` · Записал: ${escapeHtml(author)}` : ""}</small>
         </div>
         <div class="director-info-owner">
@@ -13119,6 +12806,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
         overdueOpen: 0,
         downtimeClosed: 0,
         installs: 0,
+        repeatFailures: 0,
         durations: []
       });
     }
@@ -13143,6 +12831,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
       }
     }
   });
+  PPRModules.repeatFailures.employeeRepeatCounts(repairEvents, workerKey, isElectromechanicRole)
+    .forEach((count, key) => {
+      if (workerMap.has(key)) workerMap.get(key).repeatFailures = count;
+    });
   const workers = [...workerMap.values()]
     .map(worker => {
       const avgMs = worker.durations.length ? worker.durations.reduce((sum, value) => sum + value, 0) / worker.durations.length : 0;
@@ -13184,7 +12876,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <div class="annual-role-card ${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <div><strong>${escapeHtml(worker.name)}</strong><span>${escapeHtml(worker.roleLabel)}</span></div>
       <b>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</b>
-      <small>Закрыто: ${worker.closed} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
+      <small>Закрыто: ${worker.closed} · Повторные: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
     </div>
   `).join("");
   const workerRows = stats.workers.map((worker, index) => `
@@ -13194,6 +12886,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</td>
       <td>${worker.closed}</td>
       <td>${worker.installs}</td>
+      <td>${worker.repeatFailures}</td>
       <td>${worker.downtimeClosed}</td>
       <td>${worker.overdueOpen}</td>
       <td>${worker.avgMs ? durationText(worker.avgMs) : "-"}</td>
@@ -13245,7 +12938,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте электромехаников в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
-          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
+          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Повторные</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
           <tbody>${workerRows || `<tr><td colspan="8">Пока нет данных по электромеханикам</td></tr>`}</tbody>
         </table>
       </div>
@@ -13348,6 +13041,7 @@ function emptyWorkerRating(role, name) {
     remarksFound: 0,
     remarksResolved: 0,
     installs: 0,
+    repeatFailures: 0,
     overdueOpen: 0,
     qrDone: 0,
     shifts: { day: 0, night: 0 },
@@ -13645,9 +13339,10 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     .filter(user => isWorkerRatingRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
 
+  const repairEvents = annualRepairEvents(year);
   const resolvedRemarkKeys = new Set();
   const overdueRemarkKeys = new Set();
-  annualRepairEvents(year).forEach(event => {
+  repairEvents.forEach(event => {
     const created = dateYearMonth(event.createdAt || "");
     const resolved = dateYearMonth(event.resolvedAt || "");
     if (event.type === "remark" && created?.year === year && created.month === monthIndex) {
@@ -13685,6 +13380,11 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       }
     }
   });
+
+  PPRModules.repeatFailures.employeeRepeatCounts(repairEvents, workerRatingKey, isElectromechanicRole, inSelectedMonth)
+    .forEach((count, key) => {
+      if (workers.has(key)) workers.get(key).repeatFailures = count;
+    });
 
   Object.values(state.checks || {}).forEach(rec => {
     const shifts = { ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) };
@@ -13798,6 +13498,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span class="worker-metric-resolved"><b>${worker.remarksResolved}</b> устранил</span>
         <span><b>${worker.closed}</b> работ</span>
         <span><b>${worker.breakdownClosed}</b> аварий</span>
+        <span><b>${worker.repeatFailures}</b> повторных</span>
         <span><b>${worker.qrDone}</b> QR-ППР</span>
         <span><b>${worker.planPercent}%</b> план</span>
         <span><b>${worker.emergencyPercent}%</b> аварии</span>
@@ -13847,6 +13548,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div><strong>${stats.totals.points}</strong><span>баллов всего</span></div>
       <div><strong>${stats.totals.closed}</strong><span>выполнено работ</span></div>
       <div><strong>${stats.totals.breakdownClosed}</strong><span>аварий устранено</span></div>
+      <div><strong>${stats.workers.reduce((sum, worker) => sum + worker.repeatFailures, 0)}</strong><span>работ в повторных группах</span></div>
       <div><strong>${stats.totals.remarksFound}</strong><span>замечаний найдено / написано</span></div>
       <div><strong>${stats.totals.remarksResolved}</strong><span>замечаний устранено</span></div>
       <div><strong>${stats.totals.qrDone}</strong><span>QR-ППР обходов</span></div>
@@ -14418,7 +14120,7 @@ function directorDowntimeDetail(stats) {
       <div>
         <strong>${escapeHtml(item.equipment || item.area || "Оборудование")}</strong>
         <small>${escapeHtml(item.node || "")}${item.area ? ` · ${escapeHtml(item.area)}` : ""}</small>
-        <p>${userTextWithRussianHtml(item.comment || "Причина не указана")}</p>
+        <p>${canonicalUserTextHtml(item.comment || "Причина не указана")}</p>
       </div>
       <div class="director-downtime-time">
         <b>${item.endedAt ? "Завершён" : "Идёт сейчас"}</b>
@@ -14945,7 +14647,7 @@ function renderDowntime() {
         </span>
         <span>${escapeHtml(item.node || "Узел не указан")}</span>
         <span>Тип: ${escapeHtml(downtimeTypeLabel(item.type))}</span>
-        <span>Причина: ${userTextWithRussianHtml(item.comment || "Без комментария")}</span>
+        <span>Причина: ${canonicalUserTextHtml(item.comment || "Без комментария")}</span>
         <small>Записал: ${escapeHtml(item.authorName || "Сотрудник")}</small>
         ${closeBlockedMessage ? `<small class="downtime-close-blocked">${escapeHtml(closeBlockedMessage)}</small>` : ""}
         <span class="downtime-active-summary-actions">
@@ -15510,6 +15212,7 @@ function renderAggregateJournal() {
     && Number(current.aggregateRepairEquipmentId || 0) === Number(selectedEquipment?.id || 0);
   const correctionUsers = canCorrectAggregateJournal() ? eligibleResolutionUsers(selectedEquipment) : [];
   const repeatFailureGroupingEnabled = canManageRepeatFailureGroups();
+  const repeatFailureEvents = repeatFailureGroupingEnabled ? annualRepairEvents(null) : [];
   const restoreJournalPosition = PPRModules.aggregateJournalView.capturePosition(ui.aggregateJournalList, JSON.stringify([selectedEquipment?.id, selectedArea, selectedJournalMonth()]));
   ui.aggregateJournalMeta.textContent = `${items.length} записей. Открытых: ${openCount}. Здесь хранятся замечания и поломки только выбранного оборудования отдельно от графика простоя.`;
   const sheets = [];
@@ -15578,12 +15281,9 @@ function renderAggregateJournal() {
                   ${escapeHtml(`${item.kind}: ${item.text || "Без комментария"}`)}
                   ${item.repeatFailureCode && (!repeatFailureGroupingEnabled || PPRModules.repeatFailures.isClosed(item, state.catalog)) ? `<span class="repeat-failure-badge no-print">№${escapeHtml(item.repeatFailureCode)}${PPRModules.repeatFailures.isClosed(item, state.catalog) ? " · 🔒 Мероприятия выполнены" : ""}</span>` : ""}
                   ${item.correctedDefectText ? `<span class="aggregate-corrected-comment"><b>Исправленный комментарий:</b> ${escapeHtml(item.correctedDefectText)}<small>${escapeHtml(item.commentEditedByName || "")} · ${escapeHtml(dateTimeHuman(item.commentEditedAt))}${item.correctionReason ? ` · Причина: ${escapeHtml(item.correctionReason)}` : ""}</small></span>` : ""}
-                  ${repeatFailureGroupingEnabled && !PPRModules.repeatFailures.isClosed(item, state.catalog) ? `<span class="repeat-failure-editor no-print">
-                    <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер группы одинаковой неисправности" data-repeat-failure-code value="${escapeHtml(item.repeatFailureCode)}" placeholder="№">
-                    <input type="text" maxlength="120" aria-label="Название поломки" data-repeat-failure-name value="" placeholder="${escapeHtml(item.repeatFailureName || "Название поломки")}" title="Укажите название один раз; для существующего номера оно подставится автоматически">
-                    <button type="button" class="mini-action" title="Сохранить номер" aria-label="Сохранить номер" data-save-repeat-failure="${escapeHtml(item.id)}">✓</button>
-                    ${item.repeatFailureCode ? `<button type="button" class="secondary mini-action" title="Снять номер" aria-label="Снять номер" data-clear-repeat-failure="${escapeHtml(item.id)}">×</button>` : ""}
-                  </span>` : ""}
+                  ${repeatFailureGroupingEnabled && !PPRModules.repeatFailures.isClosed(item, state.catalog)
+                    ? PPRModules.repeatFailures.editorHtml(item, repeatFailureEvents, escapeHtml)
+                    : ""}
                 </td>
                 <td data-mobile-label="Осмотр выполнил">${escapeHtml(author)}</td>
                 <td data-mobile-label="Дата ремонта">${item.resolvedAt ? dateTimeHuman(item.resolvedAt) : ""}</td>
@@ -16387,6 +16087,7 @@ if ("serviceWorker" in navigator) {
 setupTheme();
 placeSingleAttendanceButton();
 setupPullToRefresh();
+window.PPRModules.attendanceEntry?.listen(() => refreshAttendanceStatus());
 window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);

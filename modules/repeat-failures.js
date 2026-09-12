@@ -184,6 +184,37 @@
     return { repeatedBreakdowns, employeeRating };
   }
 
+  function employeeRepeatCounts(events = [], workerKey, eligibleRole, inPeriod = () => true) {
+    const groups = new Map();
+    events.forEach(event => {
+      const code = String(event?.repeatFailureCode || "").trim();
+      if (!/^[1-9]\d{0,5}$/.test(code)) return;
+      const cycle = String(event.repeatFailureCycleId || (event.repeatFailureClosedAt ? `legacy-closed:${event.repeatFailureClosedAt}` : "open"));
+      const key = `${Number(event.equipmentId) || 0}|${code}|${cycle}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(event);
+    });
+    const counts = new Map();
+    groups.forEach(group => {
+      if (group.length < 2) return;
+      group.forEach(event => {
+        if (!event.resolvedAt || !inPeriod(event.resolvedAt)) return;
+        const participants = Array.isArray(event.ratingParticipants) && event.ratingParticipants.length
+          ? event.ratingParticipants
+          : [{ role: event.resolvedByRole, name: event.resolvedByName }];
+        const seen = new Set();
+        participants.forEach(person => {
+          if (!eligibleRole(person?.role) || !String(person?.name || "").trim()) return;
+          const key = workerKey(person.role, person.name);
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          counts.set(key, Number(counts.get(key) || 0) + 1);
+        });
+      });
+    });
+    return counts;
+  }
+
   function journalTitle(group = {}) {
     if (group.manualCode) return `Повторные неисправности №${group.manualCode}${group.name ? " — " + group.name : ""}${group.closedAt ? " · Выполнено " + new Date(group.closedAt).toLocaleDateString("ru-RU") : ""}`;
     return `Повторные поломки: ${group.equipment || "Оборудование"} · ${group.node || "узел не указан"}`;
@@ -237,12 +268,60 @@
     return result;
   }
 
+  function activeGroups(events = [], equipmentId = 0) {
+    const groups = new Map();
+    events.forEach(event => {
+      const code = String(event?.repeatFailureCode || "").trim();
+      if (Number(event?.equipmentId) !== Number(equipmentId) || !/^[1-9]\d{0,5}$/.test(code) || isClosed(event)) return;
+      const saved = groups.get(code) || { code, name: "", namedAt: "", count: 0 };
+      saved.count += 1;
+      if (event.repeatFailureName && (!saved.name || String(event.repeatFailureMarkedAt || "") >= saved.namedAt)) {
+        saved.name = String(event.repeatFailureName);
+        saved.namedAt = String(event.repeatFailureMarkedAt || "");
+      }
+      groups.set(code, saved);
+    });
+    return [...groups.values()].sort((left, right) => Number(left.code) - Number(right.code));
+  }
+
+  function editorHtml(item, events, escapeHtml) {
+    const currentCode = String(item?.repeatFailureCode || "").trim();
+    const groups = activeGroups(events, item?.equipmentId);
+    if (currentCode && !groups.some(group => group.code === currentCode)) {
+      groups.push({ code: currentCode, name: String(item.repeatFailureName || ""), count: 1 });
+    }
+    return `<span class="repeat-failure-editor no-print">
+      <select data-repeat-failure-choice aria-label="Выбор группы повторной поломки">
+        <option value="">Выберите группу</option>
+        ${groups.map(group => `<option value="${escapeHtml(group.code)}" data-group-name="${escapeHtml(group.name || "")}" ${group.code === currentCode ? "selected" : ""}>№${escapeHtml(group.code)}${group.name ? ` — ${escapeHtml(group.name)}` : ""} · ${group.count}</option>`).join("")}
+        <option value="__new">＋ Новая группа</option>
+      </select>
+      <input type="number" inputmode="numeric" min="1" max="999999" step="1" aria-label="Номер новой группы" data-repeat-failure-code value="" placeholder="№" hidden>
+      <input type="text" maxlength="120" aria-label="Название поломки" data-repeat-failure-name value="${escapeHtml(item?.repeatFailureName || "")}" placeholder="Название группы">
+      <button type="button" class="mini-action" title="Сохранить группу" aria-label="Сохранить группу" data-save-repeat-failure="${escapeHtml(item?.id || "")}">✓</button>
+      ${currentCode ? `<button type="button" class="secondary mini-action" title="Снять группу" aria-label="Снять группу" data-clear-repeat-failure="${escapeHtml(item?.id || "")}">×</button>` : ""}
+    </span>`;
+  }
+
   function bindAggregateEditors(container, items, helpers) {
+    container.querySelectorAll("[data-repeat-failure-choice]").forEach(select => select.addEventListener("change", () => {
+      const editor = select.closest(".repeat-failure-editor");
+      const codeInput = editor?.querySelector("[data-repeat-failure-code]");
+      const nameInput = editor?.querySelector("[data-repeat-failure-name]");
+      if (!codeInput) return;
+      codeInput.hidden = select.value !== "__new";
+      codeInput.value = select.value === "__new" ? "" : select.value;
+      if (nameInput) nameInput.value = select.value && select.value !== "__new" ? String(select.selectedOptions?.[0]?.dataset.groupName || "") : "";
+      if (!codeInput.hidden) codeInput.focus();
+    }));
     container.querySelectorAll("[data-save-repeat-failure]").forEach(button => button.addEventListener("click", event => helpers.runButtonOperation(event.currentTarget, async () => {
       const item = items.find(entry => String(entry.id) === String(event.currentTarget.dataset.saveRepeatFailure || ""));
-      const code = String(event.currentTarget.closest(".repeat-failure-editor")?.querySelector("[data-repeat-failure-code]")?.value || "").trim();
-      const name = String(event.currentTarget.closest(".repeat-failure-editor")?.querySelector("[data-repeat-failure-name]")?.value || "").trim();
+      const editor = event.currentTarget.closest(".repeat-failure-editor");
+      const choice = String(editor?.querySelector("[data-repeat-failure-choice]")?.value || "");
+      const code = String(choice === "__new" ? editor?.querySelector("[data-repeat-failure-code]")?.value : choice).trim();
+      const name = String(editor?.querySelector("[data-repeat-failure-name]")?.value || "").trim();
       if (!item) throw new Error("repeat_failure_not_found");
+      if (!choice) return helpers.showAppToast("Выберите существующую группу или создайте новую.", "error");
       if (code && !/^[1-9]\d{0,5}$/.test(code)) return helpers.showAppToast("Введите номер группы от 1 до 999999.", "error");
       if (name && !code) return helpers.showAppToast("Укажите номер для названия поломки.", "error");
       await saveCode(item, code, helpers, name);
@@ -258,5 +337,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, journalTitle, journalHtml, printJournal, openJournal, saveCode, bindAggregateEditors };
+  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, employeeRepeatCounts, journalTitle, journalHtml, printJournal, openJournal, saveCode, activeGroups, editorHtml, bindAggregateEditors };
 })();

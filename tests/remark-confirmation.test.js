@@ -1152,29 +1152,17 @@ test("notification setup stops nagging unsupported and legacy phones", () => {
   assert.match(source, /failures >= 2/);
 });
 
-test("automatic translation runs only for users who selected Uzbek", () => {
+test("the client keeps stored names canonical and no longer offers Uzbek", () => {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
-  assert.match(appSource, /const AUTO_TRANSLATION_TARGET_LANG = "uz"/);
-  assert.match(appSource, /targetLanguage !== AUTO_TRANSLATION_TARGET_LANG/);
-  assert.match(appSource, /target !== AUTO_TRANSLATION_TARGET_LANG/);
-  assert.match(appSource, /currentLanguage\(\) !== AUTO_TRANSLATION_TARGET_LANG/);
-  assert.match(serverSource, /if \(language !== "uz"\) return JSON\.stringify\(payload\)/);
-  assert.match(serverSource, /if \(target !== "uz" \|\| !shouldTranslateText\(text\)\) return text/);
-  assert.match(serverSource, /const lang = target === "uz" \? "uz" : ""/);
-  assert.match(serverSource, /const TRANSLATION_CACHE_VERSION = "v2"/);
-  assert.match(serverSource, /`\$\{TRANSLATION_CACHE_VERSION\}:\$\{target\}::/);
-  assert.match(serverSource, /const originals = \[\.\.\.new Set/);
-  assert.match(serverSource, /result\[original\] = db\.translationCache\[cacheKey\]\?\.translated \|\| original/);
-  assert.match(appSource, /const TRANSLATION_CACHE_KEY = "ppr-translation-cache-v2"/);
-  assert.match(appSource, /<p>\$\{userTextWithRussianHtml\(target\.text\)\}<\/p>/);
-  assert.match(appSource, /<p>\$\{userTextWithRussianHtml\(target\.submittedComment\)\}<\/p>/);
-  assert.match(appSource, /userTextWithRussianHtml\(target\.returnReason\)/);
-  assert.match(appSource, /document\.body\.append\(overlay\);\s+translateUserTextsForCurrentProfile\(\);/);
-  assert.match(appSource, /userTextWithRussianHtml\(message\.originalText/);
-  assert.match(appSource, /userTextWithRussianHtml\(message\.submittedComment/);
-  assert.match(appSource, /userTextWithRussianHtml\(entry\.resolutionReturnReason/);
-  assert.match(appSource, /userTextWithRussianHtml\(update\.text/);
+  const indexSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  assert.match(appSource, /const LANGUAGES = \{\s*ru: "Русский",\s*kk: "Қазақша"\s*\}/);
+  assert.doesNotMatch(appSource, /code: "uz"|AUTO_TRANSLATION_TARGET_LANG|TRANSLATION_CACHE_KEY|\/api\/translate/);
+  assert.match(appSource, /function canonicalUserTextHtml\(value\)/);
+  for (const field of ["target.text", "target.submittedComment", "target.returnReason", "message.originalText", "message.submittedComment", "entry.resolutionReturnReason", "update.text", "row.description"]) {
+    assert.match(appSource, new RegExp(`canonicalUserTextHtml\\(${field.replace(".", "\\.")}`));
+  }
+  assert.match(indexSource, /<html lang="ru" translate="no" class="notranslate">/);
+  assert.match(indexSource, /<meta name="google" content="notranslate">/);
 });
 
 test("push subscriptions use the authenticated employee and expose admin diagnostics", async () => {
@@ -2160,11 +2148,13 @@ test("annual PPR groups nodes by equipment and shows monthly completed counters"
   const tableEnd = clientSource.indexOf("function saveAnnualPprRow", tableStart);
   const tableSource = clientSource.slice(tableStart, tableEnd);
   assert.match(clientSource, /function annualPprEquipmentRows\(year\)/);
-  assert.match(clientSource, /<th>Оборудование \/ участок<\/th>/);
+  assert.match(clientSource, /<th>Цех \/ оборудование<\/th>/);
   assert.match(clientSource, /function annualPprSheetsForEquipmentMonth/);
   assert.match(clientSource, /pprCalendarMonthData\(allEquipment\(\), year, month - 1\)/);
   assert.match(clientSource, /sheets\.filter\(sheet => sheet\.complete\)\.length/);
-  assert.match(tableSource, /<th>Оборудование \/ участок<\/th>/);
+  assert.match(tableSource, /<th>Цех \/ оборудование<\/th>/);
+  assert.match(tableSource, /annual-ppr-area-row/);
+  assert.match(tableSource, /areas\.entries\(\)/);
   assert.doesNotMatch(tableSource, /<th>№<\/th>/);
   assert.match(tableSource, /<colgroup><col style="width:28%">/);
   assert.doesNotMatch(tableSource, /<th>Участок<\/th>|Узел \/ объект ремонта/);

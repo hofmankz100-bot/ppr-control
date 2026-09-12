@@ -17,11 +17,11 @@ function sourceFunction(name) {
 
 function harness(names = [], overrides = {}) {
   const window = {};
-  const context = vm.createContext({ window, Date, Intl, ...overrides });
+  const context = vm.createContext({ window, Date, Intl, isElectromechanicRole: () => false, ...overrides });
   vm.runInContext(calendarSource, context);
   context.PPRModules = window.PPRModules;
   context.PPRModules.comments = { dedupeAggregateJournalItems: items => items };
-  context.PPRModules.repeatFailures = { metadata: () => ({}) };
+  context.PPRModules.repeatFailures = { metadata: () => ({}), employeeRepeatCounts: () => new Map() };
   vm.runInContext(names.map(sourceFunction).join("\n"), context);
   return context;
 }
@@ -122,7 +122,7 @@ test("installed parts preserve equipment/status filters, print rows, source time
   const h = harness(["journalMonthMatches", "installedPartJournalRows", "installedPartJournalHtml"], {
     state, equipmentById: () => equipment, visibleCommentEntries: item => item.commentLog || [],
     resolutionParticipantsText: () => "Worker", escapeHtml: value => String(value || ""),
-    dateTimeHuman: value => value, userTextWithRussianHtml: value => value, journalMonthLabel: value => value
+    dateTimeHuman: value => value, canonicalUserTextHtml: value => value, journalMonthLabel: value => value
   });
   assert.deepEqual(Array.from(h.installedPartJournalRows(1, "2026-09"), row => row.id), ["boundary"]);
   assert.equal(h.installedPartJournalRows(1, "2026-08").length, 0);
@@ -201,7 +201,7 @@ test("installed-parts modal opens/reopens on factory month and switches/clears i
   const h = harness(["journalMonthMatches", "installedPartJournalRows", "installedPartJournalHtml", "openInstalledPartJournal"], {
     Date: FactoryNow, document, state, equipmentById: () => equipment, visibleCommentEntries: item => item.commentLog || [],
     resolutionParticipantsText: () => "Worker", escapeHtml: value => String(value || ""),
-    dateTimeHuman: value => value, userTextWithRussianHtml: value => value, journalMonthLabel: value => value
+    dateTimeHuman: value => value, canonicalUserTextHtml: value => value, journalMonthLabel: value => value
   });
   assert.equal(h.installedPartJournalRows(1)[0].id, "sep");
   h.openInstalledPartJournal(equipment);

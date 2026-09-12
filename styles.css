@@ -81,6 +81,7 @@
 .annual-ppr-table { width: 100%; min-width: 1200px; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
 .annual-ppr-table th, .annual-ppr-table td { border: 1px solid #8fa0ad; padding: 4px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .annual-ppr-table thead th { position: sticky; top: 0; z-index: 2; background: #dce7ef; }
+.annual-ppr-table .annual-ppr-area-row th { padding: 6px 8px; background: #bfd2df; text-align: left; font-size: 12px; }
 .annual-ppr-table th:first-child { min-width: 250px; }
 .annual-ppr-table input, .annual-ppr-table select { width: 100%; min-width: 0; padding: 3px; border: 1px solid #c5d0d8; background: #fff; font: inherit; }
 .annual-ppr-plan { background: #eef7e9; }
@@ -9758,6 +9759,7 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .ppr-sheet-table th,
 .ppr-sheet-table td { border: 1px solid #9eb0bc !important; padding: 0; vertical-align: middle; }
 .ppr-sheet-table th { padding: 7px 5px; background: #e8f1f6 !important; color: #17394d; font-size: 12px; text-align: center; }
+.ppr-sheet-table .ppr-sheet-area-row th { padding: 6px 8px; background: #cfe0ea !important; text-align: left; font-size: 13px; }
 .ppr-sheet-table th:first-child,
 .ppr-sheet-number { width: 38px; text-align: center; }
 .ppr-sheet-table th:last-child,

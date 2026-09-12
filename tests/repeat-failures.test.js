@@ -6,7 +6,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const context = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8"), context);
-const { buildAnalysis, journalHtml } = context.window.PPRModules.repeatFailures;
+const { activeGroups, buildAnalysis, editorHtml, employeeRepeatCounts, journalHtml } = context.window.PPRModules.repeatFailures;
 test("journal stylesheet is publicly served without exposing other server files", () => {
   const { isPublicStaticPath } = require("../server/static-files");
   assert.equal(isPublicStaticPath("modules/repeat-failures.css"), true);
@@ -57,6 +57,33 @@ test("only matching manual codes on the same equipment are counted", () => {
 test("all manually marked repeat groups remain available beyond the first ten", () => {
   const events = Array.from({ length: 11 }, (_, i) => [event({ repeatFailureCode: String(i + 1) }), event({ repeatFailureCode: String(i + 1) })]).flat();
   assert.equal(analyze(events).length, 11);
+});
+
+test("the group selector reuses active groups for the same equipment only", () => {
+  const groups = activeGroups([
+    event({ repeatFailureCode: "5", repeatFailureName: "Старое", repeatFailureMarkedAt: "2026-08-01" }),
+    event({ repeatFailureCode: "5", repeatFailureName: "Течь", repeatFailureMarkedAt: "2026-09-01" }),
+    event({ repeatFailureCode: "6", equipmentId: 2 }),
+    event({ repeatFailureCode: "7", repeatFailureClosedAt: "2026-09-02" })
+  ], 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(groups)), [{ code: "5", name: "Течь", namedAt: "2026-09-01", count: 2 }]);
+  const html = editorHtml(event({ id: "target", repeatFailureCode: "5", repeatFailureName: "Течь" }), groups.flatMap(group => [event({ repeatFailureCode: group.code, repeatFailureName: group.name })]), helpers.escapeHtml);
+  assert.match(html, /data-repeat-failure-choice/);
+  assert.match(html, /data-group-name="Течь"/);
+  assert.match(html, /＋ Новая группа/);
+});
+
+test("repeat counts are reporting-only and include eligible workers once per resolved record", () => {
+  const marked = [
+    event({ repeatFailureCode: "5", resolvedAt: "2026-09-01", ratingParticipants: [{ role: "mechanic", name: "Иван" }, { role: "mechanic", name: "Иван" }] }),
+    event({ repeatFailureCode: "5", resolvedAt: "2026-09-02", ratingParticipants: [{ role: "electrician", name: "Пётр" }, { role: "operator", name: "Оператор" }] }),
+    event({ repeatFailureCode: "5", repeatFailureCycleId: "closed-cycle", resolvedAt: "2026-09-03", resolvedByRole: "mechanic", resolvedByName: "Иван" }),
+    event({ repeatFailureCode: "5", repeatFailureCycleId: "closed-cycle", resolvedAt: "2026-08-30", resolvedByRole: "mechanic", resolvedByName: "Иван" })
+  ];
+  const counts = employeeRepeatCounts(marked, (role, name) => `${role}:${name}`, role => ["mechanic", "electrician"].includes(role), date => date.startsWith("2026-09"));
+  assert.equal(counts.get("mechanic:Иван"), 2);
+  assert.equal(counts.get("electrician:Пётр"), 1);
+  assert.equal(counts.has("operator:Оператор"), false);
 });
 
 test("all-history analysis joins months and years but isolates equipment and uses the latest group name", () => {

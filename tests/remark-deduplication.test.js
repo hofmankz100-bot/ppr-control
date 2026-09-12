@@ -239,10 +239,11 @@ test("repeat-failure analysis exposes a clickable printable detail journal", () 
   assert.match(repeatFailuresSource, /function buildAnalysis/);
   assert.match(appSource, /repeatFailureGroup/);
   assert.match(appSource, /\.repeat-failure-editor, \.repeat-failure-badge \{ display: none !important; \}/);
-  assert.match(appSource, /repeatFailureGroupingEnabled && !PPRModules\.repeatFailures\.isClosed\(item, state\.catalog\) \? `<span class="repeat-failure-editor no-print">/);
+  assert.match(appSource, /repeatFailureGroupingEnabled && !PPRModules\.repeatFailures\.isClosed\(item, state\.catalog\)\s*\? PPRModules\.repeatFailures\.editorHtml\(item, repeatFailureEvents, escapeHtml\)/);
   assert.doesNotMatch(appSource, /repeatFailureGroupingEnabled && item\.kind === "Поломка"/);
   assert.doesNotMatch(appSource, /Группа повторов/);
-  assert.match(appSource, /aria-label="Номер группы одинаковой неисправности"/);
+  assert.match(repeatFailuresSource, /aria-label="Выбор группы повторной поломки"/);
+  assert.match(repeatFailuresSource, /aria-label="Номер новой группы"/);
   assert.match(appSource, /Группировка повторных поломок/);
 });
 
