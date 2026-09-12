@@ -64,3 +64,9 @@ test("client modules expose only their active public methods", () => {
   assert.doesNotMatch(source("modules/repeat-failures.js"), /root\.repeatFailures = \{[^}]*\b(?:journalTitle|printJournal|saveCode)\b/);
   assert.doesNotMatch(source("modules/app-updater.js"), /return \{[^}]*\b(?:installNow|pendingVersion)\b/);
 });
+
+test("legacy generic tab styles stay removed", () => {
+  const styles = source("styles.css");
+  assert.doesNotMatch(styles, /\.tabs?\b/);
+  assert.match(styles, /\.segmented\s*\{/);
+});

@@ -4558,8 +4558,7 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   height: 19px;
 }
 
-.segmented,
-.tabs {
+.segmented {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4568,8 +4567,7 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   border-radius: 8px;
 }
 
-.segmented button,
-.tab {
+.segmented button {
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -4581,11 +4579,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
 .segmented strong {
   min-width: 128px;
   text-align: center;
-}
-
-.tab.active {
-  background: #fff;
-  box-shadow: 0 1px 5px rgba(16, 31, 44, .14);
 }
 
 .schedule-grid {
@@ -4744,10 +4737,6 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   background: #b91c1c !important;
   color: #fff !important;
   border-color: #7f1d1d !important;
-}
-
-.tabs {
-  margin-bottom: 12px;
 }
 
 .task-list {
@@ -7362,17 +7351,8 @@ textarea:disabled {
 
 
   .quick-nav button,
-.tabs .tab,
 .director-panel button{
     min-height: 44px;
-  }
-
-  .tabs {
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
   }
 
   .schedule-grid,
@@ -8492,7 +8472,7 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .node-card { transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease; }
 .screen input,.screen select,.screen textarea { border-color:#cbd8e0;border-radius:12px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease; }
 .screen input:focus,.screen select:focus,.screen textarea:focus { outline:none;border-color:#1682aa;box-shadow:0 0 0 4px rgba(22,130,170,.13); }
-.screen button:not(.tab):not(.icon-button):not(.director-detail-close) { border-radius:12px; }
+.screen button:not(.icon-button):not(.director-detail-close) { border-radius:12px; }
 .screen table { border-collapse:separate;border-spacing:0;background:#fff; }
 .screen th { background:#e8f1f6;color:#17394d;font-weight:900; }
 .screen tr:nth-child(even) td { background:rgba(239,245,248,.55); }
