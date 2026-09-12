@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v844-automatic-safe-update";
+const APP_VERSION = "v845-app-code-cleanup";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -3661,13 +3661,6 @@ function visibleEquipment() {
   if (mode === "area") return equipment.filter(eq => areaAllowed(equipmentEmployeeArea(eq)));
   return equipment;
 }
-
-
-
-function profileKey(user = profile) {
-  return String(user?.phone || user?.name || "").trim() || "unknown";
-}
-
 function recordAudit(action, target, reason = "", details = "") {
   state.auditHistory ||= [];
   state.auditHistory.unshift({
@@ -10027,7 +10020,6 @@ function renderNodeWalkthrough(eq) {
     const item = getRecord(eq.id, index, current.date)?.to || blankKind();
     const activeStop = activeDowntime(eq.id, index);
     const hasUnresolvedRemark = countedOpenRemarkEntries(item).length > 0;
-    const nodeDone = isNodeShiftChecked(getRecord(eq.id, index, current.date), activeShift.key);
     const operationalPause = activeOperationalPause(eq, index, current.date);
     if (selectedNodeIndex === null) {
       const row = document.createElement("div");
@@ -10125,7 +10117,6 @@ function renderNodeWalkthrough(eq) {
     if (selectedNodeIndex !== index) return;
     const reminderItems = reminderItemsForNode(eq.id, index, nodeName);
     const reminderMeta = equipmentOverride(eq.id).reminderMeta?.[index] || {};
-    const waitingShopFix = Boolean(item.mechanicFixed && !item.resolved);
     const canEditThisComment = canEditComment(item);
     const ownerText = commentOwnerText(item);
     const allCommentEntries = visibleCommentEntries(item, !sameCommentAuthor(item));
@@ -13102,7 +13093,6 @@ function directorFactoryAnalyticsGraphHtml(stats = directorAnnualStats()) {
   const currentScore = directorFactoryReliabilityScore(current);
   const currentDetails = directorFactoryReliabilityDetails(current);
   const totalOpen = Number.isFinite(current.openWorks) ? current.openWorks : Math.max(current.repairsCreated - current.repairsClosed, 0);
-  const bestWorker = stats.workers.find(worker => worker.kpd !== null);
   const bars = stats.months.map((month, index) => {
     const isFutureMonth = stats.year > now.getFullYear() || (stats.year === now.getFullYear() && index > now.getMonth());
     if (isFutureMonth) return `
@@ -13725,16 +13715,6 @@ function renderDirectorControl() {
               <p class="director-safe-note">Компрессорная и газовое хозяйство — каждые 7 дней, остальное оборудование — каждые 14 дней. Выполнение подтверждается автоматически после заполнения журнала за назначенную дату.</p>
             </section>`
         : "";
-  const compactHealthRows = totals.health
-    .sort((a, b) => a.score - b.score || a.eq.name.localeCompare(b.eq.name, "ru"))
-    .slice(0, 8)
-    .map(item => `
-      <div class="director-health-row ${item.color}">
-        <span class="traffic-dot"></span>
-        <div><strong>${escapeHtml(item.eq.name)}</strong><small>Замечания ${item.remarks} · Просрочки ${item.overdueDays} · Ремонты ${item.repairs}</small></div>
-        <b>${item.score}%</b>
-      </div>
-    `).join("");
   const directorAnalyticsHtml = `
     <div class="director-control-head director-analytics-head director-analytics-only-head">
       <div><span>СТАТИСТИКА ПРЕДПРИЯТИЯ</span><h1>Главный график завода</h1><p>Сегодня: ${dateHuman(todayISO())}</p></div>
