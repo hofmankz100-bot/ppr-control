@@ -278,6 +278,7 @@ test("accepted work, KPI counters and points credit the same participants in the
     resolvedByRole: "mechanic",
     resolvedByName: "Lead",
     ratingParticipants: workers,
+    partInstalled: true,
     durationMs: 3600000
   };
   const breakdown = {
@@ -308,8 +309,8 @@ test("accepted work, KPI counters and points credit the same participants in the
   assert.equal(september.totals.breakdownClosed, 2);
   assert.equal(september.totals.qrDone, 1, "one shared shift is counted once even when saved on two nodes");
   assert.equal(september.totals.points, 63);
-  assert.deepEqual(JSON.parse(JSON.stringify(september.workers.map(worker => [worker.name, worker.closed, worker.points]))), [
-    ["Lead", 2, 33],
-    ["Partner", 2, 30]
+  assert.deepEqual(JSON.parse(JSON.stringify(september.workers.map(worker => [worker.name, worker.closed, worker.installs, worker.points]))), [
+    ["Lead", 2, 1, 33],
+    ["Partner", 2, 1, 30]
   ]);
 });

@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v837-kpi-points-audit";
+const APP_VERSION = "v838-points-ledger-linked";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -12014,6 +12014,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           authorName: entry.name || item.commentOwnerName || "",
           resolvedByRole: entry.resolvedByRole || "",
           resolvedByName: entry.resolvedByName || "",
+          authorKey: entry.authorKey || item.commentOwnerKey || "",
           confirmedAt: entry.confirmedAt || "",
           confirmedByRole: entry.confirmedByRole || "",
           confirmedByName: entry.confirmedByName || "",
@@ -12021,6 +12022,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
           correctedDefectText: entry.correctedDefectText || "",
           correctedResolvedComment: entry.correctedResolvedComment || "",
           ratingReturns,
+          partInstalled: entry.partInstalled === true,
           durationMs: Number(entry.resolvedDurationMs || 0),
           open: !entry.resolved,
           ...PPRModules.repeatFailures.metadata(entry),
@@ -12151,7 +12153,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
         if (!worker) return;
         worker.closed += 1;
         if (event.type === "breakdown") worker.downtimeClosed += 1;
-        if (event.type === "install") worker.installs += 1;
+        if (event.type === "remark" && event.partInstalled) worker.installs += 1;
         if (event.durationMs > 0) worker.durations.push(event.durationMs);
       });
     }
@@ -12387,20 +12389,22 @@ function emptyWorkerRating(role, name) {
     name: cleanName,
     closed: 0,
     breakdownClosed: 0,
-    plannedDone: 0,
     remarksFound: 0,
     remarksResolved: 0,
     installs: 0,
     repeatFailures: 0,
     overdueOpen: 0,
     qrDone: 0,
+    pprDone: 0,
+    journalDone: 0,
+    returnPenalties: 0,
+    selfRemarkBonuses: 0,
     shifts: { day: 0, night: 0 },
     reactionDurations: [],
     repairDurations: [],
     points: 0,
     planPercent: 0,
     emergencyPercent: 0,
-    pprPercent: 0,
     achievements: []
   };
 }
@@ -12445,7 +12449,8 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
         type: details.type || "other",
         title: details.title || "Работа",
         equipment: details.equipment || "",
-        node: details.node || ""
+        node: details.node || "",
+        shift: details.shift || ""
       });
     }
   };
@@ -12454,6 +12459,9 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
       // A warning changes the rating only after a supervisor has accepted it.
       if (event.confirmedAt && inPeriod(event.confirmedAt)) {
         const value = isPressRatingEquipment(event.area) ? WORK_RATING_POINTS.remarkPress : WORK_RATING_POINTS.remark;
+        const registeredAuthor = usersByResolutionKey.get(event.authorKey);
+        const authorRole = registeredAuthor?.role || event.authorRole;
+        const authorName = registeredAuthor?.name || event.authorName;
         workerRatingParticipants(event, usersByResolutionKey).forEach(participant => {
           add(participant.role, participant.name, value, {
             date: event.confirmedAt,
@@ -12463,8 +12471,7 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
             node: event.node
           });
           if (isElectromechanicRole(participant.role)
-            && sameWorkerRole(participant.role, event.authorRole)
-            && String(participant.name || "").trim().toLowerCase() === String(event.authorName || "").trim().toLowerCase()) {
+            && workerRatingKey(participant.role, participant.name) === workerRatingKey(authorRole, authorName)) {
             add(participant.role, participant.name, WORK_RATING_POINTS.selfRemarkBonus, {
               date: event.confirmedAt,
               type: "self-remark-bonus",
@@ -12519,7 +12526,8 @@ function workerRatingPointMap(year, monthIndex = null, ledger = null) {
       add(shift.byRole, shift.byName, WORK_RATING_POINTS.qrShift, {
         date: shift.at,
         type: "qr",
-        title: `QR-обход · ${shift.shift === "night" ? "ночная" : "дневная"} смена`
+        title: `QR-обход · ${shift.shift === "night" ? "ночная" : "дневная"} смена`,
+        shift: shift.shift === "night" ? "night" : "day"
       });
     });
   });
@@ -12700,14 +12708,13 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
         if (!worker) return;
         worker.closed += 1;
         if (event.type === "breakdown") worker.breakdownClosed += 1;
-        if (event.type === "install") worker.installs += 1;
+        if (event.type === "remark" && event.partInstalled) worker.installs += 1;
         if (event.type === "remark") {
-          worker.plannedDone += 1;
           worker.remarksResolved += 1;
         }
         if (event.durationMs > 0) {
           worker.reactionDurations.push(event.durationMs);
-          if (event.type !== "install") worker.repairDurations.push(event.durationMs);
+          worker.repairDurations.push(event.durationMs);
         }
       });
     }
@@ -12729,26 +12736,20 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       if (workers.has(key)) workers.get(key).repeatFailures = count;
     });
 
-  const countedQrShifts = new Set();
-  Object.entries(state.checks || {}).forEach(([recordKey, rec]) => {
-    const shifts = { ...(rec?.to?.walkShifts || {}), ...(rec?.to?.walkGroups?.technical || {}) };
-    Object.values(shifts).forEach(shift => {
-      if (!shift?.done) return;
-      const at = dateYearMonth(shift.at || "");
-      if (at?.year !== year || at.month !== monthIndex) return;
-      const worker = ensureWorker(shift.byRole, shift.byName);
-      if (!worker) return;
-      const date = String(recordKey || "").split(":")[2] || String(shift.at || "").slice(0, 10);
-      const shiftKey = shift.shift === "night" ? "night" : "day";
-      const awardKey = `${worker.key}:${date}:${shiftKey}`;
-      if (countedQrShifts.has(awardKey)) return;
-      countedQrShifts.add(awardKey);
+  const pointLedger = [];
+  const pointsByWorker = workerRatingPointMap(year, monthIndex, pointLedger);
+  pointLedger.forEach(entry => {
+    const worker = workers.get(entry.key) || ensureWorker(entry.role, entry.name);
+    if (!worker) return;
+    if (entry.type === "qr") {
       worker.qrDone += 1;
-      worker.shifts[shiftKey] += 1;
-    });
+      if (entry.shift === "day" || entry.shift === "night") worker.shifts[entry.shift] += 1;
+    }
+    if (entry.type === "ppr") worker.pprDone += 1;
+    if (entry.type === "journal") worker.journalDone += 1;
+    if (entry.type === "penalty") worker.returnPenalties += 1;
+    if (entry.type === "self-remark-bonus") worker.selfRemarkBonuses += 1;
   });
-
-  const annualPoints = workerRatingPointMap(year, monthIndex);
   const list = [...workers.values()].map(worker => {
     const avgReactionMs = worker.reactionDurations.length
       ? worker.reactionDurations.reduce((sum, value) => sum + value, 0) / worker.reactionDurations.length
@@ -12756,11 +12757,9 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     const avgRepairMs = worker.repairDurations.length
       ? worker.repairDurations.reduce((sum, value) => sum + value, 0) / worker.repairDurations.length
       : 0;
-    const workTotal = worker.closed + worker.qrDone;
     const planPercent = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures) ?? 0;
     const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
-    const pprPercent = workTotal ? Math.round((worker.plannedDone + worker.qrDone) / workTotal * 100) : 0;
-    const points = Number(annualPoints.get(worker.key) || 0);
+    const points = Number(pointsByWorker.get(worker.key) || 0);
     const achievements = [];
     if (worker.breakdownClosed >= 3) achievements.push("Аварийный мастер");
     if (worker.remarksFound >= 5) achievements.push("Внимательный обход");
@@ -12769,7 +12768,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("Без просрочек");
     if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("Быстрый ремонт");
     if (worker.installs >= 5) achievements.push("Монтажник");
-    return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, pprPercent, points, achievements };
+    return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, points, achievements };
   });
 
   list.sort((a, b) => b.points - a.points || b.planPercent - a.planPercent || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
@@ -12783,6 +12782,8 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     points: list.reduce((sum, worker) => sum + worker.points, 0),
     closed: list.reduce((sum, worker) => sum + worker.closed, 0),
     qrDone: list.reduce((sum, worker) => sum + worker.qrDone, 0),
+    pprDone: list.reduce((sum, worker) => sum + worker.pprDone, 0),
+    journalDone: list.reduce((sum, worker) => sum + worker.journalDone, 0),
     breakdownClosed: list.reduce((sum, worker) => sum + worker.breakdownClosed, 0),
     remarksFound: list.reduce((sum, worker) => sum + worker.remarksFound, 0),
     remarksResolved: list.reduce((sum, worker) => sum + worker.remarksResolved, 0),
@@ -12841,9 +12842,13 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span><b>${worker.breakdownClosed}</b> аварий</span>
         <span><b>${worker.repeatFailures}</b> повторов (−КПД)</span>
         <span><b>${worker.qrDone}</b> QR-ППР</span>
+        <span><b>${worker.pprDone}</b> ППР принято</span>
+        <span><b>${worker.journalDone}</b> журналов</span>
+        <span><b>${worker.installs}</b> установок</span>
+        <span><b>${worker.returnPenalties}</b> возвратов (−балл)</span>
+        <span><b>${worker.selfRemarkBonuses}</b> бонусов</span>
         <span><b>${worker.planPercent}%</b> качество</span>
         <span><b>${worker.emergencyPercent}%</b> аварии</span>
-        <span><b>${worker.pprPercent}%</b> ППР</span>
       </div>
       <div class="worker-time">
         <span>Реакция: ${worker.avgReactionMs ? durationText(worker.avgReactionMs) : "-"}</span>
@@ -12893,6 +12898,8 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div><strong>${stats.totals.remarksFound}</strong><span>замечаний найдено / написано</span></div>
       <div><strong>${stats.totals.remarksResolved}</strong><span>замечаний устранено</span></div>
       <div><strong>${stats.totals.qrDone}</strong><span>QR-ППР обходов</span></div>
+      <div><strong>${stats.totals.pprDone}</strong><span>принято работ ППР</span></div>
+      <div><strong>${stats.totals.journalDone}</strong><span>начислений за журналы</span></div>
       <div><strong>${stats.totals.overdueOpen}</strong><span>просрочено</span></div>
     </section>
     <section class="worker-month-winners">

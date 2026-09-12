@@ -601,6 +601,10 @@ test("the rating uses the agreed simple values and accepted-work rules", () => {
   assert.match(source, /"self-remark-bonus": "Бонусы"/);
   assert.match(source, /if \(worker\.planPercent >= 85\) return "green"/);
   assert.doesNotMatch(source, /worker\.efficiency|const efficiency =/);
+  assert.doesNotMatch(source, /pprPercent|plannedDone/);
+  assert.match(source, /workerRatingPointMap\(year, monthIndex, pointLedger\)/);
+  assert.match(source, /if \(entry\.type === "ppr"\) worker\.pprDone \+= 1/);
+  assert.match(source, /if \(event\.type === "remark" && event\.partInstalled\) worker\.installs \+= 1/);
 });
 
 test("every signed-in role sees only the factory reliability graph while engineer roles see the detailed report", () => {
@@ -1880,8 +1884,8 @@ test("worker rating is calculated and displayed separately for each calendar mon
   assert.match(appSource, /ratingMonth: PPRModules\.director\.calendarMonth\(new Date\(\)\)/);
   assert.match(appSource, /id="workerRatingMonth" type="month"/);
   assert.match(appSource, /function workerRatingStats\(period = current\.ratingMonth/);
-  assert.match(appSource, /workerRatingPointMap\(year, monthIndex\)/);
-  assert.match(appSource, /at\.month !== monthIndex/);
+  assert.match(appSource, /workerRatingPointMap\(year, monthIndex, pointLedger\)/);
+  assert.match(appSource, /monthIndex === null \|\| parsed\.month === monthIndex/);
   assert.match(appSource, /current\.ratingMonth = ui\.workerRatingMonth\.value/);
 });
 
