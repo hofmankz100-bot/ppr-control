@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v842-mobile-attendance-camera"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v843-session-login-stability"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -3378,9 +3378,12 @@ function sessionCookie(token, maxAge = Math.floor(SESSION_TTL_MS / 1000)) {
 function createAuthSession(db, user, req) {
   const token = crypto.randomBytes(32).toString("base64url");
   const now = new Date();
-  db.authSessions = (db.authSessions || [])
-    .filter(item => Date.parse(item.expiresAt || "") > now.getTime())
-    .filter(item => item.userId !== user.id || item.userAgent !== String(req.headers["user-agent"] || "").slice(0, 300));
+  const validSessions = (db.authSessions || []).filter(item => Date.parse(item.expiresAt || "") > now.getTime());
+  const oldestSameUser = new Set(validSessions
+    .filter(item => item.userId === user.id)
+    .slice(0, -7)
+    .map(item => item.tokenHash));
+  db.authSessions = validSessions.filter(item => !oldestSameUser.has(item.tokenHash));
   db.authSessions.push({
     tokenHash: sessionTokenHash(token),
     userId: user.id,

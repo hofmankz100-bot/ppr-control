@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v842-mobile-attendance-camera";
+const APP_VERSION = "v843-session-login-stability";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -292,6 +292,9 @@ let profile = activeProfileFromSession(authenticatedProfile);
 const pendingStateOwner = window.PprDeviceCachePolicy.createPendingStateOwner(localStorage, STORE_KEY);
 let sessionValidationState = "pending";
 let sessionRefreshPromise = null;
+let authSessionEpoch = 0;
+let authSubmissionInFlight = false;
+let sessionRejectionStartedAt = 0;
 let networkResumePromise = null;
 let sessionRetryTimer = null;
 let pendingApprovalPollTimer = null;
@@ -2778,7 +2781,7 @@ async function saveRemoteState() {
     }
   } catch (error) {
     if (Number(error?.status) === 401) {
-      rejectServerSession();
+      if (!deferServerSessionRejection()) rejectServerSession();
     } else if (error?.data?.error === "state_reset_mismatch") {
       // A reset made this local snapshot obsolete. Reload instead of retrying
       // forever or pretending that the rejected operation was saved.
@@ -2987,17 +2990,27 @@ async function requirePendingStateAuthor(user, stored = loadProfile()) {
 }
 
 async function loginEmployee(identifier, password) {
-  const result = await apiJson("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ identifier, password })
-  });
-  stopPendingApprovalPolling();
-  await requirePendingStateAuthor(result.user);
-  if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
-  remoteStateHydrated = false;
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
-  sessionValidationState = "verified";
-  return result.user;
+  const loginEpoch = ++authSessionEpoch;
+  authSubmissionInFlight = true;
+  try {
+    const result = await apiJson("/api/auth/login", {
+      method: "POST",
+      timeout: 30000,
+      body: JSON.stringify({ identifier, password })
+    });
+    stopPendingApprovalPolling();
+    await requirePendingStateAuthor(result.user);
+    if (result.user?.role === "editor") localStorage.removeItem(EDITOR_PREVIEW_ROLE_KEY);
+    remoteStateHydrated = false;
+    authenticatedProfile = result.user;
+    profile = activeProfileFromSession(result.user);
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
+    sessionValidationState = "verified";
+    sessionRejectionStartedAt = 0;
+    return result.user;
+  } finally {
+    if (authSessionEpoch === loginEpoch) authSubmissionInFlight = false;
+  }
 }
 
 function updateConnectionStatus() {
@@ -3015,7 +3028,22 @@ function updateConnectionStatus() {
   notice.textContent = notice.hidden ? "" : "Нет связи. Новые записи сохраняются на устройстве.";
 }
 
+function deferServerSessionRejection(stored = loadProfile()) {
+  if (!window.PprDeviceCachePolicy.canRestoreCachedProfile(stored) || !ROLE_ACCESS[stored.role]) return false;
+  const now = Date.now();
+  sessionRejectionStartedAt ||= now;
+  if (now - sessionRejectionStartedAt >= 5 * 60 * 1000) return false;
+  authenticatedProfile = stored;
+  profile = activeProfileFromSession(stored);
+  sessionValidationState = "cached";
+  updateConnectionStatus();
+  return true;
+}
+
 function rejectServerSession() {
+  authSessionEpoch += 1;
+  authSubmissionInFlight = false;
+  sessionRejectionStartedAt = 0;
   stopPendingApprovalPolling();
   pendingStateOwner.captureLegacy(loadProfile());
   sessionValidationState = "signed-out";
@@ -3040,17 +3068,24 @@ function rejectServerSession() {
 async function restoreServerSession() {
   const stored = loadProfile();
   if (!stored) return false;
+  const validationEpoch = authSessionEpoch;
   try {
-    const result = await apiJson("/api/auth/session", { timeout: 8000 });
+    const result = await apiJson("/api/auth/session", { timeout: 15000 });
+    if (validationEpoch !== authSessionEpoch) return sessionValidationState === "verified";
     if (!result?.user) throw Object.assign(new Error("authentication_required"), { status: 401 });
     await requirePendingStateAuthor(result.user, stored);
     authenticatedProfile = result.user;
     localStorage.setItem(PROFILE_KEY, JSON.stringify(result.user));
     profile = activeProfileFromSession(authenticatedProfile);
     sessionValidationState = "verified";
+    sessionRejectionStartedAt = 0;
     startPendingApprovalPolling();
     return true;
   } catch (error) {
+    if (validationEpoch !== authSessionEpoch) return sessionValidationState === "verified";
+    if (!error.pendingOwnerConflict && window.PprDeviceCachePolicy.isSessionRejected(error) && deferServerSessionRejection(stored)) {
+      return true;
+    }
     if (!error.pendingOwnerConflict && !window.PprDeviceCachePolicy.isSessionRejected(error) && window.PprDeviceCachePolicy.canRestoreCachedProfile(stored) && ROLE_ACCESS[stored.role]) {
       authenticatedProfile = stored;
       profile = activeProfileFromSession(stored);
@@ -3066,13 +3101,13 @@ async function restoreServerSession() {
       sessionRetryTimer = window.setTimeout(() => {
         sessionRetryTimer = null;
         resumeAfterNetworkChange()?.catch(error => reportCaughtClientError("sync.session-retry", error));
-      }, 1500);
+      }, 15000);
     }
   }
 }
 
 function refreshAuthenticatedProfile() {
-  if (!authenticatedProfile || !navigator.onLine) return Promise.resolve(false);
+  if (!authenticatedProfile || !navigator.onLine || authSubmissionInFlight) return Promise.resolve(false);
   if (sessionRefreshPromise) return sessionRefreshPromise;
   sessionRefreshPromise = (async () => {
     const previousAccess = JSON.stringify(authenticatedProfile);
@@ -3857,9 +3892,10 @@ function setupLogin() {
       }
       await finishAuthOnCurrentPage();
     } catch (error) {
-      ui.loginError.textContent = error?.message || (authMode === "register"
+      const aborted = error?.name === "AbortError" || /(?:signal\s+)?abort(?:ed)?/i.test(String(error?.message || ""));
+      ui.loginError.textContent = aborted ? "Сервер отвечает дольше обычного. Проверьте связь и нажмите «Войти» ещё раз." : (error?.message || (authMode === "register"
         ? t("registerFailed")
-        : t("loginFailed"));
+        : t("loginFailed")));
     } finally {
       setButtonBusy(submitButton, false);
     }
@@ -4225,7 +4261,10 @@ function flushQrWalkQueue() {
     canSendItem: item => window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile),
     identity: item => item.actionId || qrWalkMarkIdentity(item),
     discard: error => {
-      if (Number(error?.status) === 401) { rejectServerSession(); return false; }
+      if (Number(error?.status) === 401) {
+        if (!deferServerSessionRejection()) rejectServerSession();
+        return false;
+      }
       if (!isPermanentQrWalkError(error)) return false;
       showAppToast("Сервер отклонил QR-отметку. Проверьте доступ и действующий QR-код.", "error");
       return true;

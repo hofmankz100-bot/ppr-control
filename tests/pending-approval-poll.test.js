@@ -21,7 +21,7 @@ function harness() {
   storage.set("profile", JSON.stringify(saved));
   const context = vm.createContext({
     profile: saved, authenticatedProfile: saved, attendanceStatus: null, sessionValidationState: "verified",
-    window: { setInterval(fn, delay) { assert.equal(delay, 5000); const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id), confirm: () => true },
+    window: { PprDeviceCachePolicy: { canRestoreCachedProfile: () => true, isSessionRejected: error => [401, 403].includes(Number(error?.status)) }, setInterval(fn, delay) { assert.equal(delay, 5000); const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id), confirm: () => true },
     clearTimeout() {}, clearInterval: id => intervals.delete(id), navigator: { onLine: true },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     PROFILE_KEY: "profile", USERS_KEY: "users", EDITOR_PREVIEW_ROLE_KEY: "preview", EDITOR_PREVIEW_AREA_KEY: "area", PUSH_SUBSCRIPTION_KEY: "push",
@@ -40,8 +40,8 @@ function harness() {
     realtimeEventSource: null, realtimeSocket: null, ROLE_ACCESS: { engineer: {} },
     removePushSubscriptionForLogout: async () => {}, location: { reload() {} }
   });
-  const names = ["resolutionUserKey", "isProfileReady", "isProfileWaitingApproval", "stopPendingApprovalPolling", "startPendingApprovalPolling", "loadRemoteUsers", "finishAuthOnCurrentPage", "loginEmployee", "registerEmployee", "rejectServerSession", "restoreServerSession"];
-  vm.runInContext(`let pendingApprovalPollTimer = null, pendingApprovalPollOwner = "", pendingApprovalPollGeneration = 0;\n${names.map(extract).join("\n")}`, context);
+  const names = ["resolutionUserKey", "isProfileReady", "isProfileWaitingApproval", "stopPendingApprovalPolling", "startPendingApprovalPolling", "loadRemoteUsers", "finishAuthOnCurrentPage", "loginEmployee", "registerEmployee", "deferServerSessionRejection", "rejectServerSession", "restoreServerSession"];
+  vm.runInContext(`let pendingApprovalPollTimer = null, pendingApprovalPollOwner = "", pendingApprovalPollGeneration = 0, authSessionEpoch = 0, authSubmissionInFlight = false, sessionRejectionStartedAt = 0;\n${names.map(extract).join("\n")}`, context);
   return { context, intervals, calls, storage, async tick() { for (const callback of [...intervals.values()]) callback(); await context.loadRemoteUsers.promise; } };
 }
 
@@ -146,6 +146,21 @@ test("session revalidation preserves one pending poll and stops it when approval
   assert.equal(h.intervals.size, 0);
   assert.equal(h.context.profile.role, "engineer");
   assert.equal(h.context.sessionValidationState, "verified");
+});
+
+test("a delayed rejection from the previous session cannot clear a newer login", async () => {
+  const h = harness();
+  let rejectOldSession;
+  h.context.respond = url => url === "/api/auth/session"
+    ? new Promise((resolve, reject) => { rejectOldSession = reject; })
+    : Promise.resolve({ user: approved("login-new") });
+  const oldValidation = h.context.restoreServerSession();
+  await h.context.loginEmployee("login-new", "password");
+  rejectOldSession(Object.assign(new Error("authentication_required"), { status: 401 }));
+  assert.equal(await oldValidation, true);
+  assert.equal(h.context.profile.id, "login-new");
+  assert.equal(h.context.sessionValidationState, "verified");
+  assert.equal(JSON.parse(h.storage.get("profile")).id, "login-new");
 });
 
 test("explicit logout cancels polling before asynchronous logout work", async () => {

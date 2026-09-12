@@ -186,6 +186,10 @@ test("production API requires a server session and rate-limits failed logins", a
       assert.equal(response.status, 200);
       return response.headers.get("set-cookie").split(";")[0];
     };
+    const secondEditorCookie = await loginCookie(editor.employeeId, "correct-password");
+    assert.notEqual(secondEditorCookie, cookie);
+    assert.equal((await fetch(`${baseUrl}/api/auth/session`, { headers: { cookie } })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/auth/session`, { headers: { cookie: secondEditorCookie } })).status, 200);
     const areaOperatorCookie = await loginCookie(areaOperator.employeeId, "operator-password");
     const otherAreaOperatorCookie = await loginCookie(otherAreaOperator.employeeId, "other-password");
     const directorCookie = await loginCookie(restrictedDirector.employeeId, "director-password");

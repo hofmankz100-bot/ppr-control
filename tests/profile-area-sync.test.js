@@ -41,3 +41,14 @@ test("one responsible employee can safely work in multiple workshops", () => {
   assert.match(server, /if \(catalogRole === "shop"[\s\S]*?!userHasAreaServer\(req\.authUser, equipmentArea\)/);
   assert.match(server, /nextUser\.areas = normalizedUserAreasServer\(nextUser\)/);
 });
+
+test("a stale background session check cannot clear a newer login", () => {
+  assert.match(app, /let authSessionEpoch = 0;/);
+  assert.match(app, /const loginEpoch = \+\+authSessionEpoch;[\s\S]*?authSubmissionInFlight = true;/);
+  assert.match(app, /const validationEpoch = authSessionEpoch;[\s\S]*?validationEpoch !== authSessionEpoch/);
+  assert.match(app, /!navigator\.onLine \|\| authSubmissionInFlight/);
+  assert.match(app, /timeout: 30000/);
+  assert.match(app, /Сервер отвечает дольше обычного/);
+  assert.match(app, /function deferServerSessionRejection[\s\S]*?5 \* 60 \* 1000/);
+  assert.doesNotMatch(server, /item\.userId !== user\.id \|\| item\.userAgent/);
+});

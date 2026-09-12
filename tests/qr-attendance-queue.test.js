@@ -42,6 +42,7 @@ function harness(initialQueue = [mark(worker)], initialAttendance = active()) {
     },
     send: async () => ({}), nextAttendance: active(),
     rejectServerSession() { context.sessionValidationState = "signed-out"; context.authenticatedProfile = context.profile = context.attendanceStatus = null; },
+    deferServerSessionRejection() { context.sessionValidationState = "cached"; return true; },
     mergeRealtimePatch() {}, equipmentById: () => ({ id: 1, nodes: ["Node"] }),
     key: (equipment, node, date) => `${equipment}:${node}:${date}`,
     state: { checks: { [recordKey]: { to: { walkGroups: { technical: { day: { done: true } } } } } } },
@@ -132,14 +133,14 @@ test("a direct scan rejected by newly closed attendance joins the durable queue"
   assert.match(h.toasts[0], /Кто на работе/);
 });
 
-test("invalid QR tokens and genuine access denials remain permanent; 401 retains and signs out", async () => {
+test("invalid QR tokens and genuine access denials remain permanent; 401 retains work without signing out immediately", async () => {
   for (const [status, code, retained] of [[410, "node_qr_replaced", false], [403, "qr_walk_access_denied", false], [401, "authentication_required", true]]) {
     const h = harness();
     h.context.send = async () => { throw serverError(status, code); };
     await h.context.flushQrWalkQueue();
     assert.equal(h.queue().length, retained ? 1 : 0, code);
     assert.equal(h.scheduled.length, 0, code);
-    assert.equal(h.context.sessionValidationState, retained ? "signed-out" : "verified", code);
+    assert.equal(h.context.sessionValidationState, retained ? "cached" : "verified", code);
   }
 });
 
