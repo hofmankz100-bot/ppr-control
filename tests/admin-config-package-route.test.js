@@ -8,7 +8,7 @@ function createHarness(body = {}) {
   const downloads = [];
   const responses = [];
   const events = [];
-  const database = { adminConfig: { companyName: "Old" }, workPermitInstructions: {} };
+  const database = { adminConfig: { companyName: "Old" } };
   const handler = createAdminConfigPackageRoute({
     buildAdminConfigPackage: db => ({ companyName: db.adminConfig.companyName, checksum: "abc" }),
     createAdminBackup: async (label, actorName) => events.push({ type: "backup", label, actorName }),
@@ -24,8 +24,7 @@ function createHarness(body = {}) {
     validateAdminConfigPackage: input => input?.checksum === "abc"
       ? {
           config: { companyName: input.companyName },
-          instructions: input.instructions || {},
-          summary: { companyName: input.companyName, instructions: Object.keys(input.instructions || {}).length }
+          summary: { companyName: input.companyName, departments: 0, positions: 0 }
         }
       : { error: "config_checksum_invalid" },
     writeDb: (_db, audit) => events.push({ type: "audit", audit }),
@@ -49,7 +48,7 @@ test("admin config package route exports a dated JSON package", async () => {
 test("admin config package preview returns the validated summary", async () => {
   const { handler, responses } = createHarness({ package: { companyName: "Hofmann", checksum: "abc" } });
   await handler({ method: "POST", authUser: { role: "editor" } }, {}, "/api/admin/config-package/preview");
-  assert.deepEqual(responses[0], { status: 200, payload: { ok: true, summary: { companyName: "Hofmann", instructions: 0 } } });
+  assert.deepEqual(responses[0], { status: 200, payload: { ok: true, summary: { companyName: "Hofmann", departments: 0, positions: 0 } } });
 });
 
 test("admin config package import validates confirmation before creating a backup", async () => {
@@ -70,18 +69,16 @@ test("admin config package import validates confirmation before creating a backu
   assert.deepEqual(events, []);
 });
 
-test("admin config package import backs up, stores history and merges instructions", async () => {
+test("admin config package import backs up and stores history", async () => {
   const { handler, responses, events, database } = createHarness({
     password: "secret",
     confirm: "ИМПОРТИРОВАТЬ НАСТРОЙКИ",
     reason: "Перенос настроек",
     package: {
       companyName: "New",
-      checksum: "abc",
-      instructions: { safety: { title: "Safety", body: "Text" } }
+      checksum: "abc"
     }
   });
-  database.workPermitInstructions.safety = { editorIds: ["employee-1"], body: "Old" };
 
   await handler({
     method: "POST",
@@ -91,12 +88,10 @@ test("admin config package import backs up, stores history and merges instructio
   assert.deepEqual(events.map(event => event.type), ["backup", "write-start", "audit"]);
   assert.equal(database.adminConfig.companyName, "New");
   assert.equal(database.adminConfigHistory[0].snapshot.companyName, "Old");
-  assert.deepEqual(database.workPermitInstructions.safety.editorIds, ["employee-1"]);
-  assert.equal(database.workPermitInstructions.safety.title, "Safety");
   assert.equal(events[2].audit.action, "admin_config_package_imported");
   assert.deepEqual(responses[0], {
     status: 200,
-    payload: { ok: true, summary: { companyName: "New", instructions: 1 } }
+    payload: { ok: true, summary: { companyName: "New", departments: 0, positions: 0 } }
   });
 });
 

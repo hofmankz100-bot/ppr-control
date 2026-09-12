@@ -65,9 +65,6 @@ test("admin integrity fix backs up, repairs all supported records and audits the
       { id: "dangling", userId: "missing", expiresAt: new Date(currentTime + 1000).toISOString() },
       { id: "valid", userId: "user-1", expiresAt: new Date(currentTime + 1000).toISOString() }
     ],
-    workPermitInstructions: {
-      first: { editorIds: ["user-1", "employee-1", "missing"] }
-    },
     adminAlerts: [
       { id: "old", status: "resolved", resolvedAt: new Date(currentTime - 91 * 86400000).toISOString() },
       { id: "recent", status: "resolved", resolvedAt: new Date(currentTime - 10 * 86400000).toISOString() },
@@ -83,12 +80,11 @@ test("admin integrity fix backs up, repairs all supported records and audits the
       password: "secret",
       confirm: "ИСПРАВИТЬ ДАННЫЕ",
       reason: "Плановое исправление",
-      fixes: ["expired_sessions", "dangling_sessions", "invalid_instruction_editors", "stale_alerts", "stale_alerts"]
+      fixes: ["expired_sessions", "dangling_sessions", "stale_alerts", "stale_alerts"]
     }
   }, {}, "/api/admin/integrity/fix");
 
   assert.deepEqual(database.authSessions.map(item => item.id), ["valid"]);
-  assert.deepEqual(database.workPermitInstructions.first.editorIds, ["user-1", "employee-1"]);
   assert.deepEqual(database.adminAlerts.map(item => item.id), ["recent", "active"]);
   assert.equal(events[0].type, "backup");
   assert.equal(events[1].type, "write-start");
@@ -98,7 +94,7 @@ test("admin integrity fix backs up, repairs all supported records and audits the
       action: "admin_integrity_fixed",
       user: authUser,
       targetId: "backup-1",
-      targetLabel: "expired_sessions, dangling_sessions, invalid_instruction_editors, stale_alerts",
+      targetLabel: "expired_sessions, dangling_sessions, stale_alerts",
       reason: "Плановое исправление"
     }
   });
@@ -106,7 +102,7 @@ test("admin integrity fix backs up, repairs all supported records and audits the
     status: 200,
     payload: {
       ok: true,
-      fixed: { expired_sessions: 1, dangling_sessions: 1, invalid_instruction_editors: 1, stale_alerts: 1 },
+      fixed: { expired_sessions: 1, dangling_sessions: 1, stale_alerts: 1 },
       backup,
       integrity: { sessionCount: 1 }
     }

@@ -31,7 +31,6 @@ test("wide maintenance monitors use the available workspace", () => {
 test("narrow phones keep a readable product header", () => {
   assert.match(styles, /@media screen and \(max-width: 430px\)/);
   assert.match(styles, /html\[data-theme="dark"\] \.admin-guide-grid article/);
-  assert.match(styles, /html\[data-theme="dark"\] \.admin-instruction-log article/);
   assert.match(styles, /html\[data-theme="dark"\] \.admin-access-list article/);
   assert.match(styles, /html\[data-theme="dark"\] \.director-user-row/);
   assert.match(styles, /html\[data-theme="dark"\] \.annual-ppr-act-dialog/);
@@ -39,22 +38,18 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.annual-ppr-print-area:not\(\.annual-ppr-pdf-output\)/);
   assert.match(styles, /annual-ppr-print-area:not\(\.annual-ppr-pdf-output\) \.annual-ppr-plan[\s\S]*background: #12332e/);
   assert.match(styles, /annual-ppr-print-area:not\(\.annual-ppr-pdf-output\) \.annual-ppr-fact[\s\S]*background: #342d1b/);
-  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-paper/);
   assert.match(styles, /html\[data-theme="dark"\] \.global-reminder-panel/);
   assert.match(styles, /html\[data-theme="dark"\] \.director-reminder-row\.yellow/);
   assert.doesNotMatch(app, /renderSystemLoadAdmin|Нагрузка приложения|data-print-system-report|data-broadcast-print/);
   assert.equal((app.match(/data-open-admin-maintenance>Корзина и восстановление/g) || []).length, 1);
   assert.match(styles, /html\[data-theme="dark"\] \.director-users/);
-  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-safety-item/);
   assert.match(styles, /html\[data-theme="dark"\] \.worker-rating-details-button/);
   assert.match(styles, /html\[data-theme="dark"\] \.factory-graph-help/);
   assert.match(styles, /html\[data-theme="dark"\] \.ppr-maintenance-sheet/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-open-button/);
-  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-optional-toolbar/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-document-memo/);
   assert.match(styles, /html\[data-theme="dark"\] \.role-personal-inbox/);
   assert.match(styles, /html\[data-theme="dark"\] \.user-login-status/);
-  assert.match(styles, /html\[data-theme="dark"\] \.work-permit-instruction-full-text/);
   assert.match(styles, /html\[data-theme="dark"\] \.send-kind-dialog/);
   assert.match(styles, /html\[data-theme="dark"\] \.admin-close-performers label/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-catalog-admin input/);

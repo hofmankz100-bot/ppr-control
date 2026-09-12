@@ -1803,7 +1803,7 @@ test("mobile navigation reuses one attendance button instead of the removed requ
   assert.match(html, /id="attendanceHomeButton"[^>]*data-mobile-view="attendance"/);
   assert.match(client, /function placeSingleAttendanceButton\(\)/);
   assert.match(client, /mobileNav\.prepend\(button\)/);
-  assert.match(client, /quickNav\.insertBefore\(button, permitButton\)/);
+  assert.match(client, /quickNav\.append\(button\)/);
   assert.match(styles, /\.mobile-nav \[data-mobile-view="attendance"\]/);
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 });
@@ -1856,7 +1856,7 @@ test("administration keeps four primary tabs and only useful technical tools", (
   assert.match(stylesSource, /\.admin-maintenance-tabs\.segmented\s*\{[\s\S]*grid-template-columns: repeat\(4/);
   assert.match(appSource, /primaryAdminTabs = new Set\(\["trash", "backups", "audit", "report"\]\)/);
   assert.match(appSource, /class="admin-technical-tools"/);
-  for (const tab of ["instructionLog", "storage", "broadcasts", "settings", "transfer", "access", "automation", "archives", "integrity"]) {
+  for (const tab of ["storage", "broadcasts", "settings", "transfer", "access", "automation", "archives", "integrity"]) {
     assert.match(appSource, new RegExp(`data-admin-maintenance-tab="${tab}"`));
   }
   assert.doesNotMatch(appSource, /Инструкция администратора/);

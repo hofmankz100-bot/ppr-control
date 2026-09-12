@@ -78,22 +78,11 @@ function createAdminConfigPackageRoute(dependencies = {}) {
       });
       db.adminConfigHistory = db.adminConfigHistory.slice(0, 100);
       db.adminConfig = validated.config;
-      db.workPermitInstructions ||= {};
-      for (const [id, instruction] of Object.entries(validated.instructions)) {
-        const existing = db.workPermitInstructions[id] || {};
-        db.workPermitInstructions[id] = {
-          ...existing,
-          ...instruction,
-          editorIds: Array.isArray(existing.editorIds) ? existing.editorIds : [],
-          updatedAt,
-          updatedBy: String(req.authUser?.name || "Администратор")
-        };
-      }
       writeDb(db, {
         action: "admin_config_package_imported",
         user: req.authUser,
         reason,
-        details: `${validated.summary.instructions} инструкций`
+        details: `${validated.summary.departments} подразделений · ${validated.summary.positions} должностей`
       });
     });
     sendJson(res, 200, { ok: true, summary: validated.summary });

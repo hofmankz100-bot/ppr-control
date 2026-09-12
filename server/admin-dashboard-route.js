@@ -134,10 +134,7 @@ function createAdminDashboardRoute(dependencies = {}) {
         return {
           ...userPublic(user),
           loginDiagnostics: userLoginDiagnostics(db, user),
-          operationalSummary: { lightweight: true, activeSessions: sessions.length, sessions, history: [], linked: {}, lastActivityAt: user.lastLoginAt || "" },
-          instructionEditorCount: Object.values(db.workPermitInstructions || {})
-            .filter(item => (item.editorIds || []).some(key => [user.id, user.employeeId, user.phone].map(String).includes(String(key))))
-            .length
+          operationalSummary: { lightweight: true, activeSessions: sessions.length, sessions, history: [], linked: {}, lastActivityAt: user.lastLoginAt || "" }
         };
       })
       : [];
@@ -153,7 +150,6 @@ function createAdminDashboardRoute(dependencies = {}) {
       audit: ["all", "audit"].includes(requestedTab) ? (db.adminAuditLog || []).slice(0, requestedTab === "all" ? 1000 : 250) : [],
       access,
       broadcasts,
-      instructionAcknowledgements: ["all", "instructionLog"].includes(requestedTab) ? (db.workPermitInstructionAcknowledgements || []).slice(0, 2000) : [],
       notificationPolicy: {
         defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal",
         defaultExpiryHours: Math.max(1, Math.min(720, Number(db.adminNotificationPolicy?.defaultExpiryHours || 24))),

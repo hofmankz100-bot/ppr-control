@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v829-ppr-groups"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v830-remove-work-permit"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -267,7 +267,7 @@ async function githubRepositoryStorage() {
 }
 
 function emptyDb() {
-  return { checks: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], workPermitInstructionAcknowledgements: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
+  return { checks: {}, catalog: { equipment: {} }, downtimes: [], compressorJournal: {}, gasJournal: {}, weldingJournal: {}, turningJournal: {}, pprSheets: {}, annualPpr: {}, qrWalkJournal: [], adminActionReceipts: [], adminTrash: [], adminAuditLog: [], adminArchives: [], adminActivityReadAt: {}, adminAutomationStatus: {}, adminAlerts: [], adminConfig: {}, adminConfigHistory: [], systemMonitor: {}, journalDueSince: {}, auditHistory: [], systemBroadcasts: [], operationalResetAt: "", walkShiftCleanupVersion: "", users: [], authSessions: [], translationCache: {}, attendanceSessions: [], attendanceConfig: {} };
 }
 
 function normalizedCatalogNodeName(value = "") {
@@ -682,7 +682,6 @@ function normalizeDb(db) {
   db.pprSheets ||= {};
   db.annualPpr ||= {};
   db.qrWalkJournal = Array.isArray(db.qrWalkJournal) ? db.qrWalkJournal : [];
-  db.workPermitInstructionAcknowledgements = Array.isArray(db.workPermitInstructionAcknowledgements) ? db.workPermitInstructionAcknowledgements : [];
   db.adminActionReceipts = Array.isArray(db.adminActionReceipts) ? db.adminActionReceipts : [];
   db.archivedNodeChecks = Array.isArray(db.archivedNodeChecks) ? db.archivedNodeChecks : [];
   db.archivedDuplicateRemarks = Array.isArray(db.archivedDuplicateRemarks) ? db.archivedDuplicateRemarks : [];
@@ -1225,8 +1224,7 @@ const DEFAULT_ADMIN_CONFIG = Object.freeze({
     { key: "mechanic:шонов.уткел", label: "Шонов.Уткел", reason: "Дублирующая роль" },
     { key: "mechanic:рамазан", label: "Рамазан", reason: "Тестовая запись" },
     { key: "mechanic:адлет", label: "Адлет", reason: "Дублирующая роль" }
-  ],
-  formPolicies: { workPermit: { optionalSections: ["leader", "completedMeasures", "approval", "brigade", "breaks", "changes"] } }
+  ]
 });
 
 function cleanStringList(values, limit = 200) {
@@ -1264,12 +1262,6 @@ function normalizedAdminConfig(raw = {}) {
       autoBackupIntervalHours: [6, 12, 24, 48, 72, 168].includes(Number(automation.autoBackupIntervalHours)) ? Number(automation.autoBackupIntervalHours) : DEFAULT_ADMIN_CONFIG.automation.autoBackupIntervalHours,
       autoBackupKeepCount: Math.min(30, Math.max(5, Number(automation.autoBackupKeepCount || DEFAULT_ADMIN_CONFIG.automation.autoBackupKeepCount)))
     },
-    formPolicies: {
-      workPermit: {
-        optionalSections: cleanStringList(raw.formPolicies?.workPermit?.optionalSections?.length ? raw.formPolicies.workPermit.optionalSections : DEFAULT_ADMIN_CONFIG.formPolicies.workPermit.optionalSections, 20)
-          .filter(value => ["leader", "completedMeasures", "approval", "brigade", "breaks", "changes"].includes(value))
-      }
-    },
     excludedRatingWorkers: (Array.isArray(raw.excludedRatingWorkers) ? raw.excludedRatingWorkers : DEFAULT_ADMIN_CONFIG.excludedRatingWorkers)
       .map(item => ({
         key: String(item?.key || "").trim().toLocaleLowerCase("ru-RU").slice(0, 300),
@@ -1288,12 +1280,7 @@ function buildAdminConfigPackage(db = readDb()) {
     format: "ppr-admin-config",
     version: 1,
     exportedAt: new Date().toISOString(),
-    adminConfig: normalizedAdminConfig(db.adminConfig),
-    workPermitInstructions: Object.fromEntries(Object.entries(db.workPermitInstructions || {}).slice(0, 100).map(([id, item]) => [id, {
-      title: String(item?.title || "").slice(0, 300),
-      content: String(item?.content || "").slice(0, 200000),
-      fileName: String(item?.fileName || "").slice(0, 300)
-    }]))
+    adminConfig: normalizedAdminConfig(db.adminConfig)
   };
   return { payload, checksum: backupChecksum(payload) };
 }
@@ -1303,11 +1290,7 @@ function validateAdminConfigPackage(input) {
   const payload = wrapper.payload && typeof wrapper.payload === "object" ? wrapper.payload : null;
   if (!payload || payload.format !== "ppr-admin-config" || Number(payload.version) !== 1) return { error: "config_package_invalid" };
   if (!wrapper.checksum || backupChecksum(payload) !== String(wrapper.checksum)) return { error: "config_package_checksum_invalid" };
-  const rawInstructions = payload.workPermitInstructions && typeof payload.workPermitInstructions === "object" ? payload.workPermitInstructions : {};
-  const entries = Object.entries(rawInstructions);
-  if (entries.length > 100 || entries.some(([id, item]) => !/^[a-z0-9_-]{1,80}$/i.test(id) || !item || typeof item !== "object" || String(item.content || "").length > 200000)) return { error: "config_package_content_invalid" };
-  const instructions = Object.fromEntries(entries.map(([id, item]) => [id, { title: String(item.title || "").trim().slice(0, 300), content: String(item.content || "").trim().slice(0, 200000), fileName: String(item.fileName || "").trim().slice(0, 300) }]));
-  return { payload, config: normalizedAdminConfig(payload.adminConfig), instructions, summary: { companyName: normalizedAdminConfig(payload.adminConfig).companyName, departments: normalizedAdminConfig(payload.adminConfig).departments.length, positions: normalizedAdminConfig(payload.adminConfig).positions.length, instructions: entries.length, exportedAt: String(payload.exportedAt || "") } };
+  return { payload, config: normalizedAdminConfig(payload.adminConfig), summary: { companyName: normalizedAdminConfig(payload.adminConfig).companyName, departments: normalizedAdminConfig(payload.adminConfig).departments.length, positions: normalizedAdminConfig(payload.adminConfig).positions.length, exportedAt: String(payload.exportedAt || "") } };
 }
 
 function duplicateValues(items, valueOf) {
@@ -1326,15 +1309,9 @@ function dataIntegrityReport(db = readDb()) {
   const now = Date.now();
   const users = db.users || [];
   const userIds = new Set(users.map(user => String(user.id || "")).filter(Boolean));
-  const userKeys = new Set(users.flatMap(user => [user.id, user.employeeId, user.phone].map(value => String(value || "").trim()).filter(Boolean)));
   const expiredSessions = (db.authSessions || []).filter(item => !Number.isFinite(Date.parse(item.expiresAt || "")) || Date.parse(item.expiresAt || "") <= now);
   const danglingSessions = (db.authSessions || []).filter(item => !expiredSessions.includes(item) && item.userId && !userIds.has(String(item.userId)));
   const staleResolvedAlerts = (db.adminAlerts || []).filter(item => item.status === "resolved" && Date.parse(item.resolvedAt || item.lastSeenAt || 0) < now - 90 * 86400000);
-  const invalidInstructionEditors = [];
-  for (const [instructionId, instruction] of Object.entries(db.workPermitInstructions || {})) {
-    const invalid = (instruction.editorIds || []).filter(key => !userKeys.has(String(key || "")));
-    if (invalid.length) invalidInstructionEditors.push({ instructionId, count: invalid.length });
-  }
   const duplicateEmployeeIds = duplicateValues(users, user => String(user.employeeId || "").trim().toLowerCase());
   const duplicatePhones = duplicateValues(users, user => normalizePhoneIdentifier(user.phone));
   const incompleteUsers = users.filter(user => !String(user.name || "").trim() || !String(user.role || "").trim() || (!String(user.employeeId || "").trim() && !normalizePhoneIdentifier(user.phone)));
@@ -1342,7 +1319,6 @@ function dataIntegrityReport(db = readDb()) {
   const issues = [
     { id: "expired_sessions", title: "Просроченные сеансы", description: "Старые авторизации, срок которых закончился.", count: expiredSessions.length, fixable: true },
     { id: "dangling_sessions", title: "Сеансы удалённых сотрудников", description: "Авторизации, у которых больше нет учётной записи.", count: danglingSessions.length, fixable: true },
-    { id: "invalid_instruction_editors", title: "Устаревшие права на инструкции", description: "Ссылки на сотрудников, которых больше нет.", count: invalidInstructionEditors.reduce((sum, item) => sum + item.count, 0), fixable: true },
     { id: "stale_alerts", title: "Старые закрытые уведомления", description: "Закрытые системные сообщения старше 90 дней.", count: staleResolvedAlerts.length, fixable: true },
     { id: "duplicate_employee_ids", title: "Повторяющиеся табельные номера", description: "Нужно проверить сотрудников вручную — система не объединяет людей автоматически.", count: duplicateEmployeeIds.length, fixable: false, samples: duplicateEmployeeIds.slice(0, 10).map(([value, group]) => `${value}: ${group.map(user => user.name || "Без имени").join(", ")}`) },
     { id: "duplicate_phones", title: "Повторяющиеся телефоны", description: "Нужно проверить сотрудников вручную.", count: duplicatePhones.length, fixable: false, samples: duplicatePhones.slice(0, 10).map(([value, group]) => `${value}: ${group.map(user => user.name || "Без имени").join(", ")}`) },
@@ -1362,8 +1338,7 @@ function adminActivityFeed(db, adminUser) {
     return action && !ignored.has(action) && !adminActions.has(action);
   }).slice(0, 500).map(item => {
     const action = String(item.action || "");
-    const category = action.includes("work_permit") ? "work_permit"
-      : action.includes("qr_walk") ? "qr_walk"
+    const category = action.includes("qr_walk") ? "qr_walk"
       : action.includes("attendance") ? "attendance"
       : action.includes("remark") || action.includes("resolution") ? "remarks"
       : action.includes("request") ? "requests"
@@ -2281,7 +2256,6 @@ function publicState(db = readDb()) {
       companyName: normalizedAdminConfig(db.adminConfig).companyName,
       departments: normalizedAdminConfig(db.adminConfig).departments,
       positions: normalizedAdminConfig(db.adminConfig).positions,
-      formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies,
       excludedRatingWorkers: normalizedAdminConfig(db.adminConfig).excludedRatingWorkers
     },
     downtimes: db.downtimes,
@@ -3387,7 +3361,7 @@ function adminUserOperationalSummary(db, user = {}, referenceCache = new Map()) 
   const references = source => searchableRows(source).filter(serialized => keys.some(key => serialized.includes(key.toLocaleLowerCase("ru-RU")))).length;
   const sessions = (db.authSessions || []).filter(item => String(item.userId || "") === String(user.id || "") && Date.parse(item.expiresAt || "") > Date.now()).map(item => ({ createdAt: item.createdAt || "", expiresAt: item.expiresAt || "", ip: item.ip || "", userAgent: item.userAgent || "" }));
   const history = (db.adminAuditLog || []).filter(item => keys.some(key => [item.actorId, item.actorName, item.targetId, item.targetLabel].some(value => String(value || "").toLocaleLowerCase("ru-RU").includes(key.toLocaleLowerCase("ru-RU"))))).slice(0, 30).map(item => ({ at: item.at || "", action: item.action || "", actorName: item.actorName || "", reason: item.reason || "" }));
-  return { activeSessions: sessions.length, sessions, history, linked: { qrWalks: references(db.qrWalkJournal), remarks: references(db.checks), downtimes: references(db.downtimes), pprSheets: references(db.pprSheets), workPermits: references(db.workPermitNumberClaims) }, lastActivityAt: history[0]?.at || user.lastLoginAt || "" };
+  return { activeSessions: sessions.length, sessions, history, linked: { qrWalks: references(db.qrWalkJournal), remarks: references(db.checks), downtimes: references(db.downtimes), pprSheets: references(db.pprSheets) }, lastActivityAt: history[0]?.at || user.lastLoginAt || "" };
 }
 
 function parseCookies(req) {
@@ -5871,52 +5845,6 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
-  if (pathname === "/api/work-permits/claim-number" && req.method === "POST") {
-    const body = await readBody(req).catch(() => ({}));
-    const requestId = String(body?.requestId || "").trim();
-    if (!/^output-[A-Za-z0-9-]{8,150}$/.test(requestId)) {
-      sendJson(res, 400, { ok: false, error: "invalid_request_id" });
-      return true;
-    }
-    const result = await enqueueStateWrite(async () => {
-      const db = readDb();
-      if (!db.workPermitNumberClaims || typeof db.workPermitNumberClaims !== "object") {
-        db.workPermitNumberClaims = {};
-      }
-      const previous = Number(db.workPermitNumberClaims[requestId]?.number || 0);
-      if (Number.isSafeInteger(previous) && previous > 0) return previous;
-      const current = Number(db.workPermitLastNumber || 0);
-      const nextNumber = Number.isSafeInteger(current) && current >= 0
-        ? current + 1
-        : 1;
-      db.workPermitLastNumber = nextNumber;
-      db.workPermitNumberClaims[requestId] = {
-        number: nextNumber,
-        claimedAt: new Date().toISOString(),
-        userId: String(req.authUser?.id || "")
-      };
-      const claimEntries = Object.entries(db.workPermitNumberClaims);
-      if (claimEntries.length > 2000) {
-        claimEntries
-          .sort((a, b) => String(a[1]?.claimedAt || "").localeCompare(String(b[1]?.claimedAt || "")))
-          .slice(0, claimEntries.length - 2000)
-          .forEach(([id]) => delete db.workPermitNumberClaims[id]);
-      }
-      writeDb(db, {
-        action: "work_permit_number_claimed",
-        user: req.authUser,
-        number: nextNumber,
-        requestId
-      });
-      return nextNumber;
-    });
-    sendJson(res, 200, {
-      ok: true,
-      number: String(result).padStart(4, "0")
-    });
-    return true;
-  }
-
   if (await handleAdminDashboardRoute(req, res, pathname, url)) return true;
 
   if (await handleAdminNotificationsRoute(req, res, pathname)) return true;
@@ -5946,91 +5874,6 @@ async function handleApiTransaction(req, res, pathname, url) {
   if (await handleAdminMonitoringRoute(req, res, pathname)) return true;
 
   if (await handleAdminMaintenanceRoute(req, res, pathname)) return true;
-
-  if (pathname === "/api/work-permit-instructions" && req.method === "GET") {
-    const db = readDb();
-    const actorKey = attendanceUserKey(req.authUser || {});
-    const actorId = String(req.authUser?.id || req.authUser?.employeeId || req.authUser?.phone || "");
-    const isAdmin = req.authUser?.role === "editor";
-    const records = Object.entries(db.workPermitInstructions || {}).map(([id, raw]) => ({
-      id,
-      title: String(raw?.title || ""),
-      content: String(raw?.content || ""),
-      fileName: String(raw?.fileName || ""),
-      editorIds: isAdmin ? (Array.isArray(raw?.editorIds) ? raw.editorIds : []) : undefined,
-      canEdit: isAdmin || activeUserPermission(req.authUser, "instructionEdit") || (Array.isArray(raw?.editorIds) && raw.editorIds.includes(actorKey)),
-      updatedAt: String(raw?.updatedAt || ""),
-      updatedBy: String(raw?.updatedBy || "")
-    }));
-    const acknowledgedIds = [...new Set((db.workPermitInstructionAcknowledgements || [])
-      .filter(item => String(item?.actorId || "") === actorId)
-      .filter(item => String(item?.instructionUpdatedAt || "") === String(db.workPermitInstructions?.[item.instructionId]?.updatedAt || ""))
-      .map(item => String(item?.instructionId || ""))
-      .filter(Boolean))];
-    sendJson(res, 200, { ok: true, isAdmin, records, acknowledgedIds, settings: { companyName: normalizedAdminConfig(db.adminConfig).companyName, formPolicies: normalizedAdminConfig(db.adminConfig).formPolicies } });
-    return true;
-  }
-
-  if (pathname === "/api/work-permit-instructions/acknowledge" && req.method === "POST") {
-    const body = await readBody(req).catch(() => ({}));
-    const instructionId = String(body?.instructionId || "").trim().slice(0, 80);
-    if (!instructionId) { sendJson(res, 400, { ok: false, error: "instruction_required" }); return true; }
-    const db = readDb();
-    const stored = db.workPermitInstructions?.[instructionId] || {};
-    const at = new Date().toISOString();
-    const actorId = String(req.authUser?.id || req.authUser?.employeeId || req.authUser?.phone || "");
-    const record = {
-      id: `instruction-ack-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
-      instructionId,
-      instructionTitle: String(body?.instructionTitle || stored.title || instructionId).trim().slice(0, 300),
-      instructionUpdatedAt: String(stored.updatedAt || ""),
-      actorId,
-      actorName: String(req.authUser?.name || "Сотрудник").slice(0, 300),
-      employeeId: String(req.authUser?.employeeId || "").slice(0, 100),
-      role: String(req.authUser?.role || "").slice(0, 80),
-      acknowledgedAt: at
-    };
-    db.workPermitInstructionAcknowledgements ||= [];
-    const duplicate = db.workPermitInstructionAcknowledgements.find(item => item.actorId === actorId && item.instructionId === instructionId && item.instructionUpdatedAt === record.instructionUpdatedAt);
-    if (!duplicate) db.workPermitInstructionAcknowledgements.unshift(record);
-    db.workPermitInstructionAcknowledgements = db.workPermitInstructionAcknowledgements.slice(0, 10000);
-    writeDb(db, { action: "work_permit_instruction_acknowledged", user: req.authUser, instructionId });
-    sendJson(res, 200, { ok: true, record: duplicate || record, duplicate: Boolean(duplicate) });
-    return true;
-  }
-
-  const instructionMatch = pathname.match(/^\/api\/work-permit-instructions\/([a-z0-9_-]+)$/i);
-  if (instructionMatch && req.method === "PUT") {
-    const body = await readBody(req);
-    const instructionId = instructionMatch[1].slice(0, 80);
-    const db = readDb();
-    db.workPermitInstructions ||= {};
-    const existing = db.workPermitInstructions[instructionId] || {};
-    const actorKey = attendanceUserKey(req.authUser || {});
-    const isAdmin = req.authUser?.role === "editor";
-    const canEdit = isAdmin || activeUserPermission(req.authUser, "instructionEdit") || (Array.isArray(existing.editorIds) && existing.editorIds.includes(actorKey));
-    if (!canEdit) {
-      sendJson(res, 403, { ok: false, error: "permission_denied" });
-      return true;
-    }
-    const record = {
-      ...existing,
-      title: String(body?.title || existing.title || "").trim().slice(0, 300),
-      content: String(body?.content || "").trim().slice(0, 200000),
-      fileName: String(body?.fileName || "").trim().slice(0, 300),
-      updatedAt: new Date().toISOString(),
-      updatedBy: String(req.authUser?.name || "")
-    };
-    if (isAdmin && Array.isArray(body?.editorIds)) {
-      record.editorIds = [...new Set(body.editorIds.map(value => String(value || "").trim()).filter(Boolean))].slice(0, 500);
-    } else {
-      record.editorIds = Array.isArray(existing.editorIds) ? existing.editorIds : [];
-    }
-    db.workPermitInstructions[instructionId] = record;
-    writeDb(db, { action: "work_permit_instruction_saved", user: req.authUser, instructionId });
-    sendJson(res, 200, { ok: true, record: { id: instructionId, ...record, canEdit: true } });
-    return true;
-  }
 
   if (pathname === "/api/state" && req.method === "GET") {
     await stateTransactions.idle();

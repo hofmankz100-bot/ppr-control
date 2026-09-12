@@ -8,7 +8,7 @@ function createHarness(body, database) {
   const responses = [];
   const audits = [];
   const handler = createAdminUserPermissionsRoute({
-    adminPermissionKeys: new Set(["instructionEdit", "remarkGlobalConfirm"]),
+    adminPermissionKeys: new Set(["remarkDefer", "remarkGlobalConfirm"]),
     enqueueStateWrite: task => task(),
     passwordMatches: (supplied, stored) => supplied === stored,
     readBody: async () => body,
@@ -37,7 +37,7 @@ test("admin permission route saves only allowed permissions and ends target sess
     userId: "target",
     password: "secret",
     reason: "Рабочая необходимость",
-    permissions: ["instructionEdit", "unsupported"],
+    permissions: ["remarkDefer", "unsupported"],
     expiresAt: "2026-08-24T12:00:00.000Z"
   }, database);
   const handled = await handler({
@@ -47,8 +47,8 @@ test("admin permission route saves only allowed permissions and ends target sess
 
   assert.equal(handled, true);
   assert.equal(responses[0].status, 200);
-  assert.deepEqual(Object.keys(database.users[0].permissionOverrides), ["instructionEdit"]);
-  assert.equal(database.users[0].permissionOverrides.instructionEdit.grantedBy, "Admin");
+  assert.deepEqual(Object.keys(database.users[0].permissionOverrides), ["remarkDefer"]);
+  assert.equal(database.users[0].permissionOverrides.remarkDefer.grantedBy, "Admin");
   assert.deepEqual(database.authSessions, [{ userId: "other" }]);
   assert.equal(audits[0].action, "user_permissions_saved");
 });
@@ -59,7 +59,7 @@ test("admin permission route rejects expired grants before changing data", async
     userId: "target",
     password: "secret",
     reason: "Проверка",
-    permissions: ["instructionEdit"],
+    permissions: ["remarkDefer"],
     expiresAt: "2026-08-23T11:59:59.000Z"
   }, database);
   await handler({

@@ -23,7 +23,6 @@
     }
 
     return async function ensurePprOptionalLibrary(name) {
-      if (name === "work-permit") return loadOptionalScript("/modules/work-permit.js", () => Boolean(window.PprWorkPermit?.activate));
       if (name === "mammoth") return loadOptionalScript("/node_modules/mammoth/mammoth.browser.min.js", () => Boolean(window.mammoth?.extractRawText));
       if (name === "html2pdf") return loadOptionalScript("/node_modules/html2pdf.js/dist/html2pdf.bundle.min.js", () => typeof window.html2pdf === "function");
       if (name === "annual-pdf") {

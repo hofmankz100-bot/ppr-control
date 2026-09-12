@@ -43,7 +43,7 @@ test("operator sees the assigned workshop and can use home controls on a phone",
   await expect(page.locator("#equipmentList")).not.toContainText("Чужой пресс");
   await expect(page.locator("#directorOpenButton")).toBeHidden();
 
-  const homeControls = ["#globalReminderButton", "#alertCounter", "#downtimeOpenButton", "#workPermitButton"];
+  const homeControls = ["#globalReminderButton", "#alertCounter", "#downtimeOpenButton"];
   if (testInfo.project.use.isMobile) homeControls.push("#qrWalkButton");
   else await expect(page.locator("#qrWalkButton")).toBeHidden(); // Desktop CSS deliberately hides the camera shortcut.
   for (const selector of homeControls) {

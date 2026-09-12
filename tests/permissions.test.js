@@ -46,19 +46,19 @@ test("remark resolution executors stay restricted to field worker roles", () => 
 
 test("individual permissions only activate when enabled and unexpired", () => {
   const now = Date.parse("2026-08-23T12:00:00.000Z");
-  assert.equal(activeUserPermission({}, "instructionEdit", now), false);
-  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: false } } }, "instructionEdit", now), false);
-  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true } } }, "instructionEdit", now), true);
-  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "2026-08-23T11:59:59.000Z" } } }, "instructionEdit", now), false);
-  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "2026-08-23T12:00:01.000Z" } } }, "instructionEdit", now), true);
-  assert.equal(activeUserPermission({ permissionOverrides: { instructionEdit: { enabled: true, expiresAt: "invalid" } } }, "instructionEdit", now), false);
+  assert.equal(activeUserPermission({}, "remarkGlobalConfirm", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { remarkGlobalConfirm: { enabled: false } } }, "remarkGlobalConfirm", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { remarkGlobalConfirm: { enabled: true } } }, "remarkGlobalConfirm", now), true);
+  assert.equal(activeUserPermission({ permissionOverrides: { remarkGlobalConfirm: { enabled: true, expiresAt: "2026-08-23T11:59:59.000Z" } } }, "remarkGlobalConfirm", now), false);
+  assert.equal(activeUserPermission({ permissionOverrides: { remarkGlobalConfirm: { enabled: true, expiresAt: "2026-08-23T12:00:01.000Z" } } }, "remarkGlobalConfirm", now), true);
+  assert.equal(activeUserPermission({ permissionOverrides: { remarkGlobalConfirm: { enabled: true, expiresAt: "invalid" } } }, "remarkGlobalConfirm", now), false);
 });
 
 test("admin permission allowlist contains only supported individual capabilities", () => {
-  assert.equal(ADMIN_PERMISSION_KEYS.has("instructionEdit"), true);
+  assert.equal(ADMIN_PERMISSION_KEYS.has("instructionEdit"), false);
   assert.equal(ADMIN_PERMISSION_KEYS.has("remarkGlobalConfirm"), true);
   assert.equal(ADMIN_PERMISSION_KEYS.has("remarkDefer"), true);
   assert.equal(ADMIN_PERMISSION_KEYS.has("repeatFailureGroup"), true);
   assert.equal(ADMIN_PERMISSION_KEYS.has("monthCloseManage"), false);
-  assert.equal(ADMIN_PERMISSION_KEYS.size, 10);
+  assert.equal(ADMIN_PERMISSION_KEYS.size, 9);
 });

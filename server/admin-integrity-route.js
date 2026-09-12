@@ -3,7 +3,6 @@
 const ALLOWED_INTEGRITY_FIXES = new Set([
   "expired_sessions",
   "dangling_sessions",
-  "invalid_instruction_editors",
   "stale_alerts"
 ]);
 
@@ -74,18 +73,6 @@ function createAdminIntegrityRoute(dependencies = {}) {
         const before = (db.authSessions || []).length;
         db.authSessions = (db.authSessions || []).filter(item => !item.userId || userIds.has(String(item.userId)));
         counts.dangling_sessions = before - db.authSessions.length;
-      }
-      if (fixes.includes("invalid_instruction_editors")) {
-        const userKeys = new Set((db.users || []).flatMap(user => [user.id, user.employeeId, user.phone]
-          .map(value => String(value || "").trim())
-          .filter(Boolean)));
-        let removed = 0;
-        for (const instruction of Object.values(db.workPermitInstructions || {})) {
-          const before = (instruction.editorIds || []).length;
-          instruction.editorIds = (instruction.editorIds || []).filter(key => userKeys.has(String(key || "")));
-          removed += before - instruction.editorIds.length;
-        }
-        counts.invalid_instruction_editors = removed;
       }
       if (fixes.includes("stale_alerts")) {
         const before = (db.adminAlerts || []).length;

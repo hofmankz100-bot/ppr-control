@@ -138,8 +138,7 @@ test("admin dashboard all tab combines backups archives access and retention", a
     adminAlerts: [{ id: "alert-1" }],
     adminConfig: { companyName: "Hofmann" },
     adminConfigHistory: [{ id: "config-1", at: "at", actorName: "Admin", reason: "reason", snapshot: { secret: true } }],
-    users: [{ id: "user-1", name: "Admin", role: "editor" }],
-    workPermitInstructions: { first: { editorIds: ["user-1"] } }
+    users: [{ id: "user-1", name: "Admin", role: "editor" }]
   };
   const { handler, responses, calls } = createHarness(database);
   await handler(
@@ -153,7 +152,6 @@ test("admin dashboard all tab combines backups archives access and retention", a
   assert.equal(calls.includes("archives"), true);
   assert.equal(payload.backupRetention.deleteCount, 1);
   assert.equal(payload.trash[0].canRestore, false);
-  assert.equal(payload.access[0].instructionEditorCount, 1);
   assert.deepEqual(payload.configHistory, [{ id: "config-1", at: "at", actorName: "Admin", reason: "reason" }]);
   assert.equal(payload.postgres.connected, true);
 });

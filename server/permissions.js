@@ -26,7 +26,6 @@ const ADMIN_PERMISSION_KEYS = new Set([
   "qrJournalView",
   "equipmentEdit",
   "annualPprEdit",
-  "instructionEdit",
   "journalPrint",
   "remarkMultiClose",
   "remarkDefer",

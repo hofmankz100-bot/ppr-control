@@ -174,17 +174,6 @@ test("production API requires a server session and rate-limits failed logins", a
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.match(cookie, /^ppr_session=/);
     assert.equal((await fetch(`${baseUrl}/api/state`, { headers: { cookie, "x-app-version": APP_VERSION } })).status, 200);
-    const instructionAckResponse = await fetch(`${baseUrl}/api/work-permit-instructions/acknowledge`, {
-      method: "POST",
-      headers: { cookie, "content-type": "application/json", "x-client-protocol": CLIENT_PROTOCOL_VERSION },
-      body: JSON.stringify({ instructionId: "general", instructionTitle: "Инструкция по технике безопасности" })
-    });
-    assert.equal(instructionAckResponse.status, 200);
-    assert.equal((await instructionAckResponse.json()).ok, true);
-    const maintenanceAfterInstructionAck = await fetch(`${baseUrl}/api/admin/maintenance?tab=instructionLog`, { headers: { cookie, "x-app-version": APP_VERSION } }).then(response => response.json());
-    assert.equal(maintenanceAfterInstructionAck.instructionAcknowledgements.some(item => item.instructionId === "general" && item.actorName === editor.name), true);
-    const instructionStateAfterAck = await fetch(`${baseUrl}/api/work-permit-instructions`, { headers: { cookie, "x-client-protocol": CLIENT_PROTOCOL_VERSION } }).then(response => response.json());
-    assert.equal(instructionStateAfterAck.acknowledgedIds.includes("general"), true);
     const usersResponse = await fetch(`${baseUrl}/api/users`, { headers: { cookie, "x-app-version": APP_VERSION } });
     const users = await usersResponse.json();
     assert.equal(users.find(user => user.id === worker.id).loginDiagnostics.hasPassword, true);
@@ -399,7 +388,8 @@ test("production API requires a server session and rate-limits failed logins", a
     assert.equal(configPackage.payload?.format, "ppr-admin-config");
     assert.equal(configPackage.payload?.users, undefined);
     const configPreview = await fetch(`${baseUrl}/api/admin/config-package/preview`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ package: configPackage }) }).then(response => response.json());
-    assert.equal(typeof configPreview.summary?.instructions, "number");
+    assert.equal(typeof configPreview.summary?.departments, "number");
+    assert.equal(typeof configPreview.summary?.positions, "number");
     const unsafeConfigImport = await fetch(`${baseUrl}/api/admin/config-package/import`, { method: "POST", headers: { cookie, "content-type": "application/json", "x-app-version": APP_VERSION }, body: JSON.stringify({ package: configPackage, password: "correct-password", confirm: "ДА", reason: "Test rejection" }) });
     assert.equal(unsafeConfigImport.status, 400);
     assert.ok(maintenance.access.some(user => user.role === "editor"));
