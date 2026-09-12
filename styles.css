@@ -164,12 +164,6 @@
   .ppr-calendar-legend .missed { color: #ff9696; }
   .ppr-calendar-legend .warning { color: #ffd761; }
 
-  .ppr-calendar-weekdays,
-  .ppr-calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-  }
-
   .ppr-calendar-day,
   .ppr-calendar-day.empty {
     position: relative;
@@ -437,9 +431,6 @@ body { min-height:100vh; }
     grid-template-columns: 1fr;
   }
 
-  .worker-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 * {
@@ -7390,10 +7381,6 @@ textarea:disabled {
     overflow-wrap: anywhere;
   }
 
-  .schedule-grid {
-    display: block;
-  }
-
   .schedule-table .node-head,
   .schedule-table .node-name {
     min-width: 150px;
@@ -9973,10 +9960,6 @@ html[data-theme="dark"] .pull-refresh-indicator {
     width: 58px;
     height: 25px;
     margin-left: 3px;
-  }
-
-  .title-block {
-    min-width: 0;
   }
 
   .app-title {
