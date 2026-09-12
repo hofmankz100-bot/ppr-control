@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v850";
+const APP_VERSION = "v851";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -5834,11 +5834,6 @@ function eligibleResolutionUsers() {
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"));
 }
 
-function resolutionUpdateAuthor(entry = {}) {
-  const role = ROLE_ACCESS[entry.role]?.label || entry.role || "";
-  return entry.name ? `${entry.name}${role ? ` (${role})` : ""}` : role || "Сотрудник";
-}
-
 function approvedRemarkUsers() {
   const actor = resolutionActor();
   const byKey = new Map();
@@ -6311,7 +6306,7 @@ function remarkCardHtml(eq, nodeIndex, entry, entryIndex) {
               <strong>Что сделано</strong>
               ${resolutionUpdates.map(update => `
                 <div class="resolution-update">
-                  <strong>${escapeHtml(resolutionUpdateAuthor(update))}</strong>
+                  <strong>${escapeHtml(commentEntryAuthor(update))}</strong>
                   <small>${escapeHtml(dateTimeHuman(update.at || ""))}</small>
                   <p>${canonicalUserTextHtml(update.text || "")}</p>
                   ${update.photo ? `<img src="${update.photo}" alt="Фото выполненной работы">` : ""}
@@ -7302,7 +7297,7 @@ function allOpenCommentTargets() {
           at: entry.at || "",
           pendingConfirmation: Boolean(entry.resolutionPendingConfirmation),
           submittedAt: entry.resolutionSubmittedAt || "",
-          submittedBy: resolutionUpdateAuthor({ name: entry.resolutionSubmittedByName, role: entry.resolutionSubmittedByRole }),
+          submittedBy: commentEntryAuthor({ name: entry.resolutionSubmittedByName, role: entry.resolutionSubmittedByRole }),
           submittedComment: entry.resolutionSubmittedComment || "",
           confirmationLabel: remarkConfirmationLabel(entry, eq),
           canConfirm: canCurrentUserConfirmRemark(entry, eq),
