@@ -93,6 +93,17 @@ test("every completed repair shown in a manual repeat group reduces its executor
   assert.equal(counts.has("operator:Оператор"), false);
 });
 
+test("repeat penalties follow the saved employee key after a name change", () => {
+  const marked = [
+    event({ repeatFailureCode: "9", resolvedAt: "2026-09-01", ratingParticipants: [{ key: "employee:1", role: "mechanic", name: "Старое имя" }] }),
+    event({ repeatFailureCode: "9", resolvedAt: "2026-09-02", ratingParticipants: [{ key: "employee:1", role: "mechanic", name: "Старое имя" }] })
+  ];
+  const currentUsers = new Map([["employee:1", { key: "employee:1", role: "mechanic", name: "Новое имя" }]]);
+  const counts = employeeRepeatPenaltyCounts(marked, (role, name) => `${role}:${name}`, role => role === "mechanic", () => true, currentUsers);
+  assert.equal(counts.get("mechanic:Новое имя"), 2);
+  assert.equal(counts.has("mechanic:Старое имя"), false);
+});
+
 test("KPI subtracts repeat penalties from completed repairs and never falls below zero", () => {
   assert.equal(kpdPercent(10, 0, 1), 90);
   assert.equal(kpdPercent(8, 2, 1), 70);

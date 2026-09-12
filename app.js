@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v838-points-ledger-linked";
+const APP_VERSION = "v839-repeat-kpi-identity";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -12165,7 +12165,7 @@ function directorAnnualStats(year = directorAnnualYear()) {
       }
     }
   });
-  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerKey, isWorkerRatingRole, value => dateYearMonth(value)?.year === year)
+  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerKey, isWorkerRatingRole, value => dateYearMonth(value)?.year === year, usersByResolutionKey)
     .forEach((count, key) => {
       if (workerMap.has(key)) workerMap.get(key).repeatFailures = count;
     });
@@ -12731,7 +12731,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     }
   });
 
-  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerRatingKey, isElectromechanicRole, inSelectedMonth)
+  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerRatingKey, isElectromechanicRole, inSelectedMonth, usersByResolutionKey)
     .forEach((count, key) => {
       if (workers.has(key)) workers.get(key).repeatFailures = count;
     });

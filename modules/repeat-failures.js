@@ -184,7 +184,7 @@
     return { repeatedBreakdowns, employeeRating };
   }
 
-  function employeeRepeatPenaltyCounts(events = [], workerKey, eligibleRole, inPeriod = () => true) {
+  function employeeRepeatPenaltyCounts(events = [], workerKey, eligibleRole, inPeriod = () => true, usersByKey = null) {
     const groups = new Map();
     events.forEach(event => {
       const code = String(event?.repeatFailureCode || "").trim();
@@ -207,7 +207,8 @@
           ? savedParticipants
           : [{ role: event.resolvedByRole, name: event.resolvedByName }];
         const seen = new Set();
-        participants.forEach(person => {
+        participants.forEach(savedPerson => {
+          const person = usersByKey?.get(savedPerson?.key) || savedPerson;
           if (!eligibleRole(person?.role) || !String(person?.name || "").trim()) return;
           const key = workerKey(person.role, person.name);
           if (!key || seen.has(key)) return;
