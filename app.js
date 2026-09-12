@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v839-repeat-kpi-identity";
+const APP_VERSION = "v840-director-report-journal-linkage";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -7447,6 +7447,10 @@ function weldingMonthKey(value = new Date()) {
   return PPRModules.director.calendarMonth(value);
 }
 
+function productionWorkAcceptedAt(item = {}) {
+  return item.acceptedByRequesterAt || item.acceptedByEngineerAt || item.completedAt || "";
+}
+
 function weldingPendingCount() {
   const actor = weldingActor();
   return weldingRecords().filter(item =>
@@ -7714,7 +7718,7 @@ function renderWeldingJournal() {
   if (!ui.weldingPanel) return;
   const month = current.weldingMonth || PPRModules.director.calendarMonth(new Date());
   const records = weldingRecords().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const monthly = records.filter(item => weldingMonthKey(item.completedAt || item.createdAt) === month);
+  const monthly = records.filter(item => item.status === "completed" && weldingMonthKey(productionWorkAcceptedAt(item)) === month);
   ui.subtitle.textContent = "Сварочные работы";
   ui.weldingPanel.innerHTML = `<div class="panel-head compact"><div><h1>Сварщик и токарь</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("welding")}
     ${isWelderUser() ? `<div class="welding-role-notice"><strong>Режим сварщика</strong><span>Новые заявки можно принять в работу. После принятия откроются поля материала, положения шва и сварочных материалов.</span></div>` : `<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Вы можете отправить новую заявку сварщикам и следить за её состоянием.</span></div>`}
@@ -7725,7 +7729,7 @@ function renderWeldingJournal() {
       <label class="wide"><span><b>4</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label>
     </div><button type="submit" class="welding-send-button">Отправить сварщикам</button></form>
     <div class="welding-toolbar"><label>Месяц журнала <input type="month" data-welding-month value="${escapeHtml(month)}"></label><button type="button" data-welding-print>Печатать журнал</button></div>
-    <div class="welding-summary"><span>Новые: <b>${records.filter(x => x.status === "new").length}</b></span><span>В работе: <b>${records.filter(x => ["accepted", "returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x => x.status === "awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x => x.status === "completed").length}</b></span></div>
+    <div class="welding-summary"><span>Новые: <b>${records.filter(x => x.status === "new").length}</b></span><span>В работе: <b>${records.filter(x => ["accepted", "returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x => x.status === "awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.length}</b></span></div>
     <div class="welding-list">${records.length ? records.map(weldingRecordCard).join("") : `<div class="empty-state">Заявок на сварочные работы пока нет.</div>`}</div>`;
   ui.weldingPanel.querySelector("#weldingRequestForm")?.addEventListener("submit", event => { event.preventDefault(); createWeldingRequest(event.currentTarget); });
   bindProductionTabs();
@@ -7742,12 +7746,12 @@ function renderWeldingJournal() {
 }
 
 function printWeldingJournal(month = PPRModules.director.calendarMonth(new Date())) {
-  const rows = weldingRecords().filter(item => item.status === "completed" && weldingMonthKey(item.completedAt) === month).sort((a,b) => String(a.completedAt).localeCompare(String(b.completedAt)));
+  const rows = weldingRecords().filter(item => item.status === "completed" && weldingMonthKey(productionWorkAcceptedAt(item)) === month).sort((a,b) => productionWorkAcceptedAt(a).localeCompare(productionWorkAcceptedAt(b)));
   const win = window.open("", "_blank", "width=1400,height=900");
   if (!win) return window.alert("Разрешите всплывающие окна для печати журнала.");
   const company = state.adminConfig?.companyName || "Организация";
   const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Все исполнители</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(productionParticipants(item,"welding").map(person => `${person.name}${person.stamp ? ` · клеймо ${person.stamp}` : ""}${person.certificate ? ` · уд. ${person.certificate}` : ""}`).join("\n") || "—")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(item.acceptedByRequesterAt))}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
+  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал сварочных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;color:#000}h1{text-align:center;font-size:18px;margin:0 0 6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;vertical-align:middle;overflow-wrap:anywhere}th{background:#e5e7eb}.sign{margin-top:12px;display:flex;justify-content:space-between;font-size:10px}.actions{text-align:center;margin-top:14px}@media print{.actions{display:none}}</style></head><body><h1>ЖУРНАЛ СВАРОЧНЫХ РАБОТ</h1><div class="meta"><span>Организация: ${escapeHtml(company)}</span><span>Период: ${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата, время заявки</th><th>Заказ / чертёж / поломка</th><th>Изделие, узел; № шва</th><th>Материал, марка / толщина</th><th>Вид и положение шва</th><th>Электрод / проволока / флюс / газ</th><th>Все исполнители</th><th>Дата, время работ</th></tr></thead><tbody>${rows.length ? rows.map((item,index) => `<tr><td><b>${index+1}</b><br>${escapeHtml(item.createdByName || "—")}</td><td>${escapeHtml(dateTimeHuman(item.createdAt))}</td><td>${escapeHtml(weldingTypeLabel(item.requestType))}${item.drawingNumber ? `<br>${escapeHtml(item.drawingNumber)}` : ""}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.material || "—")}</td><td>${escapeHtml(weldingPositionLabel(item.jointPosition))}</td><td>${escapeHtml(item.consumables || "—")}${item.workComment ? `<br>${escapeHtml(item.workComment)}` : ""}</td><td>${escapeHtml(productionParticipants(item,"welding").map(person => `${person.name}${person.stamp ? ` · клеймо ${person.stamp}` : ""}${person.certificate ? ` · уд. ${person.certificate}` : ""}`).join("\n") || "—")}</td><td>${escapeHtml(dateTimeHuman(item.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(productionWorkAcceptedAt(item)))}</td></tr>`).join("") : `<tr><td colspan="9" style="height:45mm;text-align:center">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><div class="sign"><span>Ответственный за сварочные работы: __________ / __________</span><span>Ответственный за контроль качества: __________ / __________</span></div><div class="actions"><button onclick="window.print()">Печатать</button></div></body></html>`);
   finalizeJournalPopup(win);
 }
 
@@ -7820,13 +7824,13 @@ function turningCard(item) {
 }
 
 function renderTurningJournal() {
-  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||PPRModules.director.calendarMonth(new Date()); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>weldingMonthKey(x.completedAt||x.createdAt)===month);
+  updateWeldingBadge(); if(!ui.weldingPanel)return; const month=current.turningMonth||PPRModules.director.calendarMonth(new Date()); const records=turningRecords().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))); const monthly=records.filter(x=>x.status==="completed"&&weldingMonthKey(productionWorkAcceptedAt(x))===month);
   ui.subtitle.textContent="Токарные работы";
-  ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку или присоединитесь к совместной работе.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label><label class="wide"><span><b>6</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.filter(x=>x.status==="completed").length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
+  ui.weldingPanel.innerHTML=`<div class="panel-head compact"><div><h1>Производственные работы</h1><p>Заявки, выполнение и журналы</p></div></div>${productionTabs("turning")}${isTurnerUser()?`<div class="welding-role-notice"><strong>Режим токаря</strong><span>Примите заявку или присоединитесь к совместной работе.</span></div>`:`<div class="welding-role-notice requester"><strong>Режим заявителя</strong><span>Создайте заявку токарю и следите за её выполнением.</span></div>`}<form class="welding-request-form" id="turningRequestForm"><h2>Новая заявка токарю</h2><p class="welding-form-help">Имя, дата и время добавятся автоматически.</p><div class="welding-form-grid"><label><span><b>1</b> Вид работы</span><select name="requestType"><option value="manufacture">Изготовление</option><option value="restore">Восстановление</option><option value="drawing">По чертежу</option><option value="emergency">Аварийный ремонт</option></select></label><label><span><b>2</b> Номер чертежа</span><input name="drawingNumber" placeholder="Если имеется"></label><label><span><b>3</b> Количество</span><input name="quantity" inputmode="numeric" placeholder="Штук"></label><label><span><b>4</b> Требуемый срок</span><input type="date" name="dueDate"></label><label class="wide"><span><b>5</b> Деталь и требуемая обработка</span><textarea name="description" required placeholder="Название детали, размеры и что требуется выполнить"></textarea></label><label class="wide"><span><b>6</b> Фото к заявке</span><input name="requestPhoto" type="file" accept="image/*" capture="environment"></label></div><button type="submit" class="welding-send-button">Отправить токарю</button></form><div class="welding-toolbar"><label>Месяц журнала <input type="month" data-turning-month value="${escapeHtml(month)}"></label><button type="button" data-turning-print>Печатать журнал</button></div><div class="welding-summary"><span>Новые: <b>${records.filter(x=>x.status==="new").length}</b></span><span>В работе: <b>${records.filter(x=>["accepted","returned"].includes(x.status)).length}</b></span><span>Ожидает приёмки: <b>${records.filter(x=>x.status==="awaitingAcceptance").length}</b></span><span>Принято за месяц: <b>${monthly.length}</b></span></div><div class="welding-list">${records.length?records.map(turningCard).join(""):`<div class="empty-state">Заявок на токарные работы пока нет.</div>`}</div>`;
   bindProductionTabs(); ui.weldingPanel.querySelector("#turningRequestForm")?.addEventListener("submit",e=>{e.preventDefault();createTurningRequest(e.currentTarget)}); ui.weldingPanel.querySelector("[data-turning-month]")?.addEventListener("change",e=>{current.turningMonth=e.currentTarget.value||PPRModules.director.calendarMonth(new Date());renderTurningJournal()}); ui.weldingPanel.querySelector("[data-turning-print]")?.addEventListener("click",()=>printTurningJournal(month)); ui.weldingPanel.querySelectorAll("[data-turning-id]").forEach(card=>{const item=state.turningJournal?.[card.dataset.turningId]; card.querySelector("[data-turning-accept]")?.addEventListener("click",()=>acceptTurningRequest(item)); card.querySelector("[data-turning-join]")?.addEventListener("click",()=>joinProductionWork(item,"turning")); card.querySelector("[data-turning-requester-accept]")?.addEventListener("click",()=>acceptTurningWork(item)); card.querySelector("[data-turning-requester-return]")?.addEventListener("click",()=>returnTurningWork(item)); card.querySelector(".turning-complete-form")?.addEventListener("submit",e=>{e.preventDefault();completeTurningRequest(item,e.currentTarget)})});
 }
 
-function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(x.completedAt)===month).sort((a,b)=>String(a.completedAt).localeCompare(String(b.completedAt))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(x.acceptedByRequesterAt))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
+function printTurningJournal(month=PPRModules.director.calendarMonth(new Date())) { const rows=turningRecords().filter(x=>x.status==="completed"&&weldingMonthKey(productionWorkAcceptedAt(x))===month).sort((a,b)=>productionWorkAcceptedAt(a).localeCompare(productionWorkAcceptedAt(b))); const win=window.open("","_blank","width=1400,height=900"); if(!win)return window.alert("Разрешите всплывающие окна для печати журнала."); const company=state.adminConfig?.companyName||"Организация", monthName=new Date(`${month}-01T00:00:00`).toLocaleDateString("ru-RU",{month:"long",year:"numeric"}); win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Журнал токарных работ</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial}h1{text-align:center;font-size:18px}.meta{display:flex;justify-content:space-between;font-size:11px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere}th{background:#e5e7eb}@media print{button{display:none}}</style></head><body><h1>ЖУРНАЛ ТОКАРНЫХ РАБОТ</h1><div class="meta"><span>${escapeHtml(company)}</span><span>${escapeHtml(monthName)}</span><span>Лист № 1</span></div><table><thead><tr><th>№ / Заявитель</th><th>Дата заявки</th><th>Деталь / чертёж</th><th>Материал / заготовка</th><th>Станок</th><th>Операции</th><th>Изготовлено / годных / брак</th><th>Контрольные размеры</th><th>Все исполнители / даты</th></tr></thead><tbody>${rows.length?rows.map((x,i)=>`<tr><td><b>${i+1}</b><br>${escapeHtml(x.createdByName||"—")}</td><td>${escapeHtml(dateTimeHuman(x.createdAt))}</td><td>${escapeHtml(x.description)}<br>${escapeHtml(x.drawingNumber||"")}</td><td>${escapeHtml(x.material||"—")}<br>${escapeHtml(x.blankSize||"")}</td><td>${escapeHtml(x.machine||"—")}</td><td>${escapeHtml(x.operations||"—")}</td><td>${escapeHtml(x.madeQty||"0")} / ${escapeHtml(x.goodQty||"0")} / ${escapeHtml(x.rejectQty||"0")}</td><td>${escapeHtml(x.measurements||"—")}</td><td>${escapeHtml(productionParticipantNames(x,"turning")||"—")}<br>${escapeHtml(dateTimeHuman(x.completedAt))}<br>Принято: ${escapeHtml(dateTimeHuman(productionWorkAcceptedAt(x)))}</td></tr>`).join(""):`<tr><td colspan="9">За выбранный месяц принятых работ нет</td></tr>`}</tbody></table><button onclick="window.print()">Печатать</button></body></html>`); finalizeJournalPopup(win); }
 
 function show(view, push = true) {
   if (!canOpenView(view)) view = homeViewForProfile(profile?.role);
@@ -10484,18 +10488,48 @@ function directorOpenRemarks() {
     const [equipmentIdRaw, nodeIndexRaw, date] = recordKey.split(":");
     const eq = equipmentById(Number(equipmentIdRaw));
     const item = rec?.to;
-    if (!eq || !item || !countedOpenRemarkEntries(item).length) return;
-    if (!operationalControlEnabled(eq, Number(nodeIndexRaw), date)) return;
-    result.push({
-      equipmentId: eq.id,
-      equipment: eq.name,
-      node: eq.nodes[Number(nodeIndexRaw)] || "",
-      date,
-      startedAt: firstCommentTime(item) || `${date}T00:00:00`,
-      item
+    if (!eq || !item) return;
+    countedOpenRemarkEntries(item).forEach(entry => {
+      const startedAt = entry.at || item.commentUpdatedAt || `${date}T00:00:00`;
+      if (!operationalControlEnabled(eq, Number(nodeIndexRaw), startedAt)) return;
+      result.push({
+        equipmentId: eq.id,
+        equipment: eq.name,
+        node: eq.nodes[Number(nodeIndexRaw)] || "",
+        date,
+        startedAt,
+        entry,
+        item
+      });
     });
   });
   return result;
+}
+
+function directorJournalState(eq) {
+  if (eq.area === COMPRESSOR_JOURNAL_AREA) {
+    const overdue = compressorJournalIncompleteDays(eq.area);
+    return { color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green", text: overdue ? overdueDaysText(overdue) : "Выполнено" };
+  }
+  if (eq.area === GAS_JOURNAL_AREA) {
+    const overdue = gasJournalIncompleteDays();
+    return { color: overdue ? (overdue >= 3 ? "red" : "yellow") : "green", text: overdue ? overdueDaysText(overdue) : "Выполнено" };
+  }
+  const walk = directorTodayWalk(eq);
+  return {
+    color: walk.done === 0 ? "red" : walk.done < walk.total ? "yellow" : "green",
+    text: walk.done === walk.total ? "Выполнено" : walk.done ? `${walk.done}/${walk.total} узлов` : "Не заполнено"
+  };
+}
+
+function directorResolvedRemarkCount(date = todayISO()) {
+  const accepted = new Set();
+  annualRepairEvents(null).forEach(event => {
+    if (event.type !== "remark") return;
+    const acceptedAt = event.confirmedAt || event.resolvedAt || "";
+    if (PPRModules.director.calendarDate(acceptedAt) === date) accepted.add(event.resolutionKey || event.sourceId);
+  });
+  return accepted.size;
 }
 
 function isPprWorkday(date) {
@@ -11876,7 +11910,7 @@ function directorRemarkOverdue(item) {
 function directorRemarkDetailRows(remarks = directorOpenRemarks()) {
   if (!remarks.length) return `<div class="director-empty-ok"><span class="traffic-dot"></span><strong>Открытых замечаний нет</strong></div>`;
   return remarks.map(remark => {
-    const entry = firstRemarkEntry(remark.item);
+    const entry = remark.entry || firstRemarkEntry(remark.item);
     const overdue = directorRemarkOverdue(remark);
     const author = entry?.name || remark.item?.commentOwnerName || "";
     return `
@@ -13062,13 +13096,14 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
       if (!operationalControlEnabled(eq, Number(nodeIndexRaw), createdAt)) return;
       const resolvedAt = entry.resolved ? entry.resolvedAt || "" : "";
       const createdPeriod = dateYearMonth(createdAt);
-      const resolvedPeriod = dateYearMonth(resolvedAt);
+      const acceptedAt = entry.confirmedAt || resolvedAt;
+      const acceptedPeriod = dateYearMonth(acceptedAt);
       const createdInMonth = createdPeriod?.year === year && createdPeriod.month === month;
-      const resolvedInMonth = resolvedPeriod?.year === year && resolvedPeriod.month === month;
+      const acceptedInMonth = acceptedPeriod?.year === year && acceptedPeriod.month === month;
       const openNow = !entry.resolved;
       const createdMs = Date.parse(createdAt || "");
       const openForReport = openNow && Number.isFinite(createdMs) && createdMs < range.end.getTime();
-      if (!createdInMonth && !resolvedInMonth && !openForReport) return;
+      if (!createdInMonth && !acceptedInMonth && !openForReport) return;
       remarkItems.push({
         equipment: eq.name || "",
         area: eq.area || "",
@@ -13076,12 +13111,13 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
         date,
         createdAt,
         resolvedAt,
+        acceptedAt,
         createdInMonth,
-        resolvedInMonth,
+        acceptedInMonth,
         open: openNow,
         author: entry.name || item.commentOwnerName || "",
         authorRole: entry.role || item.commentOwnerRole || "",
-        resolvedBy: entry.resolvedByName || "",
+        resolvedBy: resolutionParticipantsText(entry, entry.resolvedByName || ""),
         resolvedByRole: entry.resolvedByRole || "",
         confirmedAt: entry.confirmedAt || "",
         confirmedBy: entry.confirmedByName || "",
@@ -13120,7 +13156,7 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
     .filter(item => item.works.length)
     .sort((a, b) => b.date.localeCompare(a.date));
   const createdRemarks = remarkItems.filter(item => item.createdInMonth);
-  const closedRemarks = remarkItems.filter(item => item.resolvedInMonth);
+  const closedRemarks = remarkItems.filter(item => item.acceptedInMonth);
   const openRemarks = remarkItems
     .filter(item => item.open)
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -13164,8 +13200,8 @@ function engineerMonthlyStats(monthKey = current.engineerReportMonth) {
   };
 }
 
-function engineerReportRows(items, emptyText, renderRow) {
-  if (!items.length) return `<tr><td colspan="6" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
+function engineerReportRows(items, emptyText, renderRow, columns = 6) {
+  if (!items.length) return `<tr><td colspan="${columns}" class="engineer-report-empty">${escapeHtml(emptyText)}</td></tr>`;
   return items.map(renderRow).join("");
 }
 
@@ -13264,7 +13300,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       }
       return `
         <tr>
-          <td>${escapeHtml(dateTimeHuman(item.resolvedAt))}</td>
+          <td>${escapeHtml(dateTimeHuman(item.acceptedAt || item.resolvedAt))}</td>
           <td>${escapeHtml(item.area || "-")}</td>
           <td>${escapeHtml(item.equipment || "-")}</td>
           <td>${escapeHtml(item.node || "-")}</td>
@@ -13326,11 +13362,13 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${index + 1}</td>
         <td>${escapeHtml(worker.name)}</td>
         <td>${escapeHtml(worker.roleLabel)}</td>
+        <td>${worker.points}</td>
         <td>${worker.closed}</td>
         <td>${worker.installs}</td>
         <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}${worker.avgMs ? ` · ${escapeHtml(durationText(worker.avgMs))}` : ""} · повторов: ${worker.repeatFailures}</td>
       </tr>
-    `
+    `,
+    7
   );
   return `
     <article class="engineer-report ${printable ? "printable" : ""}">
@@ -13350,14 +13388,14 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <div><strong>${durationText(stats.downtimeMs)}</strong><span>простой за месяц</span></div>
         <div><strong>${stats.downtimeItems.length}</strong><span>остановок всего</span></div>
         <div><strong>${stats.createdRemarks.length}</strong><span>новых замечаний</span></div>
-        <div><strong>${stats.closedRemarks.length}</strong><span>закрыто работ</span></div>
+        <div><strong>${stats.closedRemarks.length}</strong><span>принято замечаний</span></div>
         <div><strong>${stats.openRemarks.length}</strong><span>открыто сейчас</span></div>
         <div><strong>${stats.qrPercent}%</strong><span>QR-обходы ${stats.monthStats.qrDone}/${stats.monthStats.qrPlan}</span></div>
         <div><strong>${stats.pprSheets.filter(item => item.completion.complete).length}/${stats.pprSheets.length}</strong><span>листов ППР выполнено</span></div>
       </div>
       <div class="engineer-report-year-strip">
         <div><strong>${annual.repeatedBreakdowns.length}</strong><span>повторных проблем за весь период</span></div>
-        <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер по выполненным работам${bestEmployee ? `: ${bestEmployee.closed}` : ""}</span></div>
+        <div><strong>${bestEmployee ? escapeHtml(bestEmployee.name) : "нет данных"}</strong><span>лидер годового рейтинга${bestEmployee ? `: ${bestEmployee.points} баллов, КПД ${bestEmployee.kpd ?? 0}%` : ""}</span></div>
       </div>
       <section class="engineer-report-note">
         <strong>Как объяснить директору:</strong>
@@ -13388,8 +13426,8 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <table><thead><tr><th>Мероприятия</th><th>Оборудование</th><th>Выполнено</th><th>Повторов</th><th>Простой</th><th>№ / Название поломки</th></tr></thead><tbody>${repeatRows}</tbody></table>
       </section>
       <section class="engineer-report-block">
-        <h3>6. Рейтинг сотрудников по выполненным работам за ${annual.year}</h3>
-        <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
+        <h3>6. Годовой рейтинг электромехаников за ${annual.year}</h3>
+        <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Баллы</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
       </section>
       <div class="engineer-report-signatures">
         <div>Инженер: ____________________</div>
@@ -13484,11 +13522,9 @@ function directorControlTotals() {
   const done = walks.reduce((sum, walk) => sum + walk.done, 0);
   const total = walks.reduce((sum, walk) => sum + walk.total, 0);
   const allRemarks = directorOpenRemarks();
-  const remarks = directorRecentRemarks();
-  const archivedRemarks = directorArchivedRemarks();
-  const resolvedToday = Object.values(state.checks || {}).filter(rec =>
-    String(rec?.to?.resolvedAt || "").slice(0, 10) === todayISO()
-  ).length;
+  const remarks = allRemarks.filter(remark => Date.now() - Date.parse(remark.startedAt || "") < 86400000);
+  const archivedRemarks = allRemarks.filter(remark => Date.now() - Date.parse(remark.startedAt || "") >= 86400000);
+  const resolvedToday = directorResolvedRemarkCount();
   return {
     equipment,
     done,

@@ -148,10 +148,11 @@ test("aggregate downtime journal keeps month, area, equipment and production exc
 
 test("actual welding/turning screen totals and printed accepted rows use the same factory month", () => {
   let printed = "";
-  const records = [{ id: "boundary", status: "completed", completedAt: "2026-08-31T20:00:00Z", createdAt: "2026-08-20T00:00:00Z", description: "BOUNDARY" },
-    { id: "previous", status: "completed", completedAt: "2026-08-31T18:59:59Z", createdAt: "2026-08-20T00:00:00Z", description: "PREVIOUS" },
+  const records = [{ id: "boundary", status: "completed", completedAt: "2026-08-31T18:00:00Z", acceptedByRequesterAt: "2026-08-31T20:00:00Z", createdAt: "2026-08-20T00:00:00Z", description: "BOUNDARY" },
+    { id: "engineer", status: "completed", completedAt: "2026-08-31T18:00:00Z", acceptedByEngineerAt: "2026-08-31T21:00:00Z", createdAt: "2026-08-20T00:00:00Z", description: "ENGINEER" },
+    { id: "previous", status: "completed", completedAt: "2026-08-31T18:00:00Z", acceptedByRequesterAt: "2026-08-31T18:59:59Z", createdAt: "2026-08-20T00:00:00Z", description: "PREVIOUS" },
     { id: "unaccepted", status: "awaitingAcceptance", completedAt: "2026-08-31T20:00:00Z", description: "UNACCEPTED" }];
-  const h = harness(["weldingMonthKey", "weldingRecords", "turningRecords", "renderWeldingJournal", "renderTurningJournal", "printWeldingJournal", "printTurningJournal"], {
+  const h = harness(["weldingMonthKey", "productionWorkAcceptedAt", "weldingRecords", "turningRecords", "renderWeldingJournal", "renderTurningJournal", "printWeldingJournal", "printTurningJournal"], {
     state: { weldingJournal: Object.fromEntries(records.map(row => [row.id, row])), turningJournal: Object.fromEntries(records.map(row => [row.id, row])) },
     current: { productionTab: "welding", weldingMonth: "2026-09", turningMonth: "2026-09" },
     ui: { subtitle: {}, weldingPanel: { querySelector: () => null, querySelectorAll: () => [] } },
@@ -160,10 +161,11 @@ test("actual welding/turning screen totals and printed accepted rows use the sam
     dateTimeHuman: value => value || "", weldingTypeLabel: () => "Type", weldingPositionLabel: () => "Position",
     productionParticipants: () => [], productionParticipantNames: () => "Worker", finalizeJournalPopup() {}
   });
+  assert.equal(h.productionWorkAcceptedAt({ completedAt: "legacy" }), "legacy", "legacy completed records remain visible");
   h.window.open = () => ({ document: { write: html => { printed = html; } } });
   for (const [render, print] of [["renderWeldingJournal", "printWeldingJournal"], ["renderTurningJournal", "printTurningJournal"]]) {
-    h[render](); assert.match(h.ui.weldingPanel.innerHTML, /Принято за месяц: <b>1<\/b>/);
-    h[print]("2026-09"); assert.match(printed, /BOUNDARY/); assert.doesNotMatch(printed, /PREVIOUS|UNACCEPTED/);
+    h[render](); assert.match(h.ui.weldingPanel.innerHTML, /Принято за месяц: <b>2<\/b>/);
+    h[print]("2026-09"); assert.match(printed, /BOUNDARY/); assert.match(printed, /ENGINEER/); assert.match(printed, /2026-08-31T21:00:00Z/); assert.doesNotMatch(printed, /PREVIOUS|UNACCEPTED/);
   }
 });
 
@@ -313,4 +315,55 @@ test("accepted work, KPI counters and points credit the same participants in the
     ["Lead", 2, 1, 33],
     ["Partner", 2, 1, 30]
   ]);
+});
+
+test("director control counts every open remark and every accepted remark instead of node summaries", () => {
+  const equipment = { id: 1, name: "Press", area: "A", nodes: ["Node"] };
+  const entries = [
+    { id: "first", at: "2026-09-12T08:00:00Z", text: "First" },
+    { id: "second", at: "2026-09-12T09:00:00Z", text: "Second" }
+  ];
+  const h = harness(["directorOpenRemarks", "directorResolvedRemarkCount"], {
+    state: { checks: { "1:0:2026-09-12": { to: { commentLog: entries } } } },
+    equipmentById: () => equipment,
+    countedOpenRemarkEntries: item => item.commentLog,
+    operationalControlEnabled: () => true,
+    todayISO: () => "2026-09-12",
+    annualRepairEvents: () => [
+      { type: "remark", resolutionKey: "one", confirmedAt: "2026-09-12T08:00:00Z" },
+      { type: "remark", resolutionKey: "two", confirmedAt: "2026-09-12T09:00:00Z" },
+      { type: "remark", resolutionKey: "two", confirmedAt: "2026-09-12T09:00:00Z" },
+      { type: "remark", resolutionKey: "old", resolvedAt: "2026-09-11T09:00:00Z" },
+      { type: "breakdown", sourceId: "stop", resolvedAt: "2026-09-12T10:00:00Z" }
+    ]
+  });
+  assert.deepEqual(Array.from(h.directorOpenRemarks(), item => item.entry.id), ["first", "second"]);
+  assert.equal(h.directorResolvedRemarkCount(), 2);
+});
+
+test("director monthly report assigns accepted remarks to confirmation month and shows every performer", () => {
+  const equipment = { id: 1, name: "Press", area: "A", nodes: ["Node"] };
+  const entry = {
+    id: "accepted", text: "Repair", resolved: true,
+    at: "2026-08-30T08:00:00Z", resolvedAt: "2026-08-31T18:00:00Z", confirmedAt: "2026-08-31T20:00:00Z",
+    resolutionCompletedParticipants: [{ role: "mechanic", name: "Lead" }, { role: "mechanic", name: "Partner" }]
+  };
+  const state = { checks: { "1:0:2026-08-30": { to: { commentLog: [entry] } } }, pprSheets: {} };
+  const emptyMonth = { qrPlan: 0, qrDone: 0 };
+  const h = harness(["monthRange", "dateYearMonth", "parseMonthKey", "monthDisplayName", "engineerMonthlyStats"], {
+    current: { engineerReportMonth: "2026-09" }, state,
+    directorAnnualStats: () => ({ months: Array.from({ length: 12 }, () => ({ ...emptyMonth })) }),
+    directorAnnualEmptyMonths: () => Array.from({ length: 12 }, () => ({ ...emptyMonth })),
+    engineerAnnualAnalysis: () => ({ repeatedBreakdowns: [], employeeRating: [], year: 2026 }),
+    equipmentById: () => equipment, visibleCommentEntries: item => item.commentLog,
+    isDowntimeCommentEntry: () => false, remarkDeferred: () => false, operationalControlEnabled: () => true,
+    resolutionParticipantsText: item => item.resolutionCompletedParticipants.map(person => person.name).join(", "),
+    downtimes: () => [], pprCalendarMonthData: () => ({ itemsByDate: {} }), allEquipment: () => [],
+    pprSheetCompletion: () => ({}), directorFactoryReliabilityScore: () => 100, downtimeOverlapMs: () => 0
+  });
+  assert.equal(h.engineerMonthlyStats("2026-08").closedRemarks.length, 0);
+  const september = h.engineerMonthlyStats("2026-09");
+  assert.equal(september.closedRemarks.length, 1);
+  assert.equal(september.closedRemarks[0].acceptedAt, entry.confirmedAt);
+  assert.equal(september.closedRemarks[0].resolvedBy, "Lead, Partner");
 });

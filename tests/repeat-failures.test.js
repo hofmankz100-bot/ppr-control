@@ -130,6 +130,17 @@ test("all-history analysis joins months and years but isolates equipment and use
   assert.ok(html.includes("2025-08-01") && html.includes("2026-09-01"));
   assert.ok(!html.includes("WRONG EQUIPMENT") && !html.includes("null год"));
 });
+
+test("engineer report keeps the director annual employee rating order", () => {
+  const workers = [
+    { name: "KPI leader", closed: 2, installs: 0, downtimeClosed: 0, kpd: 100, points: 20 },
+    { name: "Most closed", closed: 8, installs: 0, downtimeClosed: 0, kpd: 75, points: 80 }
+  ];
+  const rating = buildAnalysis([], { workers }).employeeRating;
+  assert.deepEqual(rating.map(worker => worker.name), ["KPI leader", "Most closed"]);
+  assert.deepEqual(workers.map(worker => worker.name), ["KPI leader", "Most closed"]);
+});
+
 test("detail journal paginates marked records and retains aggregate repair details", () => {
   const marked = Array.from({ length: 11 }, () => event({ repeatFailureCode: "5", text: "<script>bad</script>", resolvedAt: "2026-08-02T09:00:00Z", resolvedComment: "Заменили насос", ratingParticipants: [{ name: "Иван", role: "mechanic" }, { name: "Нурлан", role: "mechanic" }], confirmedByName: "Инженер", confirmedAt: "2026-08-02T10:00:00Z" }));
   const html = journalHtml({ manualCode: "5", equipment: "Пресс", events: [...marked, event({ text: "UNMARKED" }), event({ repeatFailureCode: "6", text: "OTHER" })] }, 2026, helpers);

@@ -179,7 +179,6 @@
       .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"));
     const employeeRating = annualStats.workers
       .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
-      .sort((a, b) => b.closed - a.closed || b.installs - a.installs || (b.kpd ?? 0) - (a.kpd ?? 0) || a.name.localeCompare(b.name, "ru"))
       .slice(0, 12);
     return { repeatedBreakdowns, employeeRating };
   }

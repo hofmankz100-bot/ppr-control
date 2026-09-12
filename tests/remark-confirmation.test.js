@@ -2127,6 +2127,17 @@ test("engineer PPR report groups completed work compactly", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.engineer-ppr-progress/);
 });
 
+test("director control and engineer report use live journal and accepted-work data", () => {
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(clientSource, /function directorJournalState\(eq\)/);
+  assert.match(clientSource, /function directorResolvedRemarkCount\(date = todayISO\(\)\)/);
+  assert.match(clientSource, /const resolvedToday = directorResolvedRemarkCount\(\)/);
+  assert.match(clientSource, /const acceptedAt = entry\.confirmedAt \|\| resolvedAt/);
+  assert.match(clientSource, /resolvedBy: resolutionParticipantsText\(entry, entry\.resolvedByName \|\| ""\)/);
+  assert.match(clientSource, /<th>Баллы<\/th><th>Выполнено<\/th>/);
+  assert.doesNotMatch(clientSource, /function directorRecentRemarks|function directorArchivedRemarks/);
+});
+
 test("closing without score replaces the check record on every realtime client", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
