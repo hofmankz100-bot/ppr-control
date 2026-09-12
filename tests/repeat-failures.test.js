@@ -6,7 +6,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const context = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8"), context);
-const { activeGroups, buildAnalysis, editorHtml, employeeRepeatCounts, journalHtml } = context.window.PPRModules.repeatFailures;
+const { activeGroups, buildAnalysis, editorHtml, employeeRepeatPenaltyCounts, journalHtml, kpdPercent } = context.window.PPRModules.repeatFailures;
 test("journal stylesheet is publicly served without exposing other server files", () => {
   const { isPublicStaticPath } = require("../server/static-files");
   assert.equal(isPublicStaticPath("modules/repeat-failures.css"), true);
@@ -73,17 +73,27 @@ test("the group selector reuses active groups for the same equipment only", () =
   assert.match(html, /＋ Новая группа/);
 });
 
-test("repeat counts are reporting-only and include eligible workers once per resolved record", () => {
+test("repeat penalties belong to the previous repair and exclude the first occurrence", () => {
   const marked = [
-    event({ repeatFailureCode: "5", resolvedAt: "2026-09-01", ratingParticipants: [{ role: "mechanic", name: "Иван" }, { role: "mechanic", name: "Иван" }] }),
-    event({ repeatFailureCode: "5", resolvedAt: "2026-09-02", ratingParticipants: [{ role: "electrician", name: "Пётр" }, { role: "operator", name: "Оператор" }] }),
-    event({ repeatFailureCode: "5", repeatFailureCycleId: "closed-cycle", resolvedAt: "2026-09-03", resolvedByRole: "mechanic", resolvedByName: "Иван" }),
-    event({ repeatFailureCode: "5", repeatFailureCycleId: "closed-cycle", resolvedAt: "2026-08-30", resolvedByRole: "mechanic", resolvedByName: "Иван" })
+    event({ repeatFailureCode: "5", createdAt: "2026-09-01", resolvedAt: "2026-09-01", resolvedByRole: "mechanic", resolvedByName: "Иван" }),
+    event({ repeatFailureCode: "5", createdAt: "2026-09-03", resolvedAt: "2026-09-03", resolvedByRole: "electrician", resolvedByName: "Пётр" }),
+    event({ repeatFailureCode: "5", createdAt: "2026-09-05" }),
+    event({ repeatFailureCode: "6", createdAt: "2026-09-01", resolvedAt: "2026-09-01", ratingParticipants: [{ role: "mechanic", name: "Иван" }, { role: "mechanic", name: "Иван" }] }),
+    event({ repeatFailureCode: "6", createdAt: "2026-09-02" }),
+    event({ repeatFailureCode: "7", createdAt: "2026-09-01", resolvedAt: "2026-09-01", resolvedByRole: "operator", resolvedByName: "Оператор" }),
+    event({ repeatFailureCode: "7", createdAt: "2026-09-02" })
   ];
-  const counts = employeeRepeatCounts(marked, (role, name) => `${role}:${name}`, role => ["mechanic", "electrician"].includes(role), date => date.startsWith("2026-09"));
+  const counts = employeeRepeatPenaltyCounts(marked, (role, name) => `${role}:${name}`, role => ["mechanic", "electrician"].includes(role), date => date.startsWith("2026-09"));
   assert.equal(counts.get("mechanic:Иван"), 2);
   assert.equal(counts.get("electrician:Пётр"), 1);
   assert.equal(counts.has("operator:Оператор"), false);
+});
+
+test("KPI subtracts repeat penalties from completed repairs and never falls below zero", () => {
+  assert.equal(kpdPercent(10, 0, 1), 90);
+  assert.equal(kpdPercent(8, 2, 1), 70);
+  assert.equal(kpdPercent(1, 0, 3), 0);
+  assert.equal(kpdPercent(0, 0, 2), null);
 });
 
 test("all-history analysis joins months and years but isolates equipment and uses the latest group name", () => {

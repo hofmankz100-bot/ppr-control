@@ -79,7 +79,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v826-compact-ui";
+const APP_VERSION = "v827-repeat-kpd";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -12744,6 +12744,7 @@ function annualRepairEvents(year = directorAnnualYear()) {
 function directorAnnualStats(year = directorAnnualYear()) {
   const months = directorAnnualEmptyMonths(year);
   const repairEvents = annualRepairEvents(year);
+  const allRepairEvents = annualRepairEvents(null);
   repairEvents.forEach(event => {
     const created = dateYearMonth(event.createdAt);
     const resolved = dateYearMonth(event.resolvedAt);
@@ -12831,15 +12832,14 @@ function directorAnnualStats(year = directorAnnualYear()) {
       }
     }
   });
-  PPRModules.repeatFailures.employeeRepeatCounts(repairEvents, workerKey, isElectromechanicRole)
+  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerKey, isElectromechanicRole, value => dateYearMonth(value)?.year === year)
     .forEach((count, key) => {
       if (workerMap.has(key)) workerMap.get(key).repeatFailures = count;
     });
   const workers = [...workerMap.values()]
     .map(worker => {
       const avgMs = worker.durations.length ? worker.durations.reduce((sum, value) => sum + value, 0) / worker.durations.length : 0;
-      const denominator = worker.closed + worker.overdueOpen;
-      const kpd = denominator ? Math.round(worker.closed / denominator * 100) : null;
+      const kpd = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures);
       return { ...worker, avgMs, kpd };
     })
     .sort((a, b) => (b.kpd ?? -1) - (a.kpd ?? -1) || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
@@ -12876,7 +12876,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <div class="annual-role-card ${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <div><strong>${escapeHtml(worker.name)}</strong><span>${escapeHtml(worker.roleLabel)}</span></div>
       <b>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</b>
-      <small>Закрыто: ${worker.closed} · Повторные: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
+      <small>Закрыто: ${worker.closed} · Повторы, снижающие КПД: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
     </div>
   `).join("");
   const workerRows = stats.workers.map((worker, index) => `
@@ -12927,7 +12927,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <section class="director-annual-card">
       <div class="director-section-head">
         <div><span>📈</span><h2>Годовая статистика ${stats.year}</h2></div>
-        <small>КПД, ремонты, остановки, рост/падение по месяцам</small>
+        <small>КПД = (закрыто − повторы) / (закрыто + просрочено)</small>
       </div>
       <div class="annual-summary-grid">
         <div><strong>${stats.totals.repairsCreated}</strong><span>ремонтов/замечаний создано</span></div>
@@ -12938,8 +12938,8 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте электромехаников в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
-          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Повторные</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
-          <tbody>${workerRows || `<tr><td colspan="8">Пока нет данных по электромеханикам</td></tr>`}</tbody>
+          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Закрыто</th><th>Установки</th><th>Повторы (−КПД)</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
+          <tbody>${workerRows || `<tr><td colspan="9">Пока нет данных по электромеханикам</td></tr>`}</tbody>
         </table>
       </div>
       <div class="annual-trend-note">
@@ -13340,6 +13340,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
 
   const repairEvents = annualRepairEvents(year);
+  const allRepairEvents = annualRepairEvents(null);
   const resolvedRemarkKeys = new Set();
   const overdueRemarkKeys = new Set();
   repairEvents.forEach(event => {
@@ -13381,7 +13382,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     }
   });
 
-  PPRModules.repeatFailures.employeeRepeatCounts(repairEvents, workerRatingKey, isElectromechanicRole, inSelectedMonth)
+  PPRModules.repeatFailures.employeeRepeatPenaltyCounts(allRepairEvents, workerRatingKey, isElectromechanicRole, inSelectedMonth)
     .forEach((count, key) => {
       if (workers.has(key)) workers.get(key).repeatFailures = count;
     });
@@ -13410,7 +13411,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
       : 0;
     const workTotal = worker.closed + worker.qrDone;
     const planBase = worker.closed + worker.overdueOpen;
-    const planPercent = planBase ? Math.round(worker.closed / planBase * 100) : 0;
+    const planPercent = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures) ?? 0;
     const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const pprPercent = workTotal ? Math.round((worker.plannedDone + worker.qrDone) / workTotal * 100) : 0;
     const points = Number(annualPoints.get(worker.key) || 0);
@@ -13498,9 +13499,9 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span class="worker-metric-resolved"><b>${worker.remarksResolved}</b> устранил</span>
         <span><b>${worker.closed}</b> работ</span>
         <span><b>${worker.breakdownClosed}</b> аварий</span>
-        <span><b>${worker.repeatFailures}</b> повторных</span>
+        <span><b>${worker.repeatFailures}</b> повторов (−КПД)</span>
         <span><b>${worker.qrDone}</b> QR-ППР</span>
-        <span><b>${worker.planPercent}%</b> план</span>
+        <span><b>${worker.planPercent}%</b> качество</span>
         <span><b>${worker.emergencyPercent}%</b> аварии</span>
         <span><b>${worker.pprPercent}%</b> ППР</span>
       </div>
@@ -13548,7 +13549,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
       <div><strong>${stats.totals.points}</strong><span>баллов всего</span></div>
       <div><strong>${stats.totals.closed}</strong><span>выполнено работ</span></div>
       <div><strong>${stats.totals.breakdownClosed}</strong><span>аварий устранено</span></div>
-      <div><strong>${stats.workers.reduce((sum, worker) => sum + worker.repeatFailures, 0)}</strong><span>работ в повторных группах</span></div>
+      <div><strong>${stats.workers.reduce((sum, worker) => sum + worker.repeatFailures, 0)}</strong><span>повторов, снижающих КПД</span></div>
       <div><strong>${stats.totals.remarksFound}</strong><span>замечаний найдено / написано</span></div>
       <div><strong>${stats.totals.remarksResolved}</strong><span>замечаний устранено</span></div>
       <div><strong>${stats.totals.qrDone}</strong><span>QR-ППР обходов</span></div>
@@ -13573,6 +13574,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span>Журнал — 2, общий QR-обход за смену — 3, ППР — 5 (пресс 6).</span>
         <span>Принятое предупреждение — 10 (пресс 15), аварийный простой — 20 (пресс 30).</span>
         <span>Производственная остановка баллов не даёт. Возврат на доработку снимает 1 балл с отправителя, максимум 2 за работу.</span>
+        <span>КПД качества = (закрыто − повторы) / (закрыто + просрочено). Повтор снижает КПД исполнителя предыдущего ремонта.</span>
         <span>При совместном устранении каждый зафиксированный участник получает полные баллы после подтверждения.</span>
       </section>
       <section class="worker-rating-list">
@@ -13987,7 +13989,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(worker.roleLabel)}</td>
         <td>${worker.closed}</td>
         <td>${worker.installs}</td>
-        <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}${worker.avgMs ? ` · ${escapeHtml(durationText(worker.avgMs))}` : ""}</td>
+        <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}${worker.avgMs ? ` · ${escapeHtml(durationText(worker.avgMs))}` : ""} · повторов: ${worker.repeatFailures}</td>
       </tr>
     `
   );
