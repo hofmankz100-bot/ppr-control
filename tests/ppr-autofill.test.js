@@ -94,3 +94,30 @@ test("every equipment keeps nodes in compact groups and covers its full catalog"
     assert.ok(groups.flat().every(item => item.equipment === target.name && item.area === target.area), target.name);
   }
 });
+
+test("future catalog nodes and newly created equipment automatically enter PPR planning", () => {
+  const builtIn = EQUIPMENT.find(item => item.id === 1);
+  const addedNode = "Новый узел после запуска";
+  const created = {
+    id: 1001,
+    created: true,
+    name: "Новое оборудование",
+    area: "Новый участок",
+    nodes: ["Новый узел 1", "Новый узел 2", "Новый узел 3"]
+  };
+  const catalog = { equipment: {
+    [builtIn.id]: { nodes: [...builtIn.nodes, addedNode] },
+    [created.id]: created
+  } };
+  const seenBuiltIn = new Set();
+  const seenCreated = new Set();
+  for (let day = 0; day < 70; day += 1) {
+    const date = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
+    scheduledItemsForDate(catalog, date).forEach(item => {
+      if (item.equipmentId === builtIn.id) seenBuiltIn.add(item.node);
+      if (item.equipmentId === created.id) seenCreated.add(item.node);
+    });
+  }
+  assert.ok(seenBuiltIn.has(addedNode));
+  assert.deepEqual([...seenCreated].sort(), [...created.nodes].sort());
+});
