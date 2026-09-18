@@ -10637,7 +10637,8 @@ function directorRecommendedMaintenanceRaw(eq, date = todayISO()) {
   // part of the node list when the interval and node count had a common divisor.
   const dueDayNumber = dayNumber + daysUntil;
   const occurrence = Math.floor((dueDayNumber + Number(eq.id || 0) * 3) / intervalDays);
-  const nodeIndex = eq.nodes.length ? ((occurrence % eq.nodes.length) + eq.nodes.length) % eq.nodes.length : 0;
+  const groupSize = Math.max(1, Math.ceil(eq.nodes.length / 4));
+  const nodeIndex = eq.nodes.length ? ((((occurrence * groupSize) % eq.nodes.length) + eq.nodes.length) % eq.nodes.length) : 0;
   return {
     dueDate,
     daysUntil,
@@ -10665,7 +10666,10 @@ function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
     activeEquipment.forEach(eq => {
       const plan = recommendedMaintenanceForDate(eq, date);
       if (!plan) return;
-      eq.nodes.forEach((node, nodeIndex) => {
+      const groupSize = Math.max(1, Math.ceil(eq.nodes.length / 4));
+      const startIndex = Math.max(0, eq.nodes.indexOf(plan.node));
+      Array.from({ length: Math.min(groupSize, eq.nodes.length) }, (_, offset) => (startIndex + offset) % eq.nodes.length).forEach(nodeIndex => {
+        const node = eq.nodes[nodeIndex];
         if (!operationalControlEnabled(eq, nodeIndex, date)) return;
         rows.push({ date, equipment: eq.name, area: eq.area, node, intervalDays: plan.intervalDays });
       });
@@ -11058,11 +11062,13 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
       if (!operationalControlEnabled(eq, null, date)) return [];
       const plan = recommendedMaintenanceForDate(eq, date);
       if (!plan) return [];
-      return eq.nodes.flatMap((node, nodeIndex) => operationalControlEnabled(eq, nodeIndex, date) ? [{
+      const groupSize = Math.max(1, Math.ceil(eq.nodes.length / 4));
+      const startIndex = Math.max(0, eq.nodes.indexOf(plan.node));
+      return Array.from({ length: Math.min(groupSize, eq.nodes.length) }, (_, offset) => (startIndex + offset) % eq.nodes.length).flatMap(nodeIndex => operationalControlEnabled(eq, nodeIndex, date) ? [{
         equipmentId: eq.id,
         equipment: eq.name,
         area: eq.area,
-        node,
+        node: eq.nodes[nodeIndex],
         intervalDays: plan.intervalDays
       }] : []);
     });

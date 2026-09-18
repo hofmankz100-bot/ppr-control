@@ -154,7 +154,8 @@ function rawMaintenance(equipment, date) {
   // divisor (for example, a 14-day interval with 20 nodes visited only 10).
   const dueDayNumber = dayNumber + daysUntil;
   const occurrence = Math.floor((dueDayNumber + Number(equipment.id || 0) * 3) / intervalDays);
-  const nodeIndex = equipment.nodes.length ? ((occurrence % equipment.nodes.length) + equipment.nodes.length) % equipment.nodes.length : 0;
+  const groupSize = Math.max(1, Math.ceil(equipment.nodes.length / 4));
+  const nodeIndex = equipment.nodes.length ? ((((occurrence * groupSize) % equipment.nodes.length) + equipment.nodes.length) % equipment.nodes.length) : 0;
   return { dueDate: addDays(date, daysUntil), daysUntil, node: equipment.nodes[nodeIndex] || equipment.name, intervalDays };
 }
 
@@ -196,9 +197,15 @@ function scheduledItemsForDate(catalog, date, today = date) {
     if ((equipment.operationalPauses || []).some(pause => pauseApplies(pause, date, today))) return [];
     const plan = recommendedMaintenanceForDate(equipment, date);
     if (!plan) return [];
-    // One equipment occurrence produces one grouped sheet containing all of
-    // its active nodes. Nodes must not be scattered across separate dates.
-    return equipment.nodes.flatMap((node, index) => {
+    // Keep neighboring nodes together without overloading one day. A full
+    // equipment cycle is split into at most four consecutive PPR groups.
+    const groupSize = Math.max(1, Math.ceil(equipment.nodes.length / 4));
+    const startIndex = Math.max(0, equipment.nodes.indexOf(plan.node));
+    const groupedNodes = Array.from({ length: Math.min(groupSize, equipment.nodes.length) }, (_, offset) => {
+      const index = (startIndex + offset) % equipment.nodes.length;
+      return { node: equipment.nodes[index], index };
+    });
+    return groupedNodes.flatMap(({ node, index }) => {
       if ((equipment.nodeOperationalPauses?.[index] || []).some(pause => pauseApplies(pause, date, today))) return [];
       return [{ equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node, intervalDays: plan.intervalDays }];
     });
