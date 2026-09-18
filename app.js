@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v852";
+const APP_VERSION = "v853";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -10633,7 +10633,11 @@ function directorRecommendedMaintenanceRaw(eq, date = todayISO()) {
   const offset = (dayNumber + Number(eq.id || 0) * 3) % intervalDays;
   const daysUntil = offset === 0 ? 0 : intervalDays - offset;
   const dueDate = addDaysISO(date, daysUntil);
-  const nodeIndex = eq.nodes.length ? (dayNumber + Number(eq.id || 0)) % eq.nodes.length : 0;
+  // Rotate one position per scheduled PPR. The old calendar-day index skipped
+  // part of the node list when the interval and node count had a common divisor.
+  const dueDayNumber = dayNumber + daysUntil;
+  const occurrence = Math.floor((dueDayNumber + Number(eq.id || 0) * 3) / intervalDays);
+  const nodeIndex = eq.nodes.length ? ((occurrence % eq.nodes.length) + eq.nodes.length) % eq.nodes.length : 0;
   return {
     dueDate,
     daysUntil,
@@ -10661,12 +10665,9 @@ function directorRecommendedSchedule(equipment = allEquipment(), days = 14) {
     activeEquipment.forEach(eq => {
       const plan = recommendedMaintenanceForDate(eq, date);
       if (!plan) return;
-      rows.push({
-        date,
-        equipment: eq.name,
-        area: eq.area,
-        node: plan.node,
-        intervalDays: plan.intervalDays
+      eq.nodes.forEach((node, nodeIndex) => {
+        if (!operationalControlEnabled(eq, nodeIndex, date)) return;
+        rows.push({ date, equipment: eq.name, area: eq.area, node, intervalDays: plan.intervalDays });
       });
     });
   }
@@ -11056,15 +11057,14 @@ function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCale
     const items = activeEquipment.flatMap(eq => {
       if (!operationalControlEnabled(eq, null, date)) return [];
       const plan = recommendedMaintenanceForDate(eq, date);
-      const nodeIndex = plan ? eq.nodes.findIndex(node => node === plan.node) : -1;
-      if (plan && nodeIndex >= 0 && !operationalControlEnabled(eq, nodeIndex, date)) return [];
-      return plan ? [{
+      if (!plan) return [];
+      return eq.nodes.flatMap((node, nodeIndex) => operationalControlEnabled(eq, nodeIndex, date) ? [{
         equipmentId: eq.id,
         equipment: eq.name,
         area: eq.area,
-        node: plan.node,
+        node,
         intervalDays: plan.intervalDays
-      }] : [];
+      }] : []);
     });
     if (items.length) itemsByDate[date] = items;
   }

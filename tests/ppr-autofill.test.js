@@ -78,3 +78,14 @@ test("autofill excludes deleted equipment and active equipment/node pauses", () 
   assert.equal(validDate("invalid"), false);
   assert.equal(validDate(date), true);
 });
+
+test("one equipment occurrence groups every active node into the same PPR sheet", () => {
+  const target = EQUIPMENT.find(item => item.id === 1);
+  let scheduled = [];
+  for (let day = 0; day < 21 && !scheduled.length; day += 1) {
+    const date = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
+    scheduled = scheduledItemsForDate({}, date).filter(item => item.equipmentId === target.id);
+  }
+  assert.deepEqual(scheduled.map(item => item.node), target.nodes);
+  assert.ok(scheduled.every(item => item.equipment === target.name && item.area === target.area));
+});

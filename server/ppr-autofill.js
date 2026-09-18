@@ -149,7 +149,12 @@ function rawMaintenance(equipment, date) {
   const dayNumber = Math.floor(Date.parse(`${date}T00:00:00+05:00`) / 86400000);
   const offset = (dayNumber + Number(equipment.id || 0) * 3) % intervalDays;
   const daysUntil = offset === 0 ? 0 : intervalDays - offset;
-  const nodeIndex = equipment.nodes.length ? (dayNumber + Number(equipment.id || 0)) % equipment.nodes.length : 0;
+  // Advance by one node for every maintenance occurrence. Using the raw day
+  // number here skipped nodes whenever intervalDays and nodes.length shared a
+  // divisor (for example, a 14-day interval with 20 nodes visited only 10).
+  const dueDayNumber = dayNumber + daysUntil;
+  const occurrence = Math.floor((dueDayNumber + Number(equipment.id || 0) * 3) / intervalDays);
+  const nodeIndex = equipment.nodes.length ? ((occurrence % equipment.nodes.length) + equipment.nodes.length) % equipment.nodes.length : 0;
   return { dueDate: addDays(date, daysUntil), daysUntil, node: equipment.nodes[nodeIndex] || equipment.name, intervalDays };
 }
 
@@ -191,9 +196,12 @@ function scheduledItemsForDate(catalog, date, today = date) {
     if ((equipment.operationalPauses || []).some(pause => pauseApplies(pause, date, today))) return [];
     const plan = recommendedMaintenanceForDate(equipment, date);
     if (!plan) return [];
-    const index = equipment.nodes.indexOf(plan.node);
-    if ((equipment.nodeOperationalPauses?.[index] || []).some(pause => pauseApplies(pause, date, today))) return [];
-    return [{ equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node: plan.node, intervalDays: plan.intervalDays }];
+    // One equipment occurrence produces one grouped sheet containing all of
+    // its active nodes. Nodes must not be scattered across separate dates.
+    return equipment.nodes.flatMap((node, index) => {
+      if ((equipment.nodeOperationalPauses?.[index] || []).some(pause => pauseApplies(pause, date, today))) return [];
+      return [{ equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node, intervalDays: plan.intervalDays }];
+    });
   });
 }
 
