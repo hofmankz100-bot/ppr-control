@@ -21,9 +21,9 @@ function harness(names = [], overrides = {}) {
   vm.runInContext(calendarSource, context);
   context.PPRModules = window.PPRModules;
   context.PPRModules.comments = { dedupeAggregateJournalItems: items => items };
-  context.PPRModules.repeatFailures = { metadata: () => ({}), employeeRepeatPenaltyCounts: () => new Map(), kpdPercent: (closed, overdue, repeats) => {
-    const denominator = closed + overdue;
-    return denominator ? Math.round(Math.max(0, closed - repeats) / denominator * 100) : null;
+  context.PPRModules.repeatFailures = { metadata: () => ({}), employeeRepeatPenaltyCounts: () => new Map(), employeeKpd: metrics => {
+    const denominator = metrics.closed + metrics.overdueOpen;
+    return { percent: denominator ? Math.round(Math.max(0, metrics.closed - metrics.repeatFailures) / denominator * 100) : null };
   } };
   vm.runInContext(names.map(sourceFunction).join("\n"), context);
   return context;

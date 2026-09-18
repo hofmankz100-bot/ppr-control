@@ -6,7 +6,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const context = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8"), context);
-const { activeGroups, buildAnalysis, editorHtml, employeeRepeatPenaltyCounts, journalHtml, kpdPercent } = context.window.PPRModules.repeatFailures;
+const { activeGroups, buildAnalysis, editorHtml, employeeKpd, employeeRepeatPenaltyCounts, journalHtml } = context.window.PPRModules.repeatFailures;
 test("journal stylesheet is publicly served without exposing other server files", () => {
   const { isPublicStaticPath } = require("../server/static-files");
   assert.equal(isPublicStaticPath("modules/repeat-failures.css"), true);
@@ -104,11 +104,22 @@ test("repeat penalties follow the saved employee key after a name change", () =>
   assert.equal(counts.has("mechanic:Старое имя"), false);
 });
 
-test("KPI subtracts repeat penalties from completed repairs and never falls below zero", () => {
-  assert.equal(kpdPercent(10, 0, 1), 90);
-  assert.equal(kpdPercent(8, 2, 1), 70);
-  assert.equal(kpdPercent(1, 0, 3), 0);
-  assert.equal(kpdPercent(0, 0, 2), null);
+test("employee KPI combines quality, points, findings, resolutions and repair speed", () => {
+  const fewWorks = employeeKpd({ closed: 3, points: 30, remarksResolved: 3, avgRepairMs: 4 * 3600000 });
+  const sustainedWork = employeeKpd({ closed: 65, repeatFailures: 20, points: 60, remarksFound: 4, remarksResolved: 8, avgRepairMs: 4 * 3600000 });
+  const cleanFullWork = employeeKpd({ closed: 65, points: 60, remarksFound: 4, remarksResolved: 8, avgRepairMs: 4 * 3600000 });
+  assert.equal(fewWorks.percent, 63);
+  assert.equal(sustainedWork.percent, 89);
+  assert.equal(cleanFullWork.percent, 100);
+  assert.equal(JSON.stringify(cleanFullWork.components), JSON.stringify({ quality: 35, points: 20, detection: 15, resolution: 20, speed: 10 }));
+  assert.equal(employeeKpd({}).percent, null);
+});
+
+test("annual KPI scales activity targets by the rated period", () => {
+  const month = employeeKpd({ closed: 8, points: 60, remarksFound: 4, remarksResolved: 8, avgRepairMs: 4 * 3600000 }, 1);
+  const year = employeeKpd({ closed: 8, points: 60, remarksFound: 4, remarksResolved: 8, avgRepairMs: 4 * 3600000 }, 12);
+  assert.equal(month.percent, 100);
+  assert.equal(year.percent, 50);
 });
 
 test("all-history analysis joins months and years but isolates equipment and uses the latest group name", () => {
@@ -139,6 +150,13 @@ test("engineer report keeps the director annual employee rating order", () => {
   const rating = buildAnalysis([], { workers }).employeeRating;
   assert.deepEqual(rating.map(worker => worker.name), ["KPI leader", "Most closed"]);
   assert.deepEqual(workers.map(worker => worker.name), ["KPI leader", "Most closed"]);
+});
+
+test("engineer report includes every employee with rating activity", () => {
+  const workers = Array.from({ length: 14 }, (_, index) => ({ name: `Worker ${index}`, points: index + 1 }));
+  const rating = buildAnalysis([], { workers }).employeeRating;
+  assert.equal(rating.length, 14);
+  assert.equal(rating[13].name, "Worker 13");
 });
 
 test("detail journal paginates marked records and retains aggregate repair details", () => {

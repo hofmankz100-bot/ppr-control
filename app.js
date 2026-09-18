@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v853";
+const APP_VERSION = "v854";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -12266,6 +12266,8 @@ function directorAnnualStats(year = directorAnnualYear()) {
         downtimeClosed: 0,
         installs: 0,
         repeatFailures: 0,
+        remarksFound: 0,
+        remarksResolved: 0,
         points: 0,
         durations: []
       });
@@ -12276,6 +12278,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
     .filter(user => isWorkerRatingRole(user.role))
     .forEach(user => ensureWorker(user.role, user.name || user.employeeId || user.phone));
   repairEvents.forEach(event => {
+    if (event.type === "remark" && dateYearMonth(event.createdAt)?.year === year) {
+      const author = ensureWorker(event.authorRole, event.authorName);
+      if (author) author.remarksFound += 1;
+    }
     const completedAt = workerRatingCompletionAt(event);
     if (dateYearMonth(completedAt)?.year === year) {
       workerRatingParticipants(event, usersByResolutionKey).forEach(participant => {
@@ -12283,7 +12289,10 @@ function directorAnnualStats(year = directorAnnualYear()) {
         if (!worker) return;
         worker.closed += 1;
         if (event.type === "breakdown") worker.downtimeClosed += 1;
-        if (event.type === "remark" && event.partInstalled) worker.installs += 1;
+        if (event.type === "remark") {
+          worker.remarksResolved += 1;
+          if (event.partInstalled) worker.installs += 1;
+        }
         if (event.durationMs > 0) worker.durations.push(event.durationMs);
       });
     }
@@ -12300,12 +12309,14 @@ function directorAnnualStats(year = directorAnnualYear()) {
       if (workerMap.has(key)) workerMap.get(key).repeatFailures = count;
     });
   const annualPoints = workerRatingPointMap(year);
+  const currentYearMonth = dateYearMonth(new Date());
+  const ratedMonths = year === currentYearMonth.year ? currentYearMonth.month + 1 : 12;
   const workers = [...workerMap.values()]
     .map(worker => {
       const avgMs = worker.durations.length ? worker.durations.reduce((sum, value) => sum + value, 0) / worker.durations.length : 0;
-      const kpd = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures);
       const points = Number(annualPoints.get(worker.key) || 0);
-      return { ...worker, avgMs, kpd, points };
+      const kpdDetails = PPRModules.repeatFailures.employeeKpd({ ...worker, points, avgRepairMs: avgMs }, ratedMonths);
+      return { ...worker, avgMs, kpd: kpdDetails.percent, kpdDetails, points };
     })
     .sort((a, b) => (b.kpd ?? -1) - (a.kpd ?? -1) || b.points - a.points || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
   const totals = {
@@ -12341,7 +12352,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <div class="annual-role-card ${worker.kpd === null ? "empty" : worker.kpd >= 85 ? "green" : worker.kpd >= 65 ? "yellow" : "red"}">
       <div><strong>${escapeHtml(worker.name)}</strong><span>${escapeHtml(worker.roleLabel)}</span></div>
       <b>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</b>
-      <small>Баллы: ${worker.points} · Закрыто: ${worker.closed} · Повторы, снижающие КПД: ${worker.repeatFailures} · Установки: ${worker.installs} · Простои: ${worker.downtimeClosed} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
+      <small>Баллы: ${worker.points} · Выявлено: ${worker.remarksFound} · Устранено: ${worker.remarksResolved} · Закрыто: ${worker.closed} · Повторы: ${worker.repeatFailures} · Просрочено: ${worker.overdueOpen}${worker.avgMs ? ` · Среднее время: ${durationText(worker.avgMs)}` : ""}</small>
     </div>
   `).join("");
   const workerRows = stats.workers.map((worker, index) => `
@@ -12350,6 +12361,8 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <td><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.roleLabel)}</small></td>
       <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}</td>
       <td><strong>${worker.points}</strong></td>
+      <td>${worker.remarksFound}</td>
+      <td>${worker.remarksResolved}</td>
       <td>${worker.closed}</td>
       <td>${worker.installs}</td>
       <td>${worker.repeatFailures}</td>
@@ -12393,7 +12406,7 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
     <section class="director-annual-card">
       <div class="director-section-head">
         <div><span>📈</span><h2>Годовая статистика ${stats.year}</h2></div>
-        <small>Баллы и КПД используют одну цепочку принятых работ; КПД = (закрыто − повторы) / (закрыто + просрочено)</small>
+        <small>КПД: качество без повторов и просрочек 35% · баллы 20% · выявление 15% · устранение 20% · скорость 10%</small>
       </div>
       <div class="annual-summary-grid">
         <div><strong>${stats.totals.repairsCreated}</strong><span>ремонтов/замечаний создано</span></div>
@@ -12404,8 +12417,8 @@ function directorAnnualStatsHtml(stats = directorAnnualStats()) {
       <div class="annual-role-grid">${workerCards || `<div class="annual-role-card empty"><div><strong>Нет сотрудников</strong><span>Добавьте электромехаников в пользователях</span></div><b>нет данных</b></div>`}</div>
       <div class="annual-worker-table-wrap">
         <table class="annual-worker-table">
-          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Баллы</th><th>Закрыто</th><th>Установки</th><th>Повторы (−КПД)</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
-          <tbody>${workerRows || `<tr><td colspan="10">Пока нет данных по электромеханикам</td></tr>`}</tbody>
+          <thead><tr><th>№</th><th>Сотрудник</th><th>КПД</th><th>Баллы</th><th>Выявлено</th><th>Устранено</th><th>Закрыто</th><th>Установки</th><th>Повторы (−КПД)</th><th>Простои</th><th>Просрочено</th><th>Среднее время</th></tr></thead>
+          <tbody>${workerRows || `<tr><td colspan="12">Пока нет данных по электромеханикам</td></tr>`}</tbody>
         </table>
       </div>
       <div class="annual-trend-note">
@@ -12887,9 +12900,10 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     const avgRepairMs = worker.repairDurations.length
       ? worker.repairDurations.reduce((sum, value) => sum + value, 0) / worker.repairDurations.length
       : 0;
-    const planPercent = PPRModules.repeatFailures.kpdPercent(worker.closed, worker.overdueOpen, worker.repeatFailures) ?? 0;
-    const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const points = Number(pointsByWorker.get(worker.key) || 0);
+    const kpdDetails = PPRModules.repeatFailures.employeeKpd({ ...worker, points, avgRepairMs }, 1);
+    const planPercent = kpdDetails.percent ?? 0;
+    const emergencyPercent = worker.closed ? Math.round(worker.breakdownClosed / worker.closed * 100) : 0;
     const achievements = [];
     if (worker.breakdownClosed >= 3) achievements.push("Аварийный мастер");
     if (worker.remarksFound >= 5) achievements.push("Внимательный обход");
@@ -12898,7 +12912,7 @@ function workerRatingStats(period = current.ratingMonth || PPRModules.director.c
     if (worker.overdueOpen === 0 && worker.closed > 0) achievements.push("Без просрочек");
     if (avgRepairMs && avgRepairMs <= 4 * 3600000) achievements.push("Быстрый ремонт");
     if (worker.installs >= 5) achievements.push("Монтажник");
-    return { ...worker, avgReactionMs, avgRepairMs, planPercent, emergencyPercent, points, achievements };
+    return { ...worker, avgReactionMs, avgRepairMs, planPercent, kpdDetails, emergencyPercent, points, achievements };
   });
 
   list.sort((a, b) => b.points - a.points || b.planPercent - a.planPercent || b.closed - a.closed || a.name.localeCompare(b.name, "ru"));
@@ -12977,7 +12991,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
         <span><b>${worker.installs}</b> установок</span>
         <span><b>${worker.returnPenalties}</b> возвратов (−балл)</span>
         <span><b>${worker.selfRemarkBonuses}</b> бонусов</span>
-        <span><b>${worker.planPercent}%</b> качество</span>
+        <span><b>${worker.planPercent}%</b> КПД</span>
         <span><b>${worker.emergencyPercent}%</b> аварии</span>
       </div>
       <div class="worker-time">
@@ -13034,7 +13048,7 @@ function workerRatingHtml(stats = workerRatingStats()) {
     </section>
     <section class="worker-month-winners">
       <div><span>Лучший электромеханик месяца</span><strong>${escapeHtml(bestMechanic)}</strong></div>
-      <div><span>${detailed ? "Как считается" : "Твоя цель"}</span><strong>${detailed ? "баллы только за принятую работу; возврат −1" : "качественно закрывать работы"}</strong></div>
+      <div><span>${detailed ? "Как считается КПД" : "Твоя цель"}</span><strong>${detailed ? "качество 35% · баллы 20% · выявление 15% · устранение 20% · скорость 10%" : "качественно выявлять и устранять работы"}</strong></div>
     </section>
     <section class="worker-rating-graph">
       <div class="worker-rating-graph-head">
@@ -13444,12 +13458,14 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
         <td>${escapeHtml(worker.name)}</td>
         <td>${escapeHtml(worker.roleLabel)}</td>
         <td>${worker.points}</td>
+        <td>${worker.remarksFound}</td>
+        <td>${worker.remarksResolved}</td>
         <td>${worker.closed}</td>
         <td>${worker.installs}</td>
         <td>${worker.kpd === null ? "нет данных" : `${worker.kpd}%`}${worker.avgMs ? ` · ${escapeHtml(durationText(worker.avgMs))}` : ""} · повторов: ${worker.repeatFailures}</td>
       </tr>
     `,
-    7
+    9
   );
   return `
     <article class="engineer-report ${printable ? "printable" : ""}">
@@ -13508,7 +13524,7 @@ function engineerMonthlyReportHtml(monthKey = current.engineerReportMonth, print
       </section>
       <section class="engineer-report-block">
         <h3>6. Годовой рейтинг электромехаников за ${annual.year}</h3>
-        <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Баллы</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
+        <table><thead><tr><th>№</th><th>Сотрудник</th><th>Должность</th><th>Баллы</th><th>Выявлено</th><th>Устранено</th><th>Выполнено</th><th>Установки</th><th>КПД / среднее время</th></tr></thead><tbody>${employeeRows}</tbody></table>
       </section>
       <div class="engineer-report-signatures">
         <div>Инженер: ____________________</div>

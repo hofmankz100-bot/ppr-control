@@ -178,8 +178,8 @@
       .map(item => ({ ...item, events: item.events.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) }))
       .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"));
     const employeeRating = annualStats.workers
-      .filter(worker => worker.closed || worker.installs || worker.downtimeClosed)
-      .slice(0, 12);
+      .filter(worker => worker.points || worker.closed || worker.remarksFound || worker.remarksResolved
+        || worker.repeatFailures || worker.overdueOpen || worker.installs || worker.downtimeClosed);
     return { repeatedBreakdowns, employeeRating };
   }
 
@@ -219,12 +219,37 @@
     return counts;
   }
 
-  function kpdPercent(closed, overdue, repeatPenalties) {
-    const completed = Math.max(0, Number(closed) || 0);
-    const denominator = completed + Math.max(0, Number(overdue) || 0);
-    if (!denominator) return null;
-    const credited = Math.max(0, completed - Math.max(0, Number(repeatPenalties) || 0));
-    return Math.round(credited / denominator * 100);
+  function employeeKpd(metrics = {}, periodMonths = 1) {
+    const clamp = value => Math.max(0, Math.min(1, Number(value) || 0));
+    const months = Math.max(1, Number(periodMonths) || 1);
+    const closed = Math.max(0, Number(metrics.closed) || 0);
+    const overdue = Math.max(0, Number(metrics.overdueOpen) || 0);
+    const repeats = Math.max(0, Number(metrics.repeatFailures) || 0);
+    const points = Math.max(0, Number(metrics.points) || 0);
+    const found = Math.max(0, Number(metrics.remarksFound) || 0);
+    const resolved = Math.max(0, Number(metrics.remarksResolved) || 0);
+    const avgRepairMs = Math.max(0, Number(metrics.avgRepairMs) || 0);
+    const hasActivity = closed || overdue || repeats || points || found || resolved;
+    if (!hasActivity) return { percent: null, components: { quality: 0, points: 0, detection: 0, resolution: 0, speed: 0 } };
+
+    const qualityBase = closed + overdue;
+    const qualityRatio = qualityBase ? clamp((closed - repeats) / qualityBase) : 0;
+    const pointRatio = clamp(points / (60 * months));
+    const detectionRatio = clamp(found / (4 * months));
+    const resolutionRatio = clamp(resolved / (8 * months));
+    const fastLimit = 4 * 3600000;
+    const slowLimit = 72 * 3600000;
+    const speedRatio = avgRepairMs
+      ? clamp((slowLimit - avgRepairMs) / (slowLimit - fastLimit))
+      : 0;
+    const components = {
+      quality: Math.round(qualityRatio * 35),
+      points: Math.round(pointRatio * 20),
+      detection: Math.round(detectionRatio * 15),
+      resolution: Math.round(resolutionRatio * 20),
+      speed: Math.round(speedRatio * 10)
+    };
+    return { percent: Object.values(components).reduce((sum, value) => sum + value, 0), components };
   }
 
   function journalTitle(group = {}) {
@@ -349,5 +374,5 @@
     }, "Снимаем...")));
   }
 
-  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, employeeRepeatPenaltyCounts, kpdPercent, journalHtml, openJournal, activeGroups, editorHtml, bindAggregateEditors };
+  root.repeatFailures = { groupMeasures, completionCell, isClosed, measuresCell, bindMeasures, metadata, buildAnalysis, employeeRepeatPenaltyCounts, employeeKpd, journalHtml, openJournal, activeGroups, editorHtml, bindAggregateEditors };
 })();

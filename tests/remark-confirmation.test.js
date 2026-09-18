@@ -2117,7 +2117,7 @@ test("director control and engineer report use live journal and accepted-work da
   assert.match(clientSource, /const resolvedToday = directorResolvedRemarkCount\(\)/);
   assert.match(clientSource, /const acceptedAt = entry\.confirmedAt \|\| resolvedAt/);
   assert.match(clientSource, /resolvedBy: resolutionParticipantsText\(entry, entry\.resolvedByName \|\| ""\)/);
-  assert.match(clientSource, /<th>Баллы<\/th><th>Выполнено<\/th>/);
+  assert.match(clientSource, /<th>Баллы<\/th><th>Выявлено<\/th><th>Устранено<\/th><th>Выполнено<\/th>/);
   assert.doesNotMatch(clientSource, /function directorRecentRemarks|function directorArchivedRemarks/);
   assert.doesNotMatch(clientSource, /if \(item\.number\) \{[\s\S]*?Заявка выполнена/);
 });
