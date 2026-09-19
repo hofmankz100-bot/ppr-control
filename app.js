@@ -50,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v863";
+const APP_VERSION = "v864";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11051,26 +11051,44 @@ function openAnnualPprSchedule(initialYear = new Date().getFullYear()) {
   }));
 }
 
+function rawPprItemsForDate(equipment, date) {
+  return equipment.flatMap(eq => {
+    if (!operationalControlEnabled(eq, null, date)) return [];
+    const plan = recommendedMaintenanceForDate(eq, date);
+    if (!plan) return [];
+    const groupSize = Math.max(1, Math.ceil(eq.nodes.length / 4));
+    const startIndex = Math.max(0, eq.nodes.indexOf(plan.node));
+    return Array.from({ length: Math.min(groupSize, eq.nodes.length) }, (_, offset) => (startIndex + offset) % eq.nodes.length).flatMap(nodeIndex => operationalControlEnabled(eq, nodeIndex, date) ? [{
+      equipmentId: eq.id,
+      equipment: eq.name,
+      area: eq.area,
+      node: eq.nodes[nodeIndex],
+      intervalDays: plan.intervalDays
+    }] : []);
+  });
+}
+
+function pprWorkWeekDates(date) {
+  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+  const monday = addDaysISO(date, weekday === 0 ? -6 : 1 - weekday);
+  return Array.from({ length: 5 }, (_, index) => addDaysISO(monday, index));
+}
+
+function balancedPprItemsForDate(equipment, date) {
+  const week = pprWorkWeekDates(date);
+  const dayIndex = week.indexOf(date);
+  if (dayIndex < 0) return [];
+  const weeklyItems = week.flatMap(day => rawPprItemsForDate(equipment, day));
+  return weeklyItems.filter((_, index) => index % week.length === dayIndex);
+}
+
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {
   const activeEquipment = equipment.filter(eq => eq.area !== "Резерв");
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const itemsByDate = {};
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const items = activeEquipment.flatMap(eq => {
-      if (!operationalControlEnabled(eq, null, date)) return [];
-      const plan = recommendedMaintenanceForDate(eq, date);
-      if (!plan) return [];
-      const groupSize = Math.max(1, Math.ceil(eq.nodes.length / 4));
-      const startIndex = Math.max(0, eq.nodes.indexOf(plan.node));
-      return Array.from({ length: Math.min(groupSize, eq.nodes.length) }, (_, offset) => (startIndex + offset) % eq.nodes.length).flatMap(nodeIndex => operationalControlEnabled(eq, nodeIndex, date) ? [{
-        equipmentId: eq.id,
-        equipment: eq.name,
-        area: eq.area,
-        node: eq.nodes[nodeIndex],
-        intervalDays: plan.intervalDays
-      }] : []);
-    });
+    const items = balancedPprItemsForDate(activeEquipment, date);
     if (items.length) itemsByDate[date] = items;
   }
   return { year, month, daysInMonth, itemsByDate };
@@ -11111,6 +11129,11 @@ function pprSheetRecord(date, create = false) {
 
 const pprSheetGenerationRequests = new Map();
 const pprSheetGenerationAttempts = new Map();
+const pprSheetSelectedTargets = new Map();
+
+function pprSheetTargetKey(item = {}) {
+  return JSON.stringify([String(item.equipmentId || ""), String(item.node || "").trim()]);
+}
 
 function pprAutofillTargetSignature(items = []) {
   return items.map(item => JSON.stringify([String(item.equipmentId), String(item.node || "").trim()])).sort().join("|");
@@ -11214,11 +11237,21 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const draft = window.PprPlanEditor.get(date);
   const rows = draft?.rows || (Array.isArray(sheet.rows) ? sheet.rows : pprSheetDefaultRows(date));
   const completion = pprSheetCompletion(date);
+  const autofillNeeded = scheduledItems.length > 0 && (!completion.active || pprSheetAutofillStale(date, sheet));
   const locked = Boolean(sheet.approvedAt);
   const canPlan = canPlanPprSheet() && !locked && Boolean(draft);
   const canMark = canMarkPprSheet() && !locked && !draft;
   const scheduleGroups = window.PprPlanEditor.groupByTarget(scheduledItems);
-  const scheduleHtml = scheduleGroups.map(group => `<section><strong>${escapeHtml(group.area || "Без цеха")}</strong><span>${escapeHtml([group.equipment, group.node].filter(Boolean).join(" — "))}</span></section>`).join("");
+  const scheduledKeys = new Set(scheduleGroups.map(pprSheetTargetKey));
+  let selectedTargetKey = pprSheetSelectedTargets.get(date) || "";
+  if (!scheduledKeys.has(selectedTargetKey)) selectedTargetKey = scheduleGroups.length ? pprSheetTargetKey(scheduleGroups[0]) : "";
+  if (selectedTargetKey) pprSheetSelectedTargets.set(date, selectedTargetKey);
+  const scheduleHtml = scheduleGroups.map(group => {
+    const key = pprSheetTargetKey(group);
+    const targetRows = rows.filter(row => String(row.work || "").trim() && pprSheetTargetKey(row) === key);
+    const marked = targetRows.filter(row => ["done", "na"].includes(row.mark)).length;
+    return `<button type="button" class="ppr-sheet-target-button ${key === selectedTargetKey ? "active" : ""}" data-open-ppr-node-sheet="${encodeURIComponent(key)}" aria-pressed="${key === selectedTargetKey}"><strong>${escapeHtml(group.area || "Без цеха")}</strong><span>${escapeHtml([group.equipment, group.node].filter(Boolean).join(" — "))}</span><small>${marked}/${targetRows.length || "…"}</small></button>`;
+  }).join("");
   const statusText = completion.complete
     ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
     : completion.awaitingApproval
@@ -11228,13 +11261,19 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   let previousPprArea = null;
   let pprRowNumber = 0;
-  const rowHtml = window.PprPlanEditor.groupByTarget(rows, scheduledItems.length === 1 ? scheduledItems[0] : null).map(group => {
+  const allRowGroups = window.PprPlanEditor.groupByTarget(rows, scheduledItems.length === 1 ? scheduledItems[0] : null);
+  let visibleRowGroups = draft || !selectedTargetKey ? allRowGroups : allRowGroups.filter(group => pprSheetTargetKey(group) === selectedTargetKey);
+  if (!draft && selectedTargetKey && !visibleRowGroups.length) {
+    const scheduled = scheduleGroups.find(group => pprSheetTargetKey(group) === selectedTargetKey);
+    if (scheduled) visibleRowGroups = [{ ...scheduled, rows: [] }];
+  }
+  const rowHtml = visibleRowGroups.map(group => {
     const areaHeading = group.area && group.area !== previousPprArea
       ? `<tr class="ppr-sheet-area-row"><th colspan="4">${escapeHtml(group.area)}</th></tr>`
       : "";
     previousPprArea = group.area;
     const targetHeading = `<tr class="ppr-sheet-equipment-row${group.rows.some(({ row }) => String(row.work || "").trim()) ? "" : " ppr-empty-target"}"><th colspan="4">${group.equipment || group.node ? `<strong>${escapeHtml(group.equipment || "Оборудование")}</strong>${group.node ? `<span>Узел: ${escapeHtml(group.node)}</span>` : ""}` : "Дополнительные работы"}</th></tr>`;
-    return areaHeading + targetHeading + group.rows.map(({ row }) => {
+    const groupRows = group.rows.map(({ row }) => {
       const index = pprRowNumber++;
       const editable = canPlan && !window.PprPlanEditor.started(row);
       const equipmentId = row.equipmentId || group.equipmentId || "";
@@ -11263,9 +11302,10 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
       </tr>
     `;
     }).join("");
+    return areaHeading + targetHeading + (groupRows || `<tr class="ppr-node-sheet-loading"><td colspan="4">Загружаем чек-лист выбранного узла…</td></tr>`);
   }).join("");
   return `
-    <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}" data-ppr-autofill-needed="${scheduledItems.length > 0 && !completion.active}">
+    <section class="ppr-maintenance-sheet ${completion.complete ? "complete" : ""}" data-ppr-sheet-date="${date}" data-ppr-autofill-needed="${autofillNeeded}">
       <header class="ppr-sheet-header">
         <div>
           <span>Лист планового обслуживания</span>
@@ -11273,7 +11313,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </div>
         <button type="button" class="secondary no-print" data-print-ppr-sheet="${date}">🖨️ Печать</button>
       </header>
-      ${scheduleGroups.length ? `<div class="ppr-sheet-equipment"><b>По графику</b><div>${scheduleHtml}</div></div>` : ""}
+      ${scheduleGroups.length ? `<div class="ppr-sheet-equipment"><b>Узлы ППР — нажмите, чтобы открыть лист</b><div>${scheduleHtml}</div></div>` : ""}
       <div class="ppr-sheet-table-wrap"><p class="no-print">✓ — выполнено · − — не требуется</p>
         <table class="ppr-sheet-table">
           <thead>
@@ -11464,6 +11504,16 @@ function bindPprCalendarControls(container, rerender) {
     if (result?.state) mergeRealtimePatch(result.state);
     if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
   } });
+  container?.querySelectorAll("[data-open-ppr-node-sheet]").forEach(button => {
+    button.addEventListener("click", () => {
+      const sheet = button.closest("[data-ppr-sheet-date]");
+      if (!sheet) return;
+      const date = sheet.dataset.pprSheetDate;
+      pprSheetSelectedTargets.set(date, decodeURIComponent(button.dataset.openPprNodeSheet || ""));
+      rerender();
+      window.setTimeout(() => container.querySelector(`[data-ppr-sheet-date="${date}"] .ppr-sheet-table-wrap`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+    });
+  });
   container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
     const date = element.dataset.pprSheetDate;
     const sheet = pprSheetRecord(date);

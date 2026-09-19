@@ -79,6 +79,22 @@ test("autofill excludes deleted equipment and active equipment/node pauses", () 
   assert.equal(validDate(date), true);
 });
 
+test("browser calendar and server generation use the same balanced weekday schedule", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../app.js"), "utf8");
+  const code = source.slice(source.indexOf("function rawPprItemsForDate("), source.indexOf("const PPR_SHEET_DEFAULT_ROWS"));
+  const context = vm.createContext({
+    recommendedMaintenanceForDate,
+    operationalControlEnabled: () => true,
+    addDaysISO: (date, days) => new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86400000).toISOString().slice(0, 10)
+  });
+  vm.runInContext(`${code}\nglobalThis.balanced = balancedPprItemsForDate;`, context);
+  const plain = value => JSON.parse(JSON.stringify(value));
+  for (let day = 1; day <= 30; day += 1) {
+    const date = `2026-09-${String(day).padStart(2, "0")}`;
+    assert.deepEqual(plain(context.balanced(EQUIPMENT.filter(item => item.area !== "Резерв"), date)), scheduledItemsForDate({}, date), date);
+  }
+});
+
 test("press 2400 uses the confirmed twelve production nodes", () => {
   assert.deepEqual(EQUIPMENT.find(item => item.id === 1).nodes, [
     "Пресс гидравлический станция и цилиндры", "Печь загатовка и Робот", "Пульт управление кнопки (пила,пресс,печь заг)",
@@ -88,19 +104,19 @@ test("press 2400 uses the confirmed twelve production nodes", () => {
   ]);
 });
 
-test("every equipment keeps nodes in compact groups and covers its full catalog", () => {
+test("every equipment covers its full node catalog while work is balanced across weekdays", () => {
+  const seenByEquipment = new Map(EQUIPMENT.filter(item => item.area !== "Резерв").map(item => [item.id, new Set()]));
+  for (let day = 0; day < 140; day += 1) {
+    const date = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
+    scheduledItemsForDate({}, date).forEach(item => seenByEquipment.get(item.equipmentId)?.add(item.node));
+  }
   for (const target of EQUIPMENT.filter(item => item.area !== "Резерв")) {
-    const groups = [];
-    for (let day = 0; day < 70 && groups.length < 4; day += 1) {
-      const date = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
-      const scheduled = scheduledItemsForDate({}, date).filter(item => item.equipmentId === target.id);
-      if (scheduled.length) groups.push(scheduled);
-    }
-    const groupSize = Math.ceil(target.nodes.length / 4);
-    assert.ok(groups.length > 0 && groups.length <= 4, target.name);
-    assert.ok(groups.every(group => group.length === groupSize), target.name);
-    assert.deepEqual([...new Set(groups.flatMap(group => group.map(item => item.node)))].sort(), [...target.nodes].sort(), target.name);
-    assert.ok(groups.flat().every(item => item.equipment === target.name && item.area === target.area), target.name);
+    assert.deepEqual([...seenByEquipment.get(target.id)].sort(), [...target.nodes].sort(), target.name);
+  }
+  for (let week = 0; week < 12; week += 1) {
+    const monday = new Date(Date.UTC(2026, 0, 5 + week * 7)).toISOString().slice(0, 10);
+    const counts = Array.from({ length: 5 }, (_, index) => scheduledItemsForDate({}, new Date(Date.UTC(2026, 0, 5 + week * 7 + index)).toISOString().slice(0, 10)).length);
+    assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, `${monday}: ${counts.join("/")}`);
   }
 });
 
@@ -152,7 +168,28 @@ test("untouched automatic sheets refresh after catalog nodes change and keep che
   assert.ok(refreshed.sheet.rows.some(row => row.node === addedNode && row.work));
   const started = structuredClone(refreshed.sheet);
   started.rows.find(row => row.work).mark = "done";
-  assert.equal(generatePprSheet({ catalog: {}, previous: started, date: started.date, now }).changed, false);
+  const startedRefresh = generatePprSheet({ catalog: {}, previous: started, date: started.date, now });
+  assert.equal(startedRefresh.changed, true);
+  assert.equal(startedRefresh.sheet.rows.find(row => row.mark === "done").id, started.rows.find(row => row.mark === "done").id);
+});
+
+test("started automatic sheets append missing scheduled nodes without changing saved results", () => {
+  const date = "2026-09-08";
+  const full = generatePprSheet({ catalog: {}, date, now: "2026-09-07T09:00:00.000Z" }).sheet;
+  assert.ok(full.autofilledFor.length > 2);
+  const previous = structuredClone(full);
+  previous.autofilledFor = full.autofilledFor.slice(0, 2);
+  const kept = new Set(previous.autofilledFor.map(item => JSON.stringify([String(item.equipmentId), item.node])));
+  previous.rows = previous.rows.filter(row => !row.work || kept.has(JSON.stringify([String(row.equipmentId), row.node])));
+  const completed = previous.rows.find(row => row.work);
+  Object.assign(completed, { mark: "done", resolutionComment: "Проверено", markedByName: "Механик" });
+  const before = structuredClone(completed);
+
+  const refreshed = generatePprSheet({ catalog: {}, previous, date, now: "2026-09-19T10:00:00.000Z" });
+
+  assert.equal(refreshed.changed, true);
+  assert.deepEqual(refreshed.sheet.rows.find(row => row.id === before.id), before);
+  full.autofilledFor.forEach(target => assert.ok(refreshed.sheet.rows.some(row => row.work && row.equipmentId === target.equipmentId && row.node === target.node), target.node));
 });
 
 test("browser requests refresh when an automatic sheet target list is stale", () => {
@@ -160,4 +197,8 @@ test("browser requests refresh when an automatic sheet target list is stale", ()
   assert.match(source, /function pprSheetAutofillStale\(date, sheet = pprSheetRecord\(date\)\)/);
   assert.match(source, /const catalogChanged = pprSheetAutofillStale\(date, sheet\)/);
   assert.match(source, /!catalogChanged && \(sheet\.autofillInitialized \|\| sheet\.rows\.some/);
+  assert.match(source, /data-open-ppr-node-sheet/);
+  assert.match(source, /pprSheetSelectedTargets\.set/);
+  assert.match(source, /allRowGroups\.filter\(group => pprSheetTargetKey\(group\) === selectedTargetKey\)/);
+  assert.match(source, /const autofillNeeded = scheduledItems\.length > 0 && \(!completion\.active \|\| pprSheetAutofillStale\(date, sheet\)\)/);
 });

@@ -191,7 +191,7 @@ function pauseApplies(pause, date, today) {
   return date >= start && (!end || date <= end);
 }
 
-function scheduledItemsForDate(catalog, date, today = date) {
+function rawScheduledItemsForDate(catalog, date, today = date) {
   return equipmentForPlan(catalog).flatMap(equipment => {
     if ((equipment.operationalPauses || []).some(pause => pauseApplies(pause, date, today))) return [];
     const plan = recommendedMaintenanceForDate(equipment, date);
@@ -209,6 +209,20 @@ function scheduledItemsForDate(catalog, date, today = date) {
       return [{ equipmentId: equipment.id, equipment: equipment.name, area: equipment.area, node, intervalDays: plan.intervalDays }];
     });
   });
+}
+
+function workWeekDates(date) {
+  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+  const monday = addDays(date, weekday === 0 ? -6 : 1 - weekday);
+  return Array.from({ length: 5 }, (_, index) => addDays(monday, index));
+}
+
+function scheduledItemsForDate(catalog, date, today = date) {
+  const week = workWeekDates(date);
+  const dayIndex = week.indexOf(date);
+  if (dayIndex < 0) return [];
+  const weeklyItems = week.flatMap(day => rawScheduledItemsForDate(catalog, day, today));
+  return weeklyItems.filter((_, index) => index % week.length === dayIndex);
 }
 
 function buildAutofillRows(date, scheduledItems, templates = {}) {
@@ -251,8 +265,32 @@ function finalizedAutofill(sheet, previous, changed, now) {
   return { sheet: next, changed: changed || next.approvalRequestedAt !== previous?.approvalRequestedAt };
 }
 
+function scheduledTargetKey(item = {}) {
+  return JSON.stringify([String(item.equipmentId), String(item.node || "").trim()]);
+}
+
 function scheduledTargetSignature(items = []) {
-  return items.map(item => JSON.stringify([String(item.equipmentId), String(item.node || "").trim()])).sort().join("|");
+  return items.map(scheduledTargetKey).sort().join("|");
+}
+
+function appendMissingScheduledTargets(previous, scheduledItems, templates, date, now) {
+  const existingTargets = new Set((previous.rows || [])
+    .filter(row => String(row?.work || "").trim() && row.equipmentId != null && String(row.node || "").trim())
+    .map(scheduledTargetKey));
+  const missingTargets = new Set(scheduledItems.map(scheduledTargetKey).filter(key => !existingTargets.has(key)));
+  const usedIds = new Set((previous.rows || []).map(row => String(row?.id || "")));
+  const added = buildAutofillRows(date, scheduledItems, templates)
+    .filter(row => String(row.work || "").trim() && missingTargets.has(scheduledTargetKey(row)))
+    .map(row => {
+      let id = row.id;
+      for (let suffix = 1; usedIds.has(id); suffix += 1) id = `${row.id}-sync-${suffix}`;
+      usedIds.add(id);
+      return { ...row, id, updatedAt: now, workUpdatedAt: now, markUpdatedAt: now, resolutionUpdatedAt: now };
+    });
+  if (!added.length) return null;
+  const activeRows = (previous.rows || []).filter(row => String(row?.work || "").trim());
+  const reserveRows = (previous.rows || []).filter(row => !String(row?.work || "").trim());
+  return [...activeRows, ...added, ...reserveRows];
 }
 
 function generatePprSheet({ catalog, templates = {}, previous, date, force = false, now = new Date().toISOString() }) {
@@ -267,7 +305,21 @@ function generatePprSheet({ catalog, templates = {}, previous, date, force = fal
   // approvals, and a concurrent engineer edit wins before this transaction.
   // An untouched automatic sheet is refreshed when the live equipment catalog
   // gains, removes or renames scheduled nodes, so every node receives a checklist.
-  if (previous && (previous.approvedAt || previous.explicitPlan || rowsStarted || (!force && !catalogChanged && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))))) return finalizedAutofill(previous, previous, false, now);
+  if (previous && (previous.approvedAt || previous.explicitPlan)) return finalizedAutofill(previous, previous, false, now);
+  if (previous && rowsStarted) {
+    if (!catalogChanged) return finalizedAutofill(previous, previous, false, now);
+    const rows = appendMissingScheduledTargets(previous, scheduledItems, templates, date, now);
+    if (!rows) return finalizedAutofill(previous, previous, false, now);
+    return finalizedAutofill({
+      ...previous,
+      rows,
+      updatedAt: now,
+      updatedByName: "Система",
+      autofilledAt: now,
+      autofilledFor: scheduledItems.map(({ equipmentId, equipment, node, area }) => ({ equipmentId, equipment, node, area }))
+    }, previous, true, now);
+  }
+  if (previous && !force && !catalogChanged && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))) return finalizedAutofill(previous, previous, false, now);
   if (!scheduledItems.length) return finalizedAutofill(previous || null, previous, false, now);
   const sheet = {
     ...(previous || {}), id: previous?.id || `ppr-sheet:${date}`, date,
