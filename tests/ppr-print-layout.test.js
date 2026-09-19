@@ -16,11 +16,14 @@ test("PPR print isolates one sheet and restores it after printing", () => {
   assert.match(source, /document\.body\.append\(sheet\)/);
   assert.match(source, /placeholder\.parentNode\.insertBefore\(sheet, placeholder\)/);
   assert.match(source, /if \(cleaned\) return/);
+  assert.match(source, /requestAnimationFrame\(\(\) => window\.requestAnimationFrame/);
 });
 
 test("PPR sheet prints as one landscape four-column document", () => {
   assert.match(styles, /@page\s*\{\s*size:\s*A4 landscape;\s*margin:\s*8mm/);
   assert.match(styles, /body\.printing-ppr-sheet > :not\(\.ppr-print-target\)\s*\{\s*display:\s*none !important/);
+  assert.match(styles, /body\.printing-ppr-sheet > \.ppr-print-target \*[^}]*visibility:\s*visible !important/);
+  assert.match(styles, /body\.printing-ppr-sheet \.ppr-empty-row\s*\{\s*display:\s*none !important/);
   assert.match(styles, /\.ppr-sheet-number\s*\{\s*width:\s*6% !important/);
   assert.match(styles, /\.ppr-sheet-resolution\s*\{\s*width:\s*43% !important/);
   assert.match(styles, /\.ppr-sheet-mark\s*\{\s*width:\s*12% !important/);

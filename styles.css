@@ -8625,6 +8625,7 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   body.printing-ppr-sheet > :not(.ppr-print-target) { display: none !important; }
   body.printing-ppr-sheet > .ppr-print-target {
     display: block !important;
+    visibility: visible !important;
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -8637,6 +8638,9 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
     color: #000 !important;
     break-inside: avoid-page;
   }
+  body.printing-ppr-sheet > .ppr-print-target *,
+  body.printing-ppr-sheet .ppr-sheet-table tr:not(.ppr-empty-row) { visibility: visible !important; }
+  body.printing-ppr-sheet .ppr-empty-row { display: none !important; }
   body.printing-ppr-sheet .no-print,
   body.printing-ppr-sheet .ppr-sheet-mark-buttons { display: none !important; }
   body.printing-ppr-sheet .ppr-sheet-print-mark { display: block !important; }
