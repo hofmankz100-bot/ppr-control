@@ -145,7 +145,9 @@
         rerender();
       }));
       element.querySelector("[data-ppr-plan-add]")?.addEventListener("click", () => {
-        draft.rows.push({ id: `${date}-work-${root.crypto.randomUUID()}`, work: "", mark: "", ...(draft.targets.length === 1 ? draft.targets[0] : {}) });
+        const selectedKey = decodeURIComponent(element.querySelector("[data-open-ppr-node-sheet].active")?.dataset.openPprNodeSheet || "");
+        const selectedTarget = draft.targets.find(target => keyFor(target) === selectedKey);
+        draft.rows.push({ id: `${date}-work-${root.crypto.randomUUID()}`, work: "", mark: "", ...(selectedTarget || (draft.targets.length === 1 ? draft.targets[0] : {})) });
         rerender();
       });
       element.querySelector("[data-ppr-plan-cancel]")?.addEventListener("click", () => {

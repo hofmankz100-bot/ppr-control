@@ -203,5 +203,12 @@ test("browser requests refresh when an automatic sheet target list is stale", ()
   assert.match(source, /data-open-ppr-node-sheet/);
   assert.match(source, /pprSheetSelectedTargets\.set/);
   assert.match(source, /allRowGroups\.filter\(group => pprSheetTargetKey\(group\) === selectedTargetKey\)/);
+  assert.doesNotMatch(source, /draft \|\| !selectedTargetKey \? allRowGroups/);
   assert.match(source, /const autofillNeeded = scheduledItems\.length > 0 && \(!completion\.active \|\| pprSheetAutofillStale\(date, sheet\)\)/);
+});
+
+test("new PPR editor rows belong to the currently selected node", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../modules/ppr-plan-editor.js"), "utf8");
+  assert.match(source, /\[data-open-ppr-node-sheet\]\.active/);
+  assert.match(source, /draft\.targets\.find\(target => keyFor\(target\) === selectedKey\)/);
 });

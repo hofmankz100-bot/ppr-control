@@ -50,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v865";
+const APP_VERSION = "v866";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11279,7 +11279,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   let previousPprArea = null;
   let pprRowNumber = 0;
   const allRowGroups = window.PprPlanEditor.groupByTarget(rows, scheduledItems.length === 1 ? scheduledItems[0] : null);
-  let visibleRowGroups = draft || !selectedTargetKey ? allRowGroups : allRowGroups.filter(group => pprSheetTargetKey(group) === selectedTargetKey);
+  let visibleRowGroups = !selectedTargetKey ? allRowGroups : allRowGroups.filter(group => pprSheetTargetKey(group) === selectedTargetKey);
   if (!draft && selectedTargetKey && !visibleRowGroups.length) {
     const scheduled = scheduleGroups.find(group => pprSheetTargetKey(group) === selectedTargetKey);
     if (scheduled) visibleRowGroups = [{ ...scheduled, rows: [] }];
