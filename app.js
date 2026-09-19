@@ -50,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v862";
+const APP_VERSION = "v863";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -13585,7 +13585,7 @@ function renderEngineerReport() {
       const groupKey = decodeURIComponent(button.dataset.openRepeatBreakdown || "");
       const group = engineerAnnualAnalysis(year).repeatedBreakdowns.find(item => item.groupKey === groupKey);
       if (!group) return showAppToast("Группа повторных поломок не найдена.", "error");
-      PPRModules.repeatFailures.openJournal(group, null, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup });
+      PPRModules.repeatFailures.openJournal(group, null, { escapeHtml, dateTimeHuman, durationText, requestRoleLabel, finalizeJournalPopup, canEditMembership: canManageRepeatFailureGroups(), apiJson, nextActionId, clientId: CLIENT_ID, mergeRealtimePatch, setRealtimeStateVersion, persist: () => persistStateLocally(state), showAppToast, render: renderEngineerReport });
     });
   });
 }

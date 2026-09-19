@@ -257,6 +257,7 @@
 
   function journalHtml(group = {}, year, helpers) {
     const { escapeHtml, dateTimeHuman, durationText, requestRoleLabel } = helpers;
+    const canEditMembership = Boolean(helpers.canEditMembership && !group.closedAt && !group.cycleId);
     const code = String(group.manualCode || "").trim();
     const events = (Array.isArray(group.events) ? group.events : []).filter(event =>
       /^[1-9]\d{0,5}$/.test(code) && String(event.repeatFailureCode || "").trim() === code
@@ -273,14 +274,17 @@
       const resolver = [...new Set(participants)].join(", ") || person(event.resolvedByName, event.resolvedByRole);
       const confirmer = person(event.confirmedByName, event.confirmedByRole);
       const resolution = [resolver ? `Устранили: ${resolver}` : "", confirmer ? `Подтвердил: ${confirmer}${event.confirmedAt ? " · " + dateTimeHuman(event.confirmedAt) : ""}` : ""].filter(Boolean).join("\n");
-      return `<tr><td>${sheetIndex * 10 + index + 1}</td><td>${escapeHtml(event.equipment || group.equipment || "-")}<br>${escapeHtml(event.node || "-")}</td><td>${escapeHtml(dateTimeHuman(event.createdAt))}</td><td>${escapeHtml((event.type === "breakdown" ? "Поломка: " : "Замечание: ") + (event.text || "Без комментария"))}${event.correctedDefectText ? `<br><b>Исправленный комментарий:</b> ${escapeHtml(event.correctedDefectText)}` : ""}</td><td>${escapeHtml(person(event.authorName, event.authorRole))}</td><td>${event.resolvedAt ? escapeHtml(dateTimeHuman(event.resolvedAt)) : ""}</td><td>${escapeHtml(event.resolvedComment || (event.resolvedAt ? "Устранено" : ""))}${event.correctedResolvedComment ? `<br><b>Исправленная запись:</b> ${escapeHtml(event.correctedResolvedComment)}` : ""}</td><td>${event.durationMs ? escapeHtml(durationText(event.durationMs)) : ""}</td><td>${escapeHtml(resolution)}</td></tr>`;
+      const rowNumber = sheetIndex * 10 + index + 1;
+      const sourceIndex = group.events.indexOf(event);
+      const membership = canEditMembership ? `<label class="repeat-journal-membership no-print" title="Снять метку и исключить запись из журнала и расчётов"><input type="checkbox" checked data-repeat-journal-membership="${sourceIndex}" aria-label="Запись ${rowNumber} включена в повторную неисправность"><span>В журнале</span></label>` : "";
+      return `<tr><td><span class="repeat-journal-row-number">${rowNumber}</span>${membership}</td><td>${escapeHtml(event.equipment || group.equipment || "-")}<br>${escapeHtml(event.node || "-")}</td><td>${escapeHtml(dateTimeHuman(event.createdAt))}</td><td>${escapeHtml((event.type === "breakdown" ? "Поломка: " : "Замечание: ") + (event.text || "Без комментария"))}${event.correctedDefectText ? `<br><b>Исправленный комментарий:</b> ${escapeHtml(event.correctedDefectText)}` : ""}</td><td>${escapeHtml(person(event.authorName, event.authorRole))}</td><td>${event.resolvedAt ? escapeHtml(dateTimeHuman(event.resolvedAt)) : ""}</td><td>${escapeHtml(event.resolvedComment || (event.resolvedAt ? "Устранено" : ""))}${event.correctedResolvedComment ? `<br><b>Исправленная запись:</b> ${escapeHtml(event.correctedResolvedComment)}` : ""}</td><td>${event.durationMs ? escapeHtml(durationText(event.durationMs)) : ""}</td><td>${escapeHtml(resolution)}</td></tr>`;
     }).join("") : '<tr><td colspan="9">Нет отмеченных записей</td></tr>'}</tbody></table></div></section>`).join("")}</article>`;
   }
 
   function printJournal(group, year, helpers) {
     const popup = window.open("", "_blank", "width=1400,height=900");
     if (!popup) return window.alert("Разрешите всплывающие окна для печати журнала.");
-    popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${helpers.escapeHtml(journalTitle(group))}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#111827}header{display:flex;justify-content:space-between;border-bottom:2px solid #111827;margin-bottom:10px;padding-bottom:8px}header span{font-size:11px;text-transform:uppercase}h2{margin:3px 0 5px;font-size:20px}p{margin:0;font-size:11px;color:#475569}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #64748b;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere}th{background:#e2e8f0;text-align:left}thead{display:table-header-group}tr{break-inside:avoid}.aggregate-sheet-head{display:flex;justify-content:space-between;margin:8px 0;font-size:11px}.repeat-journal-sheet{break-after:page}.repeat-journal-sheet:last-child{break-after:auto}.repeat-journal-table-wrap{overflow:visible}td{white-space:pre-line}</style></head><body>${journalHtml(group, year, helpers)}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+    popup.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${helpers.escapeHtml(journalTitle(group))}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#111827}header{display:flex;justify-content:space-between;border-bottom:2px solid #111827;margin-bottom:10px;padding-bottom:8px}header span{font-size:11px;text-transform:uppercase}h2{margin:3px 0 5px;font-size:20px}p{margin:0;font-size:11px;color:#475569}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #64748b;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere}th{background:#e2e8f0;text-align:left}thead{display:table-header-group}tr{break-inside:avoid}.aggregate-sheet-head{display:flex;justify-content:space-between;margin:8px 0;font-size:11px}.repeat-journal-sheet{break-after:page}.repeat-journal-sheet:last-child{break-after:auto}.repeat-journal-table-wrap{overflow:visible}td{white-space:pre-line}</style></head><body>${journalHtml(group, year, { ...helpers, canEditMembership: false })}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
     helpers.finalizeJournalPopup(popup);
   }
 
@@ -289,10 +293,33 @@
     const modal = document.createElement("div");
     modal.id = "repeatFailureJournalModal";
     modal.className = "repeat-failure-journal-modal";
-    modal.innerHTML = `<div class="repeat-failure-journal-backdrop" data-close-repeat-journal></div><section role="dialog" aria-modal="true" aria-label="Журнал повторных поломок"><div class="repeat-failure-journal-actions"><button type="button" data-print-repeat-journal>Печать / PDF</button><button type="button" class="secondary" data-close-repeat-journal>Закрыть</button></div>${journalHtml(group, year, helpers)}</section>`;
     document.body.append(modal);
-    modal.querySelectorAll("[data-close-repeat-journal]").forEach(button => button.addEventListener("click", () => modal.remove()));
-    modal.querySelector("[data-print-repeat-journal]")?.addEventListener("click", () => printJournal(group, year, helpers));
+    const renderModal = () => {
+      modal.innerHTML = `<div class="repeat-failure-journal-backdrop" data-close-repeat-journal></div><section role="dialog" aria-modal="true" aria-label="Журнал повторных поломок"><div class="repeat-failure-journal-actions"><button type="button" data-print-repeat-journal>Печать / PDF</button><button type="button" class="secondary" data-close-repeat-journal>Закрыть</button></div>${journalHtml(group, year, helpers)}</section>`;
+      modal.querySelectorAll("[data-close-repeat-journal]").forEach(button => button.addEventListener("click", () => modal.remove()));
+      modal.querySelector("[data-print-repeat-journal]")?.addEventListener("click", () => printJournal(group, year, helpers));
+      modal.querySelectorAll("[data-repeat-journal-membership]").forEach(checkbox => checkbox.addEventListener("change", async event => {
+        const input = event.currentTarget;
+        if (input.checked) return;
+        const item = group.events?.[Number(input.dataset.repeatJournalMembership)];
+        if (!item) { input.checked = true; return; }
+        if (!window.confirm("Снять метку? Запись будет исключена из этого журнала и связанных расчётов повторных неисправностей.")) { input.checked = true; return; }
+        try {
+          input.disabled = true;
+          await saveCode(item, "", helpers);
+          group.events = group.events.filter(entry => entry !== item);
+          helpers.showAppToast("Метка снята. Запись исключена из журнала и расчётов.", "ok");
+          helpers.render?.();
+          if (!group.events.length) modal.remove();
+          else renderModal();
+        } catch (error) {
+          input.checked = true;
+          input.disabled = false;
+          helpers.showAppToast(error?.data?.error === "repeat_failure_group_closed" ? "Закрытую группу изменять нельзя." : "Не удалось снять метку.", "error");
+        }
+      }));
+    };
+    renderModal();
   }
 
   async function saveCode(item, code, helpers, name = "") {

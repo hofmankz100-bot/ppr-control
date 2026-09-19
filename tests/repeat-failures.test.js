@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const context = { window: {} };
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8"), context);
+const repeatFailuresSource = fs.readFileSync(path.join(__dirname, "../modules/repeat-failures.js"), "utf8");
+vm.runInNewContext(repeatFailuresSource, context);
 const { activeGroups, buildAnalysis, editorHtml, employeeKpd, employeeRepeatPenaltyCounts, journalHtml } = context.window.PPRModules.repeatFailures;
 test("journal stylesheet is publicly served without exposing other server files", () => {
   const { isPublicStaticPath } = require("../server/static-files");
@@ -171,4 +172,10 @@ test("detail journal paginates marked records and retains aggregate repair detai
   assert.ok(html.includes("2026-08-02T09:00:00Z") && html.includes("&lt;script&gt;"));
   assert.ok(!html.includes("<script>") && !html.includes("UNMARKED") && !html.includes("OTHER"));
   assert.ok(!html.includes("repeat-failure-editor") && !html.includes("data-save-repeat-failure"));
+  const editable = journalHtml({ manualCode: "5", equipment: "Пресс", events: marked }, 2026, { ...helpers, canEditMembership: true });
+  assert.equal((editable.match(/data-repeat-journal-membership=/g) || []).length, 11);
+  assert.match(editable, /checked data-repeat-journal-membership="0"/);
+  assert.doesNotMatch(html, /data-repeat-journal-membership=/);
+  assert.match(repeatFailuresSource, /if \(!group\.events\.length\) modal\.remove\(\)/);
+  assert.doesNotMatch(repeatFailuresSource, /group\.events\.length < 2/);
 });
