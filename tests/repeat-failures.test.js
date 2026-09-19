@@ -148,14 +148,16 @@ test("engineer report keeps the director annual employee rating order", () => {
     { name: "Most closed", closed: 8, installs: 0, downtimeClosed: 0, kpd: 75, points: 80 }
   ];
   const rating = buildAnalysis([], { workers }).employeeRating;
-  assert.deepEqual(rating.map(worker => worker.name), ["KPI leader", "Most closed"]);
+  assert.equal(rating.map(worker => worker.name).join("|"), "KPI leader|Most closed");
   assert.deepEqual(workers.map(worker => worker.name), ["KPI leader", "Most closed"]);
 });
 
-test("engineer report includes every employee with rating activity", () => {
-  const workers = Array.from({ length: 14 }, (_, index) => ({ name: `Worker ${index}`, points: index + 1 }));
+test("engineer report includes every eligible employee, including no-data rows", () => {
+  const workers = Array.from({ length: 14 }, (_, index) => ({ name: `Worker ${index}`, points: index ? index + 1 : 0, kpd: index ? 50 : null }));
   const rating = buildAnalysis([], { workers }).employeeRating;
   assert.equal(rating.length, 14);
+  assert.equal(rating[0].name, "Worker 0");
+  assert.equal(rating[0].kpd, null);
   assert.equal(rating[13].name, "Worker 13");
 });
 

@@ -177,9 +177,7 @@
       .filter(item => item.count >= 2)
       .map(item => ({ ...item, events: item.events.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) }))
       .sort((a, b) => b.count - a.count || b.downtimeMs - a.downtimeMs || a.equipment.localeCompare(b.equipment, "ru"));
-    const employeeRating = annualStats.workers
-      .filter(worker => worker.points || worker.closed || worker.remarksFound || worker.remarksResolved
-        || worker.repeatFailures || worker.overdueOpen || worker.installs || worker.downtimeClosed);
+    const employeeRating = [...annualStats.workers];
     return { repeatedBreakdowns, employeeRating };
   }
 
