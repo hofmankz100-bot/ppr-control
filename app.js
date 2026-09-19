@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v856";
+const APP_VERSION = "v857";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11295,11 +11295,22 @@ function printPprMaintenanceSheet(date) {
     row.querySelector("[data-ppr-print-resolution]").textContent = row.querySelector("[data-ppr-resolution-input]")?.value || "";
   });
   const oldTitle = document.title;
+  const originalParent = sheet.parentNode;
+  const placeholder = document.createComment("ppr-print-sheet-position");
+  originalParent.insertBefore(placeholder, sheet);
+  sheet.classList.add("ppr-print-target");
+  document.body.append(sheet);
   document.title = `Лист ППР ${date}`;
   document.body.classList.add("printing-ppr-sheet");
+  let cleaned = false;
   const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
     document.title = oldTitle;
     document.body.classList.remove("printing-ppr-sheet");
+    sheet.classList.remove("ppr-print-target");
+    if (placeholder.parentNode) placeholder.parentNode.insertBefore(sheet, placeholder);
+    placeholder.remove();
     window.removeEventListener("afterprint", cleanup);
   };
   window.addEventListener("afterprint", cleanup);

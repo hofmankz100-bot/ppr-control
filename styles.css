@@ -8523,27 +8523,6 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 }
 }
 
-/* This PPR print rule must stay last because older journal print layouts are global. */
-@media print {
-  @page { size: A4 portrait; margin: 10mm; }
-  html:has(body.printing-ppr-sheet),
-  body.printing-ppr-sheet {
-    width: auto !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: #fff !important;
-  }
-  body.printing-ppr-sheet .ppr-maintenance-sheet {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-}
-
 /* Fillable daily PPR maintenance sheet. */
 .ppr-maintenance-sheet {
   margin-top: 12px;
@@ -8640,24 +8619,38 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 }
 
 @media print {
-  @page { size: A4 portrait; margin: 10mm; }
-  body.printing-ppr-sheet { width: auto !important; height: auto !important; overflow: visible !important; background: #fff !important; }
-  body.printing-ppr-sheet * { visibility: hidden !important; }
-  body.printing-ppr-sheet .ppr-maintenance-sheet,
-  body.printing-ppr-sheet .ppr-maintenance-sheet * { visibility: visible !important; }
-  body.printing-ppr-sheet .ppr-maintenance-sheet {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
+  @page { size: A4 landscape; margin: 8mm; }
+  html:has(body.printing-ppr-sheet),
+  body.printing-ppr-sheet { width: auto !important; min-height: 0 !important; height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; background: #fff !important; }
+  body.printing-ppr-sheet > :not(.ppr-print-target) { display: none !important; }
+  body.printing-ppr-sheet > .ppr-print-target {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
     margin: 0 !important;
     border: 1px solid #111 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     color: #000 !important;
+    break-inside: avoid-page;
   }
   body.printing-ppr-sheet .no-print,
   body.printing-ppr-sheet .ppr-sheet-mark-buttons { display: none !important; }
   body.printing-ppr-sheet .ppr-sheet-print-mark { display: block !important; }
+  body.printing-ppr-sheet .ppr-sheet-table-wrap { width: 100% !important; overflow: visible !important; }
+  body.printing-ppr-sheet .ppr-sheet-table { width: 100% !important; table-layout: fixed !important; font-size: 10pt !important; }
+  body.printing-ppr-sheet .ppr-sheet-table th:first-child,
+  body.printing-ppr-sheet .ppr-sheet-number { width: 6% !important; }
+  body.printing-ppr-sheet .ppr-sheet-table th:nth-child(2) { width: 39% !important; }
+  body.printing-ppr-sheet .ppr-sheet-resolution { width: 43% !important; }
+  body.printing-ppr-sheet .ppr-sheet-table th:last-child,
+  body.printing-ppr-sheet .ppr-sheet-mark { width: 12% !important; }
+  body.printing-ppr-sheet .ppr-sheet-table tr { break-inside: avoid; page-break-inside: avoid; }
+  body.printing-ppr-sheet .ppr-sheet-table th { padding: 5px !important; }
+  body.printing-ppr-sheet .ppr-sheet-print-text { min-height: 0 !important; padding: 5px !important; }
   body.printing-ppr-sheet .ppr-sheet-header,
   body.printing-ppr-sheet .ppr-sheet-footer,
   body.printing-ppr-sheet .ppr-sheet-equipment { background: #fff !important; color: #000 !important; }
