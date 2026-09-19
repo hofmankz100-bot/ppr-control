@@ -5,11 +5,10 @@ const DEFAULT_NODES = [
 
 const EQUIPMENT = [
   { id: 1, name: "пресс 2400 EGE", area: "Прессовый участок", nodes: [
-    "Главный цилиндр пресса", "Гидравлическая станция пресса", "Масляный бак и фильтрация масла", "Клапанная плита и гидрораспределители",
-    "Штемпель / пресс-шток", "Пресс-шайба / dummy block", "Контейнер заготовки", "Нагрев контейнера",
-    "Матрицедержатель / die holder", "Матрица и комплект оснастки", "Передняя плита и колонны пресса", "Станина и направляющие пресса",
-    "Печь нагрева заготовок", "Стол загрузки заготовок", "Система подачи заготовок", "Пилотина / нож резки заготовки",
-    "Пуллер / тянущее устройство профиля", "Выходной транспортер и охлаждающий стол", "Система охлаждения масла и профиля", "Шкаф управления, PLC, датчики и блокировки"
+    "Пресс гидравлический станция и цилиндры", "Печь загатовка и Робот", "Пульт управление кнопки (пила,пресс,печь заг)",
+    "Печь матрица ,Толкатель матрицы, Кран-балка матрицы", "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)",
+    "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)", "Горячий пила и Пуллер A.B", "Термичка 1", "Термичка 2",
+    "Финишный пила (экран управление,лапа,размер проф)", "печь матрицы электрическая таль №10", "кран балка №7 2 тонны термичка загрузка"
   ]},
   { id: 2, name: "пресс 1540 EGE", area: "Прессовый участок", nodes: [
     "Главный цилиндр", "Гидравлическая станция", "Масляная система", "Гидрораспределители", "Пресс-шток", "Dummy block", "Контейнер", "Нагрев контейнера",
@@ -51,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v859";
+const APP_VERSION = "v860";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11113,6 +11112,18 @@ function pprSheetRecord(date, create = false) {
 const pprSheetGenerationRequests = new Map();
 const pprSheetGenerationAttempts = new Map();
 
+function pprAutofillTargetSignature(items = []) {
+  return items.map(item => JSON.stringify([String(item.equipmentId), String(item.node || "").trim()])).sort().join("|");
+}
+
+function pprSheetAutofillStale(date, sheet = pprSheetRecord(date)) {
+  if (!sheet?.autofillInitialized || !sheet?.plannedAutomatically || sheet?.explicitPlan) return false;
+  const [year, month] = String(date || "").split("-").map(Number);
+  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month)) return false;
+  const scheduled = pprCalendarMonthData(allEquipment(), year, month - 1).itemsByDate[date] || [];
+  return pprAutofillTargetSignature(sheet.autofilledFor) !== pprAutofillTargetSignature(scheduled);
+}
+
 async function ensurePprSheetAutofill(date, force = false) {
   if (pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile)) return null;
   if (pprSheetGenerationRequests.has(date)) return pprSheetGenerationRequests.get(date);
@@ -11456,7 +11467,8 @@ function bindPprCalendarControls(container, rerender) {
   container?.querySelectorAll('[data-ppr-sheet-date][data-ppr-autofill-needed="true"]').forEach(element => {
     const date = element.dataset.pprSheetDate;
     const sheet = pprSheetRecord(date);
-    if (!navigator.onLine || pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile) || sheet.approvedAt || sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())) return;
+    const catalogChanged = pprSheetAutofillStale(date, sheet);
+    if (!navigator.onLine || pendingDeviceRestoreRequired || sessionValidationState !== "verified" || !pendingStateOwner.owns(authenticatedProfile) || sheet.approvedAt || (!catalogChanged && (sheet.autofillInitialized || sheet.rows.some(row => String(row.work || "").trim())))) return;
     if (Date.now() - (pprSheetGenerationAttempts.get(date) || 0) < 30000) return;
     pprSheetGenerationAttempts.set(date, Date.now());
     ensurePprSheetAutofill(date).then(result => { if (result?.sheet && container.isConnected) rerender(); }).catch(() => {

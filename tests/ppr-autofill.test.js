@@ -79,6 +79,15 @@ test("autofill excludes deleted equipment and active equipment/node pauses", () 
   assert.equal(validDate(date), true);
 });
 
+test("press 2400 uses the confirmed twelve production nodes", () => {
+  assert.deepEqual(EQUIPMENT.find(item => item.id === 1).nodes, [
+    "Пресс гидравлический станция и цилиндры", "Печь загатовка и Робот", "Пульт управление кнопки (пила,пресс,печь заг)",
+    "Печь матрица ,Толкатель матрицы, Кран-балка матрицы", "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)",
+    "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)", "Горячий пила и Пуллер A.B", "Термичка 1", "Термичка 2",
+    "Финишный пила (экран управление,лапа,размер проф)", "печь матрицы электрическая таль №10", "кран балка №7 2 тонны термичка загрузка"
+  ]);
+});
+
 test("every equipment keeps nodes in compact groups and covers its full catalog", () => {
   for (const target of EQUIPMENT.filter(item => item.area !== "Резерв")) {
     const groups = [];
@@ -120,4 +129,35 @@ test("future catalog nodes and newly created equipment automatically enter PPR p
   }
   assert.ok(seenBuiltIn.has(addedNode));
   assert.deepEqual([...seenCreated].sort(), [...created.nodes].sort());
+});
+
+test("untouched automatic sheets refresh after catalog nodes change and keep checklist rows", () => {
+  const date = "2026-09-07";
+  const now = "2026-09-06T09:00:00.000Z";
+  const first = generatePprSheet({ catalog: {}, date, now }).sheet;
+  const target = first.autofilledFor[0];
+  const builtIn = EQUIPMENT.find(item => item.id === target.equipmentId);
+  const addedNode = "Новый узел с типовым чек-листом";
+  const catalog = { equipment: { [builtIn.id]: { nodes: [...builtIn.nodes, addedNode] } } };
+  let refreshed = null;
+  for (let day = 0; day < 70 && !refreshed; day += 1) {
+    const candidate = new Date(Date.UTC(2026, 8, 7 + day)).toISOString().slice(0, 10);
+    const scheduled = scheduledItemsForDate(catalog, candidate);
+    if (!scheduled.some(item => item.node === addedNode)) continue;
+    const old = generatePprSheet({ catalog: {}, date: candidate, now }).sheet;
+    refreshed = generatePprSheet({ catalog, previous: old, date: candidate, now });
+  }
+  assert.ok(refreshed?.changed);
+  assert.ok(refreshed.sheet.autofilledFor.some(item => item.node === addedNode));
+  assert.ok(refreshed.sheet.rows.some(row => row.node === addedNode && row.work));
+  const started = structuredClone(refreshed.sheet);
+  started.rows.find(row => row.work).mark = "done";
+  assert.equal(generatePprSheet({ catalog: {}, previous: started, date: started.date, now }).changed, false);
+});
+
+test("browser requests refresh when an automatic sheet target list is stale", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../app.js"), "utf8");
+  assert.match(source, /function pprSheetAutofillStale\(date, sheet = pprSheetRecord\(date\)\)/);
+  assert.match(source, /const catalogChanged = pprSheetAutofillStale\(date, sheet\)/);
+  assert.match(source, /!catalogChanged && \(sheet\.autofillInitialized \|\| sheet\.rows\.some/);
 });

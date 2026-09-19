@@ -9,11 +9,10 @@ const DEFAULT_NODES = [
 
 const EQUIPMENT = [
   { id: 1, name: "пресс 2400 EGE", area: "Прессовый участок", nodes: [
-    "Главный цилиндр пресса", "Гидравлическая станция пресса", "Масляный бак и фильтрация масла", "Клапанная плита и гидрораспределители",
-    "Штемпель / пресс-шток", "Пресс-шайба / dummy block", "Контейнер заготовки", "Нагрев контейнера",
-    "Матрицедержатель / die holder", "Матрица и комплект оснастки", "Передняя плита и колонны пресса", "Станина и направляющие пресса",
-    "Печь нагрева заготовок", "Стол загрузки заготовок", "Система подачи заготовок", "Пилотина / нож резки заготовки",
-    "Пуллер / тянущее устройство профиля", "Выходной транспортер и охлаждающий стол", "Система охлаждения масла и профиля", "Шкаф управления, PLC, датчики и блокировки"
+    "Пресс гидравлический станция и цилиндры", "Печь загатовка и Робот", "Пульт управление кнопки (пила,пресс,печь заг)",
+    "Печь матрица ,Толкатель матрицы, Кран-балка матрицы", "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)",
+    "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)", "Горячий пила и Пуллер A.B", "Термичка 1", "Термичка 2",
+    "Финишный пила (экран управление,лапа,размер проф)", "печь матрицы электрическая таль №10", "кран балка №7 2 тонны термичка загрузка"
   ]},
   { id: 2, name: "пресс 1540 EGE", area: "Прессовый участок", nodes: [
     "Главный цилиндр", "Гидравлическая станция", "Масляная система", "Гидрораспределители", "Пресс-шток", "Dummy block", "Контейнер", "Нагрев контейнера",
@@ -252,13 +251,23 @@ function finalizedAutofill(sheet, previous, changed, now) {
   return { sheet: next, changed: changed || next.approvalRequestedAt !== previous?.approvalRequestedAt };
 }
 
+function scheduledTargetSignature(items = []) {
+  return items.map(item => JSON.stringify([String(item.equipmentId), String(item.node || "").trim()])).sort().join("|");
+}
+
 function generatePprSheet({ catalog, templates = {}, previous, date, force = false, now = new Date().toISOString() }) {
   if (!validDate(date)) throw new Error("ppr_date_invalid");
-  // Opening a day is idempotent: a worker never replaces saved work, marks or
-  // approvals, and a concurrent engineer edit wins before this transaction.
-  if (previous && (previous.approvedAt || previous.explicitPlan || previous.rows?.some(row => row.mark || row.markedAt || String(row.resolutionComment || "").trim()) || (!force && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))))) return finalizedAutofill(previous, previous, false, now);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Qyzylorda", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
   const scheduledItems = scheduledItemsForDate(catalog, date, today);
+  const rowsStarted = previous?.rows?.some(row => row.mark || row.markedAt || String(row.resolutionComment || "").trim());
+  const automaticSheet = previous?.autofillInitialized && previous?.plannedAutomatically && !previous?.explicitPlan;
+  const catalogChanged = automaticSheet
+    && scheduledTargetSignature(previous.autofilledFor) !== scheduledTargetSignature(scheduledItems);
+  // Opening a day is idempotent: a worker never replaces saved work, marks or
+  // approvals, and a concurrent engineer edit wins before this transaction.
+  // An untouched automatic sheet is refreshed when the live equipment catalog
+  // gains, removes or renames scheduled nodes, so every node receives a checklist.
+  if (previous && (previous.approvedAt || previous.explicitPlan || rowsStarted || (!force && !catalogChanged && (previous.autofillInitialized || previous.rows?.some(row => String(row?.work || "").trim()))))) return finalizedAutofill(previous, previous, false, now);
   if (!scheduledItems.length) return finalizedAutofill(previous || null, previous, false, now);
   const sheet = {
     ...(previous || {}), id: previous?.id || `ppr-sheet:${date}`, date,

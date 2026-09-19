@@ -32,7 +32,8 @@ function harness() {
       return promise;
     },
     persistStateLocally: state => writes.push(copy(state)), setRealtimeStateVersion: value => versions.push(value),
-    pprSheetRecord: day => context.state.pprSheets[day] || { rows: [] }
+    pprSheetRecord: day => context.state.pprSheets[day] || { rows: [] },
+    pprSheetAutofillStale: () => false
   });
   vm.runInContext(editorSource, context);
   const names = ["resolutionUserKey", "isIncomingNewerRecord", "mergeObjectByFreshnessLocal", "pprRowFreshnessLocal", "pprFieldTimeLocal", "mergePprRowFieldsLocal", "mergePprSheetRowsLocal", "mergePprSheetsLocal", "ensurePprSheetAutofill"];
