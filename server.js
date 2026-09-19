@@ -131,9 +131,7 @@ const GAS_QR_NODES = Object.freeze([
   "ПСК"
 ]);
 const PRESS_2400_EQUIPMENT_ID = "1";
-// Exact production order recovered from the 2026-08-10 database backup.
-// The order is significant because existing checks and printed QR codes use node indexes.
-const PRESS_2400_HISTORICAL_NODES = Object.freeze([
+const PRESS_2400_PRODUCTION_NODES = Object.freeze([
   "Пресс гидравлический станция и цилиндры",
   "Печь загатовка и Робот",
   "Пульт управление кнопки (пила,пресс,печь заг)",
@@ -146,13 +144,6 @@ const PRESS_2400_HISTORICAL_NODES = Object.freeze([
   "Финишный пила (экран управление,лапа,размер проф)",
   "печь матрицы электрическая таль №10",
   "кран балка №7 2 тонны термичка загрузка"
-]);
-const PRESS_2400_PREVIOUS_NODES = Object.freeze([
-  "Пресс гидравлический станция и цилиндры", "Печь загатовка и Робот",
-  "Контейнер и Прессштемпель (магнит размер,темп контейнера,латун центровка))", "Кассета матрицы и Конвейнер , Нож",
-  "Пульт управление кнопки (пила,пресс,печь заг)", "Печь матрица ,Толкатель матрицы",
-  "Стол охлаждение вентиляторы(бикса,стол ролик,стол пуллер)", "Лента стол 1-2-3-4 (цилиндр,вал,цеп,клапн воздух)",
-  "Горячий пила и Пуллер A.B", "Термичка 1", "Термичка 2", "Финишный пила (экран управление,лапа,размер проф)"
 ]);
 const loginAttempts = new Map();
 const contractorAttendanceAttempts = new Map();
@@ -510,91 +501,6 @@ function restoreKnownPhysicalQrAliases(db) {
   return changed;
 }
 
-function restorePress2400Catalog(db) {
-  const item = db?.catalog?.equipment?.[PRESS_2400_EQUIPMENT_ID];
-  if (!item || !Array.isArray(item.nodes)) return false;
-  const restoreVersion = "production-list-20260919-v2";
-  const previousRestoreVersion = "production-backup-20260810-v1";
-  if (item.press2400RestoreVersion === restoreVersion) return false;
-
-  const currentNames = item.nodes.map(normalizedCatalogNodeName);
-  const targetNames = PRESS_2400_HISTORICAL_NODES.map(normalizedCatalogNodeName);
-  const previousNames = PRESS_2400_PREVIOUS_NODES.map(normalizedCatalogNodeName);
-  const matchesKnownProductionList = [targetNames, previousNames].some(names => (
-    currentNames.length === names.length && currentNames.every((name, index) => name === names[index])
-  ));
-  if (!matchesKnownProductionList && item.press2400RestoreVersion !== previousRestoreVersion) return false;
-  const renamedNodes = new Map([
-    [normalizedCatalogNodeName("Печь матрица ,Толкатель матрицы"), normalizedCatalogNodeName("Печь матрица ,Толкатель матрицы, Кран-балка матрицы")]
-  ]);
-  const targetIndexForOld = oldIndex => targetNames.indexOf(renamedNodes.get(currentNames[oldIndex]) || currentNames[oldIndex]);
-  const completeAndOrdered = currentNames.length === targetNames.length
-    && currentNames.every((name, index) => name === targetNames[index]);
-  if (completeAndOrdered) {
-    item.press2400RestoreVersion = restoreVersion;
-    return false;
-  }
-
-  const now = new Date().toISOString();
-  db.archivedNodeChecks ||= [];
-  const nextChecks = {};
-  Object.entries(db.checks || {}).forEach(([recordKey, record]) => {
-    const parts = String(recordKey).split(":");
-    if (parts[0] !== PRESS_2400_EQUIPMENT_ID) { nextChecks[recordKey] = record; return; }
-    const oldIndex = Number(parts[1]);
-    const newIndex = targetIndexForOld(oldIndex);
-    if (newIndex < 0) {
-      db.archivedNodeChecks.push({ recordKey, equipmentId: 1, nodeIndex: oldIndex, equipment: item.name, node: item.nodes[oldIndex] || "", archivedAt: now, record });
-      return;
-    }
-    nextChecks[`${PRESS_2400_EQUIPMENT_ID}:${newIndex}:${parts.slice(2).join(":")}`] = record;
-  });
-  db.checks = nextChecks;
-  if (db.archivedNodeChecks.length > 50000) db.archivedNodeChecks = db.archivedNodeChecks.slice(-50000);
-
-  const targetEntries = targetNames.map((targetName, newIndex) => ({
-    name: PRESS_2400_HISTORICAL_NODES[newIndex],
-    oldIndex: currentNames.findIndex(name => (renamedNodes.get(name) || name) === targetName)
-  }));
-  CATALOG_NODE_INDEXED_FIELDS.forEach(field => {
-    const source = item[field];
-    if (!source || typeof source !== "object" || Array.isArray(source)) return;
-    item[field] = Object.fromEntries(targetEntries.flatMap((entry, newIndex) => (
-      entry.oldIndex >= 0 && Object.prototype.hasOwnProperty.call(source, entry.oldIndex)
-        ? [[newIndex, source[entry.oldIndex]]]
-        : []
-    )));
-  });
-  const remapLinkedNode = linked => {
-    if (String(linked?.equipmentId) !== PRESS_2400_EQUIPMENT_ID) return;
-    const oldIndex = Number(linked.nodeIndex);
-    const newIndex = targetIndexForOld(oldIndex);
-    if (newIndex < 0) {
-      linked.archivedNode = true;
-      linked.archivedNodeIndex = oldIndex;
-      linked.archivedNodeName = item.nodes[oldIndex] || linked.node || "";
-      return;
-    }
-    linked.nodeIndex = newIndex;
-    linked.node = PRESS_2400_HISTORICAL_NODES[newIndex];
-  };
-  (db.qrWalkJournal || []).forEach(remapLinkedNode);
-  (db.downtimes || []).forEach(remapLinkedNode);
-  item.nodes.forEach((name, oldIndex) => {
-    if (targetIndexForOld(oldIndex) < 0) catalogNodeTombstone(item, name, { at: now, by: "Система", reason: "Обновлён производственный список узлов пресса 2400" });
-  });
-  item.nodes = [...PRESS_2400_HISTORICAL_NODES];
-  item.removedNodes = (Array.isArray(item.removedNodes) ? item.removedNodes : [])
-    .filter(entry => !PRESS_2400_HISTORICAL_NODES.some(name => (
-      normalizedCatalogNodeName(name) === normalizedCatalogNodeName(entry?.name)
-    )));
-  item.nodeHistoryRestoredAt = now;
-  item.press2400RestoreVersion = restoreVersion;
-  item.updatedAt = now;
-  ensureCatalogNodeQrTokens(item);
-  return true;
-}
-
 function archiveAndRemoveCraneBeamData(db) {
   const version = "remove-crane-beams-completely-v2";
   db.targetedCleanupVersions ||= {};
@@ -622,7 +528,7 @@ function archiveAndRemoveCraneBeamData(db) {
     if (!card || card.deleted) return;
     const cardText = `${card.name || ""} ${card.area || ""}`;
     const protectedPressNodes = String(card.id) === PRESS_2400_EQUIPMENT_ID
-      ? new Set(PRESS_2400_HISTORICAL_NODES.map(normalizedCatalogNodeName))
+      ? new Set(PRESS_2400_PRODUCTION_NODES.map(normalizedCatalogNodeName))
       : new Set();
     const craneIndexes = (card.nodes || []).map((name, index) => (
       cranePattern.test(String(name || "")) && !protectedPressNodes.has(normalizedCatalogNodeName(name)) ? index : -1
@@ -788,7 +694,6 @@ function normalizeDb(db) {
   restoreTurningShopCatalog(db);
   restoreKnownPhysicalQrAliases(db);
   restoreGasQrCatalog(db);
-  restorePress2400Catalog(db);
   Object.values(db.catalog?.equipment || {}).forEach(ensureCatalogNodeQrTokens);
   db.systemBroadcasts ||= [];
   db.systemBroadcasts = db.systemBroadcasts.filter(item => item?.id !== "admin-stages-18-25-complete-v1");
