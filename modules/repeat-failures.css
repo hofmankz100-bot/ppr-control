@@ -9,10 +9,10 @@
 .repeat-measures-complete{min-height:44px;min-width:110px;padding:8px;border-radius:6px}
 @media(max-width:680px){.repeat-measures-editor textarea{font-size:16px;min-height:76px}.repeat-measures-editor button{min-height:40px}}
 .repeat-breakdown-manual-code{color:#9a3412}
-.repeat-failure-journal-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:12px}
+.repeat-failure-journal-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;box-sizing:border-box;overflow:hidden;padding:12px;overscroll-behavior:contain}
 .repeat-failure-journal-backdrop{position:absolute;inset:0;background:rgba(8,25,36,.78)}
-.repeat-failure-journal-modal>section{position:relative;width:min(1500px,98vw);max-height:94vh;overflow:auto;border-radius:14px;background:#fff;padding:16px;box-shadow:0 24px 70px rgba(0,0,0,.38)}
-.repeat-failure-journal-actions{position:sticky;top:-16px;z-index:2;display:flex;justify-content:flex-end;gap:8px;margin:-16px -16px 12px;padding:10px 16px;border-bottom:1px solid #cbd5e1;background:#f8fafc}
+.repeat-failure-journal-modal>section{position:relative;box-sizing:border-box;width:min(1500px,98vw);max-width:100%;max-height:94dvh;min-width:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;border-radius:14px;background:#fff;padding:16px;box-shadow:0 24px 70px rgba(0,0,0,.38)}
+.repeat-failure-journal-actions{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin:-16px -16px 12px;padding:10px 16px;border-bottom:1px solid #cbd5e1;background:#f8fafc}
 .repeat-failure-journal-print header{margin-bottom:12px;border-bottom:2px solid #14324a;padding-bottom:10px}
 .repeat-failure-journal-print h2{margin:0 0 4px;font-size:18px}
 .repeat-failure-journal-print p{margin:0;font-size:12px}
@@ -32,9 +32,11 @@
 #aggregateJournalScreen .repeat-failure-editor input[data-repeat-failure-name]{width:160px;min-width:100px;max-width:100%;text-align:left;flex:1 1 140px}
 .repeat-failure-badge{display:inline-block;margin:4px 0;font-size:11px;color:#9a3412}
 @media(max-width:680px){
-  .repeat-failure-journal-modal{padding:5px}
-  .repeat-failure-journal-modal>section{width:100%;max-height:97vh;padding:10px}
-  .repeat-failure-journal-actions{top:-10px;margin:-10px -10px 10px;padding:8px 10px}
+  .repeat-failure-journal-modal{place-items:stretch;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .repeat-failure-journal-modal>section{width:100%;max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));border-radius:0;padding:10px}
+  .repeat-failure-journal-actions{top:0;margin:-10px -10px 10px;padding:8px 10px}
+  .repeat-failure-journal-actions button{flex:1 1 130px;min-width:0;min-height:48px}
+  .repeat-failure-journal-print,.repeat-journal-sheet,.repeat-journal-table-wrap{min-width:0;max-width:100%}
   #aggregateJournalScreen .repeat-failure-editor input{height:40px;min-height:40px;width:72px;min-width:72px;font-size:16px}
   #aggregateJournalScreen .repeat-failure-editor button{width:40px;min-width:40px;height:40px;min-height:40px}
 }

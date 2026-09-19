@@ -8680,6 +8680,52 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   background: #f3fbf6;
 }
 
+.remark-cards,
+.remark-card,
+.remark-card > *,
+.remark-collaboration,
+.resolution-updates,
+.resolution-update,
+.comment-resolution-detail {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.remark-card {
+  display: grid;
+  gap: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--danger);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.remark-card.resolved { border-left-color: var(--done); }
+.remark-card.pending-confirmation { border-left-color: var(--warn); }
+.remark-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.remark-card-head > div { display: grid; min-width: 0; gap: 2px; }
+.remark-card-head small { color: var(--muted); overflow-wrap: anywhere; }
+.remark-card-text { margin: 0; overflow-wrap: anywhere; }
+.remark-card-status { flex: 0 0 auto; border-radius: 999px; background: var(--nav-soft); padding: 5px 8px; font-size: 12px; font-weight: 800; }
+
+.remark-card-photo,
+.remark-card .comment-resolution-detail img,
+.remark-card .resolution-update img,
+.remark-card .photo-preview img {
+  display: block;
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
 .remark-action-composer {
   display: grid;
   gap: 10px;
@@ -8868,6 +8914,11 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 }
 
 @media (max-width: 640px) {
+  .remark-card { padding: 10px; }
+  .remark-card-photo,
+  .remark-card .comment-resolution-detail img,
+  .remark-card .resolution-update img,
+  .remark-card .photo-preview img { width: 100%; max-height: 45dvh; }
   .remark-collaboration-head {
     align-items: stretch;
     flex-direction: column;
