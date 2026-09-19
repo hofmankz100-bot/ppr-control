@@ -51,6 +51,10 @@ test("narrow phones keep a readable product header", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.user-login-status/);
   assert.match(styles, /html\[data-theme="dark"\] \.send-kind-dialog/);
   assert.match(styles, /html\[data-theme="dark"\] \.admin-close-performers label/);
+  assert.match(styles, /html\[data-theme="dark"\] \.send-kind-dialog \{[\s\S]*?background: #111b21/);
+  assert.match(styles, /html\[data-theme="dark"\] \.send-kind-actions button\[data-send-cancel\]/);
+  assert.match(app, />QR узлов<br>/);
+  assert.doesNotMatch(app, /QR обычных узлов/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-catalog-admin input/);
   assert.match(styles, /html\[data-theme="dark"\] \.node-detail-toolbar button/);
   assert.match(styles, /html\[data-theme="dark"\] \.notification-support-status/);

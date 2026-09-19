@@ -50,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v861";
+const APP_VERSION = "v862";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -9535,7 +9535,7 @@ function renderEquipment() {
             </button>
             <div class="equipment-secondary-tools">
               <button type="button" class="equipment-installed-parts-button" data-installed-parts-equipment="${eq.id}"><span>Установленные запчасти</span><strong>${installedPartJournalRows(eq.id).length}</strong></button>
-              ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR обычных узлов<br><small>${ordinaryNodeIndexes(eq).length} шт · A4 по 4</small></button>` : ""}
+              ${isEditorSession() ? `<button type="button" class="equipment-qr-print-button" data-print-equipment-qr="${eq.id}">QR узлов<br><small>${ordinaryNodeIndexes(eq).length} шт · A4 по 4</small></button>` : ""}
             </div>
           </div>
           ${canEditEquipmentCatalog(eq) ? `

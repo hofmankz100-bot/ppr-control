@@ -6328,7 +6328,8 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   overscroll-behavior: contain;
   display: grid;
   gap: 14px;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: #fff;
   box-shadow: 0 20px 48px rgba(13, 31, 45, .28);
   padding: 18px;
@@ -6369,6 +6370,12 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
   border-radius: 6px;
   background: #f8fafc;
   padding: 9px 10px;
+}
+
+.admin-close-performers input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--green);
 }
 
 .send-kind-dialog select,
@@ -6417,14 +6424,14 @@ body.forklift-driver-profile .quick-nav{grid-template-columns:repeat(auto-fit,mi
 @media (max-width: 560px) {
   .send-kind-overlay {
     align-items: end;
-    padding: 8px;
+    padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   }
 
   .send-kind-dialog {
     width: 100%;
     max-height: calc(100dvh - 16px);
-    border-radius: 12px 12px 8px 8px;
-    padding: 14px;
+    border-radius: 18px 18px 10px 10px;
+    padding: 18px 14px;
   }
 
   .send-kind-dialog strong {
@@ -11346,7 +11353,14 @@ html[data-theme="dark"] .pull-refresh-indicator {
   }
 
 
-html[data-theme="dark"] .send-kind-dialog > strong,
+  html[data-theme="dark"] .send-kind-dialog {
+    border-color: #2a3942;
+    background: #111b21;
+    color: #e9edef;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, .55);
+  }
+
+  html[data-theme="dark"] .send-kind-dialog > strong,
   html[data-theme="dark"] .send-kind-dialog label > span,
   html[data-theme="dark"] .admin-close-performers legend,
   html[data-theme="dark"] .admin-close-performers label span {
@@ -11355,6 +11369,23 @@ html[data-theme="dark"] .send-kind-dialog > strong,
 
   html[data-theme="dark"] .send-kind-dialog > p {
     color: #aebac1;
+  }
+
+  html[data-theme="dark"] .admin-close-performers {
+    border-color: #3b4a54;
+    background: #0e171d;
+  }
+
+  html[data-theme="dark"] .admin-close-performers label {
+    border: 1px solid #2a3942;
+    background: #202c33;
+    color: #e9edef;
+  }
+
+  html[data-theme="dark"] .send-kind-actions button[data-send-cancel] {
+    border: 1px solid #3b4a54;
+    background: #202c33;
+    color: #e9edef;
   }
 
   html[data-theme="dark"] .send-kind-dialog select,
