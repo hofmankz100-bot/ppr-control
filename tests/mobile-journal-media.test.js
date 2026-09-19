@@ -14,10 +14,12 @@ test("repeat failure journal keeps mobile actions visible and scrolls only its t
   assert.match(repeatStyles, /@media\(max-width:680px\)[\s\S]*?\.repeat-failure-journal-modal\{[^}]*safe-area-inset-top[^}]*safe-area-inset-bottom/);
   assert.match(repeatStyles, /\.repeat-failure-journal-actions button\{[^}]*flex:1 1 130px[^}]*min-height:48px/);
   assert.match(repeatStyles, /\.repeat-journal-table-wrap\{[^}]*overflow-x:auto/);
+  assert.match(repeatStyles, /@supports \(-webkit-touch-callout:none\)[\s\S]*?padding-top:max\(56px,env\(safe-area-inset-top\)\)/);
 });
 
 test("remark photos cannot widen the resolution panel on phones", () => {
   assert.match(styles, /\.remark-card\s*\{[^}]*max-width:\s*100%[^}]*overflow:\s*hidden/s);
   assert.match(styles, /\.remark-card-photo,[\s\S]*?\.remark-card \.photo-preview img\s*\{[^}]*max-width:\s*100%[^}]*max-height:\s*280px[^}]*object-fit:\s*contain/s);
-  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.remark-card-photo,[\s\S]*?max-height:\s*45dvh/s);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.remark-card-photo,[\s\S]*?max-height:\s*220px/s);
+  assert.match(styles, /\.resolution-participating\s*\{[^}]*width:\s*100%[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/s);
 });

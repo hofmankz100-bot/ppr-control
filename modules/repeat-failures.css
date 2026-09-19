@@ -40,6 +40,12 @@
   #aggregateJournalScreen .repeat-failure-editor input{height:40px;min-height:40px;width:72px;min-width:72px;font-size:16px}
   #aggregateJournalScreen .repeat-failure-editor button{width:40px;min-width:40px;height:40px;min-height:40px}
 }
+@supports (-webkit-touch-callout:none){
+  @media(max-width:680px){
+    .repeat-failure-journal-modal{padding-top:max(56px,env(safe-area-inset-top))}
+    .repeat-failure-journal-modal>section{max-height:calc(100dvh - max(56px,env(safe-area-inset-top)) - env(safe-area-inset-bottom))}
+  }
+}
 html[data-theme=dark] .repeat-breakdown-count-button{border-color:#2dd4bf;background:#134e4a;color:#ccfbf1}
 html[data-theme=dark] .repeat-breakdown-manual-code,html[data-theme=dark] .repeat-failure-badge{color:#ffd19a}
 html[data-theme=dark] #aggregateJournalScreen .repeat-failure-editor input,html[data-theme=dark] #aggregateJournalScreen .repeat-failure-editor button,html[data-theme=dark] .repeat-failure-journal-actions{border-color:#536674;background:#202c33;color:#e9edef}
