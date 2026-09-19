@@ -217,12 +217,31 @@ function workWeekDates(date) {
   return Array.from({ length: 5 }, (_, index) => addDays(monday, index));
 }
 
+function yearlyDistributionOffset(catalog, week, today) {
+  const year = Number(week[0].slice(0, 4));
+  let cursor = workWeekDates(`${year}-01-01`)[0];
+  let offset = 0;
+  while (cursor < week[0]) {
+    offset = (offset + workWeekDates(cursor).flatMap(day => rawScheduledItemsForDate(catalog, day, today)).length) % 5;
+    cursor = addDays(cursor, 7);
+  }
+  return offset;
+}
+
 function scheduledItemsForDate(catalog, date, today = date) {
   const week = workWeekDates(date);
   const dayIndex = week.indexOf(date);
   if (dayIndex < 0) return [];
   const weeklyItems = week.flatMap(day => rawScheduledItemsForDate(catalog, day, today));
-  return weeklyItems.filter((_, index) => index % week.length === dayIndex);
+  const offset = yearlyDistributionOffset(catalog, week, today);
+  const equipment = new Map(equipmentForPlan(catalog).map(item => [Number(item.id), item]));
+  return weeklyItems.filter((item, index) => {
+    if ((offset + index) % week.length !== dayIndex) return false;
+    const target = equipment.get(Number(item.equipmentId));
+    if (!target || (target.operationalPauses || []).some(pause => pauseApplies(pause, date, today))) return false;
+    const nodeIndex = target.nodes.indexOf(item.node);
+    return !(target.nodeOperationalPauses?.[nodeIndex] || []).some(pause => pauseApplies(pause, date, today));
+  });
 }
 
 function buildAutofillRows(date, scheduledItems, templates = {}) {

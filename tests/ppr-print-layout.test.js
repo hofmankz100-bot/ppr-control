@@ -7,6 +7,7 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+const planStyles = fs.readFileSync(path.join(root, "modules", "ppr-plan-editor.css"), "utf8");
 
 test("PPR print isolates one sheet and restores it after printing", () => {
   const start = app.indexOf("function printPprMaintenanceSheet(date)");
@@ -28,4 +29,5 @@ test("PPR sheet prints as one landscape four-column document", () => {
   assert.match(styles, /\.ppr-sheet-resolution\s*\{\s*width:\s*43% !important/);
   assert.match(styles, /\.ppr-sheet-mark\s*\{\s*width:\s*12% !important/);
   assert.match(styles, /\.ppr-sheet-table tr\s*\{[^}]*break-inside:\s*avoid[^}]*page-break-inside:\s*avoid/);
+  assert.match(planStyles, /@media print\s*\{[\s\S]*\.ppr-maintenance-sheet \.ppr-sheet-equipment\s*\{\s*display:none !important/);
 });

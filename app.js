@@ -50,7 +50,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v864";
+const APP_VERSION = "v865";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11074,12 +11074,29 @@ function pprWorkWeekDates(date) {
   return Array.from({ length: 5 }, (_, index) => addDaysISO(monday, index));
 }
 
+function yearlyPprDistributionOffset(equipment, week) {
+  const year = Number(week[0].slice(0, 4));
+  let cursor = pprWorkWeekDates(`${year}-01-01`)[0];
+  let offset = 0;
+  while (cursor < week[0]) {
+    offset = (offset + pprWorkWeekDates(cursor).flatMap(day => rawPprItemsForDate(equipment, day)).length) % 5;
+    cursor = addDaysISO(cursor, 7);
+  }
+  return offset;
+}
+
 function balancedPprItemsForDate(equipment, date) {
   const week = pprWorkWeekDates(date);
   const dayIndex = week.indexOf(date);
   if (dayIndex < 0) return [];
   const weeklyItems = week.flatMap(day => rawPprItemsForDate(equipment, day));
-  return weeklyItems.filter((_, index) => index % week.length === dayIndex);
+  const offset = yearlyPprDistributionOffset(equipment, week);
+  const equipmentById = new Map(equipment.map(item => [Number(item.id), item]));
+  return weeklyItems.filter((item, index) => {
+    if ((offset + index) % week.length !== dayIndex) return false;
+    const target = equipmentById.get(Number(item.equipmentId));
+    return target && operationalControlEnabled(target, target.nodes.indexOf(item.node), date);
+  });
 }
 
 function pprCalendarMonthData(equipment = allEquipment(), year = current.pprCalendarYear, month = current.pprCalendarMonth) {

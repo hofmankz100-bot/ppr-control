@@ -104,7 +104,7 @@ test("press 2400 uses the confirmed twelve production nodes", () => {
   ]);
 });
 
-test("every equipment covers its full node catalog while work is balanced across weekdays", () => {
+test("every equipment covers its full node catalog while work is balanced across the whole year", () => {
   const seenByEquipment = new Map(EQUIPMENT.filter(item => item.area !== "Резерв").map(item => [item.id, new Set()]));
   for (let day = 0; day < 140; day += 1) {
     const date = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
@@ -113,11 +113,14 @@ test("every equipment covers its full node catalog while work is balanced across
   for (const target of EQUIPMENT.filter(item => item.area !== "Резерв")) {
     assert.deepEqual([...seenByEquipment.get(target.id)].sort(), [...target.nodes].sort(), target.name);
   }
-  for (let week = 0; week < 12; week += 1) {
+  const yearlyWeekdayTotals = [0, 0, 0, 0, 0];
+  for (let week = 0; week < 52; week += 1) {
     const monday = new Date(Date.UTC(2026, 0, 5 + week * 7)).toISOString().slice(0, 10);
     const counts = Array.from({ length: 5 }, (_, index) => scheduledItemsForDate({}, new Date(Date.UTC(2026, 0, 5 + week * 7 + index)).toISOString().slice(0, 10)).length);
     assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, `${monday}: ${counts.join("/")}`);
+    counts.forEach((count, index) => { yearlyWeekdayTotals[index] += count; });
   }
+  assert.ok(Math.max(...yearlyWeekdayTotals) - Math.min(...yearlyWeekdayTotals) <= 1, yearlyWeekdayTotals.join("/"));
 });
 
 test("future catalog nodes and newly created equipment automatically enter PPR planning", () => {

@@ -24,6 +24,7 @@ html[data-theme="dark"] .ppr-sheet-table .ppr-sheet-equipment-row th { backgroun
 .engineer-ppr-equipment span small { display:block;color:#637985;font-size:10px;font-weight:800; }
 @media (max-width:620px) { .ppr-sheet-equipment > div { grid-template-columns:1fr; } }
 @media print {
+  .ppr-maintenance-sheet .ppr-sheet-equipment { display:none !important; }
   .ppr-maintenance-sheet .ppr-empty-row { display:none !important; }
   .ppr-maintenance-sheet .ppr-empty-target { display:none !important; }
   .ppr-maintenance-sheet textarea { display:none !important; }
