@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v868";
+const APP_VERSION = "v869";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11262,6 +11262,11 @@ function pendingPprSheetActions() {
   }
 }
 
+function pendingPprSheetActionsFor(date) {
+  return pendingPprSheetActions().filter(item => String(item.date || "") === String(date || "")
+    && window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile));
+}
+
 function savePendingPprSheetActions(items) {
   const bounded = Array.isArray(items) ? items.slice(-200) : [];
   if (bounded.length) localStorage.setItem(PPR_PENDING_ACTIONS_KEY, JSON.stringify(bounded));
@@ -11321,6 +11326,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
   const draft = window.PprPlanEditor.get(date);
   const rows = draft?.rows || (Array.isArray(sheet.rows) ? sheet.rows : pprSheetDefaultRows(date));
   const completion = pprSheetCompletion(date);
+  const pendingCount = pendingPprSheetActionsFor(date).length;
   const autofillNeeded = scheduledItems.length > 0 && (!completion.active || pprSheetAutofillStale(date, sheet));
   const locked = Boolean(sheet.approvedAt);
   const canPlan = canPlanPprSheet() && !locked && Boolean(draft);
@@ -11408,6 +11414,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </table>
       </div>
       <footer class="ppr-sheet-footer">
+        ${pendingCount ? `<div class="ppr-sheet-pending no-print" role="status"><span>Не отправлено на сервер: ${pendingCount}</span><button type="button" class="secondary" data-retry-ppr-sheet="${date}">Повторить отправку</button></div>` : ""}
         <div class="ppr-sheet-state ${completion.complete ? "done" : completion.partial ? "partial" : "empty"}">
           <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
           <span data-ppr-sheet-status>${escapeHtml(statusText)}</span>
@@ -11717,6 +11724,19 @@ function bindPprCalendarControls(container, rerender) {
   });
   container?.querySelectorAll("[data-print-ppr-sheet]").forEach(button => {
     button.addEventListener("click", () => printPprMaintenanceSheet(button.dataset.printPprSheet));
+  });
+  container?.querySelectorAll("[data-retry-ppr-sheet]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const date = button.dataset.retryPprSheet;
+      button.disabled = true;
+      button.textContent = "Отправляем…";
+      await flushPprSheetQueue();
+      const pendingCount = pendingPprSheetActionsFor(date).length;
+      showAppToast(pendingCount
+        ? `Не отправлено на сервер: ${pendingCount}. Проверьте связь и повторите.`
+        : "Все отметки ППР подтверждены сервером.", pendingCount ? "warning" : "success");
+      rerender();
+    });
   });
 }
 

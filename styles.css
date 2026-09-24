@@ -8601,6 +8601,8 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .ppr-sheet-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 12px; padding: 12px 14px; background: #f5f8fa; }
 .ppr-sheet-footer > small { flex: 1 1 180px; color: #637985; }
 .ppr-sheet-footer > button { margin-left: auto; }
+.ppr-sheet-pending { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #d99a19; border-radius: 10px; background: #fff4d6; color: #765100; font-weight: 800; }
+.ppr-sheet-pending button { margin-left: auto; }
 .ppr-sheet-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; }
 .ppr-sheet-state strong { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #dce6eb; }
 .ppr-sheet-state.done { color: #147441; }
@@ -8623,6 +8625,8 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   .ppr-sheet-mark-buttons button { width: 35px; height: 38px; font-size: 22px; }
   .ppr-sheet-footer { padding: 10px; }
   .ppr-sheet-footer > button { width: 100%; margin-left: 0; }
+  .ppr-sheet-pending { flex-wrap: wrap; }
+  .ppr-sheet-pending button { width: 100%; margin-left: 0; }
 }
 
 @media print {
@@ -11209,6 +11213,12 @@ html[data-theme="dark"] .pull-refresh-indicator {
   html[data-theme="dark"] .ppr-sheet-footer > small {
     border-color: #3b4a54;
     color: #aebac1;
+  }
+
+  html[data-theme="dark"] .ppr-sheet-pending {
+    border-color: #946d19;
+    background: #342b16;
+    color: #ffd978;
   }
 
   html[data-theme="dark"] .ppr-sheet-table textarea,
