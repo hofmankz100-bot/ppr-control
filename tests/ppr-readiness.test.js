@@ -82,6 +82,18 @@ test("readiness ignores blank rows and stale flags; reconciliation preserves app
   assert.deepEqual(approved, saved);
 });
 
+test("automatic sheet readiness ignores obsolete rows outside the displayed daily plan", () => {
+  const sheet = {
+    plannedAutomatically: true,
+    autofilledFor: [{ equipmentId: 90, node: "Motor" }],
+    rows: [
+      { work: "Displayed work", mark: "done", equipmentId: 90, node: "Motor" },
+      { work: "Obsolete hidden work", mark: "", equipmentId: 91, node: "Old node" }
+    ]
+  };
+  assert.equal(pprSheetReadyForApproval(sheet), true);
+});
+
 test("actual mark API: last mark notifies once, unmark clears, remark notifies again, retries never duplicate", async () => {
   const h = fixture(), history = clone(h.db.pprSheets["2026-08-01"]);
   assert.equal((await h.mark()).status, 200);

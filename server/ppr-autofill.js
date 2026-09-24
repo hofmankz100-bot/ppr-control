@@ -260,7 +260,11 @@ function buildAutofillRows(date, scheduledItems, templates = {}) {
 }
 
 function pprSheetReadyForApproval(sheet) {
-  const active = (sheet?.rows || []).filter(row => String(row?.work || "").trim());
+  const plannedTargets = sheet?.plannedAutomatically && !sheet?.explicitPlan
+    ? new Set((sheet.autofilledFor || []).map(item => JSON.stringify([String(item?.equipmentId || ""), String(item?.node || "").trim()])))
+    : null;
+  const active = (sheet?.rows || []).filter(row => String(row?.work || "").trim()
+    && (!plannedTargets?.size || plannedTargets.has(JSON.stringify([String(row?.equipmentId || ""), String(row?.node || "").trim()]))));
   return !sheet?.approvedAt && active.length > 0 && active.every(row => ["done", "na"].includes(row.mark));
 }
 
