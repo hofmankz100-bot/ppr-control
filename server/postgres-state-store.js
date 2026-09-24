@@ -5,10 +5,10 @@ const { createLatestMirrorQueue } = require("./latest-mirror-queue");
 
 // full_state has one authoritative database. Cross-database mirrors are backups;
 // promoting one automatically after an uncertain commit can lose acknowledged work.
-function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [], mirrorQueryTimeoutMs = 35000, mirrorStatementTimeoutMs = 30000 } = {}) {
+function createPostgresStateStore(pool, { normalize = value => value, onMirrorError = () => {}, onExternalState = () => {}, legacySkipUnavailable = [], primaryQueryTimeoutMs = 45000, mirrorQueryTimeoutMs = 35000, mirrorStatementTimeoutMs = 30000 } = {}) {
   const primary = pool.nodes?.[0]?.pool || pool;
   const mirrorQueues = new Map();
-  if (![mirrorQueryTimeoutMs, mirrorStatementTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error("Mirror timeouts must be positive integer milliseconds");
+  if (![primaryQueryTimeoutMs, mirrorQueryTimeoutMs, mirrorStatementTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error("PostgreSQL timeouts must be positive integer milliseconds");
   const fencedMirrors = new Set();
   let knownRevision = 0n;
   let knownState = null;
@@ -32,7 +32,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
     } catch (error) { primaryStatus(error); throw error; }
   }
 
-  function checkout(queryable, queryTimeoutMs = 0) {
+  function checkout(queryable, queryTimeoutMs = 0, timeoutCode = "PPR_MIRROR_QUERY_TIMEOUT") {
     return new Promise((resolve, reject) => queryable.connect((error, client) => {
       if (error) {
         if (queryable === primary) primaryStatus(error);
@@ -62,7 +62,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
             const running = client.query(sql, params);
             const result = queryTimeoutMs ? await new Promise((resolveQuery, rejectQuery) => {
               const timer = setTimeout(() => {
-                connectionError ||= Object.assign(new Error("PostgreSQL mirror query deadline exceeded"), { code: "PPR_MIRROR_QUERY_TIMEOUT" });
+                connectionError ||= Object.assign(new Error("PostgreSQL query deadline exceeded"), { code: timeoutCode });
                 // pg-pool release(error) removes this checked-out client; pg's
                 // Client.end destroys the socket when a query is still active.
                 // Merely timing out a Promise/query callback would leave SQL live.
@@ -161,7 +161,7 @@ function createPostgresStateStore(pool, { normalize = value => value, onMirrorEr
   }
 
   async function lockedClient(installFence = false) {
-    const client = await checkout(primary);
+    const client = await checkout(primary, primaryQueryTimeoutMs, "PPR_PRIMARY_QUERY_TIMEOUT");
     try {
       await client.query("BEGIN");
       await client.query("SET LOCAL lock_timeout = '8s'");

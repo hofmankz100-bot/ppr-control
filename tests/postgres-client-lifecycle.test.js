@@ -109,6 +109,18 @@ test("a disconnection racing the COMMIT reply cannot publish or acknowledge an u
   assert.deepEqual(db.clients[0].releases, [failure]);
 });
 
+test("an authoritative write deadline releases a stuck transaction for failover", async () => {
+  const never = new Promise(() => {});
+  const db = fixture(sql => sql.startsWith("UPDATE ppr_settings") ? never : undefined);
+  const store = createPostgresStateStore(db.pool, { primaryQueryTimeoutMs: 25 });
+  const session = await store.begin();
+  await assert.rejects(session.commit({ count: 9 }), error => error.code === "PPR_PRIMARY_QUERY_TIMEOUT" && error.statusCode === 503);
+  await session.rollback();
+  session.release();
+  assert.equal(store.hasActiveTransactions(), false);
+  assert.equal(db.clients[0].releases[0]?.code, "PPR_PRIMARY_QUERY_TIMEOUT");
+});
+
 test("mirror preparation handles a checked-out client error without leaving a fence or reusable broken client", async () => {
   const failure = new Error("mirror connection terminated during BEGIN");
   const replica = fixture((sql, client) => { if (sql === "BEGIN") client.emit("error", failure); });
