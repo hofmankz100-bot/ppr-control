@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v873";
+const APP_VERSION = "v874";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11403,14 +11403,17 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
     const key = pprSheetTargetKey(group);
     const targetRows = rows.filter(row => String(row.work || "").trim() && pprSheetTargetKey(row) === key);
     const marked = targetRows.filter(row => ["done", "na"].includes(row.mark)).length;
-    return `<button type="button" class="ppr-sheet-target-button ${key === selectedTargetKey ? "active" : ""}" data-open-ppr-node-sheet="${encodeURIComponent(key)}" aria-pressed="${key === selectedTargetKey}"><strong>${escapeHtml(group.area || "Без цеха")}</strong><span>${escapeHtml([group.equipment, group.node].filter(Boolean).join(" — "))}</span><small>${marked}/${targetRows.length || "…"}</small></button>`;
+    return `<button type="button" class="ppr-sheet-target-button ${key === selectedTargetKey ? "active" : ""}" data-open-ppr-node-sheet="${encodeURIComponent(key)}" aria-pressed="${key === selectedTargetKey}" aria-label="${escapeHtml([group.area, group.equipment, group.node].filter(Boolean).join(" — "))}: отмечено ${marked} из ${targetRows.length || "неизвестно"}"><strong>${escapeHtml(group.area || "Без цеха")}</strong><span>${escapeHtml([group.equipment, group.node].filter(Boolean).join(" — "))}</span><small>${marked}/${targetRows.length || "…"}</small></button>`;
   }).join("");
+  const selectedGroup = scheduleGroups.find(group => pprSheetTargetKey(group) === selectedTargetKey);
+  const selectedRows = selectedGroup ? rows.filter(row => String(row.work || "").trim() && pprSheetTargetKey(row) === selectedTargetKey) : [];
+  const selectedMarked = selectedRows.filter(row => ["done", "na"].includes(row.mark)).length;
   const statusText = completion.complete
     ? `ППР принят инженером · лист закреплён за ${dateHuman(date)}`
     : completion.awaitingApproval
       ? "Все работы отмечены · ожидается обход и приёмка инженером"
     : completion.active
-      ? `Заполнено отметок: ${completion.marked} из ${completion.active}`
+      ? `По всем узлам: ${completion.marked} из ${completion.active} отметок${selectedGroup ? ` · выбранный узел: ${selectedMarked} из ${selectedRows.length}` : ""}`
       : scheduledItems.length ? (navigator.onLine ? "Загружаем перечень работ с сервера…" : "Для загрузки нового плана нужна связь. Сохранённые планы доступны без сети.") : "На эту дату автоматических работ нет. Инженер может заполнить перечень.";
   let previousPprArea = null;
   let pprRowNumber = 0;
@@ -11477,7 +11480,7 @@ function renderPprMaintenanceSheet(date, scheduledItems = []) {
         </table>
       </div>
       <footer class="ppr-sheet-footer">
-        ${pendingCount ? `<div class="ppr-sheet-pending no-print" role="status"><span>Не отправлено на сервер: ${pendingCount}</span><button type="button" class="secondary" data-retry-ppr-sheet="${date}">Повторить отправку</button></div>` : ""}
+        ${pendingCount ? `<div class="ppr-sheet-pending no-print" role="status"><span>Сервер ещё не подтвердил ${pendingCount} действий</span><button type="button" class="secondary" data-retry-ppr-sheet="${date}">Повторить отправку</button></div>` : ""}
         <div class="ppr-sheet-state ${completion.complete ? "done" : completion.partial ? "partial" : "empty"}">
           <strong>${completion.complete ? "✓" : completion.partial ? "!" : "○"}</strong>
           <span data-ppr-sheet-status>${escapeHtml(statusText)}</span>
