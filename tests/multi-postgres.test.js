@@ -115,6 +115,13 @@ test("duplicate database URLs are ignored", () => {
   }).map(item => item.name), ["primary", "supabase"]);
 });
 
+test("a dedicated backup database is added after the existing cluster nodes", () => {
+  assert.deepEqual(configuredDatabases({
+    SUPABASE_DATABASE_URL: "postgres://supabase",
+    BACKUP_DATABASE_URL: "postgres://backup"
+  }).map(item => item.name), ["supabase", "backup"]);
+});
+
 test("an idle pool error marks only that database unavailable without becoming unhandled", () => {
   const pool = new EventEmitter();
   pool.query = async () => ({ rows: [] });

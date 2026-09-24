@@ -19,5 +19,7 @@ services:
         sync: false
       - key: SUPABASE_DATABASE_URL
         sync: false
+      - key: BACKUP_DATABASE_URL
+        sync: false
       - key: REQUIRE_POSTGRES
         value: "true"

@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v869";
+const APP_VERSION = "v870";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2646,7 +2646,29 @@ function flushPendingWork() {
   startRealtimePoll();
   flushQrWalkQueue();
   flushPprSheetQueue();
+  schedulePendingDeviceActionReport();
   if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
+}
+
+let pendingDeviceActionReportTimer = null;
+function schedulePendingDeviceActionReport(delay = 500) {
+  clearTimeout(pendingDeviceActionReportTimer);
+  pendingDeviceActionReportTimer = window.setTimeout(reportPendingDeviceActions, delay);
+}
+
+async function reportPendingDeviceActions() {
+  pendingDeviceActionReportTimer = null;
+  if (!navigator.onLine || sessionValidationState !== "verified" || !isProfileReady()) return;
+  await apiJson("/api/pending-device-actions", {
+    method: "POST",
+    timeout: 10000,
+    body: JSON.stringify({
+      clientId: CLIENT_ID,
+      ppr: pendingPprSheetActions().length,
+      qr: pendingQrWalkMarks().length,
+      statePending: localStorage.getItem(`${STORE_KEY}-pending`) === "1"
+    })
+  }).catch(() => {});
 }
 
 function queueRemoteStateSave() {
@@ -4199,6 +4221,7 @@ function savePendingQrWalkMarks(items) {
   if (bounded.length) localStorage.setItem(QR_PENDING_MARKS_KEY, JSON.stringify(bounded));
   else localStorage.removeItem(QR_PENDING_MARKS_KEY);
   updateConnectionStatus();
+  schedulePendingDeviceActionReport();
 }
 
 function qrWalkMarkIdentity(payload) {
@@ -11272,6 +11295,7 @@ function savePendingPprSheetActions(items) {
   if (bounded.length) localStorage.setItem(PPR_PENDING_ACTIONS_KEY, JSON.stringify(bounded));
   else localStorage.removeItem(PPR_PENDING_ACTIONS_KEY);
   updateConnectionStatus();
+  schedulePendingDeviceActionReport();
 }
 
 function enqueuePendingPprSheetAction(payload) {
@@ -14405,6 +14429,7 @@ async function renderAdminMaintenance() {
   const activity = result.activity && typeof result.activity === "object" ? result.activity : { unreadCount: 0, items: [] };
   const activityItems = Array.isArray(activity.items) ? activity.items : [];
   const accessUsers = Array.isArray(result.access) ? result.access : [];
+  const pendingDevices = Array.isArray(result.pendingDevices) ? result.pendingDevices : [];
   const broadcasts = Array.isArray(result.broadcasts) ? result.broadcasts : [];
   const notificationPolicy = result.notificationPolicy || { defaultPriority: "normal", defaultExpiryHours: 24, unreadReminderHours: 8 };
   const systemReport = result.systemReport || { status: "warning", summary: {}, checks: [], metrics: {}, environment: {}, policy: {} };
@@ -14432,7 +14457,7 @@ async function renderAdminMaintenance() {
           <label class="admin-technical-select"><span>Сменить роль</span><select data-admin-preview-role>${visibleRoleEntries().map(([role, access]) => `<option value="${role}" ${(profile.editorPreviewRole || profile.jobRole || profile.role) === role ? "selected" : ""}>${escapeHtml(access.label)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Цех для просмотра</span><select data-admin-preview-area>${availableEquipmentAreas().filter(areaName => areaName !== "Резерв").map(areaName => `<option value="${escapeHtml(areaName)}" ${profile.area === areaName ? "selected" : ""}>${escapeHtml(areaName)}</option>`).join("")}</select></label>
           <label class="admin-technical-select"><span>Язык</span><select data-admin-language>${languageOptions()}</select></label>
-          <button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
+          <button type="button" class="${tab === "pending" ? "active" : ""}" data-admin-maintenance-tab="pending">Неотправленные · ${pendingDevices.length}</button><button type="button" class="${tab === "storage" ? "active" : ""}" data-admin-maintenance-tab="storage">Хранилище</button><button type="button" class="${tab === "broadcasts" ? "active" : ""}" data-admin-maintenance-tab="broadcasts">Объявления · ${broadcasts.filter(item => item.active).length}</button><button type="button" class="${tab === "settings" ? "active" : ""}" data-admin-maintenance-tab="settings">Настройки организации</button><button type="button" class="${tab === "transfer" ? "active" : ""}" data-admin-maintenance-tab="transfer">Перенос настроек</button><button type="button" class="${tab === "access" ? "active" : ""}" data-admin-maintenance-tab="access">Доступы · ${accessUsers.length}</button><button type="button" class="${tab === "automation" ? "active" : ""}" data-admin-maintenance-tab="automation">Автоматизация копий</button><button type="button" class="${tab === "archives" ? "active" : ""}" data-admin-maintenance-tab="archives">Архивы · ${archives.length}</button><button type="button" class="${tab === "integrity" ? "active" : ""}" data-admin-maintenance-tab="integrity">Диагностика данных · ${integrityCount}</button><button type="button" data-open-storage-diagnostics>Проверить мусор</button><button type="button" class="danger" data-clear-recorded-data>Очистить записи</button>
         </div>
       </details>
     </div>
@@ -14440,6 +14465,10 @@ async function renderAdminMaintenance() {
       <div class="aggregate-sheet-head"><strong>${tab === "settings" ? "Административный редактор" : tab === "backups" ? "Резервные копии и восстановление" : tab === "monitoring" ? "Состояние системы и уведомления" : tab === "audit" ? "Журнал действий администратора" : "Корзина удалённых данных"}</strong><span>${dateTimeHuman(new Date().toISOString())}</span></div>
       ${tab === "settings" ? `<div class="admin-settings-shortcuts no-print"><button type="button" data-admin-open-equipment>Оборудование и QR</button><button type="button" data-admin-open-users>Сотрудники и роли</button></div><form class="admin-settings-form" data-admin-settings-form><label><span>Название организации</span><input name="companyName" maxlength="200" value="${escapeHtml(config.companyName || "ТОО «Aluminium of Kazakhstan»")}" required></label><div class="admin-settings-columns"><label><span>Подразделения — по одному в строке</span><textarea name="departments" rows="7">${escapeHtml((config.departments || []).join("\n"))}</textarea></label><label><span>Должности — по одной в строке</span><textarea name="positions" rows="7">${escapeHtml((config.positions || []).join("\n"))}</textarea></label></div><div class="admin-settings-numbers"><label><span>Хранить корзину, дней</span><input name="trashRetentionDays" type="number" min="1" max="365" value="${Number(config.trashRetentionDays || 30)}"></label><label><span>Порог памяти, МБ</span><input name="memoryAlertMb" type="number" min="128" value="${Number(config.monitoring?.memoryAlertMb || 512)}"></label><label><span>Лимит базы, МБ</span><input name="databaseSizeLimitMb" type="number" min="100" value="${Number(config.monitoring?.databaseSizeLimitMb || 1024)}"></label><label><span>Копия не старше, часов</span><input name="backupMaxAgeHours" type="number" min="12" max="168" value="${Number(config.monitoring?.backupMaxAgeHours || 36)}"></label><label><span>Ошибок за 10 минут</span><input name="clientErrorThreshold" type="number" min="1" max="100" value="${Number(config.monitoring?.clientErrorThreshold || 5)}"></label></div><button type="submit">Сохранить настройки</button></form><div class="admin-config-history"><h3>История настроек</h3>${configHistory.length ? configHistory.map(item => `<article><div><strong>${escapeHtml(dateTimeHuman(item.at))}</strong><span>${escapeHtml(item.actorName || "Администратор")} · ${escapeHtml(item.reason || "Изменение настроек")}</span></div><button type="button" class="secondary no-print" data-admin-config-rollback="${escapeHtml(item.id)}">Вернуть эту версию</button></article>`).join("") : `<div class="empty-state">Сохранённых версий пока нет.</div>`}</div>` : tab === "monitoring" ? `<div class="system-monitor-grid"><article><strong>Node.js</strong><b>${Number(monitor.node?.uptimeSeconds || 0) ? `${Math.floor(Number(monitor.node.uptimeSeconds) / 3600)} ч` : "работает"}</b><span>Память ${Number(monitor.node?.memoryMb || 0)} МБ</span></article><article><strong>PostgreSQL</strong><b>${monitor.postgres?.connected ? "Подключён" : "Недоступен"}</b><span>${Number(monitor.postgres?.usagePercent || 0)}% · ${Number(monitor.postgres?.activeConnections || 0)} подключений</span></article><article><strong>Резервная копия</strong><b>${monitor.postgres?.lastBackupAt ? dateTimeHuman(monitor.postgres.lastBackupAt) : "Не найдена"}</b><span>Последняя запись: ${monitor.postgres?.lastWriteAt ? dateTimeHuman(monitor.postgres.lastWriteAt) : "—"}</span></article><article><strong>Ошибки</strong><b>${Number(monitor.api?.clientErrors10m || 0)}</b><span>за 10 минут · HTTP 5xx: ${Number(monitor.api?.errors5xx || 0)}</span></article></div><div class="admin-alert-list">${alerts.length ? alerts.map(item => `<article class="${escapeHtml(item.severity || "warning")} ${item.status === "resolved" ? "resolved" : ""}"><div><strong>${escapeHtml(item.title || "Системное уведомление")}</strong><span>${escapeHtml(item.message || "")}</span><small>${item.status === "active" ? `Обнаружено ${escapeHtml(dateTimeHuman(item.createdAt))}` : `Проверено ${escapeHtml(dateTimeHuman(item.resolvedAt))} · ${escapeHtml(item.resolvedByName || "Система")}`}</small></div>${item.status === "active" ? `<button type="button" class="no-print" data-resolve-system-alert="${escapeHtml(item.id)}">Проверено</button>` : ""}</article>`).join("") : `<div class="empty-state ok">Система работает нормально, активных предупреждений нет.</div>`}</div>` : tab === "audit" ? `<div class="admin-audit-list">${audit.length ? audit.map(item => `<article><time>${escapeHtml(dateTimeHuman(item.at))}</time><div><strong>${escapeHtml(item.actorName || "Система")}</strong><span>${escapeHtml(adminAuditActionLabel(item.action))}</span><small>${escapeHtml([item.targetLabel || item.targetId, item.reason].filter(Boolean).join(" · "))}</small></div></article>`).join("") : `<div class="empty-state">Действий пока нет</div>`}</div>` : `<div class="admin-trash-list">${trash.length ? trash.map(item => `<article class="${item.canRestore ? "" : "restored"}"><div><strong>${escapeHtml(item.label || item.targetId || "Запись")}</strong><span>${escapeHtml(item.type === "user" ? "Сотрудник" : item.type || "Данные")} · удалено ${escapeHtml(dateTimeHuman(item.deletedAt))}</span><small>Причина: ${escapeHtml(item.reason || "не указана")} · удалил: ${escapeHtml(item.deletedByName || "Администратор")}</small><small>${item.canRestore ? `Хранить до ${escapeHtml(dateTimeHuman(item.expiresAt))}` : `Восстановлено ${escapeHtml(dateTimeHuman(item.restoredAt))}`}</small></div>${item.canRestore ? `<div class="no-print"><button type="button" data-trash-restore="${escapeHtml(item.id)}">Восстановить</button><button type="button" class="danger" data-trash-purge="${escapeHtml(item.id)}">Удалить навсегда</button></div>` : ""}</article>`).join("") : `<div class="empty-state">Корзина пуста</div>`}</div>`}
     </section>`;
+  if (tab === "pending") {
+    const sheet = ui.adminMaintenancePanel.querySelector(".admin-maintenance-sheet");
+    if (sheet) sheet.innerHTML = `<div class="aggregate-sheet-head"><strong>Неподтверждённые действия на телефонах</strong><span>Устройств: ${pendingDevices.length}</span></div><div class="admin-pending-device-list">${pendingDevices.length ? pendingDevices.map(item => `<article><div><strong>${escapeHtml(item.name || "Неизвестный сотрудник")}</strong><span>${escapeHtml(item.phone || "Телефон не указан")} · ${escapeHtml(item.employeeId || "Без табельного номера")}</span><small>${escapeHtml(item.userAgent || "Устройство не определено")} · связь ${escapeHtml(dateTimeHuman(item.lastSeenAt))}</small></div><div><b>${Number(item.total || 0)}</b><span>всего</span><small>ППР: ${Number(item.ppr || 0)} · QR: ${Number(item.qr || 0)}${item.statePending ? " · изменения: 1" : ""}</small></div></article>`).join("") : `<div class="empty-state ok">Неподтверждённых действий на подключённых телефонах нет.</div>`}</div><div class="empty-state">Список обновляется при изменении очереди и восстановлении связи. Телефон без сети появится после следующего подключения.</div>`;
+  }
   if (tab === "monitoring" && Array.isArray(monitor.api?.recentClientErrors) && monitor.api.recentClientErrors.length) {
     const alertList = ui.adminMaintenancePanel.querySelector(".admin-alert-list");
     alertList?.insertAdjacentHTML("beforebegin", `<h3>Последние ошибки телефонов и браузеров</h3><div class="admin-alert-list admin-client-error-list">${monitor.api.recentClientErrors.map(item => `<article class="warning"><div><strong>${escapeHtml(item.scope || "Ошибка браузера")}</strong><span>${escapeHtml(item.message || "Причина не передана")}</span><small>${escapeHtml([item.userName || "Пользователь не определён", item.appVersion || "", item.at ? dateTimeHuman(item.at) : ""].filter(Boolean).join(" · "))}</small></div></article>`).join("")}</div>`);
@@ -15630,6 +15659,7 @@ window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);
 window.setInterval(refreshAuthenticatedProfile, 30000);
+window.setInterval(() => schedulePendingDeviceActionReport(0), 60000);
 setupPublicAttendanceEntry();
 setupLogin();
 resetAppNotificationsForOpen();

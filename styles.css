@@ -8603,6 +8603,11 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
 .ppr-sheet-footer > button { margin-left: auto; }
 .ppr-sheet-pending { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #d99a19; border-radius: 10px; background: #fff4d6; color: #765100; font-weight: 800; }
 .ppr-sheet-pending button { margin-left: auto; }
+.admin-pending-device-list { display: grid; gap: 10px; padding: 14px; }
+.admin-pending-device-list article { display: flex; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.admin-pending-device-list article > div { display: grid; gap: 3px; }
+.admin-pending-device-list article > div:last-child { min-width: 110px; text-align: right; }
+.admin-pending-device-list b { font-size: 24px; }
 .ppr-sheet-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; }
 .ppr-sheet-state strong { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #dce6eb; }
 .ppr-sheet-state.done { color: #147441; }
@@ -8627,6 +8632,8 @@ body { background:radial-gradient(circle at 8% -10%,rgba(39,154,194,.13),transpa
   .ppr-sheet-footer > button { width: 100%; margin-left: 0; }
   .ppr-sheet-pending { flex-wrap: wrap; }
   .ppr-sheet-pending button { width: 100%; margin-left: 0; }
+  .admin-pending-device-list article { display: grid; }
+  .admin-pending-device-list article > div:last-child { text-align: left; }
 }
 
 @media print {

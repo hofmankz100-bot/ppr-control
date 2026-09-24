@@ -71,7 +71,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 15;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-const SERVER_VERSION = "v869"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
+const SERVER_VERSION = "v870"; const REQUIRE_POSTGRES = ["1", "true", "on", "yes"].includes(String(process.env.REQUIRE_POSTGRES || "").trim().toLowerCase()); const LOCAL_STATE_MIRROR_ENABLED = ["1", "true", "on", "yes"].includes(String(process.env.PPR_LOCAL_STATE_MIRROR || (REQUIRE_POSTGRES ? "false" : "true")).trim().toLowerCase());
 const TRANSLATION_CACHE_VERSION = "v2";
 const CLIENT_PROTOCOL_VERSION = "1";
 const SUPPORTED_CLIENT_VERSIONS = new Set([
@@ -147,6 +147,7 @@ const PRESS_2400_PRODUCTION_NODES = Object.freeze([
 ]);
 const loginAttempts = new Map();
 const contractorAttendanceAttempts = new Map();
+const pendingDeviceActions = new Map();
 let postgresPool = null;
 let postgresState = null;
 let postgresStateStore = null;
@@ -4571,6 +4572,7 @@ const handleAdminDashboardRoute = createAdminDashboardRoute({
   listAdminArchives,
   listAdminBackups,
   normalizedAdminConfig,
+  pendingDeviceActions: () => [...pendingDeviceActions.values()].filter(item => Date.now() - Date.parse(item.lastSeenAt || 0) < 86400000),
   readDb,
   sendJson,
   systemReadinessReport,
@@ -5036,7 +5038,7 @@ async function handleApiTransaction(req, res, pathname, url) {
     return true;
   }
 
-  const attendanceMutationExempt = pathname.startsWith("/api/push/") || pathname === "/api/client-error" || pathname === "/api/remark-collaboration" || pathname === "/api/repeat-failure-group";
+  const attendanceMutationExempt = pathname.startsWith("/api/push/") || pathname === "/api/client-error" || pathname === "/api/pending-device-actions" || pathname === "/api/remark-collaboration" || pathname === "/api/repeat-failure-group";
   if (
     attendanceRoleAllowed(req.authUser)
     && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
@@ -5230,6 +5232,34 @@ async function handleApiTransaction(req, res, pathname, url) {
       line: Number(body.line || 0),
       column: Number(body.column || 0),
       appVersion: String(body.appVersion || "").slice(0, 100),
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 300)
+    });
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (pathname === "/api/pending-device-actions" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const clientId = String(body.clientId || "").slice(0, 200);
+    if (!clientId) {
+      sendJson(res, 400, { ok: false, error: "client_id_required" });
+      return true;
+    }
+    const ppr = Math.max(0, Math.min(200, Number(body.ppr || 0)));
+    const qr = Math.max(0, Math.min(500, Number(body.qr || 0)));
+    const state = body.statePending === true ? 1 : 0;
+    if (ppr + qr + state === 0) pendingDeviceActions.delete(clientId);
+    else pendingDeviceActions.set(clientId, {
+      clientId,
+      userId: String(req.authUser?.id || "").slice(0, 200),
+      employeeId: String(req.authUser?.employeeId || "").slice(0, 120),
+      name: String(req.authUser?.name || "").slice(0, 200),
+      phone: String(req.authUser?.phone || "").slice(0, 80),
+      ppr,
+      qr,
+      statePending: Boolean(state),
+      total: ppr + qr + state,
+      lastSeenAt: new Date().toISOString(),
       userAgent: String(req.headers["user-agent"] || "").slice(0, 300)
     });
     sendJson(res, 200, { ok: true });

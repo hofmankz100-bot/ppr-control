@@ -25,6 +25,7 @@ function createAdminDashboardRoute(dependencies = {}) {
     listAdminArchives,
     listAdminBackups,
     normalizedAdminConfig,
+    pendingDeviceActions = () => [],
     readDb,
     sendJson,
     systemReadinessReport,
@@ -149,6 +150,7 @@ function createAdminDashboardRoute(dependencies = {}) {
       trash,
       audit: ["all", "audit"].includes(requestedTab) ? (db.adminAuditLog || []).slice(0, requestedTab === "all" ? 1000 : 250) : [],
       access,
+      pendingDevices: pendingDeviceActions().sort((a, b) => String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || ""))),
       broadcasts,
       notificationPolicy: {
         defaultPriority: db.adminNotificationPolicy?.defaultPriority || "normal",

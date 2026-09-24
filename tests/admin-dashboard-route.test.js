@@ -25,6 +25,7 @@ function createHarness(database = {}) {
     listAdminArchives: async () => { calls.push("archives"); return [{ id: "archive-1" }]; },
     listAdminBackups: async () => { calls.push("backups"); return [{ id: "backup-1" }]; },
     normalizedAdminConfig: value => ({ companyName: value?.companyName || "Factory" }),
+    pendingDeviceActions: () => [{ clientId: "phone-1", name: "Сотрудник", total: 2, lastSeenAt: "2026-09-24T08:00:00.000Z" }],
     readDb: () => { calls.push("database"); return database; },
     sendJson: (_res, status, payload) => responses.push({ status, payload }),
     systemReadinessReport: () => ({ status: "ok", summary: { ok: 1 } }),
@@ -42,6 +43,7 @@ test("access tab avoids full production-history scans and reuses active sessions
   assert.equal(responses[0].payload.access[0].operationalSummary.lightweight, true);
   assert.equal(responses[0].payload.access[0].operationalSummary.activeSessions, 1);
   assert.equal(responses[0].payload.access[1].operationalSummary.activeSessions, 0);
+  assert.equal(responses[0].payload.pendingDevices[0].clientId, "phone-1");
 });
 
 test("admin dashboard route ignores unrelated requests and protects access", async () => {

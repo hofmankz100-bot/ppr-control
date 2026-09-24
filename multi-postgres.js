@@ -160,7 +160,8 @@ function configuredDatabases(env = process.env) {
   const definitions = [
     ["primary", env.DATABASE_URL],
     ["neon", env.NEON_DATABASE_URL],
-    ["supabase", env.SUPABASE_DATABASE_URL]
+    ["supabase", env.SUPABASE_DATABASE_URL],
+    ["backup", env.BACKUP_DATABASE_URL]
   ];
   const seen = new Set();
   return definitions.flatMap(([name, value]) => {
