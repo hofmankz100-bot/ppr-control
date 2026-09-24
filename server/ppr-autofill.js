@@ -332,10 +332,9 @@ function generatePprSheet({ catalog, templates = {}, previous, date, force = fal
   if (previous && rowsStarted) {
     if (!catalogChanged) return finalizedAutofill(previous, previous, false, now);
     const rows = appendMissingScheduledTargets(previous, scheduledItems, templates, date, now);
-    if (!rows) return finalizedAutofill(previous, previous, false, now);
     return finalizedAutofill({
       ...previous,
-      rows,
+      ...(rows ? { rows } : {}),
       updatedAt: now,
       updatedByName: "Система",
       autofilledAt: now,
