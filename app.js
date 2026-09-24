@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v875";
+const APP_VERSION = "v876";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -11197,7 +11197,7 @@ function pprAutofillTargetSignature(items = []) {
 }
 
 function pprSheetAutofillStale(date, sheet = pprSheetRecord(date)) {
-  if (!sheet?.autofillInitialized || !sheet?.plannedAutomatically || sheet?.explicitPlan) return false;
+  if (!sheet?.autofillInitialized || sheet?.approvedAt) return false;
   const [year, month] = String(date || "").split("-").map(Number);
   if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month)) return false;
   const scheduled = pprCalendarMonthData(allEquipment(), year, month - 1).itemsByDate[date] || [];
@@ -11233,12 +11233,12 @@ async function ensurePprSheetAutofill(date, force = false) {
 function pprSheetCompletion(date) {
   const sheet = pprSheetRecord(date);
   const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
-  const plannedTargets = sheet.plannedAutomatically && !sheet.explicitPlan
+  const plannedTargets = sheet.autofillInitialized
     ? new Set((sheet.autofilledFor || []).map(pprSheetTargetKey))
     : null;
   // Empty reserve rows never block completion, even if a mark was tapped accidentally.
   const activeRows = rows.filter(row => String(row?.work || "").trim()
-    && (!plannedTargets?.size || plannedTargets.has(pprSheetTargetKey(row))));
+    && (!plannedTargets || plannedTargets.has(pprSheetTargetKey(row))));
   const workersComplete = activeRows.length > 0 && activeRows.every(row =>
     ["done", "na"].includes(row?.mark)
   );

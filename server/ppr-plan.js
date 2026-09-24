@@ -70,6 +70,7 @@ function savePlan(db, body, actor, now = new Date().toISOString()) {
   const sheet = { ...old, rows, updatedAt: now, updatedByName: actor.name,
     plannedByName: actor.name, plannedByRole: actor.role, plannedAt: now,
     plannedAutomatically: false, autofillInitialized: true, explicitPlan: true,
+    autofilledFor: scheduledItemsForDate(db.catalog, body.date).map(({ equipmentId, equipment, node, area }) => ({ equipmentId, equipment, node, area })),
     removedRowIds: [...new Set([...(old.removedRowIds || []), ...removed.map(row => String(row.id))])] };
   reconcilePprApprovalRequest(sheet, old, now);
   if (removed.length) {

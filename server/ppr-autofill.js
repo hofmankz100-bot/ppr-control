@@ -260,11 +260,11 @@ function buildAutofillRows(date, scheduledItems, templates = {}) {
 }
 
 function pprSheetReadyForApproval(sheet) {
-  const plannedTargets = sheet?.plannedAutomatically && !sheet?.explicitPlan
+  const plannedTargets = sheet?.autofillInitialized
     ? new Set((sheet.autofilledFor || []).map(item => JSON.stringify([String(item?.equipmentId || ""), String(item?.node || "").trim()])))
     : null;
   const active = (sheet?.rows || []).filter(row => String(row?.work || "").trim()
-    && (!plannedTargets?.size || plannedTargets.has(JSON.stringify([String(row?.equipmentId || ""), String(row?.node || "").trim()]))));
+    && (!plannedTargets || plannedTargets.has(JSON.stringify([String(row?.equipmentId || ""), String(row?.node || "").trim()]))));
   return !sheet?.approvedAt && active.length > 0 && active.every(row => ["done", "na"].includes(row.mark));
 }
 
@@ -328,7 +328,17 @@ function generatePprSheet({ catalog, templates = {}, previous, date, force = fal
   // approvals, and a concurrent engineer edit wins before this transaction.
   // An untouched automatic sheet is refreshed when the live equipment catalog
   // gains, removes or renames scheduled nodes, so every node receives a checklist.
-  if (previous && (previous.approvedAt || previous.explicitPlan)) return finalizedAutofill(previous, previous, false, now);
+  if (previous?.approvedAt) return finalizedAutofill(previous, previous, false, now);
+  if (previous?.explicitPlan) {
+    const targetsChanged = scheduledTargetSignature(previous.autofilledFor) !== scheduledTargetSignature(scheduledItems);
+    if (!targetsChanged) return finalizedAutofill(previous, previous, false, now);
+    return finalizedAutofill({
+      ...previous,
+      updatedAt: now,
+      autofilledAt: now,
+      autofilledFor: scheduledItems.map(({ equipmentId, equipment, node, area }) => ({ equipmentId, equipment, node, area }))
+    }, previous, true, now);
+  }
   if (previous && rowsStarted) {
     if (!catalogChanged) return finalizedAutofill(previous, previous, false, now);
     const rows = appendMissingScheduledTargets(previous, scheduledItems, templates, date, now);
