@@ -46,11 +46,12 @@ const EQUIPMENT = [
 const STORE_KEY = "ppr-pwa-state-v3";
 const PENDING_ACTION_ID_KEY = `${STORE_KEY}-pending-action-id`;
 const QR_PENDING_MARKS_KEY = `${STORE_KEY}-qr-pending-marks-v1`;
+const PPR_PENDING_ACTIONS_KEY = `${STORE_KEY}-ppr-pending-actions-v1`;
 const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v866";
+const APP_VERSION = "v867";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2644,6 +2645,7 @@ function flushPendingWork() {
   connectRealtime();
   startRealtimePoll();
   flushQrWalkQueue();
+  flushPprSheetQueue();
   if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
 }
 
@@ -11232,14 +11234,16 @@ function touchPprSheet(sheet, remote = true) {
 }
 
 async function publishPprSheetAction(date, action, details = {}) {
+  const actionId = String(details.actionId || nextActionId());
   const result = await apiJson("/api/ppr-sheet/action", {
     method: "POST",
     timeout: 15000,
+    idempotencyKey: actionId,
     body: JSON.stringify({
       date,
       action,
       ...details,
-      actionId: nextActionId(),
+      actionId,
       clientId: CLIENT_ID,
       user: profile ? { name: profile.name || "", role: profile.role || "", phone: profile.phone || "" } : null
     })
@@ -11247,6 +11251,69 @@ async function publishPprSheetAction(date, action, details = {}) {
   if (result?.state) mergeRealtimePatch(result.state);
   if (result?.stateVersion) setRealtimeStateVersion(result.stateVersion);
   return result;
+}
+
+function pendingPprSheetActions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PPR_PENDING_ACTIONS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingPprSheetActions(items) {
+  const bounded = Array.isArray(items) ? items.slice(-200) : [];
+  if (bounded.length) localStorage.setItem(PPR_PENDING_ACTIONS_KEY, JSON.stringify(bounded));
+  else localStorage.removeItem(PPR_PENDING_ACTIONS_KEY);
+  updateConnectionStatus();
+}
+
+function enqueuePendingPprSheetAction(payload) {
+  const pending = pendingPprSheetActions().filter(item => item.actionId !== payload.actionId);
+  pending.push(payload);
+  savePendingPprSheetActions(pending);
+}
+
+async function sendPendingPprSheetAction(payload) {
+  return publishPprSheetAction(payload.date, payload.action, payload);
+}
+
+let pprSheetQueueFlusher = null;
+function flushPprSheetQueue() {
+  pprSheetQueueFlusher ||= window.PprDeviceCachePolicy.createQueueFlusher({
+    read: pendingPprSheetActions,
+    write: savePendingPprSheetActions,
+    send: sendPendingPprSheetAction,
+    canSend: () => navigator.onLine && sessionValidationState === "verified" && isProfileReady(),
+    canSendItem: item => window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile),
+    identity: item => item.actionId,
+    discard: error => {
+      if (Number(error?.status) === 401) {
+        if (!deferServerSessionRejection()) rejectServerSession();
+        return false;
+      }
+      if (![400, 403, 409, 426].includes(Number(error?.status))) return false;
+      showAppToast("Сервер отклонил отметку ППР. Обновите лист и повторите отметку.", "error");
+      return true;
+    },
+    settled: updateConnectionStatus
+  });
+  return pprSheetQueueFlusher();
+}
+
+async function queuePprSheetMark(date, details) {
+  const payload = {
+    ...details,
+    date,
+    action: "mark",
+    actionId: nextActionId(),
+    ownerId: authenticatedProfile?.id || "",
+    ownerEmployeeId: authenticatedProfile?.employeeId || ""
+  };
+  enqueuePendingPprSheetAction(payload);
+  await flushPprSheetQueue();
+  return !pendingPprSheetActions().some(item => item.actionId === payload.actionId);
 }
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
@@ -11635,8 +11702,7 @@ function bindPprCalendarControls(container, rerender) {
       row.resolutionUpdatedAt = row.markUpdatedAt;
       row.updatedAt = row.markUpdatedAt;
       touchPprSheet(sheet, false);
-      try {
-        await publishPprSheetAction(date, "mark", {
+      const confirmed = await queuePprSheetMark(date, {
           rowId: row.id,
           mark: row.mark,
           equipmentId: row.equipmentId,
@@ -11644,10 +11710,8 @@ function bindPprCalendarControls(container, rerender) {
           node: row.node,
           area: row.area,
           resolutionComment: row.resolutionComment
-        });
-      } catch {
-        saveState();
-      }
+      });
+      if (!confirmed) showAppToast("Отметка ППР сохранена на устройстве и будет отправлена при восстановлении связи.", "warning");
       rerender();
     });
   });

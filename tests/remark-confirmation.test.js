@@ -2108,6 +2108,16 @@ test("engineer PPR report groups completed work compactly", () => {
   assert.match(styles, /html\[data-theme="dark"\] \.engineer-ppr-progress/);
 });
 
+test("PPR marks stay in a device queue until the server confirms them", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /PPR_PENDING_ACTIONS_KEY/);
+  assert.match(client, /function enqueuePendingPprSheetAction\(payload\)/);
+  assert.match(client, /function flushPprSheetQueue\(\)/);
+  assert.match(client, /idempotencyKey: actionId/);
+  assert.match(client, /await queuePprSheetMark\(date/);
+  assert.match(client, /Отметка ППР сохранена на устройстве/);
+});
+
 test("director control and engineer report use live journal and accepted-work data", () => {
   const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.match(clientSource, /function directorJournalState\(eq\)/);
