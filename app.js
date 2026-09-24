@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v870";
+const APP_VERSION = "v871";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2648,6 +2648,17 @@ function flushPendingWork() {
   flushPprSheetQueue();
   schedulePendingDeviceActionReport();
   if (localStorage.getItem(`${STORE_KEY}-pending`) === "1") saveRemoteState();
+}
+
+function hasPendingDeviceActions() {
+  return localStorage.getItem(`${STORE_KEY}-pending`) === "1"
+    || pendingQrWalkMarks().length > 0
+    || pendingPprSheetActions().length > 0;
+}
+
+function syncPendingDeviceActionsFast() {
+  if (document.visibilityState === "hidden" || !hasPendingDeviceActions()) return;
+  flushPendingWork();
 }
 
 let pendingDeviceActionReportTimer = null;
@@ -15613,8 +15624,7 @@ function handleAppResume() {
   resetAppNotificationsForOpen();
   if (!appBootstrapComplete) return;
   if (sessionValidationState !== "verified") { resumeAfterNetworkChange()?.catch(error => reportCaughtClientError("sync.resume", error)); return; }
-  const hasPendingWork = localStorage.getItem(`${STORE_KEY}-pending`) === "1";
-  if (hasPendingWork) flushPendingWork();
+  if (hasPendingDeviceActions()) flushPendingWork();
   resumeRealtimeQuietly(awayMs);
   if (awayMs >= RESUME_SYNC_AFTER_MS && now - lastResumeProfileRefreshAt >= RESUME_PROFILE_REFRESH_MS) {
     lastResumeProfileRefreshAt = now;
@@ -15659,7 +15669,8 @@ window.addEventListener("resize", placeSingleAttendanceButton);
 checkRequiredClientVersion();
 window.setInterval(checkRequiredClientVersion, 30000);
 window.setInterval(refreshAuthenticatedProfile, 30000);
-window.setInterval(() => schedulePendingDeviceActionReport(0), 60000);
+window.setInterval(syncPendingDeviceActionsFast, 5000);
+window.setInterval(() => { if (hasPendingDeviceActions()) schedulePendingDeviceActionReport(0); }, 10000);
 setupPublicAttendanceEntry();
 setupLogin();
 resetAppNotificationsForOpen();
