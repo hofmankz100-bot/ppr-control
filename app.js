@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v871";
+const APP_VERSION = "v872";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2229,6 +2229,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   // Merge them row-by-row even during a full refresh so a stale empty server
   // snapshot cannot erase newer local work.
   state.pprSheets = mergePprSheetsLocal(state.pprSheets || {}, remote.pprSheets || {}, options.serverPprApprovals === true);
+  applyPendingPprSheetActions();
   state.annualPpr = preferRemote
     ? { ...(remote.annualPpr || {}) }
     : mergeObjectByFreshnessLocal(state.annualPpr || {}, remote.annualPpr || {});
@@ -2270,7 +2271,10 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.gasJournal) state.gasJournal = mergeObjectByFreshnessLocal(state.gasJournal, remote.gasJournal);
   if (remote.weldingJournal) state.weldingJournal = mergeObjectByFreshnessLocal(state.weldingJournal, remote.weldingJournal);
   if (remote.turningJournal) state.turningJournal = mergeObjectByFreshnessLocal(state.turningJournal, remote.turningJournal);
-  if (remote.pprSheets) state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets, true);
+  if (remote.pprSheets) {
+    state.pprSheets = mergePprSheetsLocal(state.pprSheets, remote.pprSheets, true);
+    applyPendingPprSheetActions();
+  }
   if (remote.annualPpr) state.annualPpr = mergeObjectByFreshnessLocal(state.annualPpr, remote.annualPpr);
   if (remote.journalDueSince) state.journalDueSince = { ...(state.journalDueSince || {}), ...remote.journalDueSince };
   if (remote.downtimes) state.downtimes = mergeArrayByIdLocal(state.downtimes, remote.downtimes);
@@ -11301,6 +11305,18 @@ function pendingPprSheetActionsFor(date) {
     && window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile));
 }
 
+function applyPendingPprSheetActions() {
+  pendingPprSheetActions().forEach(item => {
+    if (item.action !== "mark" || !window.PprDeviceCachePolicy.queueItemOwnedBy(item, authenticatedProfile)) return;
+    const row = state.pprSheets?.[item.date]?.rows?.find(candidate => String(candidate?.id || "") === String(item.rowId || ""));
+    if (!row) return;
+    row.mark = String(item.mark || "");
+    row.resolutionComment = row.mark ? String(item.resolutionComment || "") : "";
+    row.markedByName = row.mark ? profile?.name || row.markedByName || "" : "";
+    row.markedByRole = row.mark ? profile?.role || row.markedByRole || "" : "";
+  });
+}
+
 function savePendingPprSheetActions(items) {
   const bounded = Array.isArray(items) ? items.slice(-200) : [];
   if (bounded.length) localStorage.setItem(PPR_PENDING_ACTIONS_KEY, JSON.stringify(bounded));
@@ -11316,7 +11332,15 @@ function enqueuePendingPprSheetAction(payload) {
 }
 
 async function sendPendingPprSheetAction(payload) {
-  return publishPprSheetAction(payload.date, payload.action, payload);
+  const result = await publishPprSheetAction(payload.date, payload.action, payload);
+  if (payload.action === "mark") {
+    const confirmedRow = result?.state?.pprSheets?.[payload.date]?.rows?.find(row => String(row?.id || "") === String(payload.rowId || ""));
+    if (!confirmedRow || String(confirmedRow.mark || "") !== String(payload.mark || "")
+      || String(confirmedRow.resolutionComment || "") !== (payload.mark ? String(payload.resolutionComment || "") : "")) {
+      throw new Error("ppr_mark_not_confirmed");
+    }
+  }
+  return result;
 }
 
 let pprSheetQueueFlusher = null;
