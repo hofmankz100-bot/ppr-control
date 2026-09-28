@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v876";
+const APP_VERSION = "v877";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -1309,7 +1309,6 @@ async function runButtonOperation(button, handler, text = "В ожидании..
       authentication_required: "Сеанс входа завершён. Войдите в приложение снова."
     };
     window.alert(actionErrors[error?.message] || "Действие не сохранилось. Попробуйте ещё раз.");
-    if (current.view === "requests") renderRequests();
   } finally {
     if (requestId && localStorage.getItem(`${STORE_KEY}-pending`) !== "1") {
       pendingRequestIds.delete(requestId);
@@ -1378,12 +1377,13 @@ function apiMutationSignature(url, options = {}) {
 async function apiJsonRequest(url, options = {}, idempotencyKey = "") {
   if (!navigator.onLine) throw Object.assign(new Error("Нет связи с сервером"), { status: 503, data: { offline: true } });
   const controller = new AbortController();
-  const timeout = Number(options.timeout || 15000);
+  const mutation = !["GET", "HEAD"].includes(String(options.method || "GET").toUpperCase());
+  const timeout = Number(options.timeout || (mutation ? 60000 : 15000));
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetch(url, {
-      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}), ...(options.headers || {}) },
       ...options,
+      headers: { "Content-Type": "application/json", "X-App-Version": APP_VERSION, "X-Client-Protocol": CLIENT_PROTOCOL_VERSION, ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}), ...(options.headers || {}) },
       signal: options.signal || controller.signal
     });
     const data = await response.json().catch(() => ({}));
@@ -1405,17 +1405,20 @@ function apiJson(url, options = {}) {
   const signature = apiMutationSignature(url, options);
   if (!signature) return apiJsonRequest(url, options, "");
   const existing = apiMutationRequests.get(signature);
-  if (existing && existing.expiresAt > Date.now()) return existing.promise;
+  if (existing && (existing.pending || existing.expiresAt > Date.now())) return existing.promise;
   const idempotencyKey = String(options.idempotencyKey || nextActionId());
   const promise = apiJsonRequest(url, options, idempotencyKey);
-  const entry = { promise, expiresAt: Date.now() + 10000 };
+  const entry = { promise, pending: true, expiresAt: 0 };
   apiMutationRequests.set(signature, entry);
-  promise.catch(() => {
+  promise.then(() => {
+    entry.pending = false;
+    entry.expiresAt = Date.now() + 10000;
+    window.setTimeout(() => {
+      if (apiMutationRequests.get(signature) === entry) apiMutationRequests.delete(signature);
+    }, 10000);
+  }, () => {
     if (apiMutationRequests.get(signature) === entry) apiMutationRequests.delete(signature);
   });
-  window.setTimeout(() => {
-    if (apiMutationRequests.get(signature) === entry) apiMutationRequests.delete(signature);
-  }, 10000);
   return promise;
 }
 
@@ -2571,7 +2574,6 @@ async function publishNodeUpdateNow(equipmentId, nodeIndex, date) {
   try {
     const result = await apiJson("/api/node-update", {
       method: "PUT",
-      timeout: 15000,
       body: JSON.stringify({
         actionId: nextActionId(),
         clientId: CLIENT_ID,
@@ -4262,7 +4264,6 @@ async function sendQrWalkPayload(payload) {
   try {
     const result = await apiJson("/api/qr-walk/mark", {
       method: "POST",
-      timeout: 12000,
       idempotencyKey: String(payload.actionId || ""),
       body: JSON.stringify(payload)
     });
@@ -4389,7 +4390,7 @@ async function publishShgrpSectionAResult(parsed, shiftInfo, hasRemark = false, 
   if (!shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex)) return false;
   const eq = equipmentById(parsed.equipmentId);
   const result = await apiJson("/api/qr-walk/shgrp-a-result", {
-    method: "POST", timeout: 15000,
+    method: "POST",
     body: JSON.stringify({
       actionId: nextActionId(), clientId: CLIENT_ID, equipmentId: parsed.equipmentId, nodeIndex: parsed.nodeIndex,
       equipment: eq?.name || "", node: eq?.nodes?.[parsed.nodeIndex] || "", date: shiftInfo.date, shift: shiftInfo.key,
@@ -4412,7 +4413,6 @@ async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comme
   try {
     const result = await apiJson("/api/qr-walk/grp-result", {
       method: "POST",
-      timeout: 15000,
       body: JSON.stringify({
         actionId: nextActionId(),
         clientId: CLIENT_ID,
@@ -6015,7 +6015,6 @@ async function publishRemarkCollaborationAction(equipmentId, nodeIndex, date, ac
   const request = (async () => {
     const result = await apiJson("/api/remark-collaboration", {
       method: "POST",
-      timeout: 20000,
       body: JSON.stringify({
         actionId,
         clientId: CLIENT_ID,
