@@ -4736,11 +4736,14 @@ function ordinaryNodeIndexes(eq = {}) {
   return (eq.nodes || []).map((_, index) => index);
 }
 
+function qrInspectionNoticeHtml() {
+  return `<div class="qr-inspection-notice"><strong>Что нужно проверить</strong><ol><li>Исправность технических устройств.</li><li>Состояние ограждений, защитных блокировок, сигнализации, КИП и заземления.</li><li>Исправность освещения и вентиляции.</li></ol><div class="qr-inspection-warning"><span aria-hidden="true">!</span><p>Все неисправности фиксировать в системе «ППР Контроль» в разделах «Замечания» и «Предупреждения» для устранения и заполнения агрегатного журнала.</p></div></div>`;
+}
+
 
 function printNodeQrCode(eq, nodeIndex) {
   const nodeName = eq.nodes[nodeIndex] || "";
   const qrLink = nodeQrUrl(eq.id, nodeIndex);
-  const displayCode = nodeQrDisplayCode(eq.id, nodeIndex);
   const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
   const win = window.open("", "_blank", "width=760,height=760");
   if (!win) {
@@ -4753,13 +4756,13 @@ function printNodeQrCode(eq, nodeIndex) {
       @page{size:A4 portrait;margin:8mm}
       *{box-sizing:border-box}
       body{margin:0;background:#eef3f6;font-family:Arial,sans-serif;color:#111827}
-      .sheet{width:94.5mm;min-height:142mm;margin:18px auto;background:#fff;padding:6mm;border:2px solid #111827;border-radius:8px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:1.5mm;align-items:center;text-align:center;overflow:hidden}
+      .sheet{width:94.5mm;min-height:142mm;margin:18px auto;background:#fff;padding:6mm;border:2px solid #111827;border-radius:8px;display:grid;grid-template-rows:auto auto auto 1fr;gap:1.5mm;align-items:center;text-align:center;overflow:hidden}
       .top{font-size:7pt;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .head{min-height:18mm;display:grid;place-items:center;align-content:center}
       p{margin:1mm 0;font-size:9pt;line-height:1.2}
       .head p{font-weight:800}
       .qr{display:grid;place-items:center;margin:1mm 0;padding:1.5mm;background:#fff}.qr img{display:block;width:80mm;height:80mm;image-rendering:pixelated}
-      .code{display:inline-flex;align-items:baseline;justify-content:center;margin:1mm auto 0;padding:2mm 3mm;border:1px solid #cbd5e1;border-radius:6px;white-space:nowrap}.code strong{font-family:Consolas,monospace;font-size:13pt;color:#111827;letter-spacing:.4px}
+      .qr-inspection-notice{text-align:left;margin-top:2mm;padding:3mm;border:1px solid #cbd5e1;border-radius:6px;font-size:9pt;line-height:1.25}.qr-inspection-notice>strong{display:block;text-align:center;text-transform:uppercase;font-size:11pt}.qr-inspection-notice ol{margin:1.5mm 0;padding-left:6mm}.qr-inspection-warning{display:flex;align-items:center;gap:2mm;margin-top:1.5mm}.qr-inspection-warning span{display:grid;place-items:center;flex:0 0 8mm;height:8mm;border-radius:50%;background:#f59e0b;color:#fff;font-size:16pt;font-weight:900}.qr-inspection-notice p{margin:0;font-size:8.5pt;font-weight:700}
       .actions{position:sticky;bottom:0;background:#eef3f6;padding:10px;text-align:center}
       button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:800}
       .qr-back{display:none;position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;width:50px;height:50px;padding:0;border-radius:50%;font-size:34px;line-height:46px;box-shadow:0 5px 18px rgba(19,47,66,.28);z-index:10}
@@ -4780,7 +4783,7 @@ function printNodeQrCode(eq, nodeIndex) {
           <p><strong>Узел:</strong> ${escapeHtml(nodeName)}</p>
         </div>
         <div class="qr"><img src="${qrUrl}" alt="QR код"></div>
-        <div class="code"><strong>${escapeHtml(displayCode)}</strong></div>
+        ${qrInspectionNoticeHtml()}
       </div>
       <div class="actions"><button onclick="window.print()">Печатать QR</button></div>
     </body></html>`);
@@ -4844,14 +4847,13 @@ function printEquipmentQrCodes(eq) {
   const cards = printableNodes.map(({ nodeName, nodeIndex }) => {
       const kind = "lower";
     const qrLink = nodeQrUrl(eq.id, nodeIndex, kind);
-    const displayCode = nodeQrDisplayCode(eq.id, nodeIndex, kind);
     const qrUrl = `/api/qr?size=720&data=${encodeURIComponent(qrLink)}`;
     return `
       <section class="qr-card">
         <div class="qr-title">${escapeHtml(eq.name || `Оборудование ${eq.id}`)}</div>
         <div class="qr-node">${nodeIndex + 1}. ${escapeHtml(nodeName)}</div>
         <img src="${qrUrl}" alt="QR ${escapeHtml(nodeName)}">
-        <div class="qr-code"><strong>${escapeHtml(displayCode)}</strong></div>
+        ${qrInspectionNoticeHtml()}
       </section>
     `;
   });
@@ -4867,11 +4869,11 @@ function printEquipmentQrCodes(eq) {
       body{margin:0;font-family:Arial,sans-serif;color:#111827;background:#e5e7eb}
       .qr-page{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:7mm;width:210mm;height:281mm;margin:0 auto 12px;background:#fff;page-break-after:always}
       .qr-page:last-child{page-break-after:auto}
-      .qr-card{border:2px solid #111827;border-radius:8px;padding:5mm;display:grid;grid-template-rows:auto auto 1fr auto;gap:1mm;align-items:center;text-align:center;overflow:hidden}
+      .qr-card{border:2px solid #111827;border-radius:8px;padding:4mm;display:grid;grid-template-rows:auto auto auto 1fr;gap:1mm;align-items:center;text-align:center;overflow:hidden}
       .qr-title{font-size:15pt;font-weight:900;text-transform:uppercase}
       .qr-node{min-height:18mm;display:grid;place-items:center;font-size:13pt;font-weight:800;line-height:1.15}
-      .qr-card img{display:block;width:80mm;height:80mm;margin:0 auto;padding:1.5mm;background:#fff;image-rendering:pixelated}
-      .qr-code{display:inline-flex;align-items:baseline;justify-content:center;margin:1mm auto 0;padding:1.5mm 2.5mm;border:1px solid #cbd5e1;border-radius:6px;white-space:nowrap}.qr-code strong{font-family:Consolas,monospace;font-size:12pt;color:#111827;letter-spacing:.3px}
+      .qr-card img{display:block;width:60mm;height:60mm;margin:0 auto;padding:1.5mm;background:#fff;image-rendering:pixelated}
+      .qr-inspection-notice{text-align:left;width:100%;padding:2mm;border-top:1px solid #cbd5e1;font-size:6.8pt;line-height:1.15}.qr-inspection-notice>strong{display:block;text-align:center;text-transform:uppercase;font-size:8pt}.qr-inspection-notice ol{margin:1mm 0;padding-left:5mm}.qr-inspection-notice li{margin:.45mm 0}.qr-inspection-warning{display:flex;align-items:center;gap:1.2mm;margin-top:1mm}.qr-inspection-warning span{display:grid;place-items:center;flex:0 0 5.5mm;height:5.5mm;border-radius:50%;background:#f59e0b;color:#fff;font-size:10pt;font-weight:900}.qr-inspection-notice p{margin:0;font-size:6.4pt;font-weight:700}
       .actions{position:fixed;left:0;right:0;bottom:0;background:#eef3f6;padding:10px;text-align:center;box-shadow:0 -6px 20px rgba(0,0,0,.12)}
       .actions button{border:0;border-radius:8px;background:#14324a;color:#fff;padding:10px 18px;font-weight:900}
       ${qrPopupMobileCss()}
