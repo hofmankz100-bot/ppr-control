@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v879";
+const APP_VERSION = "v880";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -832,7 +832,30 @@ async function refreshStaleAssetCache() {
 
 function markPendingState(user = authenticatedProfile) { pendingStateOwner.mark(user); if (remoteSaveInFlight) remoteSavePending = true; }
 
+let typingSavePending = false;
+let typingSaveRemote = false;
+
+function scheduleTypingSave(remote = false) {
+  typingSavePending = true;
+  typingSaveRemote ||= remote;
+}
+
+function flushTypingSave() {
+  if (typingSavePending) saveState({ remote: typingSaveRemote });
+}
+
+document.addEventListener("focusout", flushTypingSave, true);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) flushTypingSave();
+});
+window.addEventListener("pagehide", flushTypingSave);
+
 function saveState(options = {}) {
+  if (typingSavePending) {
+    options = { ...options, remote: options.remote !== false || typingSaveRemote };
+    typingSavePending = false;
+    typingSaveRemote = false;
+  }
   stateDataVersion += 1;
   state.checks = compactCheckRecords(state.checks);
   persistStateLocally(state);
@@ -8471,11 +8494,11 @@ function updateCompressorJournalRow(rowId, field, value) {
       fixedAt: "",
       fixedByName: ""
     };
-    saveState();
+    scheduleTypingSave(true);
     return state.compressorJournal[rowId];
   }
   state.compressorJournal[rowId] = nextRow;
-  saveState();
+  scheduleTypingSave(true);
   return state.compressorJournal[rowId];
 }
 
@@ -8697,7 +8720,7 @@ function updateGasJournalRow(section, date, field, value) {
   };
   if (section === "B") next.route = GAS_ROUTE_LIST.join("\n");
   state.gasJournal[id] = next;
-  saveState();
+  scheduleTypingSave(true);
   return next;
 }
 
@@ -10369,7 +10392,7 @@ function renderNodeWalkthrough(eq) {
       const liveItem = record(eq.id, index, current.date).to;
       liveItem.nodeDraftText = event.target.value;
       liveItem.updatedAt = new Date().toISOString();
-      saveState({ remote: false });
+      scheduleTypingSave();
       if (event.target.value.trim()) event.target.classList.remove("comment-required-blink");
       const submitButton = row.querySelector(`[data-node-submit-comment="${index}"]`);
       if (submitButton) {
@@ -11269,10 +11292,11 @@ function canApprovePprSheet() {
   return ["engineer", "editor"].includes(profile?.role);
 }
 
-function touchPprSheet(sheet, remote = true) {
+function touchPprSheet(sheet, remote = true, typing = false) {
   sheet.updatedAt = new Date().toISOString();
   sheet.updatedByName = profile?.name || sheet.updatedByName || "";
-  if (remote) saveState();
+  if (typing) scheduleTypingSave(remote);
+  else if (remote) saveState();
   else persistStateLocally(state);
 }
 
@@ -11701,7 +11725,6 @@ function bindPprCalendarControls(container, rerender) {
     });
   });
   container?.querySelectorAll("[data-ppr-resolution-input]").forEach(input => {
-    let draftSaveTimer = null;
     let draftSaveChain = Promise.resolve();
     const publishDraft = async () => {
       const date = input.closest("[data-ppr-sheet-date]")?.dataset.pprSheetDate;
@@ -11739,12 +11762,9 @@ function bindPprCalendarControls(container, rerender) {
       row.draftUpdatedAt = new Date().toISOString();
       row.resolutionUpdatedAt = row.draftUpdatedAt;
       row.updatedAt = row.draftUpdatedAt;
-      touchPprSheet(sheet, false);
-      clearTimeout(draftSaveTimer);
-      draftSaveTimer = window.setTimeout(queueDraftSave, 700);
+      touchPprSheet(sheet, false, true);
     });
     input.addEventListener("change", async () => {
-      clearTimeout(draftSaveTimer);
       await queueDraftSave();
     });
   });
