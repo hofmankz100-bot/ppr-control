@@ -2,6 +2,89 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const policy = require("../modules/device-cache-policy");
 
+function syncFunctionSource(name) {
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "../app.js"), "utf8").replace(/\r\n/g, "\n");
+  const start = source.search(new RegExp(`(?:async )?function ${name}\\(`));
+  assert.ok(start >= 0);
+  return source.slice(start, source.indexOf("\n}\n", start) + 2);
+}
+
+test("check delta sends only changed records and retains edits made during delivery", () => {
+  const vm = require("node:vm");
+  const c = vm.createContext({ REMOTE_STATE_FIELDS: ["checks"], remoteSectionFingerprints: new Map(), remoteCheckFingerprints: new Map(),
+    state: { checks: { a: { updatedAt: "1", to: {} }, b: { updatedAt: "1", to: { commentPhoto: "large-unrelated-photo" } } } },
+    remoteSectionFingerprint: (field, value) => JSON.stringify(value), catalogEditorRole: () => "editor" });
+  vm.runInContext(syncFunctionSource("rememberRemoteStateBaseline") + "\n" + syncFunctionSource("changedRemoteStateSections"), c);
+  c.rememberRemoteStateBaseline(structuredClone(c.state));
+  c.state.checks.a.updatedAt = "2";
+  const first = c.changedRemoteStateSections();
+  assert.deepEqual(Object.keys(first.payload.checks), ["a"]);
+  c.state.checks.a.updatedAt = "3";
+  c.rememberRemoteStateBaseline({}, first.fingerprints);
+  assert.deepEqual(Object.keys(c.changedRemoteStateSections().payload.checks), ["a"]);
+});
+
+test("PPR queues more than 200 actions and returns while delivery is pending", async () => {
+  const vm = require("node:vm");
+  const storage = new Map();
+  const c = vm.createContext({ PPR_PENDING_ACTIONS_KEY: "queue", localStorage: { setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+    updateConnectionStatus() {}, schedulePendingDeviceActionReport() {}, nextActionId: () => "action", authenticatedProfile: { id: "owner" },
+    window: { setTimeout: callback => { c.sendLater = callback; } }, flushPprSheetQueue: () => new Promise(() => {}), console });
+  vm.runInContext(syncFunctionSource("savePendingPprSheetActions") + "\n" + syncFunctionSource("queuePprSheetMark"), c);
+  const items = Array.from({ length: 250 }, (_, i) => ({ actionId: String(i) }));
+  c.savePendingPprSheetActions(items);
+  assert.equal(JSON.parse(storage.get("queue")).length, 250);
+  c.enqueuePendingPprSheetAction = payload => { c.saved = payload; };
+  assert.equal(await c.queuePprSheetMark("2026-10-08", { rowId: "r", mark: "done" }), false);
+  assert.equal(c.saved.ownerId, "owner");
+  assert.equal(typeof c.sendLater, "function");
+});
+
+test("gas journal delivery keeps its endpoint and stable action identity", async () => {
+  const vm = require("node:vm");
+  const sent = [], patches = [];
+  const c = vm.createContext({ apiJson: async (url, options) => { sent.push({ url, ...options }); return { id: "gas", row: { comment: "ok" } }; },
+    mergeRealtimePatch: patch => patches.push(patch), isQrWalkAttendanceRequired: () => false });
+  vm.runInContext(syncFunctionSource("sendQrWalkPayload"), c);
+  const payload = { journalAction: "grp", actionId: "stable", comment: "ok" };
+  await c.sendQrWalkPayload(payload);
+  await c.sendQrWalkPayload(payload);
+  assert.equal(sent[0].url, "/api/qr-walk/grp-result");
+  assert.equal(sent[0].idempotencyKey, sent[1].idempotencyKey);
+  assert.equal(patches[0].gasJournal.gas.comment, "ok");
+});
+
+test("background QR persists before marking locally and never waits for network", async () => {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  const source = fs.readFileSync(require("node:path").join(__dirname, "../app.js"), "utf8");
+  const code = source.slice(source.indexOf("async function publishQrWalkMark("), source.indexOf("function shgrpSectionBRouteForQr("));
+  const events = [];
+  let failStorage = false;
+  const sandbox = {
+    state: { checks: {} }, authenticatedProfile: { id: "user" }, CLIENT_ID: "device",
+    qrWalkGroup: () => "technical", key: () => "record", equipmentById: () => ({ name: "eq", nodes: ["node"] }),
+    nextActionId: () => "stable-action", enqueuePendingQrWalkMark: payload => {
+      if (failStorage) throw new Error("quota");
+      assert.equal(payload.actionId, "stable-action"); events.push("persist");
+    },
+    markNodeWalkDoneByQr: () => events.push("local"),
+    showQrSavedNotice: () => events.push("notice"),
+    window: { setTimeout: callback => { events.push("scheduled"); sandbox.deliver = callback; } },
+    flushQrWalkQueue: () => { events.push("send"); return new Promise(() => {}); }, console
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  assert.equal(await sandbox.commitQrWalkMark(1, 0, "2026-10-08", { key: "day" }, "token", null, "lower", true), true);
+  assert.deepEqual(events, ["persist", "local", "scheduled"]);
+  sandbox.deliver();
+  assert.equal(events.at(-1), "send");
+  events.length = 0;
+  failStorage = true;
+  assert.equal(await sandbox.commitQrWalkMark(1, 0, "2026-10-08", { key: "day" }, "token", null, "lower", true), false);
+  assert.deepEqual(events, ["notice"]);
+});
+
 test("downtime cache keeps every active stop and recent closed stops regardless of insertion order", () => {
   const closed = Array.from({ length: 250 }, (_, i) => ({ id: `closed-${i}`, startedAt: new Date(i * 86400000).toISOString(), endedAt: new Date((i + 1) * 86400000).toISOString() }));
   const active = Array.from({ length: 205 }, (_, i) => ({ id: `active-${i}`, startedAt: "1960-01-01T00:00:00Z", endedAt: "" }));

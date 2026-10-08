@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v880";
+const APP_VERSION = "v881";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -314,6 +314,7 @@ const REMOTE_STATE_FIELDS = [
   "auditHistory", "systemBroadcasts", "operationalResetAt", "walkShiftCleanupVersion"
 ];
 const remoteSectionFingerprints = new Map();
+const remoteCheckFingerprints = new Map();
 let remoteRetryTimer = null;
 let realtimeSocket = null;
 let realtimeEventSource = null;
@@ -2740,10 +2741,15 @@ function rememberRemoteStateBaseline(snapshot = {}, fingerprints = null) {
   REMOTE_STATE_FIELDS.forEach(field => {
     if (fingerprints?.has(field)) {
       remoteSectionFingerprints.set(field, fingerprints.get(field));
+      if (field === "checks" && fingerprints.checkRecords) fingerprints.checkRecords.forEach((value, recordKey) => remoteCheckFingerprints.set(recordKey, value));
       return;
     }
     if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
       remoteSectionFingerprints.set(field, remoteSectionFingerprint(field, snapshot[field]));
+      if (field === "checks") {
+        remoteCheckFingerprints.clear();
+        Object.entries(snapshot.checks || {}).forEach(([recordKey, record]) => remoteCheckFingerprints.set(recordKey, remoteSectionFingerprint("checks", { [recordKey]: record })));
+      }
     }
   });
 }
@@ -2759,7 +2765,16 @@ function changedRemoteStateSections() {
       return;
     }
     if (remoteSectionFingerprints.get(field) === fingerprint) return;
-    payload[field] = value;
+    if (field === "checks") {
+      payload.checks = {};
+      fingerprints.checkRecords = new Map();
+      Object.entries(value || {}).forEach(([recordKey, record]) => {
+        const stamp = remoteSectionFingerprint("checks", { [recordKey]: record });
+        if (remoteCheckFingerprints.get(recordKey) === stamp) return;
+        payload.checks[recordKey] = record;
+        fingerprints.checkRecords.set(recordKey, stamp);
+      });
+    } else payload[field] = value;
     fingerprints.set(field, fingerprint);
   });
   return { payload, fingerprints };
@@ -4270,7 +4285,9 @@ function qrWalkMarkIdentity(payload) {
 
 function enqueuePendingQrWalkMark(payload) {
   const identity = qrWalkMarkIdentity(payload);
-  const pending = pendingQrWalkMarks().filter(item => qrWalkMarkIdentity(item) !== identity);
+  const pending = pendingQrWalkMarks().filter(item => payload.journalAction
+    ? item.actionId !== payload.actionId
+    : item.journalAction || qrWalkMarkIdentity(item) !== identity);
   pending.push(payload);
   savePendingQrWalkMarks(pending);
 }
@@ -4285,7 +4302,9 @@ function isPermanentQrWalkError(error) {
 
 async function sendQrWalkPayload(payload) {
   try {
-    const result = await apiJson("/api/qr-walk/mark", {
+    const endpoint = payload.journalAction === "shgrp-a" ? "/api/qr-walk/shgrp-a-result"
+      : payload.journalAction === "grp" ? "/api/qr-walk/grp-result" : "/api/qr-walk/mark";
+    const result = await apiJson(endpoint, {
       method: "POST",
       idempotencyKey: String(payload.actionId || ""),
       body: JSON.stringify(payload)
@@ -4293,6 +4312,7 @@ async function sendQrWalkPayload(payload) {
     if (result?.recordKey && result?.record) {
       mergeRealtimePatch({ checks: { [result.recordKey]: result.record } });
     }
+    if (payload.journalAction && result?.id && result?.row) mergeRealtimePatch({ gasJournal: { [result.id]: result.row } });
     return result;
   } catch (error) {
     if (isQrWalkAttendanceRequired(error) && window.PprDeviceCachePolicy.queueItemOwnedBy(payload, authenticatedProfile)) {
@@ -4326,7 +4346,7 @@ function flushQrWalkQueue() {
   return qrWalkQueueFlusher();
 }
 
-async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
+async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower", background = false) {
   const group = qrWalkGroup();
   const markKey = qrKind === "upper" ? `${shiftInfo?.key}:upper` : shiftInfo?.key;
   const localMark = state.checks?.[key(equipmentId, nodeIndex, date)]?.to?.walkGroups?.[group]?.[markKey];
@@ -4351,6 +4371,15 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
     range: shiftInfo?.range || "",
     customJournal: customJournal || localMark?.customJournal || null
   };
+  if (background) {
+    try {
+      enqueuePendingQrWalkMark(payload);
+    } catch (error) {
+      showQrSavedNotice("Не удалось сохранить QR на телефоне. Не закрывайте приложение и повторите попытку.");
+      return "rejected";
+    }
+    return "queued";
+  }
   if (!navigator.onLine || sessionValidationState !== "verified") {
     enqueuePendingQrWalkMark(payload);
     showQrSavedNotice("QR отмечен на телефоне. Отправим на сервер после восстановления связи.");
@@ -4379,11 +4408,14 @@ async function publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToke
   }
 }
 
-async function commitQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower") {
-  const outcome = await publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken, customJournal, qrKind);
+async function commitQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken = "", customJournal = null, qrKind = "lower", background = false) {
+  const outcome = await publishQrWalkMark(equipmentId, nodeIndex, date, shiftInfo, qrToken, customJournal, qrKind, background);
   if (outcome === "rejected") return false;
   if (outcome === "queued") {
     markNodeWalkDoneByQr(equipmentId, nodeIndex, date, shiftInfo, { remote: false, customJournal, qrKind });
+    if (background) window.setTimeout(() => {
+      Promise.resolve(flushQrWalkQueue()).catch(error => console.warn("QR queue delivery deferred", error));
+    }, 0);
   }
   return true;
 }
@@ -4412,20 +4444,14 @@ function shgrpSectionAKindForQr(equipmentId, nodeIndex) {
 async function publishShgrpSectionAResult(parsed, shiftInfo, hasRemark = false, comment = "", pressures = {}) {
   if (!shgrpSectionAKindForQr(parsed.equipmentId, parsed.nodeIndex)) return false;
   const eq = equipmentById(parsed.equipmentId);
-  const result = await apiJson("/api/qr-walk/shgrp-a-result", {
-    method: "POST",
-    body: JSON.stringify({
+  enqueuePendingQrWalkMark({
+      journalAction: "shgrp-a", ownerId: authenticatedProfile?.id || "", ownerEmployeeId: authenticatedProfile?.employeeId || "",
       actionId: nextActionId(), clientId: CLIENT_ID, equipmentId: parsed.equipmentId, nodeIndex: parsed.nodeIndex,
       equipment: eq?.name || "", node: eq?.nodes?.[parsed.nodeIndex] || "", date: shiftInfo.date, shift: shiftInfo.key,
       hasRemark, comment: hasRemark ? String(comment || "").trim() : "Замечаний нет",
       inletMpa: pressures.inletMpa, outletMpa: pressures.outletMpa
-    })
   });
-  if (result?.id && result?.row) {
-    state.gasJournal ||= {};
-    state.gasJournal[result.id] = result.row;
-    persistStateLocally(state);
-  }
+  window.setTimeout(() => Promise.resolve(flushQrWalkQueue()).catch(error => console.warn("Gas journal delivery deferred", error)), 0);
   return true;
 }
 
@@ -4433,10 +4459,8 @@ async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comme
   const route = shgrpSectionBRouteForQr(parsed.equipmentId, parsed.nodeIndex);
   if (!route) return false;
   const eq = equipmentById(parsed.equipmentId);
-  try {
-    const result = await apiJson("/api/qr-walk/grp-result", {
-      method: "POST",
-      body: JSON.stringify({
+  enqueuePendingQrWalkMark({
+        journalAction: "grp", ownerId: authenticatedProfile?.id || "", ownerEmployeeId: authenticatedProfile?.employeeId || "",
         actionId: nextActionId(),
         clientId: CLIENT_ID,
         equipmentId: parsed.equipmentId,
@@ -4448,19 +4472,9 @@ async function publishGrpShgrpResult(parsed, shiftInfo, hasRemark = false, comme
         shift: shiftInfo.key,
         hasRemark,
         comment: hasRemark ? String(comment || "").trim() : "Замечаний нет"
-      })
-    });
-    if (result?.id && result?.row) {
-      state.gasJournal ||= {};
-      state.gasJournal[result.id] = result.row;
-      persistStateLocally(state);
-    }
-    return true;
-  } catch (error) {
-    console.warn("SHGRP QR link failed", error);
-    showAppToast("QR-обход сохранён, но запись ШГРП ожидает связи с сервером.", "error");
-    return false;
-  }
+  });
+  window.setTimeout(() => Promise.resolve(flushQrWalkQueue()).catch(error => console.warn("Gas journal delivery deferred", error)), 0);
+  return true;
 }
 
 async function refreshQrWalkStatusFromServer(equipmentId, shiftInfo = currentWalkShift()) {
@@ -5576,15 +5590,25 @@ function promptQrWalkDecision(parsed) {
       submitting = true;
       const button = event.currentTarget;
       setButtonBusy(button, true, "Сохраняем...");
-      const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+      const background = true;
+      const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind, background);
       if (!walkSaved) {
         submitting = false;
         setButtonBusy(button, false);
         return;
       }
-      await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
-      await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет").catch(error => console.warn("SHGRP section A link failed", error));
-      showQrSavedNotice(`QR сохранён. Обойдено ${qrWalkProgress(parsed.equipmentId, shift).done} из ${qrWalkProgress(parsed.equipmentId, shift).total}.`);
+      try {
+        await publishGrpShgrpResult(parsed, shift, false, "Замечаний нет");
+        await publishShgrpSectionAResult(parsed, shift, false, "Замечаний нет");
+      } catch (error) {
+        submitting = false;
+        setButtonBusy(button, false);
+        showQrSavedNotice("Отметка обхода сохранена на телефоне, но результат газового журнала сохранить не удалось. Повторите попытку.");
+        return;
+      }
+      showQrSavedNotice(background
+        ? "Обход отмечен · ожидает отправки. Отправится автоматически при наличии связи."
+        : `QR сохранён. Обойдено ${qrWalkProgress(parsed.equipmentId, shift).done} из ${qrWalkProgress(parsed.equipmentId, shift).total}.`);
       finish("continue");
     });
     const form = overlay.querySelector(".qr-remark-form");
@@ -5638,7 +5662,7 @@ function promptQrWalkDecision(parsed) {
         if (customJournal === false) { submitting = false; setButtonBusy(button, false); return; }
         const file = overlay.querySelector("[data-qr-photo-input]")?.files?.[0];
         const photo = file ? await readPhotoFile(file) : "";
-        const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind);
+        const walkSaved = await commitQrWalkMark(parsed.equipmentId, parsed.nodeIndex, shift.date, shift, parsed.qrToken, customJournal, parsed.qrKind, true);
         if (!walkSaved) {
           submitting = false;
           setButtonBusy(button, false);
@@ -5650,7 +5674,8 @@ function promptQrWalkDecision(parsed) {
         syncItemRemarkSummary(item);
         item.updatedAt = new Date().toISOString();
         saveState();
-        await publishStateNow().catch(scheduleRemoteRetry);
+        if (resolvedDuringInspection) await publishStateNow().catch(scheduleRemoteRetry);
+        else publishStateNow().catch(scheduleRemoteRetry);
         if (resolvedDuringInspection && remarkEntry) {
           await publishRemarkCollaborationAction(parsed.equipmentId, parsed.nodeIndex, shift.date, "resolve", {
             remarkId: remarkEntry.id,
@@ -5661,7 +5686,7 @@ function promptQrWalkDecision(parsed) {
         }
         await publishGrpShgrpResult(parsed, shift, true, comment);
         await publishShgrpSectionAResult(parsed, shift, true, comment, { inletMpa, outletMpa });
-        showQrSavedNotice(resolvedDuringInspection ? "Устранение отправлено инженеру на подтверждение" : "Обход сохранён с замечанием");
+        showQrSavedNotice(resolvedDuringInspection ? "Устранение отправлено инженеру на подтверждение" : "Обход с замечанием отмечен на телефоне · ожидает отправки");
         finish("comment-saved");
       } catch {
         submitting = false;
@@ -11347,7 +11372,7 @@ function applyPendingPprSheetActions() {
 }
 
 function savePendingPprSheetActions(items) {
-  const bounded = Array.isArray(items) ? items.slice(-200) : [];
+  const bounded = Array.isArray(items) ? items : [];
   if (bounded.length) localStorage.setItem(PPR_PENDING_ACTIONS_KEY, JSON.stringify(bounded));
   else localStorage.removeItem(PPR_PENDING_ACTIONS_KEY);
   updateConnectionStatus();
@@ -11405,8 +11430,10 @@ async function queuePprSheetMark(date, details) {
     ownerEmployeeId: authenticatedProfile?.employeeId || ""
   };
   enqueuePendingPprSheetAction(payload);
-  await flushPprSheetQueue();
-  return !pendingPprSheetActions().some(item => item.actionId === payload.actionId);
+  window.setTimeout(() => {
+    Promise.resolve(flushPprSheetQueue()).catch(error => console.warn("PPR queue delivery deferred", error));
+  }, 0);
+  return false;
 }
 
 function renderPprMaintenanceSheet(date, scheduledItems = []) {
@@ -11775,6 +11802,7 @@ function bindPprCalendarControls(container, rerender) {
       const sheet = pprSheetRecord(date, true);
       const row = sheet.rows.find(item => item.id === button.dataset.pprRowMark);
       if (!row) return;
+      const previousRow = { ...row };
       const workInput = button.closest("tr")?.querySelector("[data-ppr-work-input]");
       const resolutionInput = button.closest("tr")?.querySelector("[data-ppr-resolution-input]");
       const nextMark = row.mark === button.dataset.pprMarkValue ? "" : button.dataset.pprMarkValue;
@@ -11796,7 +11824,9 @@ function bindPprCalendarControls(container, rerender) {
       row.resolutionUpdatedAt = row.markUpdatedAt;
       row.updatedAt = row.markUpdatedAt;
       touchPprSheet(sheet, false);
-      const confirmed = await queuePprSheetMark(date, {
+      let confirmed;
+      try {
+        confirmed = await queuePprSheetMark(date, {
           rowId: row.id,
           mark: row.mark,
           equipmentId: row.equipmentId,
@@ -11804,7 +11834,15 @@ function bindPprCalendarControls(container, rerender) {
           node: row.node,
           area: row.area,
           resolutionComment: row.resolutionComment
-      });
+        });
+      } catch (error) {
+        Object.keys(row).forEach(field => { if (!Object.prototype.hasOwnProperty.call(previousRow, field)) delete row[field]; });
+        Object.assign(row, previousRow);
+        persistStateLocally(state);
+        showAppToast("Не удалось сохранить отметку ППР на телефоне. Повторите попытку.", "error");
+        rerender();
+        return;
+      }
       if (!confirmed) showAppToast("Отметка ППР сохранена на устройстве и будет отправлена при восстановлении связи.", "warning");
       rerender();
     });

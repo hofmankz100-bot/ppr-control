@@ -75,7 +75,7 @@ test("a rejected QR walk is not counted locally or treated as completed", () => 
   assert.match(commit, /if \(outcome === "rejected"\) return false/);
   assert.match(commit, /if \(outcome === "queued"\)[\s\S]*markNodeWalkDoneByQr/);
   assert.doesNotMatch(commit, /markNodeWalkDoneByQr[\s\S]*publishQrWalkMark/);
-  assert.match(client, /if \(!walkSaved\)[\s\S]*return;[\s\S]*showQrSavedNotice\(`QR сохранён\. Обойдено/);
+  assert.match(client, /if \(!walkSaved\)[\s\S]*return;[\s\S]*showQrSavedNotice\(background/);
 });
 
 test("QR walk access uses canonical account and assigned job roles", () => {
