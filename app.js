@@ -51,7 +51,7 @@ const PROFILE_KEY = "ppr-pwa-profile-v1";
 const USERS_KEY = "ppr-pwa-users-v1";
 const EDITOR_PREVIEW_ROLE_KEY = "ppr-editor-preview-role-v1";
 const EDITOR_PREVIEW_AREA_KEY = "ppr-editor-preview-area-v1";
-const APP_VERSION = "v881";
+const APP_VERSION = "v882";
 document.querySelector("#loginVersion")?.replaceChildren(APP_VERSION);
 
 const ensurePprOptionalLibrary = window.PprPrintAssets.createOptionalLibraryLoader(APP_VERSION);
@@ -2265,6 +2265,7 @@ function mergeRemoteState(remote = {}, options = {}) {
   state.systemBroadcasts = mergeArrayByIdLocal(state.systemBroadcasts, remote.systemBroadcasts);
   state.operationalResetAt = remoteResetAt || state.operationalResetAt || "";
   state.walkShiftCleanupVersion = state.walkShiftCleanupVersion || remote.walkShiftCleanupVersion || "";
+  applyPendingQrWalkMarks();
   persistStateLocally(state);
 }
 
@@ -2309,6 +2310,7 @@ function mergeRealtimePatch(remote = {}) {
   if (remote.systemBroadcasts) state.systemBroadcasts = mergeArrayByIdLocal(state.systemBroadcasts, remote.systemBroadcasts);
   if (Object.prototype.hasOwnProperty.call(remote, "operationalResetAt")) state.operationalResetAt = remote.operationalResetAt;
   if (Object.prototype.hasOwnProperty.call(remote, "walkShiftCleanupVersion")) state.walkShiftCleanupVersion = remote.walkShiftCleanupVersion;
+  applyPendingQrWalkMarks();
   persistStateLocally(state);
 }
 
@@ -4268,6 +4270,26 @@ function pendingQrWalkMarks() {
     return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
   } catch {
     return [];
+  }
+}
+
+function applyPendingQrWalkMarks() {
+  for (const mark of pendingQrWalkMarks()) {
+    if (mark.journalAction || !window.PprDeviceCachePolicy.queueItemOwnedBy(mark, authenticatedProfile)) continue;
+    const eq = equipmentById(mark.equipmentId);
+    if (!eq?.nodes?.[mark.nodeIndex] || !["technical", "operational"].includes(mark.group) || !["day", "night"].includes(mark.shift)) continue;
+    if (state.operationalResetAt && Date.parse(mark.capturedAt) <= Date.parse(state.operationalResetAt)) continue;
+    const recordKey = key(mark.equipmentId, mark.nodeIndex, mark.date);
+    const rec = state.checks[recordKey] ||= { to: {} };
+    rec.to ||= {};
+    rec.to.walkGroups ||= {};
+    const group = rec.to.walkGroups[mark.group] ||= {};
+    const shiftKey = mark.qrKind === "upper" ? `${mark.shift}:upper` : mark.shift;
+    if (group[shiftKey]?.done) continue;
+    group[shiftKey] = {
+      done: true, at: mark.capturedAt, byRole: authenticatedProfile?.role || "", byName: authenticatedProfile?.name || "",
+      shift: mark.shift, qrKind: mark.qrKind, group: mark.group, label: mark.label || "", range: mark.range || "", customJournal: mark.customJournal || null
+    };
   }
 }
 
